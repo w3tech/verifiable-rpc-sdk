@@ -1,0 +1,124 @@
+// Typed verification errors thrown by `VerifierClient.call`.
+//
+// Discriminated union via the `kind` field plus a class hierarchy:
+//   try { ... } catch (err: unknown) {
+//     if (err instanceof BadSignature) { /* err.signatureHex, err.pubkeyHex, ... */ }
+//     // OR
+//     if (err instanceof VerificationError && err.kind === "BadSignature") { ... }
+//   }
+//
+// Subclass-specific context (header name, hex values, replay skew) is captured
+// on instance fields for programmatic inspection; the human-readable `message`
+// is derived from those fields and intended for logs / Sentry / etc.
+
+export type VerificationErrorKind =
+  | "MissingHeader"
+  | "MalformedHeader"
+  | "BadSignature"
+  | "StaleTimestamp";
+
+/**
+ * Abstract base for all verification errors. The `kind` discriminator is set
+ * by each concrete subclass to a literal type, so consumers can narrow via
+ * `if (err.kind === "BadSignature") { ... }` without `instanceof` chains.
+ */
+export abstract class VerificationError extends Error {
+  abstract readonly kind: VerificationErrorKind;
+
+  constructor(message: string) {
+    super(message);
+    // `this.constructor.name` reflects the concrete subclass at runtime, so
+    // `JSON.stringify`-style serialisation and logging report e.g. "BadSignature"
+    // rather than the abstract "VerificationError" or the v8 default "Error".
+    this.name = this.constructor.name;
+  }
+}
+
+/** Required `vRPC-*` response header was absent from the signed response. */
+export class MissingHeader extends VerificationError {
+  readonly kind = "MissingHeader" as const;
+
+  constructor(public readonly headerName: string) {
+    super(`Missing required header: ${headerName}`);
+  }
+}
+
+/** `vRPC-*` response header was present but failed shape validation. */
+export class MalformedHeader extends VerificationError {
+  readonly kind = "MalformedHeader" as const;
+
+  constructor(
+    public readonly headerName: string,
+    public readonly value: string,
+    public readonly reason: string,
+  ) {
+    super(`Malformed header ${headerName}=${JSON.stringify(value)}: ${reason}`);
+  }
+}
+
+export interface BadSignatureContext {
+  /** `0x` + 128 lowercase hex chars (64-byte Ed25519 signature). */
+  signatureHex: string;
+  /** `0x` + 64 lowercase hex chars (32-byte Ed25519 pubkey). */
+  pubkeyHex: string;
+  /** sha256 of the 80-byte SPEC-04 pre-image, for diagnostics. */
+  preImageSha256: Uint8Array;
+}
+
+/**
+ * Ed25519 signature verification failed against the SPEC-04 pre-image.
+ *
+ * Carries the full signing context (signature, pubkey, pre-image digest) so
+ * the caller can correlate the failure with sidecar-side logs. These values
+ * are public — the signature was emitted in a response header, the pubkey
+ * is bound into the TDX attestation quote — so logging them is safe.
+ */
+export class BadSignature extends VerificationError {
+  readonly kind = "BadSignature" as const;
+  readonly signatureHex: string;
+  readonly pubkeyHex: string;
+  readonly preImageSha256: Uint8Array;
+
+  constructor(ctx: BadSignatureContext) {
+    super(
+      `Ed25519 signature verification failed (sig=${ctx.signatureHex}, pubkey=${ctx.pubkeyHex})`,
+    );
+    this.signatureHex = ctx.signatureHex;
+    this.pubkeyHex = ctx.pubkeyHex;
+    this.preImageSha256 = ctx.preImageSha256;
+  }
+}
+
+export interface StaleTimestampContext {
+  /** Timestamp the sidecar emitted in `vRPC-Timestamp` (unix ms). */
+  observedMs: bigint;
+  /** Client wall clock at the moment of the verify check (unix ms). */
+  nowMs: bigint;
+  /** `observedMs - nowMs` — may be negative (server clock behind) or positive (ahead). */
+  skewMs: bigint;
+  /** Replay-window threshold the client was configured with (`replayWindowMs`). */
+  allowedWindowMs: number;
+}
+
+/**
+ * Signed timestamp fell outside the replay window. The signature itself was
+ * valid — the response is just too old (or too far in the future) to accept.
+ */
+export class StaleTimestamp extends VerificationError {
+  readonly kind = "StaleTimestamp" as const;
+  readonly observedMs: bigint;
+  readonly nowMs: bigint;
+  readonly skewMs: bigint;
+  readonly allowedWindowMs: number;
+
+  constructor(ctx: StaleTimestampContext) {
+    super(
+      `Timestamp outside replay window: observed=${ctx.observedMs}ms now=${ctx.nowMs}ms ` +
+        `skew=${ctx.skewMs}ms window=±${ctx.allowedWindowMs}ms`,
+    );
+    this.observedMs = ctx.observedMs;
+    this.nowMs = ctx.nowMs;
+    this.skewMs = ctx.skewMs;
+    this.allowedWindowMs = ctx.allowedWindowMs;
+  }
+}

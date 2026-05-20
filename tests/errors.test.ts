@@ -1,0 +1,145 @@
+import { describe, expect, test } from "bun:test";
+
+import {
+  BadSignature,
+  MalformedHeader,
+  MissingHeader,
+  StaleTimestamp,
+  VerificationError,
+} from "../src/errors";
+
+describe("errors", () => {
+  test("subclassesAreInstanceOfVerificationErrorAndError", () => {
+    const missing = new MissingHeader("vRPC-Signature");
+    expect(missing instanceof Error).toBe(true);
+    expect(missing instanceof VerificationError).toBe(true);
+    expect(missing instanceof MissingHeader).toBe(true);
+
+    const malformed = new MalformedHeader("vRPC-Pubkey", "x", "y");
+    expect(malformed instanceof Error).toBe(true);
+    expect(malformed instanceof VerificationError).toBe(true);
+    expect(malformed instanceof MalformedHeader).toBe(true);
+
+    const bad = new BadSignature({
+      signatureHex: `0x${"00".repeat(64)}`,
+      pubkeyHex: `0x${"00".repeat(32)}`,
+      preImageSha256: new Uint8Array(32),
+    });
+    expect(bad instanceof Error).toBe(true);
+    expect(bad instanceof VerificationError).toBe(true);
+    expect(bad instanceof BadSignature).toBe(true);
+
+    const stale = new StaleTimestamp({
+      observedMs: 100n,
+      nowMs: 70_000n,
+      skewMs: -69_900n,
+      allowedWindowMs: 60_000,
+    });
+    expect(stale instanceof Error).toBe(true);
+    expect(stale instanceof VerificationError).toBe(true);
+    expect(stale instanceof StaleTimestamp).toBe(true);
+  });
+
+  test("kindFieldDiscriminates", () => {
+    const missing = new MissingHeader("vRPC-Signature");
+    expect(missing.kind).toBe("MissingHeader");
+
+    const malformed = new MalformedHeader("vRPC-Pubkey", "x", "y");
+    expect(malformed.kind).toBe("MalformedHeader");
+
+    const bad = new BadSignature({
+      signatureHex: "0x00",
+      pubkeyHex: "0x00",
+      preImageSha256: new Uint8Array(32),
+    });
+    expect(bad.kind).toBe("BadSignature");
+
+    const stale = new StaleTimestamp({
+      observedMs: 0n,
+      nowMs: 0n,
+      skewMs: 0n,
+      allowedWindowMs: 0,
+    });
+    expect(stale.kind).toBe("StaleTimestamp");
+  });
+
+  test("missingHeaderCarriesHeaderName", () => {
+    const err = new MissingHeader("vRPC-Signature");
+    expect(err.headerName).toBe("vRPC-Signature");
+    expect(err.message).toContain("vRPC-Signature");
+  });
+
+  test("malformedHeaderCarriesNameValueAndReason", () => {
+    const err = new MalformedHeader(
+      "vRPC-Pubkey",
+      "deadbeef",
+      "expected 0x-prefixed 64-char lowercase hex",
+    );
+    expect(err.headerName).toBe("vRPC-Pubkey");
+    expect(err.value).toBe("deadbeef");
+    expect(err.reason).toBe("expected 0x-prefixed 64-char lowercase hex");
+    expect(err.message).toContain("vRPC-Pubkey");
+    expect(err.message).toContain("deadbeef");
+    expect(err.message).toContain("expected 0x-prefixed 64-char lowercase hex");
+  });
+
+  test("badSignatureCarriesContext", () => {
+    const ctx = {
+      signatureHex: `0x${"ab".repeat(64)}`,
+      pubkeyHex: `0x${"cd".repeat(32)}`,
+      preImageSha256: new Uint8Array(32).fill(0xef),
+    };
+    const err = new BadSignature(ctx);
+    expect(err.signatureHex).toBe(ctx.signatureHex);
+    expect(err.pubkeyHex).toBe(ctx.pubkeyHex);
+    expect(err.preImageSha256.length).toBe(32);
+    expect(err.preImageSha256[0]).toBe(0xef);
+  });
+
+  test("staleTimestampCarriesSkew", () => {
+    const err = new StaleTimestamp({
+      observedMs: 100n,
+      nowMs: 70_000n,
+      skewMs: -69_900n,
+      allowedWindowMs: 60_000,
+    });
+    expect(err.observedMs).toBe(100n);
+    expect(err.nowMs).toBe(70_000n);
+    expect(err.skewMs).toBe(-69_900n);
+    expect(err.allowedWindowMs).toBe(60_000);
+    expect(typeof err.allowedWindowMs).toBe("number");
+    expect(typeof err.observedMs).toBe("bigint");
+  });
+
+  test("abstractBaseCannotBeInstantiated", () => {
+    // Compile-time enforcement: `new VerificationError(...)` is a type error.
+    // @ts-expect-error VerificationError is abstract.
+    const ctor = () => new VerificationError("x");
+    expect(ctor).toBeDefined();
+    // Structural check: subclasses each have their own constructor.
+    expect(MissingHeader.prototype.constructor).toBe(MissingHeader);
+    expect(MalformedHeader.prototype.constructor).toBe(MalformedHeader);
+    expect(BadSignature.prototype.constructor).toBe(BadSignature);
+    expect(StaleTimestamp.prototype.constructor).toBe(StaleTimestamp);
+  });
+
+  test("errorNameMatchesClassName", () => {
+    expect(new MissingHeader("h").name).toBe("MissingHeader");
+    expect(new MalformedHeader("h", "v", "r").name).toBe("MalformedHeader");
+    expect(
+      new BadSignature({
+        signatureHex: "0x",
+        pubkeyHex: "0x",
+        preImageSha256: new Uint8Array(32),
+      }).name,
+    ).toBe("BadSignature");
+    expect(
+      new StaleTimestamp({
+        observedMs: 0n,
+        nowMs: 0n,
+        skewMs: 0n,
+        allowedWindowMs: 0,
+      }).name,
+    ).toBe("StaleTimestamp");
+  });
+});
