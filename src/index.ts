@@ -7,6 +7,7 @@
 //   - ./preimage  — SPEC-04 80-byte pre-image builder (exported for advanced
 //                   consumers and test infrastructure)
 
+export type { Attestation, GetQuoteResponse } from "./attestation";
 export type { BadSignatureContext, StaleTimestampContext, VerificationErrorKind } from "./errors";
 export {
   BadSignature,
@@ -16,10 +17,5 @@ export {
   VerificationError,
 } from "./errors";
 export { buildPreImage } from "./preimage";
-export type {
-  Attestation,
-  GetQuoteResponse,
-  VerifiedResponse,
-  VerifierClientOptions,
-} from "./verifier";
+export type { VerifiedResponse, VerifierClientOptions } from "./verifier";
 export { VerifierClient } from "./verifier";

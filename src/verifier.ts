@@ -9,6 +9,7 @@
 
 import { verifyAsync } from "@noble/ed25519";
 
+import { type Attestation, fetchAttestation } from "./attestation";
 import { BadSignature, MalformedHeader, MissingHeader, StaleTimestamp } from "./errors";
 import { buildPreImage, sha256 } from "./preimage";
 
@@ -57,20 +58,6 @@ export interface VerifiedResponse<T = unknown> {
     /** sha256 of the 80-byte SPEC-04 pre-image, for diagnostics. */
     preImageSha256: Uint8Array;
   };
-}
-
-// Phase-18 attestation types — preserved verbatim for Phase 20 to extend.
-export interface GetQuoteResponse {
-  quote: string;
-  event_log: string;
-  report_data: string;
-  vm_config: string;
-}
-
-export interface Attestation {
-  quote: GetQuoteResponse;
-  pubkey: string;
-  composeHash: string;
 }
 
 /**
@@ -199,9 +186,6 @@ export class VerifierClient {
   }
 
   async fetchAttestation(nonce: Uint8Array): Promise<Attestation> {
-    throw new Error(
-      `not yet implemented — Phase 20 (url=${this.url}, nonce.length=${nonce.length}, ` +
-        `replayWindowMs=${this.replayWindowMs})`,
-    );
+    return fetchAttestation(this.url, nonce);
   }
 }
