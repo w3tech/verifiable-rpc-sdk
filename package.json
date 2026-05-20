@@ -29,6 +29,10 @@
     "format:check": "biome format .",
     "build": "echo 'no build in Phase 18 — bundle in a later phase'"
   },
+  "dependencies": {
+    "@noble/ed25519": "^3.1.0",
+    "@noble/hashes": "^2.2.0"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",
     "@types/bun": "latest",
