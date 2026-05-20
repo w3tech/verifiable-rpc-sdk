@@ -15,7 +15,9 @@ export type VerificationErrorKind =
   | "MissingHeader"
   | "MalformedHeader"
   | "BadSignature"
-  | "StaleTimestamp";
+  | "StaleTimestamp"
+  | "InvalidNonce"
+  | "MalformedAttestationResponse";
 
 /**
  * Abstract base for all verification errors. The `kind` discriminator is set
@@ -120,5 +122,23 @@ export class StaleTimestamp extends VerificationError {
     this.nowMs = ctx.nowMs;
     this.skewMs = ctx.skewMs;
     this.allowedWindowMs = ctx.allowedWindowMs;
+  }
+}
+
+/** Attestation nonce failed synchronous shape validation (must be exactly 32 bytes). */
+export class InvalidNonce extends VerificationError {
+  readonly kind = "InvalidNonce" as const;
+
+  constructor(public readonly reason: string) {
+    super(`Invalid attestation nonce: ${reason}`);
+  }
+}
+
+/** The sidecar returned a body that does not match the documented attestation wire shape. */
+export class MalformedAttestationResponse extends VerificationError {
+  readonly kind = "MalformedAttestationResponse" as const;
+
+  constructor(public readonly reason: string) {
+    super(`Malformed attestation response: ${reason}`);
   }
 }

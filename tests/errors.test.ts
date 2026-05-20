@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import {
   BadSignature,
+  InvalidNonce,
+  MalformedAttestationResponse,
   MalformedHeader,
   MissingHeader,
   StaleTimestamp,
@@ -38,6 +40,16 @@ describe("errors", () => {
     expect(stale instanceof Error).toBe(true);
     expect(stale instanceof VerificationError).toBe(true);
     expect(stale instanceof StaleTimestamp).toBe(true);
+
+    const invalidNonce = new InvalidNonce("too short");
+    expect(invalidNonce instanceof Error).toBe(true);
+    expect(invalidNonce instanceof VerificationError).toBe(true);
+    expect(invalidNonce instanceof InvalidNonce).toBe(true);
+
+    const malformedAttestation = new MalformedAttestationResponse("missing field quote.event_log");
+    expect(malformedAttestation instanceof Error).toBe(true);
+    expect(malformedAttestation instanceof VerificationError).toBe(true);
+    expect(malformedAttestation instanceof MalformedAttestationResponse).toBe(true);
   });
 
   test("kindFieldDiscriminates", () => {
@@ -61,6 +73,9 @@ describe("errors", () => {
       allowedWindowMs: 0,
     });
     expect(stale.kind).toBe("StaleTimestamp");
+
+    expect(new InvalidNonce("x").kind).toBe("InvalidNonce");
+    expect(new MalformedAttestationResponse("y").kind).toBe("MalformedAttestationResponse");
   });
 
   test("missingHeaderCarriesHeaderName", () => {
@@ -94,6 +109,18 @@ describe("errors", () => {
     expect(err.pubkeyHex).toBe(ctx.pubkeyHex);
     expect(err.preImageSha256.length).toBe(32);
     expect(err.preImageSha256[0]).toBe(0xef);
+  });
+
+  test("invalidNonceCarriesReason", () => {
+    const err = new InvalidNonce("expected 32 bytes, got 31");
+    expect(err.reason).toBe("expected 32 bytes, got 31");
+    expect(err.message).toContain("expected 32 bytes, got 31");
+  });
+
+  test("malformedAttestationResponseCarriesReason", () => {
+    const err = new MalformedAttestationResponse("missing field: quote.event_log");
+    expect(err.reason).toBe("missing field: quote.event_log");
+    expect(err.message).toContain("missing field: quote.event_log");
   });
 
   test("staleTimestampCarriesSkew", () => {
@@ -141,5 +168,7 @@ describe("errors", () => {
         allowedWindowMs: 0,
       }).name,
     ).toBe("StaleTimestamp");
+    expect(new InvalidNonce("x").name).toBe("InvalidNonce");
+    expect(new MalformedAttestationResponse("y").name).toBe("MalformedAttestationResponse");
   });
 });
