@@ -7,15 +7,17 @@ wire contract. ESM-first, Bun-tested, chain-agnostic.
 
 ## Commands
 
-| Action       | Command                                  |
-| ------------ | ---------------------------------------- |
-| Install      | `bun install`                            |
-| Test         | `bun test`                               |
-| Lint         | `bun run lint`                           |
-| Format check | `bun run format:check`                   |
-| Format fix   | `bun run format`                         |
-| Typecheck    | `bun run typecheck`                      |
-| Build        | `bun run build` (no-op in Phase 18)      |
+| Action           | Command                                                                                              |
+| ---------------- | ---------------------------------------------------------------------------------------------------- |
+| Install          | `bun install`                                                                                        |
+| Test             | `bun test`                                                                                           |
+| Unit test only   | `bun run test:unit`                                                                                  |
+| Integration test | `DSTACK_SIMULATOR_BIN=… DSTACK_SIMULATOR_FIXTURES_DIR=… SIDECAR_BIN=… bun run test:integration`      |
+| Lint             | `bun run lint`                                                                                       |
+| Format check     | `bun run format:check`                                                                               |
+| Format fix       | `bun run format`                                                                                     |
+| Typecheck        | `bun run typecheck`                                                                                  |
+| Build            | `bun run build` (no-op in Phase 18)                                                                  |
 
 ## Pre-push gate (mandatory)
 
@@ -34,6 +36,52 @@ SEPARATE commit, do not amend the offending commit.
 
 The pre-push gate is a contract — there is no git hook enforcing it in Phase 18
 (deferred to a v3 ops phase per CONTEXT.md).
+
+## Integration tests
+
+End-to-end tests under `tests/integration/` spawn a real sidecar binary backed
+by Phala's dstack simulator and an in-process mock JSON-RPC upstream. They
+prove the SDK matches the live wire contract — Phase 19's unit tests pin the
+crypto with real Ed25519 keys; Phase 21's integration tests pin the bytes that
+flow over the network. The two suites complement each other and intentionally
+do not overlap.
+
+**Required env vars (any unset → integration suite skips cleanly):**
+
+| Var                             | Default on dev box                                                            |
+| ------------------------------- | ----------------------------------------------------------------------------- |
+| `DSTACK_SIMULATOR_BIN`          | `/private/tmp/dstack-sim-test/dstack-simulator`                               |
+| `DSTACK_SIMULATOR_FIXTURES_DIR` | `/private/tmp/dstack-sim-test`                                                |
+| `SIDECAR_BIN`                   | `../verifiable-rpc-sidecar/target/debug/rpc-attest-sidecar` (sibling repo)    |
+
+Build the sidecar with `cargo build` in the sibling `verifiable-rpc-sidecar`
+repo before running integration tests. The debug binary is fine — release is
+not required.
+
+**Local invocation:**
+
+```sh
+DSTACK_SIMULATOR_BIN=/private/tmp/dstack-sim-test/dstack-simulator \
+DSTACK_SIMULATOR_FIXTURES_DIR=/private/tmp/dstack-sim-test \
+SIDECAR_BIN=../verifiable-rpc-sidecar/target/debug/rpc-attest-sidecar \
+  bun run test:integration
+```
+
+`bun test` (no env vars) runs the unit suite only and emits a one-line skip
+message at module load. `bun test` with all three env vars set runs the unit
+suite plus the integration suite.
+
+**Prune vs ROADMAP (Phase 21 CONTEXT.md):** Tamper and replay integration
+tests were dropped from this phase. Phase 19 already covers both code paths at
+the unit level with real Ed25519 sign+verify (`tamperedResponseFailsBadSignature`
+and replay-window edge tests) — adding integration-level versions would
+exercise the same logic against a slower harness without catching anything new.
+Integration tests in Phase 21 focus on the value adds: happy-path call,
+cross-endpoint pubkey consistency, and a real-wire canonical attestation
+fixture (`tests/fixtures/attestation-v0.1.0.json`).
+
+**CI deferral:** CI runs the unit suite only. A dedicated integration matrix
+with the simulator binary on the runner is tracked as a separate v3 ops phase.
 
 ## Architecture
 
