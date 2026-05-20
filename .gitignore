@@ -1,0 +1,23 @@
+# TS / Node / Bun
+node_modules/
+dist/
+*.tsbuildinfo
+.bun/
+bun.lockb.bak
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Environment / secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Logs / artefacts
+*.log
+coverage/
