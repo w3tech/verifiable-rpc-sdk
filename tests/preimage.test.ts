@@ -30,7 +30,8 @@ describe("preimage", () => {
    *   [40..72] response_hash     = bb * 32
    *   [72..80] timestamp_ms LE   = 22 33 44 55 66 77 88 99
    *
-   * If this drifts even one byte, C7 (signing wrong bytes) is open. Hard fail.
+   * If this drifts even one byte, the SDK signs over the wrong bytes and the
+   * sidecar's signatures stop verifying. Hard fail.
    */
   test("preImageLayoutIsByteExact", () => {
     const chainId = 0x1122334455667788n;
@@ -70,7 +71,7 @@ describe("preimage", () => {
    * responseBody, timestampMs)` MUST hash the bodies internally and embed
    * those hashes at offsets [8..40] and [40..72].
    *
-   * Inputs from 19-CONTEXT.md "Capture-and-pin a known vector":
+   * Known vector pinned for byte-exact regression detection:
    *   chainId=1n, request=[0x01,0x02,0x03], response=[0x04,0x05,0x06],
    *   timestampMs=0x0102030405060708n.
    *

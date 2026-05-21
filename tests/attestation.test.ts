@@ -10,8 +10,8 @@ const TEST_URL = "http://test.local:8545";
 /**
  * Canonical hand-crafted golden fixture — mirrors the sidecar's Rust unit
  * test `attestation_response_nests_sdk_quote_and_renames_compose_hash`
- * byte-for-byte. Phase 21 will REPLACE this with a real-simulator capture
- * if the shape differs.
+ * byte-for-byte. The integration suite captures a real-simulator fixture
+ * separately (`tests/fixtures/attestation-v0.1.0.json`).
  */
 const GOLDEN_FIXTURE = {
   quote: {

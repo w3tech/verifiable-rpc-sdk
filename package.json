@@ -29,7 +29,7 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "build": "echo 'no build in Phase 18 — bundle in a later phase'"
+    "build": "echo 'no build step yet — bundling deferred'"
   },
   "dependencies": {
     "@noble/ed25519": "^3.1.0",

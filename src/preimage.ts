@@ -1,4 +1,4 @@
-// SPEC-04 80-byte pre-image builder. Mirrors `verifiable-rpc-sidecar/src/signing.rs::build_pre_image`.
+// Canonical 80-byte pre-image builder. Mirrors `verifiable-rpc-sidecar/src/signing.rs::build_pre_image`.
 //
 // Layout (byte-exact, MUST match sidecar):
 //   [0..8]   chain_id      u64 little-endian
@@ -6,9 +6,9 @@
 //   [40..72] response_hash sha256(response_body) — 32 bytes
 //   [72..80] timestamp_ms  u64 little-endian
 //
-// If this layout ever drifts from the sidecar, C7 (signing wrong bytes) is open
-// and downstream attestation guarantees collapse. Pinned by
-// `tests/preimage.test.ts::preImageLayoutIsByteExact`.
+// If this layout ever drifts from the sidecar, signatures will be computed
+// over the wrong bytes and downstream attestation guarantees collapse. Pinned
+// by `tests/preimage.test.ts::preImageLayoutIsByteExact`.
 
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
 
@@ -69,7 +69,7 @@ export function buildPreImageFromHashes(
  * Build the canonical 80-byte pre-image for a request/response pair.
  *
  * Hashes the raw request and response bodies with SHA-256, then assembles the
- * SPEC-04 byte layout. Returns exactly 80 bytes.
+ * canonical byte layout. Returns exactly 80 bytes.
  */
 export function buildPreImage(
   chainId: bigint,

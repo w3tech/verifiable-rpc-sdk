@@ -1,11 +1,11 @@
 // Standalone `fetchAttestation` helper — calls `GET /attestation?nonce=<hex>`
-// against the configured sidecar URL, parses the post-Phase-13 nested wire
-// shape, and returns a typed `Attestation`.
+// against the configured sidecar URL, parses the nested `attestation.quote`
+// wire shape, and returns a typed `Attestation`.
 //
-// The attestation route is unsigned by contract (SDK-08): the sidecar does
-// NOT emit `vRPC-*` headers for this endpoint, and the SDK MUST NOT call
-// any signature-verification machinery on the response. This file therefore
-// does not import `verifyAsync` or touch `vRPC-Signature` / `vRPC-Pubkey` /
+// The attestation route is unsigned by contract: the sidecar does NOT emit
+// `vRPC-*` headers for this endpoint, and the SDK MUST NOT call any
+// signature-verification machinery on the response. This file therefore does
+// not import `verifyAsync` or touch `vRPC-Signature` / `vRPC-Pubkey` /
 // `vRPC-Timestamp` at all — by construction.
 
 import { bytesToHex } from "@noble/hashes/utils.js";
@@ -40,7 +40,7 @@ export interface Attestation {
  * supplied 32-byte nonce.
  *
  * The nonce length is validated synchronously — a wrong-length nonce throws
- * {@link InvalidNonce} BEFORE any network call (SDK-06 fast-fail).
+ * {@link InvalidNonce} BEFORE any network call.
  *
  * Sends `GET ${url}/attestation?nonce=<bare-lowercase-hex>` with no headers.
  * The query parameter is encoded without the `0x` prefix; the sidecar's
@@ -49,19 +49,19 @@ export interface Attestation {
  *
  * On a malformed response body (missing or wrong-typed fields), throws
  * {@link MalformedAttestationResponse} — never {@link BadSignature}, because
- * this route is unsigned (SDK-08).
+ * this route is unsigned.
  */
 export async function fetchAttestation(url: string, nonce: Uint8Array): Promise<Attestation> {
-  // SDK-06: synchronous fast-fail BEFORE any fetch.
+  // Synchronous fast-fail BEFORE any fetch.
   if (nonce.length !== 32) {
     throw new InvalidNonce(`expected 32 bytes, got ${nonce.length}`);
   }
 
-  // SDK-07: bare-hex (no 0x prefix) query encoding.
+  // Bare-hex (no 0x prefix) query encoding.
   const nonceHex = bytesToHex(nonce);
   const target = `${url}/attestation?nonce=${nonceHex}`;
 
-  // SDK-08: unsigned route — no headers required, response headers ignored.
+  // Unsigned route — no headers required, response headers ignored.
   const resp = await fetch(target);
   const body = (await resp.json()) as unknown;
 

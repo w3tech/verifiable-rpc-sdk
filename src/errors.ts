@@ -63,12 +63,12 @@ export interface BadSignatureContext {
   signatureHex: string;
   /** `0x` + 64 lowercase hex chars (32-byte Ed25519 pubkey). */
   pubkeyHex: string;
-  /** sha256 of the 80-byte SPEC-04 pre-image, for diagnostics. */
+  /** sha256 of the 80-byte canonical pre-image, for diagnostics. */
   preImageSha256: Uint8Array;
 }
 
 /**
- * Ed25519 signature verification failed against the SPEC-04 pre-image.
+ * Ed25519 signature verification failed against the canonical pre-image.
  *
  * Carries the full signing context (signature, pubkey, pre-image digest) so
  * the caller can correlate the failure with sidecar-side logs. These values

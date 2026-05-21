@@ -1,11 +1,11 @@
 // VerifierClient — the public entry point. Wraps `fetch` with:
 //   1. JSON-RPC 2.0 envelope construction (auto-increment id per instance)
-//   2. SPEC-04 80-byte pre-image reconstruction
+//   2. Canonical 80-byte pre-image reconstruction
 //   3. Ed25519 verifyAsync against `vRPC-Signature` / `vRPC-Pubkey`
 //   4. Replay-window enforcement against `vRPC-Timestamp`
 //
-// All four error branches map to typed `VerificationError` subclasses. The
-// `fetchAttestation` Phase-18 stub stays in place — Phase 20 will implement.
+// All four error branches map to typed `VerificationError` subclasses.
+// `fetchAttestation` is delegated to the standalone helper in `./attestation`.
 
 import { verifyAsync } from "@noble/ed25519";
 
@@ -25,14 +25,14 @@ const TIMESTAMP_RE = /^\d+$/;
 
 export interface VerifierClientOptions {
   /**
-   * EVM-style chain id bound into the SPEC-04 pre-image (8 bytes LE). MUST
+   * EVM-style chain id bound into the canonical pre-image (8 bytes LE). MUST
    * match the chain id the sidecar was configured with — mismatch produces
    * a `BadSignature` even on intact responses.
    */
   chainId: bigint;
   /**
    * Allowed skew between the client clock and the sidecar's signed timestamp.
-   * Default 60_000 ms (SPEC-07). `0` rejects anything but an exact-millisecond
+   * Default 60_000 ms. `0` rejects anything but an exact-millisecond
    * match — useful for tests, not for production.
    */
   replayWindowMs?: number;
@@ -55,7 +55,7 @@ export interface VerifiedResponse<T = unknown> {
     /** `0x` + 64 lowercase hex chars. */
     pubkeyHex: string;
     timestampMs: bigint;
-    /** sha256 of the 80-byte SPEC-04 pre-image, for diagnostics. */
+    /** sha256 of the 80-byte canonical pre-image, for diagnostics. */
     preImageSha256: Uint8Array;
   };
 }

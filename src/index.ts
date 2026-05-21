@@ -4,8 +4,8 @@
 //   - ./verifier    — VerifierClient class + options/response types
 //   - ./attestation — fetchAttestation helper + Attestation/GetQuoteResponse types
 //   - ./errors      — VerificationError abstract base + 6 typed subclasses
-//   - ./preimage    — SPEC-04 80-byte pre-image builder (exported for advanced
-//                     consumers and test infrastructure)
+//   - ./preimage    — canonical 80-byte pre-image builder (exported for
+//                     advanced consumers and test infrastructure)
 
 export type { Attestation, GetQuoteResponse } from "./attestation";
 export { fetchAttestation } from "./attestation";

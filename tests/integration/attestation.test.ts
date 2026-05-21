@@ -1,6 +1,6 @@
 // Integration tests for `fetchAttestation` against a live sidecar + dstack
 // simulator. Captures and diff-checks the canonical wire fixture at
-// `tests/fixtures/attestation-v0.1.0.json` — see Task 3 of Phase 21.
+// `tests/fixtures/attestation-v0.1.0.json`.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { promises as fs } from "node:fs";
@@ -86,7 +86,7 @@ d("integration: attestation", () => {
       await fs.mkdir(fixturesDir, { recursive: true });
       await fs.writeFile(fixturePath, `${JSON.stringify(att, null, 2)}\n`);
       throw new Error(
-        `Wrote new fixture to ${fixturePath} — review and re-run the test (Task 3 commits the file).`,
+        `Wrote new fixture to ${fixturePath} — review and re-run the test to commit it.`,
       );
     }
 

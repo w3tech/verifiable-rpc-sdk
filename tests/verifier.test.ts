@@ -31,7 +31,7 @@ interface MockOverrides {
 
 /**
  * Build a deterministic mock `fetch` that signs the response with TEST_SEED
- * over the SPEC-04 pre-image. The mock also records the request bodies it saw
+ * over the canonical 80-byte pre-image. The mock also records the request bodies it saw
  * so tests can assert on JSON-RPC id auto-increment.
  */
 function makeMockFetch(
