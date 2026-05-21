@@ -38,6 +38,11 @@ yarn add @ankr/verifiable-rpc-client
 ```ts
 import { VerifierClient } from "@ankr/verifiable-rpc-client";
 
+// Before — plain ethers provider, no verification:
+// import { JsonRpcProvider } from "ethers";
+// const client = new JsonRpcProvider("https://your-sidecar.example", 1);
+
+// After — same URL + chain id, every response now signature-checked:
 const client = new VerifierClient("https://your-sidecar.example", {
   chainId: 1n,                  // EVM chain id, as bigint
   replayWindowMs: 60_000,       // optional — default 60s
