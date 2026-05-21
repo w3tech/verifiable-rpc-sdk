@@ -11,10 +11,11 @@ Two ways to use it:
 
 ## Requirements
 
-- **Runtime:** Node ≥ 18, Bun ≥ 1.1, Deno, or any modern browser. Anything with WHATWG `fetch`, `TextEncoder`, `crypto.getRandomValues`, and ES2022.
-- **Peer expectations:** none. The SDK depends on `@noble/ed25519` + `@noble/hashes` only (both zero-dep, audited).
-- **A running sidecar.** You need the attested sidecar URL. For local development point the SDK at a [`rpc-attest-sidecar`](https://github.com/w3tech/verifiable-rpc-sidecar) instance backed by the Phala dstack simulator; for production, the operator running the enclave gives you the URL.
-- **The chain id.** The sidecar binds its `chain_id` flag into every signature. The client must be configured with the same value.
+- Node ≥ 18, Bun ≥ 1.1, Deno, or a modern browser
+- WHATWG `fetch`
+- `TextEncoder`
+- `crypto.getRandomValues` (only if you let the SDK generate attestation nonces)
+- ES2022 (`bigint`, top-level `await` in tests)
 
 ---
 
