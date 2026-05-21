@@ -9,16 +9,6 @@ Two ways to use it:
 
 ---
 
-## Requirements
-
-- Node ≥ 18, Deno, or a modern browser
-- WHATWG `fetch`
-- `TextEncoder`
-- `crypto.getRandomValues` (only if you let the SDK generate attestation nonces)
-- ES2022 (`bigint`, async/await)
-
----
-
 ## Install
 
 ```bash
