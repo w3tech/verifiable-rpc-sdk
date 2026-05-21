@@ -2,10 +2,10 @@
 
 TypeScript client for **ANKR verifiable RPC**: call a blockchain RPC and get back signed results — each response carries a cryptographic proof that it was produced by a specific, approved blockchain client (exact image, exact version, exact configuration) running unmodified inside a trusted execution environment. No trust in the operator, no trust in the network, no "did this node lie to me" question. The signature verifies or it doesn't.
 
-You can use it two ways:
+Two ways to use it:
 
-1. **As a JSON-RPC client.** `VerifierClient.call(method, params)` is a thin replacement for `fetch(rpcUrl, …)` that returns a typed `VerifiedResponse<T>` — already signature-checked. Drop it into anything that takes a custom RPC transport (ethers v6 `FetchRequest`, viem `custom` transport, raw `fetch`).
-2. **As a verification library.** Import the building blocks — `buildPreImage`, `fetchAttestation`, the error classes — and roll your own verifier on top of any HTTP client.
+1. **Drop-in replacement for an ethers provider.** Swap your `JsonRpcProvider` for one backed by `VerifierClient` and every contract read / `getBalance` / `getBlock` you already make now arrives with a verified signature — your application code doesn't change. Same idea for viem (`custom` transport) or raw `fetch` flows.
+2. **Verify signatures yourself.** Import the primitives — `buildPreImage`, `fetchAttestation`, the typed error classes — and verify responses captured by your own HTTP client, off-chain pipeline, log archive, or audit script. The SDK gives you the building blocks; you decide where verification runs.
 
 ---
 
