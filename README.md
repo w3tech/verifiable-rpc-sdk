@@ -1,8 +1,6 @@
 # @ankr/verifiable-rpc-client
 
-> For ANKR verifiable RPC.
-
-TypeScript client for **verifiable RPC**: call a TDX-attested sidecar over plain JSON-RPC and get back results that come with a cryptographic proof. Every response is signed by an Ed25519 key derived inside an Intel TDX enclave (via [Phala dstack](https://docs.phala.com/dstack/)); the SDK verifies that signature on the way in, so by the time your application sees a result, it has already been proved to come from the upstream image you expect.
+TypeScript client for **ANKR verifiable RPC**: call a TDX-attested sidecar over plain JSON-RPC and get back results that come with a cryptographic proof. Every response is signed by an Ed25519 key derived inside an Intel TDX enclave (via [Phala dstack](https://docs.phala.com/dstack/)); the SDK verifies that signature on the way in, so by the time your application sees a result, it has already been proved to come from the upstream image you expect.
 
 You can use it two ways:
 
