@@ -11,11 +11,11 @@ Two ways to use it:
 
 ## Requirements
 
-- Node ≥ 18, Bun ≥ 1.1, Deno, or a modern browser
+- Node ≥ 18, Deno, or a modern browser
 - WHATWG `fetch`
 - `TextEncoder`
 - `crypto.getRandomValues` (only if you let the SDK generate attestation nonces)
-- ES2022 (`bigint`, top-level `await` in tests)
+- ES2022 (`bigint`, async/await)
 
 ---
 
