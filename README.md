@@ -38,6 +38,10 @@ Out of scope for the v3 entry ticket (separate sibling tickets):
 - LB integration + shark-monitor `/attestation` check
 - TCB incident-response runbook + customer UX content
 
+## Defence in depth
+
+Verifiable RPC signs the bytes returned by an enclave-bound binary; it does **not** prove the data on the node's persistent disk is current or untampered. Intel TDX and Phala dstack protect what is in CPU and RAM, not the `/data` LUKS2 volume that backs blockchain-node state — the disk has confidentiality only (no integrity, no freshness, no rollback protection, and is not measured into any RTMR). For **state reads** (`eth_getBalance`, `eth_getCode`, `eth_getStorageAt`, `eth_getTransactionCount`), the cryptographically stronger primitive is a Merkle proof against `block.stateRoot`: pair this SDK with a sync-committee light client ([a16z Helios](https://github.com/a16z/helios) or equivalent) and verify state reads via [`eth_getProof`](https://eips.ethereum.org/EIPS/eip-1186). The SDK signature remains useful as defence-in-depth and as a latency-friendly path; it is the **only** practical primitive for methods Merkle cannot reach — `eth_call`, `eth_estimateGas`, `eth_getLogs`, `eth_gasPrice`, fee history, and mempool methods — which is exactly where the LayerZero / Kelp DAO 2026-04 binary-swap attack class lives and exactly where TEE attestation + compose-hash registry uniquely defeats it. The full per-method TEE-vs-Merkle composition table (including the "Neither — fundamental limit" row for data availability and censorship detection) is maintained in the workstream's `TRUST-MODEL.md` §Data-layer integrity; the disk-layer threat surface (rollback / silent corruption / pre-0.5.4 LUKS2 header swap) is catalogued in `PITFALL-MITIGATIONS.md` §C8.
+
 ## License
 
 TBD.
