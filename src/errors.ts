@@ -17,7 +17,9 @@ export type VerificationErrorKind =
   | "BadSignature"
   | "StaleTimestamp"
   | "InvalidNonce"
-  | "MalformedAttestationResponse";
+  | "MalformedAttestationResponse"
+  | "MalformedInfoResponse"
+  | "ComposeSourceNotImplemented";
 
 /**
  * Abstract base for all verification errors. The `kind` discriminator is set
@@ -140,5 +142,27 @@ export class MalformedAttestationResponse extends VerificationError {
 
   constructor(public readonly reason: string) {
     super(`Malformed attestation response: ${reason}`);
+  }
+}
+
+/** The sidecar `GET /info` body did not match the documented shape (missing/typed `tcb_info.app_compose`). */
+export class MalformedInfoResponse extends VerificationError {
+  readonly kind = "MalformedInfoResponse" as const;
+
+  constructor(public readonly reason: string) {
+    super(`Malformed /info response: ${reason}`);
+  }
+}
+
+/**
+ * A {@link ComposeSource} implementation is not yet available — currently the
+ * external `RegistryComposeSource` (the real Layer A trust anchor), pending
+ * DEC-03 (compose-hash registry). Use `InfoEndpointComposeSource` for dev.
+ */
+export class ComposeSourceNotImplemented extends VerificationError {
+  readonly kind = "ComposeSourceNotImplemented" as const;
+
+  constructor(public readonly reason: string) {
+    super(`ComposeSource not implemented: ${reason}`);
   }
 }

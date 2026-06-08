@@ -3,18 +3,28 @@
 // Implementation lives in:
 //   - ./verifier    — VerifierClient class + options/response types
 //   - ./attestation — fetchAttestation helper + Attestation/GetQuoteResponse types
-//   - ./errors      — VerificationError abstract base + 6 typed subclasses
+//   - ./compose     — ComposeSource interface + InfoEndpoint (dev) / Registry
+//                     (future) implementations + computeComposeHash
+//   - ./errors      — VerificationError abstract base + typed subclasses
 //   - ./preimage    — canonical 80-byte pre-image builder (exported for
 //                     advanced consumers and test infrastructure)
 
 export type { Attestation, GetQuoteResponse } from "./attestation";
 export { fetchAttestation } from "./attestation";
+export type {
+  ComposeSource,
+  InfoEndpointComposeSourceOptions,
+  RegistryComposeSourceOptions,
+} from "./compose";
+export { computeComposeHash, InfoEndpointComposeSource, RegistryComposeSource } from "./compose";
 export type { BadSignatureContext, StaleTimestampContext, VerificationErrorKind } from "./errors";
 export {
   BadSignature,
+  ComposeSourceNotImplemented,
   InvalidNonce,
   MalformedAttestationResponse,
   MalformedHeader,
+  MalformedInfoResponse,
   MissingHeader,
   StaleTimestamp,
   VerificationError,
