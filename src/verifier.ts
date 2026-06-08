@@ -101,10 +101,16 @@ export class VerifierClient {
       JSON.stringify({ jsonrpc: "2.0", id, method, params }),
     );
 
-    // 2. POST.
+    // 2. POST. Pin `accept-encoding: identity` — the sidecar signs the exact
+    //    wire bytes of the response body, but `fetch` transparently decodes a
+    //    `content-encoding` (e.g. gzip from the upstream node) before we read
+    //    `arrayBuffer()`. Hashing the decoded bytes would break the
+    //    response-hash leg of the pre-image and surface as a spurious
+    //    `BadSignature`. Forcing identity keeps the bytes we hash identical to
+    //    the bytes the sidecar signed.
     const resp = await this.fetchImpl(this.url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "accept-encoding": "identity" },
       body: requestBytes,
     });
 

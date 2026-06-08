@@ -88,6 +88,24 @@ function makeSignedJsonRpcBody(id: number, result: unknown): Uint8Array {
 }
 
 describe("VerifierClient", () => {
+  test("pins accept-encoding: identity so it hashes the exact signed wire bytes", async () => {
+    // Regression (SHARK-3283 / phase 24): a compressing upstream/proxy
+    // (content-encoding: gzip) makes fetch transparently decode the body
+    // before we read arrayBuffer(), breaking the response-hash leg and
+    // surfacing as a spurious BadSignature. The client must request identity.
+    let capturedHeaders: Record<string, string> | undefined;
+    const signedBody = makeSignedJsonRpcBody(1, "0x1");
+    const ts = BigInt(Date.now());
+    const { fetch } = makeMockFetch(signedBody, 1n, ts);
+    const wrapped = (async (input: string | URL, init?: RequestInit) => {
+      capturedHeaders = init?.headers as Record<string, string>;
+      return fetch(input as string, init);
+    }) as typeof fetch;
+    const client = new VerifierClient(TEST_URL, { chainId: 1n, fetch: wrapped });
+    await client.call("eth_blockNumber", []);
+    expect(capturedHeaders?.["accept-encoding"]).toBe("identity");
+  });
+
   test("happyPathReturnsVerifiedResponse", async () => {
     const chainId = 1n;
     const nowMs = BigInt(Date.now());
