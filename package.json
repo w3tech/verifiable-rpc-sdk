@@ -29,7 +29,12 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "build": "echo 'no build step yet — bundling deferred'"
+    "build": "echo 'no build step yet — bundling deferred'",
+    "example:01-signed-call": "bun run examples/01-signed-call.ts",
+    "example:02-batch-and-replay": "bun run examples/02-batch-and-replay.ts",
+    "example:03-fetch-attestation": "bun run examples/03-fetch-attestation.ts",
+    "example:04-end-to-end": "bun run examples/04-end-to-end.ts",
+    "example:all": "bun run example:01-signed-call && bun run example:02-batch-and-replay && bun run example:03-fetch-attestation && bun run example:04-end-to-end"
   },
   "dependencies": {
     "@noble/ed25519": "^3.1.0",
