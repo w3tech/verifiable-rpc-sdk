@@ -84,18 +84,25 @@ with the simulator binary on the runner is tracked separately.
 ## Architecture
 
 - Public surface re-exported through `src/index.ts`; implementation lives in
-  `src/verifier.ts`, `src/attestation.ts`, `src/errors.ts`, `src/preimage.ts`.
+  `src/verifier.ts`, `src/attestation.ts`, `src/compose.ts`, `src/errors.ts`,
+  `src/preimage.ts`.
 - SDK is a thin verifier wrapping `fetch` — no JSON-RPC re-implementation, no
   batching, no method-specific decoders.
 - Pairs with `verifiable-rpc-sidecar` `v0.1.0`. Wire contract = the 80-byte
   canonical pre-image + `vRPC-Signature` / `vRPC-Timestamp` / `vRPC-Pubkey`
   headers + `/attestation?nonce=<hex>` JSON shape.
+- **`call()` pins `accept-encoding: identity`.** The signature covers the exact
+  wire bytes of the response body; if a compressing upstream/proxy sets
+  `content-encoding` (e.g. gzip from the node), `fetch` decodes it before the
+  SDK hashes `arrayBuffer()`, breaking the response-hash leg → spurious
+  `BadSignature`. Identity keeps hashed bytes == signed bytes.
 
 ## Source layout
 
 | File                          | Responsibility                                                                                                                                                                            |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`                | Public barrel re-exporting `VerifierClient`, `fetchAttestation`, the `VerificationError` family, and `buildPreImage`.                                                                                                  |
+| `src/index.ts`                | Public barrel re-exporting `VerifierClient`, `fetchAttestation`, the `ComposeSource` family (`InfoEndpointComposeSource`, `RegistryComposeSource`, `computeComposeHash`), the `VerificationError` family, and `buildPreImage`. |
+| `src/compose.ts`              | `ComposeSource` abstraction for Layer A: `InfoEndpointComposeSource` (dev-only, `/info` self-report — NOT a trust anchor) + `RegistryComposeSource` (future external/GitHub anchor, DEC-03) + `computeComposeHash`. |
 | `tsconfig.json`               | Strict TS config (target ESNext, moduleResolution bundler, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`).                                                                     |
 | `biome.json`                  | Biome lint + formatter config.                                                                                                                                                            |
 | `.github/workflows/ci.yml`    | CI workflow — lint + format:check + typecheck + test on push/PR.                                                                                                                          |

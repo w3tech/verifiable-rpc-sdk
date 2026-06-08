@@ -72,6 +72,25 @@ console.log(attestation.quote.report_data);  // bare hex — REPORTDATA = pubkey
 
 `fetchAttestation` does **not** verify the TDX quote bytes themselves — only parses them. To go from the quote to "yes, this is the image I trust" you also need a compose-hash registry; that piece is tracked as separate work and is not in this SDK.
 
+### Resolve the expected compose (`ComposeSource`)
+
+Going from a quote's `composeHash` to "this is the code I trust" (Layer A) means comparing it against the `app_compose` you *expect*, fetched from a source you trust. `ComposeSource` abstracts where that expected `app_compose` comes from:
+
+```ts
+import { InfoEndpointComposeSource, computeComposeHash } from "@ankr/verifiable-rpc-client";
+
+// DEV-ONLY: pull the node's self-reported compose from GET /info.
+const dev = new InfoEndpointComposeSource(sidecarUrl);
+const appCompose = await dev.getAppCompose(); // verbatim app-compose.json text
+const hash = await dev.getComposeHash();      // sha256(utf8(appCompose)), bare hex
+```
+
+`computeComposeHash(text)` is `sha256(utf8(text))` as bare lowercase hex — dstack's exact rule, no canonicalization.
+
+**Trust model — read this.** `InfoEndpointComposeSource` is **dev-only and NOT a trust anchor**: `/info` is self-reported by the node under verification, so it can only prove the node is *internally consistent* (its reported compose hashes to its attested `composeHash`) — never that the compose is *authentic*. A malicious node returns a compose that matches its own forged quote.
+
+Real Layer A trust needs an **independent** source the node cannot forge — a pinned/signed external compose registry (e.g. GitHub). That is `RegistryComposeSource`, which currently throws `ComposeSourceNotImplemented` pending the registry (DEC-03).
+
 ---
 
 ## Integrating with ethers v6
