@@ -106,6 +106,52 @@ describe("VerifierClient", () => {
     expect(capturedHeaders?.["accept-encoding"]).toBe("identity");
   });
 
+  test("customHeadersMergeIntoRequest", async () => {
+    // A caller-supplied header (e.g. an auth x-api-key) must arrive on the POST.
+    let capturedHeaders: Record<string, string> | undefined;
+    const signedBody = makeSignedJsonRpcBody(1, "0x1");
+    const ts = BigInt(Date.now());
+    const { fetch } = makeMockFetch(signedBody, 1n, ts);
+    const wrapped = (async (input: string | URL, init?: RequestInit) => {
+      capturedHeaders = init?.headers as Record<string, string>;
+      return fetch(input as string, init);
+    }) as typeof fetch;
+    const client = new VerifierClient(TEST_URL, {
+      chainId: 1n,
+      headers: { "x-api-key": "abc" },
+      fetch: wrapped,
+    });
+    await client.call("eth_blockNumber", []);
+    expect(capturedHeaders?.["x-api-key"]).toBe("abc");
+  });
+
+  test("pinnedHeadersWinOverCustom", async () => {
+    // The caller cannot override the pinned content-type / accept-encoding pair:
+    // the signature contract depends on byte-exact wire bytes and the
+    // response-hash leg. Custom keys still pass through.
+    let capturedHeaders: Record<string, string> | undefined;
+    const signedBody = makeSignedJsonRpcBody(1, "0x1");
+    const ts = BigInt(Date.now());
+    const { fetch } = makeMockFetch(signedBody, 1n, ts);
+    const wrapped = (async (input: string | URL, init?: RequestInit) => {
+      capturedHeaders = init?.headers as Record<string, string>;
+      return fetch(input as string, init);
+    }) as typeof fetch;
+    const client = new VerifierClient(TEST_URL, {
+      chainId: 1n,
+      headers: {
+        "content-type": "text/plain",
+        "accept-encoding": "gzip",
+        "x-api-key": "abc",
+      },
+      fetch: wrapped,
+    });
+    await client.call("eth_blockNumber", []);
+    expect(capturedHeaders?.["content-type"]).toBe("application/json");
+    expect(capturedHeaders?.["accept-encoding"]).toBe("identity");
+    expect(capturedHeaders?.["x-api-key"]).toBe("abc");
+  });
+
   test("happyPathReturnsVerifiedResponse", async () => {
     const chainId = 1n;
     const nowMs = BigInt(Date.now());

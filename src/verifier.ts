@@ -37,6 +37,14 @@ export interface VerifierClientOptions {
    */
   replayWindowMs?: number;
   /**
+   * Caller-supplied request headers (e.g. an auth `x-api-key`) merged into the
+   * POST. The pinned `content-type: application/json` and
+   * `accept-encoding: identity` always win over caller values (precedence:
+   * pinned wins) because the signature contract depends on byte-exact wire
+   * bytes and the response-hash leg.
+   */
+  headers?: Record<string, string>;
+  /**
    * Optional `fetch` override — primarily for tests against a mock sidecar.
    * Defaults to `globalThis.fetch`.
    */
@@ -82,6 +90,7 @@ export class VerifierClient {
   private readonly chainId: bigint;
   private readonly replayWindowMs: number;
   private readonly fetchImpl: typeof fetch;
+  private readonly extraHeaders: Record<string, string>;
   private idCounter = 0;
 
   constructor(url: string, opts: VerifierClientOptions) {
@@ -92,6 +101,7 @@ export class VerifierClient {
     this.chainId = opts.chainId;
     this.replayWindowMs = opts.replayWindowMs ?? DEFAULT_REPLAY_WINDOW_MS;
     this.fetchImpl = opts.fetch ?? globalThis.fetch;
+    this.extraHeaders = opts.headers ?? {};
   }
 
   async call<T = unknown>(method: string, params: unknown[]): Promise<VerifiedResponse<T>> {
@@ -108,9 +118,15 @@ export class VerifierClient {
     //    response-hash leg of the pre-image and surface as a spurious
     //    `BadSignature`. Forcing identity keeps the bytes we hash identical to
     //    the bytes the sidecar signed.
+    //    Caller headers spread FIRST, the two pinned headers LAST so pinned
+    //    win — a caller cannot override the wire-byte contract.
     const resp = await this.fetchImpl(this.url, {
       method: "POST",
-      headers: { "content-type": "application/json", "accept-encoding": "identity" },
+      headers: {
+        ...this.extraHeaders,
+        "content-type": "application/json",
+        "accept-encoding": "identity",
+      },
       body: requestBytes,
     });
 
