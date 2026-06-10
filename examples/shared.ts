@@ -2,9 +2,9 @@
 // while not repeating the pinned config in four places.
 //
 // The scripts target the live TDX node. The node was redeployed
-// 2026-06-10 (sidecar v0.2.0-rc.1, compression-aware signing — the signature
+// 2026-06-10 (sidecar v0.2.0 release, compression-aware signing — the signature
 // now covers the content-DECODED body); `PINNED_COMPOSE_HASH` re-pinned to
-// match today's /info.compose_hash.
+// match the /info.compose_hash of the v0.2.0 app-compose.
 // Until a ComposeSource/registry lands this must be re-pinned by hand (DEC-03).
 
 export const URL = "http://40.160.13.104:15269";
@@ -14,7 +14,7 @@ export const URL = "http://40.160.13.104:15269";
 // 42161n = Arbitrum, matching the live node's SIDECAR_CHAIN_ID="42161".
 export const CHAIN_ID = 42161n;
 export const PINNED_COMPOSE_HASH =
-	"69166ce46dfc031ee6c55ebc6e7758a56aab514c74d847f24b4dda0448513301";
+	"287a19287bb1d6c798e8cc80aacf0e33d7f1c6982ba28c6135bf4aa3e4b1024e";
 
 // Stage shark-proxy config for the via-shark example (06). Read by NAME only —
 // the VALUES are secrets and must never be printed, logged, or committed.
