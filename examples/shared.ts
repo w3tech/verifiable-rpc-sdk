@@ -1,8 +1,10 @@
 // Shared helpers for the live examples — keeps each script self-explanatory
 // while not repeating the pinned config in four places.
 //
-// All four scripts target the live TDX node. The node was redeployed
-// 2026-06-08 (sidecar v0.1.1-rc.3); `PINNED_COMPOSE_HASH` re-pinned to match.
+// The scripts target the live TDX node. The node was redeployed
+// 2026-06-10 (sidecar v0.2.0-rc.1, compression-aware signing — the signature
+// now covers the content-DECODED body); `PINNED_COMPOSE_HASH` re-pinned to
+// match today's /info.compose_hash.
 // Until a ComposeSource/registry lands this must be re-pinned by hand (DEC-03).
 
 export const URL = "http://40.160.13.104:15269";
@@ -12,7 +14,7 @@ export const URL = "http://40.160.13.104:15269";
 // 42161n = Arbitrum, matching the live node's SIDECAR_CHAIN_ID="42161".
 export const CHAIN_ID = 42161n;
 export const PINNED_COMPOSE_HASH =
-	"ed22ab89412e6df756fe428f06bbe2fd4d5e769e4891b64db0737ebcb7380c52";
+	"69166ce46dfc031ee6c55ebc6e7758a56aab514c74d847f24b4dda0448513301";
 
 export function header(title: string): void {
 	const bar = "=".repeat(64);
