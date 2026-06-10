@@ -1,6 +1,6 @@
 # `@ankr/verifiable-rpc-client` — live examples
 
-These four scripts drive the SDK against a live Arbitrum-One node running
+These five scripts drive the SDK against a live Arbitrum-One node running
 geth-nitro inside an Intel TDX confidential VM. They are smoke tests and
 copy-paste references — not production code.
 
@@ -12,8 +12,9 @@ copy-paste references — not production code.
 | Chain           | Arbitrum One (`chainId 0xa4b1` / 42161)                              |
 | Node client     | `nitro/v3.10.1-d7f07be/linux-amd64/go1.25.10`                        |
 | Sidecar pubkey  | `0x27c6308b5bdb7d8ad6d727c9e749947059e59fc2b3b9a47d443ba34838d393ac` |
-| Compose hash    | `4643c3697f443c256e0d86f7a6270cc31d7c8a5c9bb56c1209ac7ab3837a935c`   |
-| Captured        | 2026-05-26                                                           |
+| Compose hash    | `69166ce46dfc031ee6c55ebc6e7758a56aab514c74d847f24b4dda0448513301`   |
+| Sidecar version | `v0.2.0-rc.1` (compression-aware signing — signs content-decoded body) |
+| Captured        | 2026-06-10                                                           |
 
 If the sidecar is redeployed, the pubkey and compose-hash above WILL change
 and scripts 03 + 04 will fail loudly. Update `PINNED_COMPOSE_HASH` in
@@ -27,6 +28,7 @@ bun run example:01-signed-call
 bun run example:02-batch-and-replay
 bun run example:03-fetch-attestation
 bun run example:04-end-to-end
+bun run example:05-gzip-transport
 # Or:
 bun run example:all
 ```
@@ -42,14 +44,22 @@ or `FAIL — …` (exit 1).
 | 02 | `02-batch-and-replay.ts`      | Four sequential calls succeed, the pubkey is stable across them, and the sidecar's `vRPC-Timestamp` stays inside the replay window.   |
 | 03 | `03-fetch-attestation.ts`     | `report_data == pubkey ‖ nonce` byte binding (SPEC-04), and the inner `event_log compose-hash` agrees with the top-level `composeHash`. |
 | 04 | `04-end-to-end.ts`            | Fetch attestation → anchor trust in the returned pubkey → signed call → require the signature pubkey matches the attested pubkey.     |
+| 05 | `05-gzip-transport.ts`       | Sidecar v0.2.0 signs the content-DECODED body: a `Accept-Encoding: gzip` response with `content-encoding: gzip` on the wire is gunzipped and the Ed25519 signature verifies over the decoded plaintext. Negative control — verifying over the compressed wire bytes FAILS — proves the signature covers decoded, not compressed, bytes. |
 
 ## What is NOT verified by these examples
 
 This matters because it is exactly the surface someone wiring a real
 integration needs to think about.
 
-1. **Ed25519 response signature — VERIFIED.** The SDK enforces this on every
-   `.call()` and throws a typed `VerificationError` subclass on any failure.
+1. **Ed25519 response signature — VERIFIED, on either transport encoding.**
+   The SDK enforces this on every `.call()` and throws a typed
+   `VerificationError` subclass on any failure. As of sidecar v0.2.0 the
+   signature covers the content-DECODED (plaintext) body, so a standard
+   auto-decoding HTTP client verifies whether it requested `gzip` or
+   `identity` (script 05 proves this on the live gzip path). `VerifierClient`
+   still pins `accept-encoding: identity` as defense-in-depth — it keeps the
+   hashed bytes byte-identical to the wire bytes and avoids relying on the
+   proxy's re-encoding — but correctness no longer depends on it.
 
 2. **TDX quote vs Intel PCK root — NOT VERIFIED.** The quote is fetched and
    surfaced (`Attestation.quote.quote` is the raw TD report + PCK cert chain),

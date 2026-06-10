@@ -186,6 +186,12 @@ This gives you exactly what `VerifierClient.call` does internally, minus the JSO
 
 The pre-image layout is fixed: `chain_id (8B LE) || sha256(request_body) (32B) || sha256(response_body) (32B) || timestamp_ms (8B LE)` — 80 bytes total. The Rust sidecar produces byte-identical output and the SDK's `tests/preimage.test.ts` pins this against a known vector.
 
+### Transport encoding (gzip vs identity)
+
+Sidecar **v0.2.0** signs the content-decoded (plaintext) body, so the signature verifies whether the client requested `gzip` or `identity` — the `response_body` leg of the pre-image is the decoded JSON, not the compressed wire bytes. A standard auto-decoding HTTP client (Bun/Node `fetch`, ethers, viem) therefore verifies on either path with no special handling: it gunzips before you hash. `examples/05-gzip-transport.ts` proves this against the live node — the signature verifies over the decoded body and the negative control over the compressed bytes fails.
+
+`VerifierClient` still pins `accept-encoding: identity` as **defense-in-depth** (it keeps the hashed bytes byte-identical to the wire bytes and avoids relying on the proxy's re-encoding), but correctness no longer depends on it. If you drive `fetch` yourself with `accept-encoding: gzip`, hash the decoded body.
+
 ---
 
 ## Error handling
@@ -290,7 +296,7 @@ Integration tests require a built sidecar binary + the Phala dstack simulator �
 
 ## Companion repo
 
-- [`w3tech/verifiable-rpc-sidecar`](https://github.com/w3tech/verifiable-rpc-sidecar) — Rust sidecar that produces the signed responses + TDX attestation quotes. The SDK pairs with sidecar [`v0.1.0`](https://github.com/w3tech/verifiable-rpc-sidecar/releases/tag/v0.1.0).
+- [`w3tech/verifiable-rpc-sidecar`](https://github.com/w3tech/verifiable-rpc-sidecar) — Rust sidecar that produces the signed responses + TDX attestation quotes. The SDK pairs with sidecar `v0.2.0` (signature over the content-decoded body; the `v0.1.0` wire contract is forward-compatible on the identity path).
 
 ## License
 

@@ -2,8 +2,10 @@
 
 TypeScript verifier client for Ankr's verifiable RPC sidecar
 (`verifiable-rpc-sidecar`). Verifies Ed25519-signed JSON-RPC responses and
-fetches TDX attestation quotes from the sidecar. Pairs with sidecar `v0.1.0`
-wire contract. ESM-first, Bun-tested, chain-agnostic.
+fetches TDX attestation quotes from the sidecar. Pairs with sidecar `v0.2.0`
+wire contract — the signature covers the content-DECODED body, so it verifies
+on either transport encoding (gzip or identity). ESM-first, Bun-tested,
+chain-agnostic.
 
 ## Commands
 
@@ -88,14 +90,20 @@ with the simulator binary on the runner is tracked separately.
   `src/preimage.ts`.
 - SDK is a thin verifier wrapping `fetch` — no JSON-RPC re-implementation, no
   batching, no method-specific decoders.
-- Pairs with `verifiable-rpc-sidecar` `v0.1.0`. Wire contract = the 80-byte
+- Pairs with `verifiable-rpc-sidecar` `v0.2.0`. Wire contract = the 80-byte
   canonical pre-image + `vRPC-Signature` / `vRPC-Timestamp` / `vRPC-Pubkey`
-  headers + `/attestation?nonce=<hex>` JSON shape.
-- **`call()` pins `accept-encoding: identity`.** The signature covers the exact
-  wire bytes of the response body; if a compressing upstream/proxy sets
-  `content-encoding` (e.g. gzip from the node), `fetch` decodes it before the
-  SDK hashes `arrayBuffer()`, breaking the response-hash leg → spurious
-  `BadSignature`. Identity keeps hashed bytes == signed bytes.
+  headers + `/attestation?nonce=<hex>` JSON shape. As of v0.2.0 the signature
+  covers the content-DECODED (plaintext) body, so it verifies whether the
+  client requested gzip or identity (the `v0.1.0` contract is forward-compatible
+  on the identity path). `examples/05-gzip-transport.ts` proves this on the live
+  gzip path.
+- **`call()` pins `accept-encoding: identity` as defense-in-depth — no longer a
+  correctness requirement.** Since v0.2.0 signs the content-decoded body, a
+  standard auto-decoding `fetch` (which gunzips a `content-encoding: gzip`
+  response before `arrayBuffer()`) hashes the same bytes the sidecar signed and
+  verifies fine. Pinning identity is retained because it keeps the hashed bytes
+  byte-identical to the wire bytes and avoids relying on the proxy's
+  re-encoding, but correctness does not depend on it.
 
 ## Source layout
 
