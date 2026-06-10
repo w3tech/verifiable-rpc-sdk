@@ -16,6 +16,23 @@ export const CHAIN_ID = 42161n;
 export const PINNED_COMPOSE_HASH =
 	"69166ce46dfc031ee6c55ebc6e7758a56aab514c74d847f24b4dda0448513301";
 
+// Stage shark-proxy config for the via-shark example (06). Read by NAME only —
+// the VALUES are secrets and must never be printed, logged, or committed.
+export const SHARK_STAGE_URL: string | undefined = Bun.env.SHARK_STAGE_URL;
+export const SHARK_STAGE_TDX_TEST_KEY: string | undefined = Bun.env.SHARK_STAGE_TDX_TEST_KEY;
+
+/**
+ * Return `value` if set, else fail loudly WITHOUT printing the value. `name` is
+ * the env var name (safe to print); the value is a secret.
+ */
+export function requireEnv(name: string, value: string | undefined): string {
+	assert(
+		typeof value === "string" && value.length > 0,
+		`${name} env var must be set (not printing its value)`,
+	);
+	return value;
+}
+
 export function header(title: string): void {
 	const bar = "=".repeat(64);
 	console.log(`\n${bar}\n  ${title}\n${bar}`);
