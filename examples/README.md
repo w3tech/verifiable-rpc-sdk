@@ -1,8 +1,9 @@
 # `@ankr/verifiable-rpc-client` — live examples
 
-These five scripts drive the SDK against a live Arbitrum-One node running
-geth-nitro inside an Intel TDX confidential VM. They are smoke tests and
-copy-paste references — not production code.
+These six scripts drive the SDK against a live Arbitrum-One node running
+geth-nitro inside an Intel TDX confidential VM (script 06 routes through stage
+shark-proxy). They are smoke tests and copy-paste references — not production
+code.
 
 ## Live target
 
@@ -29,6 +30,7 @@ bun run example:02-batch-and-replay
 bun run example:03-fetch-attestation
 bun run example:04-end-to-end
 bun run example:05-gzip-transport
+bun run example:06-via-shark   # requires SHARK_STAGE_URL + SHARK_STAGE_TDX_TEST_KEY (see below)
 # Or:
 bun run example:all
 ```
@@ -45,6 +47,31 @@ or `FAIL — …` (exit 1).
 | 03 | `03-fetch-attestation.ts`     | `report_data == pubkey ‖ nonce` byte binding (SPEC-04), and the inner `event_log compose-hash` agrees with the top-level `composeHash`. |
 | 04 | `04-end-to-end.ts`            | Fetch attestation → anchor trust in the returned pubkey → signed call → require the signature pubkey matches the attested pubkey.     |
 | 05 | `05-gzip-transport.ts`       | Sidecar v0.2.0 signs the content-DECODED body: a `Accept-Encoding: gzip` response with `content-encoding: gzip` on the wire is gunzipped and the Ed25519 signature verifies over the decoded plaintext. Negative control — verifying over the compressed wire bytes FAILS — proves the signature covers decoded, not compressed, bytes. |
+| 06 | `06-via-shark.ts`           | Proves the SDK verifies a signed call routed THROUGH stage shark-proxy (vrpc passthrough): byte-exact request/response (signature verifies), vrpc headers survive shark, and the via-shark pubkey matches the direct node /attestation pubkey. On FAIL it raw-fetches both legs to localize the break (headers stripped vs body mutated). |
+
+## Via shark (vrpc routing)
+
+Example 06 routes the same signed call through stage shark-proxy instead of
+hitting the node directly. Shark recognises a **`_vrpc` chain suffix** as a
+verifiable-RPC route that must pass request/response bytes through unmodified —
+so the vrpc route URL is `<shark-url>/arbitrum_vrpc`. Auth is the **`x-api-key`
+header** (sent via the SDK's `headers` opt). A passing signed `.call()` through
+shark IS the cryptographic proof of byte-exact passthrough: the 80-byte
+pre-image binds request_hash + response_hash, so any mutation in either
+direction surfaces as `BadSignature`.
+
+Two env vars are required (referenced **by name only** — their values are
+secrets and are never printed, logged, or committed; the example fails clearly
+if either is unset):
+
+| Env var                    | Purpose                                  |
+| -------------------------- | ---------------------------------------- |
+| `SHARK_STAGE_URL`          | Stage shark-proxy base URL               |
+| `SHARK_STAGE_TDX_TEST_KEY` | `x-api-key` value for the vrpc route     |
+
+Shark does **not** serve `/attestation` yet, so the pubkey cross-check in
+example 06 fetches the attestation DIRECT from the node
+(`http://40.160.13.104:15269/attestation`), not through shark.
 
 ## What is NOT verified by these examples
 
