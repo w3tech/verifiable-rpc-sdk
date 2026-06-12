@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  AttestationCorrelationError,
+  AttestationNodeNotFoundError,
   BadSignature,
   InvalidNonce,
   MalformedAttestationResponse,
@@ -170,5 +172,31 @@ describe("errors", () => {
     ).toBe("StaleTimestamp");
     expect(new InvalidNonce("x").name).toBe("InvalidNonce");
     expect(new MalformedAttestationResponse("y").name).toBe("MalformedAttestationResponse");
+  });
+
+  test("attestationNodeNotFoundCarriesNodeIdAndKind", () => {
+    const err = new AttestationNodeNotFoundError("node-7");
+    expect(err instanceof Error).toBe(true);
+    expect(err instanceof VerificationError).toBe(true);
+    expect(err instanceof AttestationNodeNotFoundError).toBe(true);
+    expect(err.kind).toBe("AttestationNodeNotFound");
+    expect(err.name).toBe("AttestationNodeNotFoundError");
+    expect(err.nodeId).toBe("node-7");
+    expect(err.message).toContain("node-7");
+  });
+
+  test("attestationCorrelationCarriesPubkeysAndKind", () => {
+    const expected = `0x${"ab".repeat(32)}`;
+    const actual = `0x${"cd".repeat(32)}`;
+    const err = new AttestationCorrelationError(expected, actual);
+    expect(err instanceof Error).toBe(true);
+    expect(err instanceof VerificationError).toBe(true);
+    expect(err instanceof AttestationCorrelationError).toBe(true);
+    expect(err.kind).toBe("AttestationCorrelation");
+    expect(err.name).toBe("AttestationCorrelationError");
+    expect(err.expectedPubkey).toBe(expected);
+    expect(err.actualPubkey).toBe(actual);
+    expect(err.message).toContain(expected);
+    expect(err.message).toContain(actual);
   });
 });

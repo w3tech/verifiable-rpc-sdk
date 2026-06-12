@@ -27,6 +27,8 @@ interface MockOverrides {
   headerOverrides?: Partial<Record<"vRPC-Signature" | "vRPC-Timestamp" | "vRPC-Pubkey", string>>;
   /** Override the chainId baked into the signature. Defaults to opts.chainId. */
   signingChainIdOverride?: bigint;
+  /** Set the `vRPC-NodeId` response header (omitted entirely when undefined). */
+  nodeIdHeader?: string;
 }
 
 /**
@@ -69,6 +71,9 @@ function makeMockFetch(
       "vRPC-Timestamp": overrides.timestampMsOverride ?? timestampMs.toString(),
       "vRPC-Pubkey": `0x${toHex(pubkey)}`,
     };
+    if (overrides.nodeIdHeader !== undefined) {
+      baseHeaders["vRPC-NodeId"] = overrides.nodeIdHeader;
+    }
     for (const drop of overrides.dropHeaders ?? []) {
       delete baseHeaders[drop];
     }
@@ -446,5 +451,84 @@ describe("VerifierClient", () => {
     // http and https both accepted.
     expect(() => new VerifierClient("http://example.com/", { chainId: 1n })).not.toThrow();
     expect(() => new VerifierClient("https://example.com/", { chainId: 1n })).not.toThrow();
+  });
+
+  test("nodeIdCapturedWhenHeaderPresent", async () => {
+    const chainId = 1n;
+    const nowMs = BigInt(Date.now());
+    const body = makeSignedJsonRpcBody(1, "0x1");
+    const { fetch: mockFetch } = makeMockFetch(body, chainId, nowMs, {
+      nodeIdHeader: "node-abc",
+    });
+
+    const client = new VerifierClient(TEST_URL, { chainId, fetch: mockFetch });
+    const verified = await client.call("eth_blockNumber", []);
+    expect(verified.nodeId).toBe("node-abc");
+  });
+
+  test("nodeIdUndefinedAndNoThrowWhenHeaderAbsent", async () => {
+    const chainId = 1n;
+    const nowMs = BigInt(Date.now());
+    const body = makeSignedJsonRpcBody(1, "0x1");
+    const { fetch: mockFetch } = makeMockFetch(body, chainId, nowMs);
+
+    const client = new VerifierClient(TEST_URL, { chainId, fetch: mockFetch });
+    const verified = await client.call("eth_blockNumber", []);
+    expect(verified.nodeId).toBeUndefined();
+    expect("nodeId" in verified).toBe(false);
+  });
+
+  test("apiKeyOptionSetsXApiKeyOnPost", async () => {
+    let capturedHeaders: Record<string, string> | undefined;
+    const signedBody = makeSignedJsonRpcBody(1, "0x1");
+    const ts = BigInt(Date.now());
+    const { fetch } = makeMockFetch(signedBody, 1n, ts);
+    const wrapped = (async (input: string | URL, init?: RequestInit) => {
+      capturedHeaders = init?.headers as Record<string, string>;
+      return fetch(input as string, init);
+    }) as typeof fetch;
+    const client = new VerifierClient(TEST_URL, { chainId: 1n, apiKey: "secret-key", fetch: wrapped });
+    await client.call("eth_blockNumber", []);
+    expect(capturedHeaders?.["x-api-key"]).toBe("secret-key");
+  });
+
+  test("explicitHeaderXApiKeyOverridesApiKeyOption", async () => {
+    let capturedHeaders: Record<string, string> | undefined;
+    const signedBody = makeSignedJsonRpcBody(1, "0x1");
+    const ts = BigInt(Date.now());
+    const { fetch } = makeMockFetch(signedBody, 1n, ts);
+    const wrapped = (async (input: string | URL, init?: RequestInit) => {
+      capturedHeaders = init?.headers as Record<string, string>;
+      return fetch(input as string, init);
+    }) as typeof fetch;
+    const client = new VerifierClient(TEST_URL, {
+      chainId: 1n,
+      apiKey: "from-option",
+      headers: { "x-api-key": "from-headers" },
+      fetch: wrapped,
+    });
+    await client.call("eth_blockNumber", []);
+    expect(capturedHeaders?.["x-api-key"]).toBe("from-headers");
+  });
+
+  test("pinnedHeadersWinRegardlessOfApiKey", async () => {
+    let capturedHeaders: Record<string, string> | undefined;
+    const signedBody = makeSignedJsonRpcBody(1, "0x1");
+    const ts = BigInt(Date.now());
+    const { fetch } = makeMockFetch(signedBody, 1n, ts);
+    const wrapped = (async (input: string | URL, init?: RequestInit) => {
+      capturedHeaders = init?.headers as Record<string, string>;
+      return fetch(input as string, init);
+    }) as typeof fetch;
+    const client = new VerifierClient(TEST_URL, {
+      chainId: 1n,
+      apiKey: "secret-key",
+      headers: { "content-type": "text/plain", "accept-encoding": "gzip" },
+      fetch: wrapped,
+    });
+    await client.call("eth_blockNumber", []);
+    expect(capturedHeaders?.["content-type"]).toBe("application/json");
+    expect(capturedHeaders?.["accept-encoding"]).toBe("identity");
+    expect(capturedHeaders?.["x-api-key"]).toBe("secret-key");
   });
 });
