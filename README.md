@@ -57,7 +57,46 @@ console.log(block.verification.timestampMs);// 1_700_000_000_000n
 
 `block.result` is the JSON-RPC `result` field, already type-narrowed by the generic parameter. If the signature fails to verify, or the timestamp is outside the replay window, or a required header is missing, `call` throws a typed error — see [Error handling](#error-handling).
 
-### Fetch a TDX attestation quote
+### Recommended integration path — shark-only flow
+
+The default way to consume verifiable RPC in production is **entirely through the shark proxy**: shark is the only client-facing URL. You make a signed call, read the serving node's id off the response, then fetch *that* node's attestation back through shark and correlate it against the response pubkey.
+
+```ts
+import {
+  VerifierClient,
+  fetchAttestationViaShark,
+  verifyAttestationCorrelation,
+  AttestationNodeNotFoundError,
+} from "@ankr/verifiable-rpc-client";
+
+const sharkBase = "https://rpc.ankr.com"; // shark proxy base — the only client-facing URL
+const chain = "arbitrum";                  // <chain>_vrpc route segment
+
+// 1. Signed call through shark. A successful return IS the Ed25519 verification.
+const client = new VerifierClient(`${sharkBase}/${chain}_vrpc`, { chainId: 42161n, apiKey });
+const r = await client.call<string>("eth_blockNumber", []);
+
+// 2. Read the serving node's id and the pubkey to correlate against.
+const nodeId = r.nodeId;                       // from the vRPC-NodeId response header
+const expectedPubkey = r.verification.pubkeyHex;
+
+// 3. Fetch THAT node's attestation back through shark, with a fresh 32-byte nonce.
+const nonce = crypto.getRandomValues(new Uint8Array(32));
+const attestation = await fetchAttestationViaShark({ sharkBase, chain, nodeId, nonce, apiKey });
+
+// 4. Correlate: throws AttestationCorrelationError unless attestation.pubkey === vRPC-Pubkey.
+verifyAttestationCorrelation(attestation, r);
+```
+
+**Why the `node_id` hop needs no trust.** Routing the attestation request by `node_id` does not require trusting shark's routing: `verifyAttestationCorrelation` enforces `attestation.pubkey === vRPC-Pubkey`, so a wrong or substituted node can only *fail* the correlation — it can never spoof a pubkey it doesn't hold the signing key for.
+
+**No-fallback 404 semantics.** A stale or unknown `node_id` returns `404` and throws `AttestationNodeNotFoundError` — the SDK does **not** retry or fall back to another node. Treat it as "re-issue the RPC call to get a fresh `nodeId`", not as a transient error to retry against the same id.
+
+`examples/07-attestation-via-shark.ts` runs this full loop (plus the typed-404 negative path) against the live stage shark.
+
+### Fetch a TDX attestation quote DIRECT from a node (debugging only)
+
+> **Not the recommended client path.** Hitting a node's `/attestation` directly bypasses shark and the `node_id` correlation hop. Use it only for local sidecar debugging or when you already hold a node's direct URL; production integrations should use the shark-only flow above.
 
 ```ts
 const nonce = crypto.getRandomValues(new Uint8Array(32));
