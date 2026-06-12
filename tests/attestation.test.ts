@@ -1,8 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { bytesToHex } from "@noble/hashes/utils.js";
 
-import { fetchAttestation } from "../src/attestation";
-import { InvalidNonce, MalformedAttestationResponse } from "../src/errors";
+import {
+  fetchAttestation,
+  fetchAttestationViaShark,
+  verifyAttestationCorrelation,
+} from "../src/attestation";
+import {
+  AttestationCorrelationError,
+  AttestationNodeNotFoundError,
+  InvalidNonce,
+  MalformedAttestationResponse,
+} from "../src/errors";
+import type { VerifiedResponse } from "../src/verifier";
 import { VerifierClient } from "../src/verifier";
 
 const TEST_URL = "http://test.local:8545";
@@ -207,5 +217,205 @@ describe("fetchAttestation", () => {
       pubkey: "0x0000000000000000000000000000000000000000000000000000000000000000",
       composeHash: "deadbeef",
     });
+  });
+});
+
+const SHARK_BASE = "https://rpc.ankr.com";
+
+interface SharkMockState {
+  urls: string[];
+  headers: Array<Record<string, string> | undefined>;
+  calls: number;
+}
+
+function installSharkMockFetch(body: unknown, status = 200): SharkMockState {
+  const state: SharkMockState = { urls: [], headers: [], calls: 0 };
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    state.calls += 1;
+    state.urls.push(typeof input === "string" ? input : input.toString());
+    state.headers.push(init?.headers as Record<string, string> | undefined);
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+  return state;
+}
+
+describe("fetchAttestationViaShark", () => {
+  let savedFetch: typeof fetch;
+
+  beforeEach(() => {
+    savedFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = savedFetch;
+  });
+
+  test("nonceMustBe32Bytes", async () => {
+    globalThis.fetch = ((): Response => {
+      throw new Error("fetch called — synchronous validation failed");
+    }) as unknown as typeof fetch;
+    let caught: unknown;
+    try {
+      await fetchAttestationViaShark({
+        sharkBase: SHARK_BASE,
+        chain: "eth",
+        nodeId: "node-1",
+        nonce: new Uint8Array(31),
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(InvalidNonce);
+  });
+
+  test("buildsExactContractUrl", async () => {
+    const state = installSharkMockFetch(GOLDEN_FIXTURE);
+    const nonce = new Uint8Array(32);
+    await fetchAttestationViaShark({
+      sharkBase: SHARK_BASE,
+      chain: "eth",
+      nodeId: "node-1",
+      nonce,
+    });
+    const expectedHex = bytesToHex(nonce);
+    expect(state.urls[0]).toBe(
+      `${SHARK_BASE}/eth_vrpc/attestation?nonce=${expectedHex}&node_id=node-1`,
+    );
+    expect(state.urls[0]).not.toContain("nonce=0x");
+  });
+
+  test("nonceHexRoundTripsByteIntact", async () => {
+    const state = installSharkMockFetch(GOLDEN_FIXTURE);
+    const nonce = new Uint8Array(32);
+    nonce[0] = 0xde;
+    nonce[1] = 0xad;
+    nonce[2] = 0xbe;
+    nonce[3] = 0xef;
+    nonce[31] = 0xff;
+    await fetchAttestationViaShark({
+      sharkBase: SHARK_BASE,
+      chain: "eth",
+      nodeId: "node-1",
+      nonce,
+    });
+    const expectedHex = bytesToHex(nonce);
+    expect(expectedHex).toMatch(/^[0-9a-f]{64}$/);
+    expect(state.urls[0]).toContain(`nonce=${expectedHex}`);
+  });
+
+  test("nodeIdIsUrlEncoded", async () => {
+    const state = installSharkMockFetch(GOLDEN_FIXTURE);
+    await fetchAttestationViaShark({
+      sharkBase: SHARK_BASE,
+      chain: "eth",
+      nodeId: "region/node 7",
+      nonce: new Uint8Array(32),
+    });
+    expect(state.urls[0]).toContain("node_id=region%2Fnode%207");
+    expect(state.urls[0]).not.toContain("node_id=region/node 7");
+  });
+
+  test("status404ThrowsNodeNotFoundWithNoRetry", async () => {
+    const state = installSharkMockFetch({}, 404);
+    let caught: unknown;
+    try {
+      await fetchAttestationViaShark({
+        sharkBase: SHARK_BASE,
+        chain: "eth",
+        nodeId: "stale-node",
+        nonce: new Uint8Array(32),
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AttestationNodeNotFoundError);
+    if (caught instanceof AttestationNodeNotFoundError) {
+      expect(caught.nodeId).toBe("stale-node");
+    }
+    // No fallback or retry.
+    expect(state.calls).toBe(1);
+  });
+
+  test("apiKeySetsXApiKeyExplicitHeadersWin", async () => {
+    const state = installSharkMockFetch(GOLDEN_FIXTURE);
+    await fetchAttestationViaShark({
+      sharkBase: SHARK_BASE,
+      chain: "eth",
+      nodeId: "node-1",
+      nonce: new Uint8Array(32),
+      apiKey: "from-option",
+    });
+    expect(state.headers[0]?.["x-api-key"]).toBe("from-option");
+
+    const state2 = installSharkMockFetch(GOLDEN_FIXTURE);
+    await fetchAttestationViaShark({
+      sharkBase: SHARK_BASE,
+      chain: "eth",
+      nodeId: "node-1",
+      nonce: new Uint8Array(32),
+      apiKey: "from-option",
+      headers: { "x-api-key": "from-headers" },
+    });
+    expect(state2.headers[0]?.["x-api-key"]).toBe("from-headers");
+  });
+
+  test("reusesNarrowAttestationOnMalformedBody", async () => {
+    installSharkMockFetch({ quote: "abcdef", pubkey: "0x00", composeHash: "feed" });
+    let caught: unknown;
+    try {
+      await fetchAttestationViaShark({
+        sharkBase: SHARK_BASE,
+        chain: "eth",
+        nodeId: "node-1",
+        nonce: new Uint8Array(32),
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(MalformedAttestationResponse);
+  });
+});
+
+describe("verifyAttestationCorrelation", () => {
+  const pubkey = "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+  function makeVerifiedResponse(pubkeyHex: string): VerifiedResponse {
+    return {
+      result: "0x1",
+      raw: { request: new Uint8Array(0), response: new Uint8Array(0) },
+      verification: {
+        signatureHex: `0x${"00".repeat(64)}`,
+        pubkeyHex,
+        timestampMs: 0n,
+        preImageSha256: new Uint8Array(32),
+      },
+    };
+  }
+
+  test("returnsOnPubkeyMatch", () => {
+    const attestation = { ...GOLDEN_FIXTURE, pubkey };
+    expect(() =>
+      verifyAttestationCorrelation(attestation, makeVerifiedResponse(pubkey)),
+    ).not.toThrow();
+  });
+
+  test("throwsCorrelationOnMismatch", () => {
+    const attestationPubkey = `0x${"ab".repeat(32)}`;
+    const responsePubkey = `0x${"cd".repeat(32)}`;
+    const attestation = { ...GOLDEN_FIXTURE, pubkey: attestationPubkey };
+    let caught: unknown;
+    try {
+      verifyAttestationCorrelation(attestation, makeVerifiedResponse(responsePubkey));
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AttestationCorrelationError);
+    if (caught instanceof AttestationCorrelationError) {
+      expect(caught.expectedPubkey).toBe(responsePubkey);
+      expect(caught.actualPubkey).toBe(attestationPubkey);
+    }
   });
 });
