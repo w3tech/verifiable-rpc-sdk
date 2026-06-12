@@ -19,7 +19,9 @@ export type VerificationErrorKind =
   | "InvalidNonce"
   | "MalformedAttestationResponse"
   | "MalformedInfoResponse"
-  | "ComposeSourceNotImplemented";
+  | "ComposeSourceNotImplemented"
+  | "AttestationNodeNotFound"
+  | "AttestationCorrelation";
 
 /**
  * Abstract base for all verification errors. The `kind` discriminator is set
@@ -151,6 +153,38 @@ export class MalformedInfoResponse extends VerificationError {
 
   constructor(public readonly reason: string) {
     super(`Malformed /info response: ${reason}`);
+  }
+}
+
+/**
+ * The shark proxy could not route attestation to the requested `node_id` (HTTP
+ * 404). The node id is stale or unknown; the SDK does NOT retry or fall back to
+ * another node — a targeted attestation request that misses is terminal.
+ */
+export class AttestationNodeNotFoundError extends VerificationError {
+  readonly kind = "AttestationNodeNotFound" as const;
+
+  constructor(public readonly nodeId: string) {
+    super(`Attestation node not found: ${nodeId}`);
+  }
+}
+
+/**
+ * The fetched attestation's `pubkey` did not match the pubkey that signed the
+ * RPC response (`vRPC-Pubkey`). The attestation belongs to a different node than
+ * the one that served the verified response — correlation failed.
+ */
+export class AttestationCorrelationError extends VerificationError {
+  readonly kind = "AttestationCorrelation" as const;
+
+  constructor(
+    public readonly expectedPubkey: string,
+    public readonly actualPubkey: string,
+  ) {
+    super(
+      `Attestation pubkey mismatch: expected ${expectedPubkey} (RPC response), ` +
+        `got ${actualPubkey} (attestation)`,
+    );
   }
 }
 

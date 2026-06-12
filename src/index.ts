@@ -19,6 +19,8 @@ export type {
 export { computeComposeHash, InfoEndpointComposeSource, RegistryComposeSource } from "./compose";
 export type { BadSignatureContext, StaleTimestampContext, VerificationErrorKind } from "./errors";
 export {
+  AttestationCorrelationError,
+  AttestationNodeNotFoundError,
   BadSignature,
   ComposeSourceNotImplemented,
   InvalidNonce,
