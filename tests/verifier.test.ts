@@ -487,7 +487,11 @@ describe("VerifierClient", () => {
       capturedHeaders = init?.headers as Record<string, string>;
       return fetch(input as string, init);
     }) as typeof fetch;
-    const client = new VerifierClient(TEST_URL, { chainId: 1n, apiKey: "secret-key", fetch: wrapped });
+    const client = new VerifierClient(TEST_URL, {
+      chainId: 1n,
+      apiKey: "secret-key",
+      fetch: wrapped,
+    });
     await client.call("eth_blockNumber", []);
     expect(capturedHeaders?.["x-api-key"]).toBe("secret-key");
   });
