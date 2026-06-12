@@ -18,6 +18,7 @@ const DEFAULT_REPLAY_WINDOW_MS = 60_000;
 const SIGNATURE_HEADER = "vRPC-Signature";
 const TIMESTAMP_HEADER = "vRPC-Timestamp";
 const PUBKEY_HEADER = "vRPC-Pubkey";
+const NODE_ID_HEADER = "vRPC-NodeId";
 
 const SIGNATURE_HEX_RE = /^0x[0-9a-f]{128}$/;
 const PUBKEY_HEX_RE = /^0x[0-9a-f]{64}$/;
@@ -45,6 +46,12 @@ export interface VerifierClientOptions {
    */
   headers?: Record<string, string>;
   /**
+   * Convenience auth key sent as `x-api-key` on the RPC POST (and reused for
+   * shark attestation fetches). An explicit `headers["x-api-key"]` entry wins
+   * over this value; the pinned wire headers still win over both.
+   */
+  apiKey?: string;
+  /**
    * Optional `fetch` override — primarily for tests against a mock sidecar.
    * Defaults to `globalThis.fetch`.
    */
@@ -53,6 +60,12 @@ export interface VerifierClientOptions {
 
 export interface VerifiedResponse<T = unknown> {
   result: T;
+  /**
+   * The serving node's id from the `vRPC-NodeId` response header, used to fetch
+   * that node's attestation via shark. Absent when the proxy is older and does
+   * not emit the header.
+   */
+  nodeId?: string;
   raw: {
     request: Uint8Array;
     response: Uint8Array;
@@ -91,6 +104,7 @@ export class VerifierClient {
   private readonly replayWindowMs: number;
   private readonly fetchImpl: typeof fetch;
   private readonly extraHeaders: Record<string, string>;
+  private readonly apiKey: string | undefined;
   private idCounter = 0;
 
   constructor(url: string, opts: VerifierClientOptions) {
@@ -102,6 +116,7 @@ export class VerifierClient {
     this.replayWindowMs = opts.replayWindowMs ?? DEFAULT_REPLAY_WINDOW_MS;
     this.fetchImpl = opts.fetch ?? globalThis.fetch;
     this.extraHeaders = opts.headers ?? {};
+    this.apiKey = opts.apiKey;
   }
 
   async call<T = unknown>(method: string, params: unknown[]): Promise<VerifiedResponse<T>> {
@@ -118,11 +133,14 @@ export class VerifierClient {
     //    response-hash leg of the pre-image and surface as a spurious
     //    `BadSignature`. Forcing identity keeps the bytes we hash identical to
     //    the bytes the sidecar signed.
-    //    Caller headers spread FIRST, the two pinned headers LAST so pinned
-    //    win — a caller cannot override the wire-byte contract.
+    //    Precedence (lowest to highest): apiKey-derived x-api-key, then caller
+    //    headers (so an explicit x-api-key wins), then the two pinned headers
+    //    LAST so pinned always win — a caller cannot override the wire-byte
+    //    contract.
     const resp = await this.fetchImpl(this.url, {
       method: "POST",
       headers: {
+        ...(this.apiKey === undefined ? {} : { "x-api-key": this.apiKey }),
         ...this.extraHeaders,
         "content-type": "application/json",
         "accept-encoding": "identity",
@@ -147,6 +165,8 @@ export class VerifierClient {
     if (tsRaw === null) {
       throw new MissingHeader(TIMESTAMP_HEADER);
     }
+    // Optional — older shark proxies omit it, in which case nodeId stays absent.
+    const nodeId = resp.headers.get(NODE_ID_HEADER);
 
     // 5. Header validate — bad shape -> MalformedHeader.
     if (!SIGNATURE_HEX_RE.test(sigHex)) {
@@ -194,9 +214,10 @@ export class VerifierClient {
     // 10. JSON-RPC parse — assume 2.0 shape; consumer handles error envelopes.
     const parsed = JSON.parse(new TextDecoder().decode(responseBytes)) as { result: T };
 
-    // 11. Return.
+    // 11. Return. Omit nodeId entirely when absent (exactOptionalPropertyTypes).
     return {
       result: parsed.result,
+      ...(nodeId === null ? {} : { nodeId }),
       raw: { request: requestBytes, response: responseBytes },
       verification: {
         signatureHex: sigHex,
