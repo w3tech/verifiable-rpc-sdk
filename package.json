@@ -36,7 +36,8 @@
     "example:04-end-to-end": "bun run examples/04-end-to-end.ts",
     "example:05-gzip-transport": "bun run examples/05-gzip-transport.ts",
     "example:06-via-shark": "bun run examples/06-via-shark.ts",
-    "example:all": "bun run example:01-signed-call && bun run example:02-batch-and-replay && bun run example:03-fetch-attestation && bun run example:04-end-to-end && bun run example:05-gzip-transport && bun run example:06-via-shark"
+    "example:07-attestation-via-shark": "bun run examples/07-attestation-via-shark.ts",
+    "example:all": "bun run example:01-signed-call && bun run example:02-batch-and-replay && bun run example:03-fetch-attestation && bun run example:04-end-to-end && bun run example:05-gzip-transport && bun run example:06-via-shark && bun run example:07-attestation-via-shark"
   },
   "dependencies": {
     "@noble/ed25519": "^3.1.0",
