@@ -10,7 +10,13 @@
 
 import { bytesToHex } from "@noble/hashes/utils.js";
 
-import { InvalidNonce, MalformedAttestationResponse } from "./errors";
+import {
+  AttestationCorrelationError,
+  AttestationNodeNotFoundError,
+  InvalidNonce,
+  MalformedAttestationResponse,
+} from "./errors";
+import type { VerifiedResponse } from "./verifier";
 
 /**
  * Inner `quote` object inside the attestation response. All fields are
@@ -66,6 +72,82 @@ export async function fetchAttestation(url: string, nonce: Uint8Array): Promise<
   const body = (await resp.json()) as unknown;
 
   return narrowAttestation(body);
+}
+
+/** Options for {@link fetchAttestationViaShark}. */
+export interface FetchAttestationViaSharkOptions {
+  /** Shark proxy base URL (no trailing slash), e.g. `https://rpc.ankr.com`. */
+  sharkBase: string;
+  /** Chain slug used to build the `<chain>_vrpc` route segment, e.g. `eth`. */
+  chain: string;
+  /** Id of the serving node (from `vRPC-NodeId`) whose attestation to fetch. */
+  nodeId: string;
+  /** Caller-supplied 32-byte attestation nonce. */
+  nonce: Uint8Array;
+  /** Auth key sent as `x-api-key`; an explicit `headers` entry wins. */
+  apiKey?: string;
+  /** Extra request headers; an `x-api-key` entry here overrides `apiKey`. */
+  headers?: Record<string, string>;
+  /** `fetch` override — defaults to `globalThis.fetch`. */
+  fetch?: typeof fetch;
+}
+
+/**
+ * Fetch a serving node's attestation through the shark proxy's targeted route
+ * `GET <sharkBase>/<chain>_vrpc/attestation?nonce=<hex>&node_id=<id>`.
+ *
+ * The nonce is validated synchronously (32 bytes) and encoded as bare lowercase
+ * hex; `node_id` is URL-encoded. A 404 means the node id is stale/unknown and
+ * throws {@link AttestationNodeNotFoundError} BEFORE parsing — the SDK does NOT
+ * retry or fall back to another node. Other responses are parsed with the same
+ * narrowing as the direct-node path; this route is unsigned, so no `vRPC-*`
+ * verification runs here.
+ */
+export async function fetchAttestationViaShark(
+  opts: FetchAttestationViaSharkOptions,
+): Promise<Attestation> {
+  // Synchronous fast-fail BEFORE any fetch.
+  if (opts.nonce.length !== 32) {
+    throw new InvalidNonce(`expected 32 bytes, got ${opts.nonce.length}`);
+  }
+
+  const nonceHex = bytesToHex(opts.nonce);
+  const target =
+    `${opts.sharkBase}/${opts.chain}_vrpc/attestation` +
+    `?nonce=${nonceHex}&node_id=${encodeURIComponent(opts.nodeId)}`;
+
+  // apiKey-derived x-api-key first so an explicit headers entry wins.
+  const headers: Record<string, string> = {
+    ...(opts.apiKey === undefined ? {} : { "x-api-key": opts.apiKey }),
+    ...(opts.headers ?? {}),
+  };
+
+  const fetchImpl = opts.fetch ?? globalThis.fetch;
+  const resp = await fetchImpl(target, { headers });
+
+  // Stale/unknown node id — terminal, no fallback or retry.
+  if (resp.status === 404) {
+    throw new AttestationNodeNotFoundError(opts.nodeId);
+  }
+
+  const body = (await resp.json()) as unknown;
+  return narrowAttestation(body);
+}
+
+/**
+ * Prove the fetched attestation belongs to the node that signed the RPC
+ * response: the attestation `pubkey` must equal the response `vRPC-Pubkey`
+ * (`verification.pubkeyHex`, already normalized to lowercase `0x`-hex). On
+ * mismatch throws {@link AttestationCorrelationError}; on match returns.
+ */
+export function verifyAttestationCorrelation(
+  attestation: Attestation,
+  verifiedResponse: VerifiedResponse,
+): void {
+  const expected = verifiedResponse.verification.pubkeyHex;
+  if (attestation.pubkey !== expected) {
+    throw new AttestationCorrelationError(expected, attestation.pubkey);
+  }
 }
 
 /**

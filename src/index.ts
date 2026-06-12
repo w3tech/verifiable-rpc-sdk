@@ -9,8 +9,16 @@
 //   - ./preimage    — canonical 80-byte pre-image builder (exported for
 //                     advanced consumers and test infrastructure)
 
-export type { Attestation, GetQuoteResponse } from "./attestation";
-export { fetchAttestation } from "./attestation";
+export type {
+  Attestation,
+  FetchAttestationViaSharkOptions,
+  GetQuoteResponse,
+} from "./attestation";
+export {
+  fetchAttestation,
+  fetchAttestationViaShark,
+  verifyAttestationCorrelation,
+} from "./attestation";
 export type {
   ComposeSource,
   InfoEndpointComposeSourceOptions,
