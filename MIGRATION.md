@@ -22,9 +22,11 @@ NOT full TDX quote attestation.
 import { JsonRpcProvider } from "ethers";
 const provider = new JsonRpcProvider(url);
 
-// After — one extra argument: the chain id
+// After — chainId optional (auto-derived) but strongly recommended:
 import { VrpcProvider } from "@ankr.com/vrpc-ethers";
 const provider = new VrpcProvider(url, chainId);
+// or bare-url (auto-derives chainId on first use):
+const auto = new VrpcProvider(url);
 ```
 
 `VrpcProvider extends JsonRpcProvider`. Everything downstream — `getBalance`,
@@ -39,10 +41,12 @@ verifies the raw response bytes before parsing.
 import { http, createPublicClient } from "viem";
 const client = createPublicClient({ transport: http(url) });
 
-// After — one extra option: the chain id
+// After — chainId optional (auto-derived) but strongly recommended:
 import { createPublicClient } from "viem";
 import { vrpcHttp } from "@ankr.com/vrpc-viem";
 const client = createPublicClient({ transport: vrpcHttp(url, { chainId }) });
+// or bare-url (auto-derives chainId on first request):
+const auto = createPublicClient({ transport: vrpcHttp(url) });
 ```
 
 `vrpcHttp(url, opts)` is a custom `Transport` that substitutes for `http(url)`.
@@ -59,15 +63,17 @@ its single verifying `request`.
 
 ---
 
-## 2. The required `chainId` argument
+## 2. The `chainId` argument — optional but strongly recommended
 
-`chainId` is **required** on both adapters and is `number | bigint`:
+`chainId` is **optional** on both adapters and is `number | bigint`:
 
-- ethers: `new VrpcProvider(url, chainId, options?)` — positional 2nd arg.
-- viem: `vrpcHttp(url, { chainId, … })` — required option.
+- ethers: `new VrpcProvider(url, chainId, options?)` (positional) or
+  `new VrpcProvider(url, { chainId, … })` (options) or `new VrpcProvider(url)`
+  (auto-derive).
+- viem: `vrpcHttp(url, { chainId, … })` (explicit) or `vrpcHttp(url)`
+  (auto-derive).
 
-**Why it is required.** The chain id is bound into the signed canonical
-pre-image:
+**Why it is bound.** The chain id is bound into the signed canonical pre-image:
 
 ```
 chain_id (8B LE) ‖ sha256(request_body) (32B) ‖ sha256(response_body) (32B) ‖ timestamp_ms (8B LE)
@@ -84,9 +90,24 @@ Both adapters coerce via `BigInt(chainId)` **without** a `number` round-trip, so
 chain ids above `Number.MAX_SAFE_INTEGER` (2^53−1) keep full `u64` precision and
 do not produce false `BadSignature` rejections.
 
+**Why pass it explicitly (recommended).** When `chainId` is omitted, each adapter
+lazily derives it via **one `eth_chainId` bootstrap** on first use (memoized so
+concurrent first calls share a single fetch). That bootstrap is intentionally
+**unverified** — but it is **fail-closed-safe**: chainId is a *binding parameter*,
+not a trust anchor (trust rests on the signer pubkey), so a lying bootstrap can
+only ever cause a `BadSignature` DoS, never a silent-accept. Passing `chainId`
+explicitly is **strongly recommended** because it:
+
+- removes the unverified bootstrap round-trip,
+- pins the binding deterministically, and
+- turns a chain misconfig into an immediate fail-closed `BadSignature` rather
+  than deferring it to the first verified read.
+
 > ethers note: passing the chain id also pins the network (`staticNetwork`), so
-> the provider skips the `eth_chainId` round-trip on first use. This only skips
-> the round-trip; it does **not** weaken the signature binding.
+> the provider issues **zero** `eth_chainId` round-trips. This only skips the
+> round-trip; it does **not** weaken the signature binding. Omitting it routes
+> the lazy `eth_chainId` bootstrap through `_detectNetwork` / `_send`'s shared
+> resolver instead.
 
 ---
 

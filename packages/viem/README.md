@@ -46,15 +46,21 @@ const client = createPublicClient({
   transport: http("https://your-shark/arbitrum_vrpc"),
 });
 
-// After — same URL + one extra option (chainId), every response now verified:
+// After — same URL, every response now verified. chainId is optional (auto-
+// derived) but strongly recommended:
 import { createPublicClient } from "viem";
 import { vrpcHttp } from "@ankr.com/vrpc-viem";
 
 const client = createPublicClient({
   transport: vrpcHttp("https://your-shark/arbitrum_vrpc", {
-    chainId: 42161, // bound into the signed pre-image
+    chainId: 42161, // bound into the signed pre-image (recommended — pins it)
     headers: { "x-api-key": process.env.SHARK_API_KEY! },
   }),
+});
+
+// Or bare (auto-derives chainId via an unverified-but-fail-closed bootstrap):
+const bareClient = createPublicClient({
+  transport: vrpcHttp("https://your-shark/arbitrum_vrpc"),
 });
 
 // Unchanged action code — the returned value IS proof of verification.
@@ -62,16 +68,22 @@ const balance = await client.getBalance({ address: "0x00000000000000000000000000
 const block = await client.getBlockNumber();
 ```
 
-`chainId` is the only required option — it is bound into the canonical
-pre-image, so a wrong/substituted chain produces a different pre-image and
-fails as `BadSignature`.
+`chainId` is **optional but strongly recommended**. It is bound into the
+canonical pre-image, so a wrong/substituted chain produces a different pre-image
+and fails as `BadSignature`. When omitted, the transport derives it via **one
+`eth_chainId` bootstrap** on the first request, memoized so concurrent first
+calls share a single fetch. That bootstrap is intentionally **unverified** — but
+**fail-closed-safe**: chainId is a *binding parameter*, not a trust anchor
+(trust rests on the signer pubkey), so a lying bootstrap can only cause a
+`BadSignature` DoS, never a silent-accept. Pass `chainId` explicitly to remove
+the round-trip, pin the binding, and catch a chain misconfig immediately.
 
 ---
 
 ## Public API
 
 ```ts
-export function vrpcHttp(url: string, opts: VrpcHttpOptions): Transport<"vrpc-http">;
+export function vrpcHttp(url: string, opts?: VrpcHttpOptions): Transport<"vrpc-http">;
 
 export interface VrpcHttpOptions { /* see table below */ }
 export type VrpcVerification = "strict" | "permissive";
@@ -84,7 +96,7 @@ export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleT
 
 | Option           | Type                                                          | Default                | Notes |
 |------------------|---------------------------------------------------------------|------------------------|-------|
-| `chainId`        | `number \| bigint`                                            | **required**           | Bound into the canonical pre-image. Coerced via `BigInt()` with **no number round-trip** — chain ids may exceed `2^53−1`, so widening through `number` would lose precision and reject intact responses. |
+| `chainId`        | `number \| bigint`                                            | auto-derived           | **Optional but strongly recommended.** Bound into the canonical pre-image. Coerced via `BigInt()` with **no number round-trip** — chain ids may exceed `2^53−1`, so widening through `number` would lose precision and reject intact responses. Omit → derived lazily via one unverified-but-fail-closed-safe `eth_chainId` bootstrap on first request. |
 | `verification`   | `VrpcVerification` (`"strict" \| "permissive"`)               | `"strict"`             | `strict` = fail-closed (a `VerificationError` propagates). `permissive` = catch, log once, pass the parsed body through. Opt-in only. |
 | `replayWindowMs` | `number`                                                      | vrpc-core default (60s)| Forwarded to `verifyResponse`. Omit in production. `0` only works in tests that inject `nowMs`; in production it always rejects on clock skew. |
 | `headers`        | `Record<string, string>`                                      | —                      | Merged into every POST (e.g. `x-api-key`, or the shark `chain_vrpc` route header). `content-type: application/json` is always set by the transport. |

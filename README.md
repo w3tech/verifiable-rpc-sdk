@@ -14,6 +14,8 @@ const client = createPublicClient({ transport: vrpcHttp(url, { chainId }) });
 
 Everything downstream — `getBalance`, `eth_call`, contract reads, `getLogs`, `getBlock`, `estimateGas`, … — works exactly as before, now verified.
 
+> `chainId` is **optional** — omit it (`new VrpcProvider(url)` / `vrpcHttp(url)`) and the SDK auto-derives it via one unverified-but-fail-closed-safe `eth_chainId` bootstrap on first use. Passing it explicitly is **strongly recommended**: it removes the bootstrap round-trip, pins the binding, and turns a chain misconfig into an immediate fail-closed error. See the [ethers](./packages/ethers/README.md) and [viem](./packages/viem/README.md) package docs.
+
 ## Packages
 
 | Package | What it is | Docs |
@@ -29,7 +31,7 @@ bun add @ankr.com/vrpc-ethers ethers      # ethers users
 bun add @ankr.com/vrpc-viem viem          # viem users
 ```
 
-New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line swap, the required `chainId`, and the caveats for both adapters. Runnable examples live in [`examples/`](./examples/) (`08-vrpc-ethers-verified-read.ts`, `09-vrpc-viem-verified-read.ts`).
+New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line swap, the optional (but strongly recommended) `chainId`, and the caveats for both adapters. Runnable examples live in [`examples/`](./examples/) (`08-vrpc-ethers-verified-read.ts`, `09-vrpc-viem-verified-read.ts`).
 
 ## What is verified — and what is not
 

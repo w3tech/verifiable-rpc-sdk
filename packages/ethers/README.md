@@ -9,8 +9,10 @@ verified, fail-closed, with no other code changes.
 ```ts
 // before
 const provider = new ethers.JsonRpcProvider(url);
-// after — one line, one extra argument (the chain id bound into the signature)
+// after — one line. chainId is optional (auto-derived) but strongly recommended:
 const provider = new VrpcProvider(url, chainId);
+// or, bare-url (auto-derives chainId via an unverified-but-fail-closed bootstrap):
+const provider = new VrpcProvider(url);
 ```
 
 Because the override is `JsonRpcApiProvider._send` — the one method every
@@ -84,25 +86,34 @@ try {
 ### `class VrpcProvider extends JsonRpcProvider`
 
 ```ts
-new VrpcProvider(
-  url: string | FetchRequest,
-  chainId: number | bigint,
-  options?: VrpcOptions,
-)
+// chainId optional + three equivalent constructor forms:
+new VrpcProvider(url: string | FetchRequest)
+new VrpcProvider(url: string | FetchRequest, chainId: number | bigint, options?: VrpcOptions)
+new VrpcProvider(url: string | FetchRequest, options?: VrpcOptions) // options may carry chainId
 ```
 
 - **`url`** — node/proxy URL or a `FetchRequest` (use the latter to attach
   `x-api-key` or other headers).
-- **`chainId`** — `number | bigint`, **required**. Bound into the signed
-  pre-image. Coerced with `BigInt()` *without* a `number` round-trip, so chain
-  ids beyond `Number.MAX_SAFE_INTEGER` (2^53−1) bind exactly — no precision loss,
-  no false `BadSignature`. The constructor pins this as a static network
-  (`staticNetwork: true`) so the provider does not fire an `eth_chainId`
-  round-trip before your first call; this only skips the round-trip and does not
-  weaken the signature binding.
+- **`chainId`** — `number | bigint`, **optional but strongly recommended**.
+  Bound into the signed pre-image. Coerced with `BigInt()` *without* a `number`
+  round-trip, so chain ids beyond `Number.MAX_SAFE_INTEGER` (2^53−1) bind exactly
+  — no precision loss, no false `BadSignature`.
+  - **Explicit (recommended)** — `new VrpcProvider(url, chainId)` or
+    `new VrpcProvider(url, { chainId })`. The constructor pins this as a static
+    network (`staticNetwork: true`) so the provider issues **zero** `eth_chainId`
+    round-trips; this only skips the round-trip and does not weaken the signature
+    binding.
+  - **Omitted (auto-derive)** — `new VrpcProvider(url)`. On first use the
+    provider derives the chain id via **one `eth_chainId` bootstrap**, memoized so
+    concurrent first calls share a single fetch. This bootstrap is intentionally
+    **unverified** — but it is **fail-closed-safe**: chainId is a *binding
+    parameter*, not a trust anchor (trust rests on the signer pubkey), so a lying
+    bootstrap can only cause a `BadSignature` DoS, never a silent-accept. Prefer
+    the explicit form to remove the round-trip and catch a chain misconfig
+    immediately.
 
 The constructor is **synchronous** and never performs I/O or verification —
-verification happens per-call inside `_send`.
+verification (and the lazy bootstrap, if any) happens per-call inside `_send`.
 
 ### `interface VrpcOptions extends JsonRpcApiProviderOptions`
 
@@ -112,6 +123,7 @@ passed through to `super(...)` unchanged. The vRPC-specific fields:
 
 | Field            | Type                                  | Default          | Meaning |
 | ---------------- | ------------------------------------- | ---------------- | ------- |
+| `chainId`        | `number \| bigint`                    | auto-derived     | Optional alternative to the positional 2nd arg. Strongly recommended — pins the binding and skips the `eth_chainId` bootstrap. Omit → derived lazily (unverified-but-fail-closed-safe) on first use. |
 | `verification`   | `VrpcVerification` (`"strict" \| "permissive"`) | `"strict"` | `strict` = fail-closed (a `VerificationError` propagates out of `_send`). `permissive` = catch it, fire `logger` once, pass the parsed body through. Opt-in only. |
 | `replayWindowMs` | `number`                              | vrpc-core (60s)  | Freshness window forwarded to `verifyResponse`. Omit in production. Do **not** set `0` outside fixture tests — it always rejects on clock skew. |
 | `logger`         | `(msg: string, err: unknown) => void` | `console.warn`   | Invoked once per downgraded failure in permissive mode (and on a permissive-passthrough JSON parse failure). |
