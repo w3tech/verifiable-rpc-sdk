@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import coreManifest from "../package.json";
 import ethersManifest from "../../ethers/package.json";
 import viemManifest from "../../viem/package.json";
+import coreManifest from "../package.json";
 
 // TEST-01: encode the dependency-isolation invariants (PKG-02/03/04/05) as a
 // checkable test now, while the adapters are stubs. A wrong dependency field

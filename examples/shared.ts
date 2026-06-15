@@ -14,7 +14,7 @@ export const URL = "http://40.160.13.104:15269";
 // 42161n = Arbitrum, matching the live node's SIDECAR_CHAIN_ID="42161".
 export const CHAIN_ID = 42161n;
 export const PINNED_COMPOSE_HASH =
-	"287a19287bb1d6c798e8cc80aacf0e33d7f1c6982ba28c6135bf4aa3e4b1024e";
+  "287a19287bb1d6c798e8cc80aacf0e33d7f1c6982ba28c6135bf4aa3e4b1024e";
 
 // Stage shark-proxy config for the via-shark example (06). Read by NAME only —
 // the VALUES are secrets and must never be printed, logged, or committed.
@@ -26,25 +26,25 @@ export const SHARK_STAGE_TDX_TEST_KEY: string | undefined = Bun.env.SHARK_STAGE_
  * the env var name (safe to print); the value is a secret.
  */
 export function requireEnv(name: string, value: string | undefined): string {
-	assert(
-		typeof value === "string" && value.length > 0,
-		`${name} env var must be set (not printing its value)`,
-	);
-	return value;
+  assert(
+    typeof value === "string" && value.length > 0,
+    `${name} env var must be set (not printing its value)`,
+  );
+  return value;
 }
 
 export function header(title: string): void {
-	const bar = "=".repeat(64);
-	console.log(`\n${bar}\n  ${title}\n${bar}`);
+  const bar = "=".repeat(64);
+  console.log(`\n${bar}\n  ${title}\n${bar}`);
 }
 
 export function kv(label: string, value: unknown): void {
-	console.log(`  ${label.padEnd(38)} ${String(value)}`);
+  console.log(`  ${label.padEnd(38)} ${String(value)}`);
 }
 
 export function assert(cond: unknown, msg: string): asserts cond {
-	if (!cond) {
-		console.error(`\nFAIL — ${msg}`);
-		process.exit(1);
-	}
+  if (!cond) {
+    console.error(`\nFAIL — ${msg}`);
+    process.exit(1);
+  }
 }

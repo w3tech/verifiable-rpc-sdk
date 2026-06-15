@@ -11,22 +11,20 @@
 // and the SDK's verify primitives (buildPreImage + @noble/ed25519 verifyAsync)
 // directly, so we exercise the gzip transport path end to end.
 
+import { buildPreImage } from "@ankr.com/vrpc-core";
 import { verifyAsync } from "@noble/ed25519";
+import { assert, CHAIN_ID, header, kv, URL } from "./shared.ts";
 
-import { buildPreImage } from "../src/index.ts";
-import { CHAIN_ID, URL, assert, header, kv } from "./shared.ts";
-
-const EXPECTED_PUBKEY =
-	"0x27c6308b5bdb7d8ad6d727c9e749947059e59fc2b3b9a47d443ba34838d393ac";
+const EXPECTED_PUBKEY = "0x27c6308b5bdb7d8ad6d727c9e749947059e59fc2b3b9a47d443ba34838d393ac";
 
 /** Convert `0x...` lowercase hex to a Uint8Array. Mirrors src/verifier.ts. */
 function hexToBytes(hex0x: string): Uint8Array {
-	const stripped = hex0x.startsWith("0x") ? hex0x.slice(2) : hex0x;
-	const out = new Uint8Array(stripped.length / 2);
-	for (let i = 0; i < out.length; i++) {
-		out[i] = Number.parseInt(stripped.slice(i * 2, i * 2 + 2), 16);
-	}
-	return out;
+  const stripped = hex0x.startsWith("0x") ? hex0x.slice(2) : hex0x;
+  const out = new Uint8Array(stripped.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = Number.parseInt(stripped.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
 }
 
 header("05 — gzip-transport: signature over content-decoded body (ENC-04)");
@@ -34,18 +32,18 @@ header("05 — gzip-transport: signature over content-decoded body (ENC-04)");
 // Serialize the JSON-RPC envelope ONCE so the bytes we POST are byte-identical
 // to the bytes we hash for the request_hash leg of the pre-image.
 const requestBytes = new TextEncoder().encode(
-	JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }),
+  JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }),
 );
 
 // Fetch with decompression disabled (Bun extension) so we can inspect the RAW
 // wire bytes the proxy put on the socket. Accept-Encoding: gzip asks the
 // sidecar's CompressionLayer to re-encode for this client.
 const resp = await fetch(URL, {
-	method: "POST",
-	headers: { "content-type": "application/json", "accept-encoding": "gzip" },
-	body: requestBytes,
-	// @ts-expect-error Bun-specific: keep raw compressed bytes for the negative control
-	decompress: false,
+  method: "POST",
+  headers: { "content-type": "application/json", "accept-encoding": "gzip" },
+  body: requestBytes,
+  // @ts-expect-error Bun-specific: keep raw compressed bytes for the negative control
+  decompress: false,
 });
 
 assert(resp.status === 200, `HTTP 200 expected, got ${resp.status}`);
@@ -60,10 +58,10 @@ const wireBytes = new Uint8Array(await resp.arrayBuffer());
 kv("wire body length (bytes)", wireBytes.length);
 
 if (isGzip) {
-	assert(
-		wireBytes[0] === 0x1f && wireBytes[1] === 0x8b,
-		"content-encoding: gzip but wire bytes lack the gzip magic (1f 8b)",
-	);
+  assert(
+    wireBytes[0] === 0x1f && wireBytes[1] === 0x8b,
+    "content-encoding: gzip but wire bytes lack the gzip magic (1f 8b)",
+  );
 }
 
 // The DECODED plaintext bytes are what the sidecar signed.
@@ -87,8 +85,8 @@ kv("vRPC-Signature", sigHex);
 kv("vRPC-Timestamp", tsRaw);
 
 assert(
-	pubkeyHex.toLowerCase() === EXPECTED_PUBKEY,
-	`pubkey must equal the attested sidecar key ${EXPECTED_PUBKEY}`,
+  pubkeyHex.toLowerCase() === EXPECTED_PUBKEY,
+  `pubkey must equal the attested sidecar key ${EXPECTED_PUBKEY}`,
 );
 
 const sigBytes = hexToBytes(sigHex);
@@ -105,17 +103,17 @@ assert(okDecoded, "Ed25519 signature MUST verify over the content-decoded body")
 // wire bytes MUST fail — proving the signature covers decoded, not compressed,
 // bytes. On the identity path wire == decoded, so the control is not applicable.
 if (isGzip) {
-	const preImageCompressed = buildPreImage(CHAIN_ID, requestBytes, wireBytes, timestampMs);
-	const okCompressed = await verifyAsync(sigBytes, preImageCompressed, pubkeyBytes);
-	kv("verify over COMPRESSED bytes", okCompressed ? "true" : "false (expected fail)");
-	assert(
-		!okCompressed,
-		"negative control failed: signature verified over COMPRESSED bytes — sidecar is not signing the decoded body",
-	);
+  const preImageCompressed = buildPreImage(CHAIN_ID, requestBytes, wireBytes, timestampMs);
+  const okCompressed = await verifyAsync(sigBytes, preImageCompressed, pubkeyBytes);
+  kv("verify over COMPRESSED bytes", okCompressed ? "true" : "false (expected fail)");
+  assert(
+    !okCompressed,
+    "negative control failed: signature verified over COMPRESSED bytes — sidecar is not signing the decoded body",
+  );
 } else {
-	kv("negative control", "skipped — identity path (wire == decoded)");
+  kv("negative control", "skipped — identity path (wire == decoded)");
 }
 
 console.log(
-	`\nPASS — signature verifies over content-decoded body (${isGzip ? "gzip" : "identity"} path)`,
+  `\nPASS — signature verifies over content-decoded body (${isGzip ? "gzip" : "identity"} path)`,
 );

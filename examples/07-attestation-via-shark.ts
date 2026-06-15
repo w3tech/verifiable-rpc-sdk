@@ -15,19 +15,19 @@
 // printed/logged/committed (only "set" is shown).
 
 import {
-	AttestationNodeNotFoundError,
-	VerifierClient,
-	fetchAttestationViaShark,
-	verifyAttestationCorrelation,
-} from "../src/index.ts";
+  AttestationNodeNotFoundError,
+  fetchAttestationViaShark,
+  VerifierClient,
+  verifyAttestationCorrelation,
+} from "@ankr.com/vrpc-core";
 import {
-	CHAIN_ID,
-	SHARK_STAGE_TDX_TEST_KEY,
-	SHARK_STAGE_URL,
-	assert,
-	header,
-	kv,
-	requireEnv,
+  assert,
+  CHAIN_ID,
+  header,
+  kv,
+  requireEnv,
+  SHARK_STAGE_TDX_TEST_KEY,
+  SHARK_STAGE_URL,
 } from "./shared.ts";
 
 header("07 — full trustless correlation loop via stage shark");
@@ -55,24 +55,24 @@ kv("verification.signatureHex", r.verification.signatureHex);
 kv("verification.pubkeyHex", r.verification.pubkeyHex);
 
 assert(
-	typeof r.result === "string" && r.result.startsWith("0x"),
-	"blockNumber must be 0x-prefixed hex",
+  typeof r.result === "string" && r.result.startsWith("0x"),
+  "blockNumber must be 0x-prefixed hex",
 );
 assert(
-	r.verification.signatureHex.startsWith("0x") && r.verification.signatureHex.length === 130,
-	"signatureHex must be 0x + 128 hex chars",
+  r.verification.signatureHex.startsWith("0x") && r.verification.signatureHex.length === 130,
+  "signatureHex must be 0x + 128 hex chars",
 );
 assert(
-	r.verification.pubkeyHex.startsWith("0x") && r.verification.pubkeyHex.length === 66,
-	"pubkeyHex must be 0x + 64 hex chars",
+  r.verification.pubkeyHex.startsWith("0x") && r.verification.pubkeyHex.length === 66,
+  "pubkeyHex must be 0x + 64 hex chars",
 );
 
 // 2. Capture the serving node id + the pubkey we will correlate against.
 const nodeId = r.nodeId;
 const expectedPubkey = r.verification.pubkeyHex;
 assert(
-	nodeId !== undefined,
-	"stage shark must send vRPC-NodeId — is it running v0.26.21-rc.vrpc.1?",
+  nodeId !== undefined,
+  "stage shark must send vRPC-NodeId — is it running v0.26.21-rc.vrpc.1?",
 );
 kv("vRPC-NodeId", nodeId);
 kv("expected pubkey (vRPC-Pubkey)", expectedPubkey);
@@ -83,11 +83,11 @@ const nonce = crypto.getRandomValues(new Uint8Array(32));
 // 4. Fetch THIS node's attestation THROUGH shark:
 //    GET <sharkUrl>/arbitrum_vrpc/attestation?nonce=<hex>&node_id=<id>
 const attestation = await fetchAttestationViaShark({
-	sharkBase: sharkUrl,
-	chain: "arbitrum",
-	nodeId,
-	nonce,
-	apiKey,
+  sharkBase: sharkUrl,
+  chain: "arbitrum",
+  nodeId,
+  nonce,
+  apiKey,
 });
 kv("attestation fetched via shark", "OK (by node_id)");
 kv("attestation pubkey", attestation.pubkey);
@@ -109,24 +109,24 @@ const bogusNodeId = "vrpc-node-does-not-exist-0000";
 const negNonce = crypto.getRandomValues(new Uint8Array(32));
 let caught: unknown;
 try {
-	await fetchAttestationViaShark({
-		sharkBase: sharkUrl,
-		chain: "arbitrum",
-		nodeId: bogusNodeId,
-		nonce: negNonce,
-		apiKey,
-	});
-	// Must not resolve — the SDK never retries another node.
-	assert(false, "bogus node_id must throw AttestationNodeNotFoundError, not resolve");
+  await fetchAttestationViaShark({
+    sharkBase: sharkUrl,
+    chain: "arbitrum",
+    nodeId: bogusNodeId,
+    nonce: negNonce,
+    apiKey,
+  });
+  // Must not resolve — the SDK never retries another node.
+  assert(false, "bogus node_id must throw AttestationNodeNotFoundError, not resolve");
 } catch (err) {
-	caught = err;
+  caught = err;
 }
 assert(
-	caught instanceof AttestationNodeNotFoundError,
-	`bogus node_id must surface AttestationNodeNotFoundError, got ${(caught as Error)?.name}`,
+  caught instanceof AttestationNodeNotFoundError,
+  `bogus node_id must surface AttestationNodeNotFoundError, got ${(caught as Error)?.name}`,
 );
 kv("bogus node_id → typed 404", "AttestationNodeNotFoundError");
 
 console.log(
-	"\nPASS — trustless loop closes through shark: signed call verified, attestation fetched via shark by node_id, pubkey correlation OK, bogus node_id surfaces typed 404",
+  "\nPASS — trustless loop closes through shark: signed call verified, attestation fetched via shark by node_id, pubkey correlation OK, bogus node_id surfaces typed 404",
 );
