@@ -25,7 +25,7 @@ import { verifyAsync } from "@noble/ed25519";
 import { BadSignature, MalformedHeader, MissingHeader, StaleTimestamp } from "./errors";
 import { buildPreImage, sha256 } from "./preimage";
 
-const DEFAULT_REPLAY_WINDOW_MS = 60_000;
+export const DEFAULT_REPLAY_WINDOW_MS = 60_000;
 
 const SIGNATURE_HEADER = "vRPC-Signature";
 const TIMESTAMP_HEADER = "vRPC-Timestamp";
@@ -89,8 +89,8 @@ export interface VerifiedPair {
  * Returns `null` when absent (matching `Headers.get` semantics).
  */
 function getHeader(headers: ResponseHeaders, name: string): string | null {
-  if (typeof (headers as Headers).get === "function") {
-    return (headers as Headers).get(name);
+  if (headers instanceof Headers) {
+    return headers.get(name);
   }
   const lower = name.toLowerCase();
   for (const [key, value] of Object.entries(headers as Record<string, string>)) {

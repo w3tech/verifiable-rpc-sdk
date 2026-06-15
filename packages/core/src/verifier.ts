@@ -8,9 +8,7 @@
 // `fetchAttestation` is delegated to the standalone helper in `./attestation`.
 
 import { type Attestation, fetchAttestation } from "./attestation";
-import { verifyResponse } from "./verify";
-
-const DEFAULT_REPLAY_WINDOW_MS = 60_000;
+import { DEFAULT_REPLAY_WINDOW_MS, verifyResponse } from "./verify";
 
 export interface VerifierClientOptions {
   /**
