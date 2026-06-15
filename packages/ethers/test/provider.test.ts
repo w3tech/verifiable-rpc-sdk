@@ -138,6 +138,110 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
     expect(await provider.getBlock(99_999_999)).toBeNull();
   });
 
+  // ETHERS-03 — raw-transaction broadcast funnels through the verified `_send`.
+  // `eth_sendRawTransaction` is the broadcast method; driving it via `_send`
+  // (provider.send) proves it is NOT special-cased around verification: the
+  // signed tx-hash result is verified, and a tampered response on the SAME
+  // method path fails closed exactly like a read.
+  const RAW_SIGNED_TX =
+    "0x02f8730182012c8459682f008502540be40082520894aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa880de0b6b3a764000080c001a0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2a04f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6";
+  const TX_HASH = "0x88df020a2f000000000000000000000000000000000000000000000000000088";
+
+  test("ETHERS-03: verified broadcast — eth_sendRawTransaction returns the verified tx hash", async () => {
+    const provider = new VrpcProvider(
+      signingRequest(jsonResult(1, TX_HASH)),
+      CHAIN_ID_NUMBER,
+      WIDE_WINDOW,
+    );
+    const hash = await provider.send("eth_sendRawTransaction", [RAW_SIGNED_TX]);
+    expect(hash).toBe(TX_HASH);
+  });
+
+  test("ETHERS-03: unsigned broadcast response → MissingHeader (broadcast is NOT exempt from verification)", async () => {
+    const provider = new VrpcProvider(
+      signingRequest(jsonResult(1, TX_HASH), { unsigned: true }),
+      CHAIN_ID_NUMBER,
+      WIDE_WINDOW,
+    );
+    await expect(provider.send("eth_sendRawTransaction", [RAW_SIGNED_TX])).rejects.toBeInstanceOf(
+      MissingHeader,
+    );
+  });
+
+  test("ETHERS-03: tampered broadcast response → BadSignature, fail-closed", async () => {
+    const provider = new VrpcProvider(
+      signingRequest(jsonResult(1, TX_HASH), { tamper: true }),
+      CHAIN_ID_NUMBER,
+      WIDE_WINDOW,
+    );
+    await expect(provider.send("eth_sendRawTransaction", [RAW_SIGNED_TX])).rejects.toBeInstanceOf(
+      BadSignature,
+    );
+  });
+
+  // ETHERS-04 — HTTP event-polling RPC calls funnel through the verified `_send`.
+  // ethers' poll loop issues `eth_getLogs` (event filters) and
+  // `eth_getFilterChanges` (filter subscriptions) via the same `_send`
+  // chokepoint. Proving the underlying RPC verifies (and rejects unsigned) is
+  // exactly what ETHERS-04 requires — no need to spin the polling timer.
+  const LOG_ENTRY = {
+    address: "0x3333333333333333333333333333333333333333",
+    topics: ["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"],
+    data: "0x0000000000000000000000000000000000000000000000000de0b6b3a7640000",
+    blockNumber: "0x10d4f",
+    transactionHash: TX_HASH,
+    transactionIndex: "0x0",
+    blockHash: "0x4444444444444444444444444444444444444444444444444444444444444444",
+    logIndex: "0x0",
+    removed: false,
+  };
+
+  test("ETHERS-04: verified eth_getLogs — polling/event funnels through verified _send", async () => {
+    const provider = new VrpcProvider(
+      signingRequest(jsonResult(1, [LOG_ENTRY])),
+      CHAIN_ID_NUMBER,
+      WIDE_WINDOW,
+    );
+    const logs = await provider.getLogs({ address: LOG_ENTRY.address, fromBlock: 0x10d4f });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].transactionHash).toBe(TX_HASH);
+  });
+
+  test("ETHERS-04: unsigned eth_getLogs response → MissingHeader (poll path is NOT exempt)", async () => {
+    const provider = new VrpcProvider(
+      signingRequest(jsonResult(1, [LOG_ENTRY]), { unsigned: true }),
+      CHAIN_ID_NUMBER,
+      WIDE_WINDOW,
+    );
+    await expect(
+      provider.getLogs({ address: LOG_ENTRY.address, fromBlock: 0x10d4f }),
+    ).rejects.toBeInstanceOf(MissingHeader);
+  });
+
+  test("ETHERS-04: verified eth_getFilterChanges — filter-subscription poll funnels through verified _send", async () => {
+    const provider = new VrpcProvider(
+      signingRequest(jsonResult(1, [LOG_ENTRY])),
+      CHAIN_ID_NUMBER,
+      WIDE_WINDOW,
+    );
+    // The filter-poll RPC ethers fires on each tick. Driving it via `_send`
+    // proves the poll-loop's RPC is verified before the parsed changes surface.
+    const changes = await provider.send("eth_getFilterChanges", ["0x1"]);
+    expect(changes).toHaveLength(1);
+    expect((changes as Array<{ transactionHash: string }>)[0].transactionHash).toBe(TX_HASH);
+  });
+
+  test("ETHERS-04: tampered eth_getFilterChanges response → BadSignature, fail-closed", async () => {
+    const provider = new VrpcProvider(
+      signingRequest(jsonResult(1, [LOG_ENTRY]), { tamper: true }),
+      CHAIN_ID_NUMBER,
+      WIDE_WINDOW,
+    );
+    await expect(provider.send("eth_getFilterChanges", ["0x1"])).rejects.toBeInstanceOf(
+      BadSignature,
+    );
+  });
+
   test("batch: verified once over the array body, results correlate by id", async () => {
     // Disable static-network round-trips and force batching by issuing two
     // concurrent calls. The request-aware responder reads the actual array
