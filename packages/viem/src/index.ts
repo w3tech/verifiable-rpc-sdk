@@ -1,11 +1,20 @@
-// @ankr.com/vrpc-viem — viem adapter (STUB).
+// @ankr.com/vrpc-viem — viem verifiable adapter (Phase 31).
 //
-// The vrpcHttp transport (a viem custom transport that hands raw request +
-// raw response bytes to vrpc-core's verify seam) lands in Phase 31. This phase
-// ships only the package skeleton + dependency-isolation manifest: viem is a
-// peerDependency (consumer-supplied, single instance), and all verification
-// logic is reused from @ankr.com/vrpc-core — never copied.
-//
-// Re-export the verification-error base from core so the workspace link is real
-// and the stub is buildable without importing viem.
-export { VerificationError } from "@ankr.com/vrpc-core";
+// `vrpcHttp` is a viem custom transport whose `request` hands raw request + raw
+// (content-decoded) response bytes to vrpc-core's verify seam before any value
+// reaches the client. viem is a peerDependency (consumer-supplied, single
+// instance); ALL verification logic is reused from @ankr.com/vrpc-core — never
+// copied (no ethers import here, manifest isolation).
+
+// Re-export the shared vrpc-core error family — the EXACT SAME set the ethers
+// adapter re-exports — so a caller cannot tell the two adapters apart by error
+// shape (VIEM-02). `instanceof`-checks work without importing core directly.
+export {
+  BadSignature,
+  MalformedHeader,
+  MissingHeader,
+  StaleTimestamp,
+  VerificationError,
+} from "@ankr.com/vrpc-core";
+export type { VrpcHttpOptions, VrpcVerification } from "./options";
+export { vrpcHttp } from "./transport";
