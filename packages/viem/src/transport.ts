@@ -10,6 +10,15 @@
 // parsed body through. A signed JSON-RPC `{error}` body surfaces as viem's own
 // `RpcRequestError` (NOT a VerificationError) so `buildRequest` maps it by code.
 //
+// HTTP-status parity (MD-01): mirrors the ethers `_send` override's
+// `response.assertOk()` (provider.ts:87). An UNSIGNED non-2xx response (a bare
+// gateway 502 / timeout error page with no `vRPC-*` headers) is a transport
+// failure and throws viem's `HttpRequestError` BEFORE verify — so it reads as a
+// network error, not a `MissingHeader` that looks like a verify attack. This
+// does NOT weaken fail-closed: a SIGNED non-2xx body still flows into
+// `verifyResponse` (its signed `{error}` surfaces as an ordinary RpcError), and
+// an UNSIGNED 2xx body still reaches verify and fails closed with `MissingHeader`.
+//
 // Batching is OFF by default for v1: every action issues a single non-batched
 // `{ id: 1 }` request that is verified as one unit (consistent with ETHERS-05 —
 // VIEM-03). Batched-as-one-unit verification is a deferred opt-in.
@@ -23,7 +32,7 @@
 // as `.cause`.
 
 import { VerificationError, verifyResponse } from "@ankr.com/vrpc-core";
-import { createTransport, RpcRequestError, type Transport } from "viem";
+import { createTransport, HttpRequestError, RpcRequestError, type Transport } from "viem";
 
 import type { VrpcHttpOptions } from "./options";
 
@@ -48,8 +57,12 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions): Transport<"vrpc-ht
   const fetchFn = opts.fetchFn ?? fetch;
   const logger = opts.logger ?? defaultLogger;
 
-  return ({ timeout }) =>
-    createTransport(
+  return ({ timeout: injectedTimeout }) => {
+    // Resolve the effective timeout the viem-`http()` way: explicit option, then
+    // the client-injected value, then viem's 10s default. Applied to the own
+    // fetch as an AbortSignal below. (LO-03)
+    const timeout = opts.timeout ?? injectedTimeout ?? 10_000;
+    return createTransport(
       {
         key: "vrpc-http",
         name: "vRPC HTTP JSON-RPC",
@@ -67,6 +80,11 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions): Transport<"vrpc-ht
             method: "POST",
             headers: { "content-type": "application/json", ...opts.headers },
             body,
+            // Apply the transport `timeout` to the actual HTTP request (parity
+            // with viem `http()`, which aborts on timeout). A consumer-provided
+            // `fetchFn` wrapper still forwards this signal to the underlying
+            // fetch. (LO-03)
+            ...(timeout ? { signal: AbortSignal.timeout(timeout) } : {}),
           });
 
           // RAW, content-decoded bytes exactly as signed. `res.text()` decodes
@@ -75,6 +93,24 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions): Transport<"vrpc-ht
           const rawText = await res.text();
           const rawResponseBytes = new TextEncoder().encode(rawText);
 
+          // HTTP-status parity with ethers `response.assertOk()` (provider.ts:87):
+          // a non-2xx response that is NOT vRPC-signed is a transport-level
+          // failure (gateway timeout / 502 / 4xx) and must surface as a network
+          // error, NOT as a `MissingHeader` that looks like a verify attack. This
+          // does NOT weaken fail-closed: a SIGNED non-2xx body still flows into
+          // `verifyResponse` below (its signed `{error}` surfaces as an ordinary
+          // RpcRequestError), and an unsigned 2xx body still reaches verify and
+          // fails closed with `MissingHeader`. (MD-01)
+          if (!res.ok && !res.headers.get("vRPC-Signature")) {
+            throw new HttpRequestError({
+              body: { method, params },
+              status: res.status,
+              headers: res.headers,
+              url,
+            });
+          }
+
+          let downgraded = false;
           try {
             // Pass the fetch `Headers` object DIRECTLY — verifyResponse reads it
             // case-insensitively; lowercasing into a Record would risk smuggling.
@@ -84,6 +120,10 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions): Transport<"vrpc-ht
             });
           } catch (err) {
             if (err instanceof VerificationError && verification === "permissive") {
+              // Mark the verify as actually DOWNGRADED so the parse-failure log
+              // below fires only on a genuinely-downgraded body, not on every
+              // invalid signed body. (LO-01, parity with ethers `downgraded`.)
+              downgraded = true;
               logger("verification failed (permissive mode, passing through)", err);
             } else {
               // strict fail-closed + any non-VerificationError always propagates.
@@ -91,9 +131,29 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions): Transport<"vrpc-ht
             }
           }
 
-          // Parse ONLY after verification.
-          const parsed = JSON.parse(rawText);
-          if (parsed.error) {
+          // Parse ONLY after verification. In permissive mode a body that failed
+          // verification may also be invalid JSON (truncated / HTML error page);
+          // surface that parse failure through the same logger so the permissive
+          // consumer sees one coherent diagnostic rather than an opaque
+          // SyntaxError. The error still propagates (fail-closed; no unverified
+          // data is returned silently). (MD-02, parity with ethers LO-03.)
+          // `JSON.parse` returns `any` so `parsed.result` flows back through the
+          // viem `EIP1193RequestFn` return without a cast (parity with viem's own
+          // `http` transport, which returns the parsed value untyped).
+          // biome-ignore lint/suspicious/noExplicitAny: viem request returns untyped.
+          let parsed: any;
+          try {
+            parsed = JSON.parse(rawText);
+          } catch (err) {
+            if (downgraded) {
+              logger("permissive passthrough: response body is not valid JSON", err);
+            }
+            throw err;
+          }
+          // `"error" in parsed` (not a truthy check): a signed JSON-RPC error
+          // body is identified by the PRESENCE of the `error` key, matching
+          // JSON-RPC semantics. (LO-02)
+          if (parsed != null && "error" in parsed) {
             // Same class viem's http transport throws — buildRequest maps it by
             // code and `instanceof VerificationError === false`.
             throw new RpcRequestError({ body: { method, params }, error: parsed.error, url });
@@ -103,4 +163,5 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions): Transport<"vrpc-ht
       },
       { url },
     );
+  };
 }

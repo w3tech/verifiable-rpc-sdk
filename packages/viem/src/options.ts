@@ -59,4 +59,11 @@ export interface VrpcHttpOptions {
    * pass a routing fetch wrapper.
    */
   fetchFn?: (url: string, init: RequestInit) => Promise<Response>;
+  /**
+   * Per-request HTTP timeout (ms) applied to the own `fetch` as an
+   * `AbortSignal.timeout`. Mirrors viem `http()` resolution
+   * (`config.timeout ?? 10_000`): when omitted, the client-injected timeout is
+   * used, falling back to 10s. (LO-03)
+   */
+  timeout?: number;
 }
