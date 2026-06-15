@@ -1,6 +1,6 @@
 # Ankr Verifiable RPC SDK
 
-**Verifiable RPC (vrpc)** returns cryptographically signed responses — each carrying proof that it came from an approved, unmodified blockchain node (running inside an Intel TDX hardware enclave) and was not falsified. This SDK is the verifier — you make ordinary RPC calls and it checks that proof on every response for you.
+**Verifiable RPC (vrpc)** returns cryptographically signed responses — each carrying proof that it came from an approved, unmodified blockchain node (running inside an Intel TDX hardware enclave) and was not falsified. This SDK connects to the vrpc API and verifies that proof on every response for you.
 
 Embedding it is a one-line change: replace your ethers or viem client with the vrpc drop-in, and every call keeps working unchanged — now verified **fail-closed** over the exact node-signed bytes before you ever see the data.
 
