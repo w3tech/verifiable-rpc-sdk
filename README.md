@@ -14,7 +14,7 @@ const client = createPublicClient({ transport: vrpcHttp(url, { chainId }) });
 
 Everything downstream — `getBalance`, `eth_call`, contract reads, `getLogs`, `getBlock`, `estimateGas`, … — works exactly as before, now verified.
 
-> `chainId` is **optional** — omit it (`new VrpcProvider(url)` / `vrpcHttp(url)`) and the SDK auto-derives it via one unverified-but-fail-closed-safe `eth_chainId` bootstrap on first use. Passing it explicitly is **strongly recommended**: it removes the bootstrap round-trip, pins the binding, and turns a chain misconfig into an immediate fail-closed error. See the [ethers](./packages/ethers/README.md) and [viem](./packages/viem/README.md) package docs.
+> `chainId` is **optional** — omit it (`new VrpcProvider(url)` / `vrpcHttp(url)`) and the SDK derives it from a **signed** `eth_chainId` response on first use and **verifies that signature** self-consistently: the response's own `result` IS the chainId, so it only verifies if the node really signed for that chain — the derived chainId is cryptographically attested by the node. A tampered/forged/unsigned `eth_chainId` **fails fast** with a `VerificationError` (no unverified fallback). Passing `chainId` explicitly is still **strongly recommended**: it pins to **your expected chain**, catching a wrong-node / wrong-URL misconfig where you'd otherwise verify genuine data from the *wrong* chain (auto-derive trusts the node's self-reported chain), and it skips the bootstrap round-trip. See the [ethers](./packages/ethers/README.md) and [viem](./packages/viem/README.md) package docs.
 
 ## Packages
 

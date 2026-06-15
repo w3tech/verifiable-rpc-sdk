@@ -91,23 +91,28 @@ chain ids above `Number.MAX_SAFE_INTEGER` (2^53−1) keep full `u64` precision a
 do not produce false `BadSignature` rejections.
 
 **Why pass it explicitly (recommended).** When `chainId` is omitted, each adapter
-lazily derives it via **one `eth_chainId` bootstrap** on first use (memoized so
-concurrent first calls share a single fetch). That bootstrap is intentionally
-**unverified** — but it is **fail-closed-safe**: chainId is a *binding parameter*,
-not a trust anchor (trust rests on the signer pubkey), so a lying bootstrap can
-only ever cause a `BadSignature` DoS, never a silent-accept. Passing `chainId`
-explicitly is **strongly recommended** because it:
+lazily derives it from a **signed `eth_chainId` response** on first use (memoized
+so concurrent first calls share a single fetch) and **verifies that signature
+self-consistently**: the response's own `result` IS the chainId, so the adapter
+verifies the bootstrap with `{ chainId: result }`. The signature is over a
+pre-image binding that chainId, so it only verifies if the node really signed for
+that chain — the derived chainId is **cryptographically attested by the node**. A
+tampered, forged (claims a chain ≠ the one it was signed for), or unsigned
+`eth_chainId` **fails fast** at bootstrap with a `VerificationError`; there is no
+unverified fallback. Passing `chainId` explicitly is still **strongly
+recommended** because it:
 
-- removes the unverified bootstrap round-trip,
-- pins the binding deterministically, and
-- turns a chain misconfig into an immediate fail-closed `BadSignature` rather
-  than deferring it to the first verified read.
+- pins to **your expected chain** — catching a wrong-node / wrong-URL misconfig
+  where you would otherwise verify *genuine* data from the *wrong* chain
+  (auto-derive trusts the node's self-reported chain), and
+- skips the bootstrap round-trip.
 
 > ethers note: passing the chain id also pins the network (`staticNetwork`), so
 > the provider issues **zero** `eth_chainId` round-trips. This only skips the
 > round-trip; it does **not** weaken the signature binding. Omitting it routes
 > the lazy `eth_chainId` bootstrap through `_detectNetwork` / `_send`'s shared
-> resolver instead.
+> resolver instead, where the signed `eth_chainId` response is verified
+> self-consistently before its result is used.
 
 ---
 

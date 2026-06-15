@@ -58,7 +58,7 @@ const client = createPublicClient({
   }),
 });
 
-// Or bare (auto-derives chainId via an unverified-but-fail-closed bootstrap):
+// Or bare (derives chainId from a SIGNED, self-consistently-verified eth_chainId):
 const bareClient = createPublicClient({
   transport: vrpcHttp("https://your-shark/arbitrum_vrpc"),
 });
@@ -70,13 +70,17 @@ const block = await client.getBlockNumber();
 
 `chainId` is **optional but strongly recommended**. It is bound into the
 canonical pre-image, so a wrong/substituted chain produces a different pre-image
-and fails as `BadSignature`. When omitted, the transport derives it via **one
-`eth_chainId` bootstrap** on the first request, memoized so concurrent first
-calls share a single fetch. That bootstrap is intentionally **unverified** — but
-**fail-closed-safe**: chainId is a *binding parameter*, not a trust anchor
-(trust rests on the signer pubkey), so a lying bootstrap can only cause a
-`BadSignature` DoS, never a silent-accept. Pass `chainId` explicitly to remove
-the round-trip, pin the binding, and catch a chain misconfig immediately.
+and fails as `BadSignature`. When omitted, the transport derives it from a
+**signed `eth_chainId` response** on the first request, memoized so concurrent
+first calls share a single fetch, and **verifies that signature
+self-consistently**: the response's own `result` IS the chainId, so it only
+verifies if the node really signed for that chain — the derived chainId is
+**cryptographically attested by the node**. A tampered/forged (claims a chain ≠
+the one it was signed for) / unsigned `eth_chainId` **fails fast** with a
+`VerificationError`; there is no unverified fallback. Pass `chainId` explicitly
+to pin to **your expected chain** — catching a wrong-node / wrong-URL misconfig
+where auto-derive (which trusts the node's self-reported chain) would verify
+*genuine* data from the *wrong* chain — and to skip the bootstrap round-trip.
 
 ---
 
@@ -96,7 +100,7 @@ export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleT
 
 | Option           | Type                                                          | Default                | Notes |
 |------------------|---------------------------------------------------------------|------------------------|-------|
-| `chainId`        | `number \| bigint`                                            | auto-derived           | **Optional but strongly recommended.** Bound into the canonical pre-image. Coerced via `BigInt()` with **no number round-trip** — chain ids may exceed `2^53−1`, so widening through `number` would lose precision and reject intact responses. Omit → derived lazily via one unverified-but-fail-closed-safe `eth_chainId` bootstrap on first request. |
+| `chainId`        | `number \| bigint`                                            | auto-derived           | **Optional but strongly recommended.** Bound into the canonical pre-image. Coerced via `BigInt()` with **no number round-trip** — chain ids may exceed `2^53−1`, so widening through `number` would lose precision and reject intact responses. Omit → derived lazily from a **signed, self-consistently-verified** `eth_chainId` response on first request (tampered/forged/unsigned → fail-fast `VerificationError`, no unverified fallback); pinning explicitly also pins to **your expected chain**. |
 | `verification`   | `VrpcVerification` (`"strict" \| "permissive"`)               | `"strict"`             | `strict` = fail-closed (a `VerificationError` propagates). `permissive` = catch, log once, pass the parsed body through. Opt-in only. |
 | `replayWindowMs` | `number`                                                      | vrpc-core default (60s)| Forwarded to `verifyResponse`. Omit in production. `0` only works in tests that inject `nowMs`; in production it always rejects on clock skew. |
 | `headers`        | `Record<string, string>`                                      | —                      | Merged into every POST (e.g. `x-api-key`, or the shark `chain_vrpc` route header). `content-type: application/json` is always set by the transport. |

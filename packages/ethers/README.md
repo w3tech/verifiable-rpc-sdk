@@ -11,7 +11,7 @@ verified, fail-closed, with no other code changes.
 const provider = new ethers.JsonRpcProvider(url);
 // after — one line. chainId is optional (auto-derived) but strongly recommended:
 const provider = new VrpcProvider(url, chainId);
-// or, bare-url (auto-derives chainId via an unverified-but-fail-closed bootstrap):
+// or, bare-url (derives chainId from a SIGNED, self-consistently-verified eth_chainId):
 const provider = new VrpcProvider(url);
 ```
 
@@ -102,18 +102,22 @@ new VrpcProvider(url: string | FetchRequest, options?: VrpcOptions) // options m
     `new VrpcProvider(url, { chainId })`. The constructor pins this as a static
     network (`staticNetwork: true`) so the provider issues **zero** `eth_chainId`
     round-trips; this only skips the round-trip and does not weaken the signature
-    binding.
+    binding. It also pins to **your expected chain**, catching a wrong-node /
+    wrong-URL misconfig where auto-derive (which trusts the node's self-reported
+    chain) would happily verify *genuine* data from the *wrong* chain.
   - **Omitted (auto-derive)** — `new VrpcProvider(url)`. On first use the
-    provider derives the chain id via **one `eth_chainId` bootstrap**, memoized so
-    concurrent first calls share a single fetch. This bootstrap is intentionally
-    **unverified** — but it is **fail-closed-safe**: chainId is a *binding
-    parameter*, not a trust anchor (trust rests on the signer pubkey), so a lying
-    bootstrap can only cause a `BadSignature` DoS, never a silent-accept. Prefer
-    the explicit form to remove the round-trip and catch a chain misconfig
-    immediately.
+    provider derives the chain id from a **signed `eth_chainId` response**,
+    memoized so concurrent first calls share a single fetch, and **verifies that
+    signature self-consistently**: the response's own `result` IS the chainId, so
+    it only verifies if the node really signed for that chain — the derived
+    chainId is **cryptographically attested by the node**. A tampered/forged
+    (claims a chain ≠ the one it was signed for) / unsigned `eth_chainId` **fails
+    fast** with a `VerificationError`; there is no unverified fallback. Prefer the
+    explicit form to remove the round-trip and to pin your expected chain.
 
 The constructor is **synchronous** and never performs I/O or verification —
-verification (and the lazy bootstrap, if any) happens per-call inside `_send`.
+verification (and the lazy, self-consistently-verified bootstrap, if any) happens
+per-call inside `_send`.
 
 ### `interface VrpcOptions extends JsonRpcApiProviderOptions`
 
@@ -123,7 +127,7 @@ passed through to `super(...)` unchanged. The vRPC-specific fields:
 
 | Field            | Type                                  | Default          | Meaning |
 | ---------------- | ------------------------------------- | ---------------- | ------- |
-| `chainId`        | `number \| bigint`                    | auto-derived     | Optional alternative to the positional 2nd arg. Strongly recommended — pins the binding and skips the `eth_chainId` bootstrap. Omit → derived lazily (unverified-but-fail-closed-safe) on first use. |
+| `chainId`        | `number \| bigint`                    | auto-derived     | Optional alternative to the positional 2nd arg. Strongly recommended — pins to **your expected chain** and skips the `eth_chainId` bootstrap. Omit → derived lazily from a **signed, self-consistently-verified** `eth_chainId` response on first use (tampered/forged/unsigned → fail-fast `VerificationError`, no unverified fallback). |
 | `verification`   | `VrpcVerification` (`"strict" \| "permissive"`) | `"strict"` | `strict` = fail-closed (a `VerificationError` propagates out of `_send`). `permissive` = catch it, fire `logger` once, pass the parsed body through. Opt-in only. |
 | `replayWindowMs` | `number`                              | vrpc-core (60s)  | Freshness window forwarded to `verifyResponse`. Omit in production. Do **not** set `0` outside fixture tests — it always rejects on clock skew. |
 | `logger`         | `(msg: string, err: unknown) => void` | `console.warn`   | Invoked once per downgraded failure in permissive mode (and on a permissive-passthrough JSON parse failure). |
