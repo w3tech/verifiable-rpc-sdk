@@ -242,6 +242,37 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
     );
   });
 
+  // MD-01 — chain ids beyond Number.MAX_SAFE_INTEGER (2^53−1) must survive the
+  // constructor without precision loss. The pre-image binds the full u64 chain
+  // id, so a `number`-widened chainId would diverge from what the sidecar signed
+  // and reject an intact response (false BadSignature). Passing a bigint through
+  // the constructor → #chainId → verify({ chainId }) chain must round-trip the
+  // exact value: sign-and-verify succeeds for the large id, and a one-off
+  // mismatch still throws BadSignature (verification is NOT weakened).
+  const LARGE_CHAIN_ID = (1n << 53n) + 12_345n; // 9_007_199_254_753_337n > 2^53−1
+
+  test("MD-01: large chainId > 2^53−1 round-trips exactly (bigint, no precision loss)", async () => {
+    const provider = new VrpcProvider(
+      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { chainId: LARGE_CHAIN_ID }),
+      LARGE_CHAIN_ID,
+      WIDE_WINDOW,
+    );
+    const balance = await provider.getBalance(ADDR);
+    expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
+  });
+
+  test("MD-01: large chainId mismatch still fails closed (BadSignature, verification not weakened)", async () => {
+    // Signed for LARGE_CHAIN_ID+1, verified against LARGE_CHAIN_ID → mismatch.
+    const provider = new VrpcProvider(
+      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
+        signingChainId: LARGE_CHAIN_ID + 1n,
+      }),
+      LARGE_CHAIN_ID,
+      WIDE_WINDOW,
+    );
+    await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
+  });
+
   test("batch: verified once over the array body, results correlate by id", async () => {
     // Disable static-network round-trips and force batching by issuing two
     // concurrent calls. The request-aware responder reads the actual array

@@ -46,15 +46,22 @@ export class VrpcProvider extends JsonRpcProvider {
   readonly #replayWindowMs: number | undefined;
   readonly #logger: (msg: string, err: unknown) => void;
 
-  constructor(url: string | FetchRequest, chainId: number, options: VrpcOptions = {}) {
+  constructor(url: string | FetchRequest, chainId: number | bigint, options: VrpcOptions = {}) {
     const { verification = "strict", replayWindowMs, logger, ...ethersOpts } = options;
+    // Coerce to bigint WITHOUT a number round-trip: EVM chain ids may exceed
+    // Number.MAX_SAFE_INTEGER (2^53−1) and the pre-image binds the full u64
+    // range, so widening through `number` would lose precision and reject
+    // intact responses (false BadSignature). `Network.from` accepts Numeric
+    // (number | bigint), so passing the bigint is compatible.
+    const chainIdBig = BigInt(chainId);
     // Pin the network so the provider does not fire an eth_chainId round-trip
     // before the first real call — keeps the one-line ergonomics while still
     // binding chainId into the verify pre-image below. `staticNetwork` only
-    // skips the round-trip; it does NOT weaken the signature binding.
-    super(url, Network.from(chainId), { staticNetwork: true, ...ethersOpts });
+    // skips the round-trip; it does NOT weaken the signature binding. Spread
+    // ethersOpts FIRST so staticNetwork can never be overridden away (LO-01).
+    super(url, Network.from(chainIdBig), { ...ethersOpts, staticNetwork: true });
 
-    this.#chainId = BigInt(chainId);
+    this.#chainId = chainIdBig;
     this.#verification = verification;
     this.#replayWindowMs = replayWindowMs;
     this.#logger = logger ?? defaultLogger;
