@@ -21,6 +21,16 @@ export type VrpcVerification = "strict" | "permissive";
  * `polling`) is honored unchanged.
  */
 export interface VrpcOptions extends JsonRpcApiProviderOptions {
+  /**
+   * EVM-style chain id bound into the canonical pre-image. OPTIONAL: when
+   * omitted (and not supplied positionally) the provider lazily derives it via
+   * one UNVERIFIED `eth_chainId` bootstrap on first use. Passing it explicitly
+   * is STRONGLY RECOMMENDED — it removes the bootstrap round-trip, pins the
+   * binding, and turns a chain misconfig into an immediate fail-closed
+   * `BadSignature`. Coerced with `BigInt()` WITHOUT a number round-trip, so
+   * chain ids beyond `Number.MAX_SAFE_INTEGER` (2^53−1) bind exactly.
+   */
+  chainId?: number | bigint;
   /** Verification policy. Defaults to `"strict"` (fail-closed). */
   verification?: VrpcVerification;
   /**

@@ -32,39 +32,132 @@ const defaultLogger = (msg: string, err: unknown): void => {
   console.warn(`[vrpc-ethers] ${msg}`, err);
 };
 
+/** Narrow a 2nd constructor arg to a chainId Numeric (vs. an options object). */
+function isChainIdArg(value: unknown): value is number | bigint {
+  return typeof value === "number" || typeof value === "bigint";
+}
+
 /**
  * A `JsonRpcProvider` that Ed25519-verifies every JSON-RPC response over its raw
  * content-decoded bytes before the value reaches the caller.
  *
- * Drop-in: `new VrpcProvider(url, chainId)` substitutes for
- * `new JsonRpcProvider(url)` with one extra argument (the chain id bound into
- * the signed pre-image).
+ * Drop-in: `new VrpcProvider(url)` substitutes for `new JsonRpcProvider(url)`.
+ * The chain id bound into the signed pre-image is OPTIONAL — omit it and the
+ * provider lazily derives it via one UNVERIFIED `eth_chainId` bootstrap on first
+ * use (fail-closed-safe: a lying bootstrap can only cause a `BadSignature` DoS,
+ * never silent-accept). Passing it explicitly — `new VrpcProvider(url, chainId)`
+ * — is STRONGLY RECOMMENDED: it skips the bootstrap round-trip, pins the
+ * binding, and turns a chain misconfig into an immediate fail-closed error.
  */
 export class VrpcProvider extends JsonRpcProvider {
-  readonly #chainId: bigint;
+  // Mutable: undefined until resolved (lazy derive) or set synchronously (pin).
+  #chainId: bigint | undefined;
+  // Memoized in-flight bootstrap so N concurrent first calls share ONE fetch.
+  #chainIdPromise: Promise<bigint> | null = null;
   readonly #verification: VrpcVerification;
   readonly #replayWindowMs: number | undefined;
   readonly #logger: (msg: string, err: unknown) => void;
 
-  constructor(url: string | FetchRequest, chainId: number | bigint, options: VrpcOptions = {}) {
-    const { verification = "strict", replayWindowMs, logger, ...ethersOpts } = options;
+  constructor(url: string | FetchRequest, chainId: number | bigint, options?: VrpcOptions);
+  constructor(url: string | FetchRequest, options?: VrpcOptions);
+  constructor(
+    url: string | FetchRequest,
+    chainIdOrOptions?: number | bigint | VrpcOptions,
+    maybeOptions: VrpcOptions = {},
+  ) {
+    // Normalize the overloads: a Numeric 2nd arg is the explicit chainId pin;
+    // anything else is the options object (which MAY carry `chainId`).
+    let options: VrpcOptions;
+    let explicitChainId: number | bigint | undefined;
+    if (isChainIdArg(chainIdOrOptions)) {
+      explicitChainId = chainIdOrOptions;
+      options = maybeOptions;
+    } else {
+      options = chainIdOrOptions ?? {};
+      explicitChainId = options.chainId;
+    }
+
+    const {
+      verification = "strict",
+      replayWindowMs,
+      logger,
+      chainId: _drop,
+      ...ethersOpts
+    } = options;
+
     // Coerce to bigint WITHOUT a number round-trip: EVM chain ids may exceed
     // Number.MAX_SAFE_INTEGER (2^53−1) and the pre-image binds the full u64
     // range, so widening through `number` would lose precision and reject
     // intact responses (false BadSignature). `Network.from` accepts Numeric
     // (number | bigint), so passing the bigint is compatible.
-    const chainIdBig = BigInt(chainId);
-    // Pin the network so the provider does not fire an eth_chainId round-trip
-    // before the first real call — keeps the one-line ergonomics while still
-    // binding chainId into the verify pre-image below. `staticNetwork` only
-    // skips the round-trip; it does NOT weaken the signature binding. Spread
-    // ethersOpts FIRST so staticNetwork can never be overridden away (LO-01).
-    super(url, Network.from(chainIdBig), { ...ethersOpts, staticNetwork: true });
+    const chainIdBig = explicitChainId != null ? BigInt(explicitChainId) : undefined;
 
-    this.#chainId = chainIdBig;
+    if (chainIdBig != null) {
+      // Explicit-pin path (unchanged behavior): pin the network so the provider
+      // does not fire an eth_chainId round-trip before the first real call —
+      // _detectNetwork early-returns and #resolveChainId NEVER runs (ZERO
+      // bootstrap fetch). `staticNetwork` only skips the round-trip; it does NOT
+      // weaken the signature binding. Spread ethersOpts FIRST so staticNetwork
+      // can never be overridden away (LO-01).
+      super(url, Network.from(chainIdBig), { ...ethersOpts, staticNetwork: true });
+      this.#chainId = chainIdBig;
+    } else {
+      // Auto-derive path: no network pin, no staticNetwork. The chain id is
+      // lazily resolved by #resolveChainId on first verifying _send (and
+      // _detectNetwork is overridden to feed the same resolver), so ethers never
+      // runs its own eth_chainId through the verifying _send.
+      super(url, undefined, ethersOpts);
+      this.#chainId = undefined;
+    }
+
     this.#verification = verification;
     this.#replayWindowMs = replayWindowMs;
     this.#logger = logger ?? defaultLogger;
+  }
+
+  /**
+   * Lazily derive the chain id via ONE unverified `eth_chainId` bootstrap. The
+   * promise is assigned synchronously BEFORE awaiting so N concurrent first
+   * calls share a single in-flight fetch (memoization). The bootstrap does its
+   * OWN request via `_getConnection()` (a fresh `FetchRequest`) — NOT the
+   * verifying `_send` — and its result is used ONLY to set the chainId constant;
+   * it is NEVER returned to the caller or fed to `verifyResponse`. This is
+   * intentionally UNVERIFIED: chainId is a binding parameter, not a trust
+   * anchor, so a lying bootstrap can only cause a fail-closed `BadSignature`
+   * DoS, never silent-accept.
+   */
+  #resolveChainId(): Promise<bigint> {
+    if (this.#chainId != null) {
+      return Promise.resolve(this.#chainId);
+    }
+    if (this.#chainIdPromise != null) {
+      return this.#chainIdPromise;
+    }
+    this.#chainIdPromise = (async () => {
+      const request = this._getConnection();
+      request.body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] });
+      request.setHeader("content-type", "application/json");
+      const response = await request.send();
+      response.assertOk();
+      const parsed = JSON.parse(toUtf8String(response.body ?? new Uint8Array())) as {
+        result?: string;
+      };
+      // BigInt() directly off the hex string — no number round-trip (a chain id
+      // may exceed 2^53−1 and must bind the full u64 into the pre-image).
+      const cid = BigInt(parsed.result as string);
+      this.#chainId = cid;
+      return cid;
+    })();
+    return this.#chainIdPromise;
+  }
+
+  /**
+   * Override so ethers never builds its own `eth_chainId` payload through the
+   * verifying `_send`. Both this and the `_send` choke point feed the ONE
+   * memoized resolver (#resolveChainId), so detection and verification agree.
+   */
+  override async _detectNetwork(): Promise<Network> {
+    return Network.from(await this.#resolveChainId());
   }
 
   /**
@@ -74,6 +167,10 @@ export class VrpcProvider extends JsonRpcProvider {
   override async _send(
     payload: JsonRpcPayload | Array<JsonRpcPayload>,
   ): Promise<Array<JsonRpcResult>> {
+    // Single choke point: resolve the chain id (cheap memoized read after the
+    // first derive, or the synchronously-set pin) BEFORE building the pre-image.
+    const chainId = this.#chainId ?? (await this.#resolveChainId());
+
     // Serialize ONCE: the same bytes are POSTed and fed to verify, so the
     // pre-image reconstruction matches what the sidecar signed.
     const requestBody = JSON.stringify(payload);
@@ -93,7 +190,7 @@ export class VrpcProvider extends JsonRpcProvider {
     let downgraded = false;
     try {
       await verifyResponse(requestBytes, rawResponseBytes, response.headers, {
-        chainId: this.#chainId,
+        chainId,
         ...(this.#replayWindowMs != null ? { replayWindowMs: this.#replayWindowMs } : {}),
       });
     } catch (err) {

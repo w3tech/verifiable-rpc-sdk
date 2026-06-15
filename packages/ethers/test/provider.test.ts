@@ -24,6 +24,55 @@ import { Contract, FetchRequest, Interface, toBeHex } from "ethers";
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
 import { signingRequest } from "./helpers";
 
+/**
+ * Build a `FetchRequest` whose `getUrlFunc`:
+ *  - answers an UNVERIFIED `eth_chainId` bootstrap with a plain (unsigned)
+ *    `{result}` carrying `bootstrapChainId` (default CHAIN_ID), and
+ *  - answers every OTHER method with `responseBody`, SIGNED over the exact bytes
+ *    posted, bound to `signingChainId` (default CHAIN_ID).
+ *
+ * `bootstrapHits` counts the bootstrap fetches (memoization / zero-bootstrap
+ * assertions). Used by the auto-derive scenarios: the chainId the adapter binds
+ * comes from the (untrusted) bootstrap, while the real response is signed for a
+ * possibly-different chain — so a lying bootstrap fails closed.
+ */
+function autoDeriveRequest(
+  responseBody: string,
+  opts: {
+    bootstrapChainId?: bigint;
+    signingChainId?: bigint;
+    bootstrapHits?: { n: number };
+  } = {},
+): FetchRequest {
+  const bootstrapChainId = opts.bootstrapChainId ?? CHAIN_ID;
+  const req = new FetchRequest("http://test.invalid");
+  const responseBytes = new TextEncoder().encode(responseBody);
+  req.getUrlFunc = async (sentReq) => {
+    const requestBytes = sentReq.body ?? new Uint8Array();
+    const payload = JSON.parse(new TextDecoder().decode(requestBytes)) as { method?: string };
+    if (payload.method === "eth_chainId") {
+      if (opts.bootstrapHits) {
+        opts.bootstrapHits.n += 1;
+      }
+      // UNSIGNED bootstrap: no vRPC-* headers — it must never flow to verify.
+      const body = new TextEncoder().encode(
+        JSON.stringify({ jsonrpc: "2.0", id: 1, result: `0x${bootstrapChainId.toString(16)}` }),
+      );
+      return {
+        statusCode: 200,
+        statusMessage: "OK",
+        headers: { "content-type": "application/json" },
+        body,
+      };
+    }
+    const headers = await signResponseBytes(requestBytes, responseBytes, {
+      ...(opts.signingChainId !== undefined ? { signingChainId: opts.signingChainId } : {}),
+    });
+    return { statusCode: 200, statusMessage: "OK", headers, body: responseBytes };
+  };
+  return req;
+}
+
 const CHAIN_ID_NUMBER = Number(CHAIN_ID); // 42161 (arbitrum)
 const ADDR = "0x1111111111111111111111111111111111111111";
 // Wide window neutralizes the static FIXTURE_TIMESTAMP_MS staleness; production
@@ -306,5 +355,71 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
     ]);
     expect(blockNumber).toBe(0x10d4f);
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
+  });
+
+  // CHAINID-OPTIONAL — chainId is now optional; the bare-url form auto-derives
+  // it via one UNVERIFIED eth_chainId bootstrap, memoized so concurrent first
+  // calls share a single fetch, and a lying bootstrap can only fail closed.
+
+  test("bare-url auto-derive: NO chainId → bootstrap derives it, then a verified read succeeds", async () => {
+    const provider = new VrpcProvider(
+      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX)),
+      WIDE_WINDOW,
+    );
+    const balance = await provider.getBalance(ADDR);
+    expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
+  });
+
+  test("auto-derive memoization: N concurrent first calls fire exactly ONE eth_chainId bootstrap", async () => {
+    const bootstrapHits = { n: 0 };
+    const provider = new VrpcProvider(
+      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
+      { ...WIDE_WINDOW, batchMaxCount: 1 },
+    );
+    await Promise.all([
+      provider.getBalance(ADDR),
+      provider.getBalance(ADDR),
+      provider.getBalance(ADDR),
+      provider.getBalance(ADDR),
+    ]);
+    expect(bootstrapHits.n).toBe(1);
+  });
+
+  test("auto-derive SOUNDNESS: a lying bootstrap (wrong chainId) → BadSignature, fail-closed (never accepted)", async () => {
+    // Bootstrap reports chain 1 (mainnet), but the real response is signed for
+    // arbitrum (CHAIN_ID): the adapter binds the lied chainId into the
+    // pre-image → mismatch → BadSignature. The unverified bootstrap can NEVER
+    // cause a silent-accept; the worst it does is a fail-closed DoS.
+    const provider = new VrpcProvider(
+      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
+        bootstrapChainId: 1n,
+        signingChainId: CHAIN_ID,
+      }),
+      WIDE_WINDOW,
+    );
+    await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
+  });
+
+  test("explicit-pin → ZERO bootstrap fetch (eth_chainId is never issued)", async () => {
+    const bootstrapHits = { n: 0 };
+    const provider = new VrpcProvider(
+      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
+      CHAIN_ID_NUMBER,
+      WIDE_WINDOW,
+    );
+    const balance = await provider.getBalance(ADDR);
+    expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
+    expect(bootstrapHits.n).toBe(0);
+  });
+
+  test("options-only overload: chainId carried in the options object pins (zero bootstrap)", async () => {
+    const bootstrapHits = { n: 0 };
+    const provider = new VrpcProvider(
+      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
+      { chainId: CHAIN_ID, ...WIDE_WINDOW },
+    );
+    const balance = await provider.getBalance(ADDR);
+    expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
+    expect(bootstrapHits.n).toBe(0);
   });
 });
