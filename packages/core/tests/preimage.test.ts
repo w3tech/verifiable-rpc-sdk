@@ -122,6 +122,29 @@ describe("preimage", () => {
     ]);
   });
 
+  /**
+   * MED-01: `u64LE` must FAIL LOUD on out-of-u64 inputs instead of silently
+   * wrapping mod 2^64. Otherwise the chainId binding would only hold
+   * "mod 2^64": `u64LE(C)` and `u64LE(C + 2^64)` would be byte-identical and
+   * the stored chainId could diverge from the bytes actually bound.
+   */
+  test("u64LeRejectsOutOfRange", () => {
+    // 2^64 (first value past the max) → throws.
+    expect(() => u64LE(1n << 64n)).toThrow(RangeError);
+    // negative → throws (no two's-complement wrap).
+    expect(() => u64LE(-1n)).toThrow(RangeError);
+    // 2^64 - 1 (max valid) → encodes fine, all 0xff.
+    expect(Array.from(u64LE((1n << 64n) - 1n))).toEqual([
+      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    ]);
+    // a normal EVM chain id (arbitrum = 42161) → bytes unchanged.
+    expect(Array.from(u64LE(42161n))).toEqual([0xb1, 0xa4, 0, 0, 0, 0, 0, 0]);
+    // out-of-range chainId propagates through the pre-image builder too.
+    expect(() => buildPreImage(1n << 64n, new Uint8Array([1]), new Uint8Array([2]), 0n)).toThrow(
+      RangeError,
+    );
+  });
+
   test("buildPreImageFromHashesRejectsNon32ByteHashes", () => {
     expect(() => buildPreImageFromHashes(1n, new Uint8Array(31), new Uint8Array(32), 0n)).toThrow(
       RangeError,
