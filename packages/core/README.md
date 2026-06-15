@@ -1,0 +1,306 @@
+# @ankr.com/vrpc-core
+
+Transport-agnostic Ed25519 verification primitives for Ankr's verifiable RPC.
+
+This is the verification **engine** — the layer both the ethers and viem
+adapters build on. It owns the canonical 80-byte pre-image, the Ed25519
+signature check, the replay window, the attestation fetch/correlation helpers,
+and the typed `VerificationError` family. It has **no blockchain-client
+dependency** — the only runtime deps are `@noble/ed25519` and `@noble/hashes`.
+Pairs with the `verifiable-rpc-sidecar` `v0.2.0` wire contract.
+
+Use this package directly when you verify responses captured outside a normal
+ethers/viem call path (an off-chain pipeline, a log archive, an audit script),
+or when you are building your own adapter. If you just want verified contract
+reads, use `@ankr.com/vrpc-ethers` or `@ankr.com/vrpc-viem` instead — they wrap
+this engine behind a drop-in provider/transport.
+
+---
+
+## Install
+
+Packages in this repo are **private / unpublished** while the API stabilises.
+For now this is a workspace package — depend on it locally:
+
+```jsonc
+// package.json
+{
+  "dependencies": {
+    "@ankr.com/vrpc-core": "workspace:*"
+  }
+}
+```
+
+Intended public name once published: `@ankr.com/vrpc-core`.
+
+Runtime requires a global `fetch`, `crypto.getRandomValues`, `TextEncoder`,
+and `BigUint64` `DataView` support (Node 18+, Bun, modern browsers).
+
+---
+
+## What gets verified (trust boundary)
+
+For each HTTP JSON-RPC response, the engine enforces — fail-closed — that the
+response is:
+
+- **Signed** — `vRPC-Signature` is a valid Ed25519 signature, and
+- **Untampered** — it verifies over the canonical 80-byte pre-image
+  `chain_id ‖ sha256(request_body) ‖ sha256(response_body) ‖ timestamp_ms`, so
+  any mutation of request or response body fails as `BadSignature`, and
+- **Fresh** — `vRPC-Timestamp` is inside the replay window (default 60s); a
+  replayed old response is rejected as `StaleTimestamp`, and
+- **Correctly bound** — against the **chain id you pinned** (a wrong/substituted
+  chain binds a different pre-image → `BadSignature`) and the **signing key** in
+  the response header. `verifyAttestationCorrelation` / `anchorTrust`
+  additionally correlate that key against the serving node's attestation pubkey.
+
+**Not** verified here (honest gap): full TDX remote attestation is **not**
+performed — the engine fetches and *parses* the TDX quote but does not verify it
+against the Intel PCK root, and a forged quote would pass at this boundary
+(deferred). The compose-hash registry anchor (`RegistryComposeSource`) is not
+implemented. WebSocket push and ENS off-chain reads are outside the signed HTTP
+path and unverified. In short: **verifiable = signed + untampered + fresh +
+bound against a pinned key**, not full quote attestation.
+
+---
+
+## Quick usage
+
+### Verify a request/response pair yourself
+
+`verifyResponse` is the transport-agnostic seam: hand it the
+**content-decoded** request bytes, the response bytes, and the response headers,
+and it does header parse → 80-byte pre-image rebuild → Ed25519 verify → replay
+check. It knows nothing about `fetch`, JSON-RPC envelopes, or `accept-encoding`.
+
+```ts
+import { verifyResponse, VerificationError } from "@ankr.com/vrpc-core";
+
+// You captured these bytes + headers however you like (your own fetch, a log).
+const requestBytes = new TextEncoder().encode(
+  JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }),
+);
+const responseBytes = /* Uint8Array of the exact response body bytes */;
+const responseHeaders = resp.headers; // Headers | Record<string, string>
+
+try {
+  const pair = await verifyResponse(requestBytes, responseBytes, responseHeaders, {
+    chainId: 1n, // MUST match the chain id the sidecar signs with
+  });
+  // pair.responseBytes — verified bytes, exactly as signed
+  // pair.nodeId        — serving node id (vRPC-NodeId), if present
+  // pair.verification  — { signatureHex, pubkeyHex, timestampMs, preImageSha256 }
+} catch (err) {
+  if (err instanceof VerificationError) {
+    console.error(err.kind, err.message); // typed, fail-closed
+  }
+  throw err;
+}
+```
+
+### Call + verify in one shot
+
+`VerifierClient` wraps `fetch`: it builds the JSON-RPC envelope, POSTs, reads
+the raw body, then delegates the verify half to `verifyResponse` (one verify
+path, shared with the adapters).
+
+```ts
+import { VerifierClient } from "@ankr.com/vrpc-core";
+
+const client = new VerifierClient("https://rpc.ankr.com/eth_vrpc", {
+  chainId: 1n,
+  apiKey: process.env.ANKR_API_KEY,
+});
+
+const { result, verification, nodeId } = await client.call<string>("eth_blockNumber", []);
+// `result` is only reachable if the signature verified — throws otherwise.
+```
+
+---
+
+## Public API
+
+### `verifyResponse(requestBytes, rawResponseBytes, responseHeaders, opts)`
+
+```ts
+function verifyResponse(
+  requestBytes: Uint8Array,
+  rawResponseBytes: Uint8Array,
+  responseHeaders: ResponseHeaders,      // Headers | Record<string, string>
+  opts: VerifyResponseOptions,
+): Promise<VerifiedPair>;
+```
+
+Steps performed: (4) header parse — missing `vRPC-Signature` / `vRPC-Pubkey` /
+`vRPC-Timestamp` → `MissingHeader`; (5) shape validate → `MalformedHeader`;
+(6) rebuild the canonical 80-byte pre-image via `buildPreImage`; (7) hex →
+bytes; (8) Ed25519 `verifyAsync` → `BadSignature` on failure (tampered bytes or
+wrong `chainId`); (9) replay-window check, run **after** signature verify →
+`StaleTimestamp`. Header lookup is case-insensitive over both `Headers` and
+plain records. `vRPC-NodeId` is optional (older proxies omit it).
+
+**`VerifyResponseOptions`**
+
+| Option           | Type      | Default            | Notes                                                         |
+| ---------------- | --------- | ------------------ | ------------------------------------------------------------- |
+| `chainId`        | `bigint`  | — (required)       | Bound into the pre-image (8 bytes LE). Mismatch → `BadSignature`. |
+| `replayWindowMs` | `number`  | `60_000`           | Allowed clock skew. `0` requires an exact-ms match (tests only). |
+| `nowMs`          | `bigint`  | `BigInt(Date.now())` | Injected wall clock for deterministic tests.                |
+
+**`VerifiedPair`** → `{ responseBytes, nodeId?, verification }` where
+`verification = { signatureHex, pubkeyHex, timestampMs, preImageSha256 }`.
+`DEFAULT_REPLAY_WINDOW_MS` (`60_000`) is also exported from `./verify`.
+
+### `class VerifierClient`
+
+```ts
+new VerifierClient(url: string, opts: VerifierClientOptions);
+client.call<T>(method: string, params: unknown[]): Promise<VerifiedResponse<T>>;
+client.fetchAttestation(nonce: Uint8Array): Promise<Attestation>;
+```
+
+The constructor throws `TypeError` synchronously if `url` does not start with
+`http://` or `https://` (fail-fast config error, never from a call site). An
+auto-incrementing JSON-RPC `id` is maintained per instance.
+
+**`VerifierClientOptions`**
+
+| Option           | Type                       | Default              | Notes                                                                 |
+| ---------------- | -------------------------- | -------------------- | --------------------------------------------------------------------- |
+| `chainId`        | `bigint`                   | — (required)         | Bound into the pre-image. Mismatch → `BadSignature`.                  |
+| `replayWindowMs` | `number`                   | `60_000`             | Forwarded to `verifyResponse`.                                        |
+| `headers`        | `Record<string, string>`  | `{}`                 | Merged into the POST. Pinned wire headers (`content-type`, `accept-encoding: identity`) always win. |
+| `apiKey`         | `string`                   | —                    | Convenience `x-api-key`; an explicit `headers["x-api-key"]` wins.     |
+| `fetch`          | `typeof fetch`             | `globalThis.fetch`   | Override for tests against a mock sidecar.                            |
+
+**`VerifiedResponse<T>`** → `{ result: T, nodeId?, raw: { request, response }, verification }`.
+`call()` pins `accept-encoding: identity` as defense-in-depth (since sidecar
+`v0.2.0` signs the content-decoded body, correctness no longer depends on it).
+
+### Pre-image and compose-hash
+
+```ts
+buildPreImage(chainId: bigint, requestBody: Uint8Array, responseBody: Uint8Array, timestampMs: bigint): Uint8Array; // 80 bytes
+computeComposeHash(appCompose: string): string; // sha256(utf8(appCompose)) as bare lowercase hex
+```
+
+**`ComposeSource`** (Layer A — "is the measured code the code I expect?"):
+
+- `InfoEndpointComposeSource(url, { fetch? })` — pulls `app_compose` from the
+  node's own `GET /info` (`tcb_info.app_compose`). **DEV-ONLY, self-reported,
+  NOT a trust anchor** — a malicious node returns a compose matching its forged
+  quote. Constructor throws `TypeError` on a non-`http(s)` URL; malformed `/info`
+  body throws `MalformedInfoResponse`.
+- `RegistryComposeSource({ source, ref?, expectedComposeHash?, fetch? })` — the
+  *intended* real anchor (external, node-independent registry). **Not yet
+  implemented** (DEC-03); both methods reject with `ComposeSourceNotImplemented`.
+
+Both implement `ComposeSource` = `{ getAppCompose(): Promise<string>;
+getComposeHash(): Promise<string> }`.
+
+### Attestation (unsigned route)
+
+```ts
+fetchAttestation(url: string, nonce: Uint8Array): Promise<Attestation>;
+fetchAttestationViaShark(opts: FetchAttestationViaSharkOptions): Promise<Attestation>;
+verifyAttestationCorrelation(attestation: Attestation, verifiedResponse: VerifiedResponse): void;
+```
+
+`fetchAttestation` calls `GET <url>/attestation?nonce=<bare-hex>`;
+`fetchAttestationViaShark` calls `GET <sharkBase>/<chain>_vrpc/attestation?nonce=<hex>&node_id=<id>`
+(404 → `AttestationNodeNotFoundError`, terminal — no retry/fallback). The nonce
+must be exactly 32 bytes or `InvalidNonce` is thrown **before** any network
+call. This route is unsigned by contract — no `vRPC-*` verification runs, and a
+malformed body throws `MalformedAttestationResponse`.
+`verifyAttestationCorrelation` asserts `attestation.pubkey ===
+verifiedResponse.verification.pubkeyHex`, throwing `AttestationCorrelationError`
+on mismatch.
+
+`Attestation` = `{ quote: GetQuoteResponse, pubkey, composeHash }`;
+`GetQuoteResponse` = `{ quote, event_log, report_data, vm_config }` (bare-hex
+fields; some empty under the dstack simulator).
+
+### `anchorTrust(opts)` — boot-time correlation
+
+```ts
+anchorTrust(opts: AnchorTrustOptions): Promise<AnchorTrustResult>;
+```
+
+Adapter-neutral, **opt-in**: `await` it once at startup after constructing your
+provider/client. It orchestrates existing primitives (no copied crypto): one
+signed `eth_blockNumber` through `VerifierClient` (the successful return *is* the
+Ed25519 verification), then `fetchAttestationViaShark` for the serving node, then
+`verifyAttestationCorrelation`. **Fail-closed**: throws a `VerificationError`
+member on any failure — `MissingHeader("vRPC-NodeId")` when the proxy omits the
+node id, `AttestationNodeNotFoundError` on a stale id,
+`AttestationCorrelationError` on pubkey mismatch.
+
+**`AnchorTrustOptions`**: `sharkBase`, `chain`, `chainId` (`number | bigint`,
+coerced via `BigInt()` without a `number` round-trip), `apiKey?`, `headers?`,
+`fetch?`, `nonceSource?` (defaults to `crypto.getRandomValues`). Returns
+**`AnchorTrustResult`** = `{ nodeId, pubkey }`.
+
+---
+
+## Errors
+
+Every verification failure throws a subclass of the abstract `VerificationError`
+(extends `Error`). Narrow with `instanceof` or the `kind` discriminator.
+
+| Class                          | `kind`                          | Thrown when                                                       |
+| ------------------------------ | ------------------------------- | ----------------------------------------------------------------- |
+| `MissingHeader`                | `"MissingHeader"`               | A required `vRPC-*` header is absent. `.headerName`               |
+| `MalformedHeader`              | `"MalformedHeader"`             | Header present but fails shape validation. `.headerName/.value/.reason` |
+| `BadSignature`                 | `"BadSignature"`                | Ed25519 verify failed (tampered bytes or wrong chainId). `.signatureHex/.pubkeyHex/.preImageSha256` |
+| `StaleTimestamp`               | `"StaleTimestamp"`              | Valid signature but timestamp outside replay window. `.observedMs/.nowMs/.skewMs/.allowedWindowMs` |
+| `InvalidNonce`                 | `"InvalidNonce"`                | Attestation nonce not exactly 32 bytes. `.reason`                |
+| `MalformedAttestationResponse` | `"MalformedAttestationResponse"`| `/attestation` body off-contract. `.reason`                      |
+| `MalformedInfoResponse`        | `"MalformedInfoResponse"`       | `/info` body off-contract. `.reason`                             |
+| `ComposeSourceNotImplemented`  | `"ComposeSourceNotImplemented"` | `RegistryComposeSource` used before DEC-03 lands. `.reason`      |
+| `AttestationNodeNotFoundError` | `"AttestationNodeNotFound"`     | Shark returned 404 for the targeted `node_id`. `.nodeId`         |
+| `AttestationCorrelationError`  | `"AttestationCorrelation"`      | Attestation pubkey ≠ response signer. `.expectedPubkey/.actualPubkey` |
+
+```ts
+import { VerificationError, BadSignature } from "@ankr.com/vrpc-core";
+
+try {
+  await client.call("eth_getBalance", [addr, "latest"]);
+} catch (err) {
+  if (err instanceof BadSignature) {
+    // err.signatureHex / err.pubkeyHex / err.preImageSha256 — safe to log (all public)
+  } else if (err instanceof VerificationError && err.kind === "StaleTimestamp") {
+    // clock skew or replay
+  }
+}
+```
+
+The error context fields (`signatureHex`, `pubkeyHex`, pre-image digest) are all
+public values (emitted in headers / bound into the attestation), so logging them
+to Sentry etc. is safe. The adapters re-use this exact family — a `BadSignature`
+from the ethers provider is the same class you catch here.
+
+---
+
+## Caveats
+
+- **Byte-exact pre-image.** `buildPreImage` mirrors the sidecar's
+  `build_pre_image` byte-for-byte (`chain_id` LE / `sha256(request)` /
+  `sha256(response)` / `timestamp_ms` LE = 80 bytes). Any drift makes intact
+  responses fail as `BadSignature`. Pinned by `tests/preimage.test.ts`.
+- **`chainId` is load-bearing.** A wrong/substituted chain id binds a different
+  pre-image and surfaces as `BadSignature` even on a genuine response.
+- **Bytes must be content-decoded.** `verifyResponse` hashes whatever bytes you
+  give it — feed it the decoded body, not gzip wire bytes, matching what the
+  sidecar signs (`v0.2.0` signs the content-decoded body).
+- **Replay window is a clock contract.** Large client/server skew → `StaleTimestamp`.
+- **No JSON-RPC re-implementation.** `VerifierClient.call` assumes a 2.0 result
+  shape and does not handle batching, retries, or error envelopes — that's the
+  consumer's job.
+
+---
+
+## Example
+
+See `examples/04-end-to-end.ts` (full call + verify + attestation) and
+`examples/07-attestation-via-shark.ts` (the `anchorTrust` flow) at the repo root.
+Run with `bun run example:04-end-to-end` / `bun run example:07-attestation-via-shark`.
