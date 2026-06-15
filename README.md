@@ -9,6 +9,32 @@ Two ways to use it:
 
 ---
 
+## What is verified / What is NOT verified
+
+Read this before you rely on the signature for anything. The trust boundary this SDK enforces today is **narrower** than full remote attestation, and being honest about the gap is a hard requirement — overclaiming would give you false confidence.
+
+### What IS verified
+
+For every **HTTP JSON-RPC** response that reaches your code (`getBalance`, `call`, `getBlock`, `getLogs`, batch results — everything that funnels through the adapter's single HTTP chokepoint), the SDK enforces, fail-closed, that the response is:
+
+- **Signed** — the `vRPC-Signature` is a valid Ed25519 signature, and
+- **Untampered** — it verifies over the canonical 80-byte pre-image `chain_id ‖ sha256(request_body) ‖ sha256(response_body) ‖ timestamp_ms`, so any mutation of the request OR the response body (in transit, by the proxy, anywhere) fails as `BadSignature`, and
+- **Fresh** — the `vRPC-Timestamp` is inside the replay window (default 60s), so a captured-and-replayed old response is rejected as `StaleTimestamp`, and
+- **Correctly bound** — against the **chain id you pinned** (a wrong/substituted chain binds a different pre-image → `BadSignature`) and against the **signing key** that produced the signature. In the recommended shark-only flow you additionally correlate that signing key against the serving node's attestation pubkey (`anchorTrust` / `verifyAttestationCorrelation`), and against the **pinned compose-hash** when you supply one.
+
+A response that fails any of these never reaches your application code in the default `strict` mode — the typed `VerificationError` is thrown instead.
+
+### What is NOT verified
+
+- **Full TDX remote attestation is NOT performed.** The SDK fetches and *parses* the TDX quote (`Attestation.quote.quote` is the raw TD report + PCK cert chain) but it does **not** cryptographically verify that quote against the **Intel PCK root**, nor decode/check MRTD / RTMR / TCB level. **A forged quote would pass at this boundary** (a forged TDX quote is not detected) — the SDK does not yet prove the quote chains to an Intel root. Full quote verification is **deferred to the next milestone**.
+- **The composeHash registry anchor is NOT delivered.** Going from a quote's `composeHash` to "this is the exact image/code I trust" needs an **independent, pinned/signed registry** the node cannot forge (`RegistryComposeSource`). That registry does not exist yet (`RegistryComposeSource` throws `ComposeSourceNotImplemented`; `InfoEndpointComposeSource` is dev-only and self-reported — NOT a trust anchor). Also **deferred to the next milestone** (C4 / DEC-03).
+- **WebSocket push streams are NOT verified.** `eth_subscribe` / WS push bypasses the HTTP signing chokepoint — the sidecar signs HTTP responses only. WS is unverified; use HTTP for anything you need a signature on.
+- **ENS off-chain reads are NOT verified.** ENS CCIP-Read, avatar, and IPFS resolution fetch data from **off-chain gateways** outside the signed RPC path. Those bytes are unverified even when the on-chain RPC legs around them are signed.
+
+In short: **verifiable here means signed + untampered + fresh + correctly bound, replay-checked — NOT full TDX quote attestation.** Treat the signature as proof that *a key you correlated* produced *exactly these bytes* — not yet as proof of *which enclave image* holds that key. That last step is the deferred registry/attestation work.
+
+---
+
 ## Install
 
 ```bash
