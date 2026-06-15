@@ -31,7 +31,7 @@
 // `err.walk(e => e instanceof VerificationError)` since buildRequest preserves it
 // as `.cause`.
 
-import { VerificationError, verifyResponse } from "@ankr.com/vrpc-core";
+import { MalformedHeader, VerificationError, verifyResponse } from "@ankr.com/vrpc-core";
 import { createTransport, HttpRequestError, RpcRequestError, type Transport } from "viem";
 
 import type { VrpcHttpOptions } from "./options";
@@ -113,10 +113,33 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
         // decoded body, so encode that exact text for the verify pre-image.
         const rawText = await res.text();
         const rawResponseBytes = new TextEncoder().encode(rawText);
+        // A forged/truncated bootstrap body can be invalid JSON (raw
+        // SyntaxError) or carry a missing/non-hex `result` (raw TypeError from
+        // BigInt). Both throw BEFORE verifyResponse, so they would bypass the
+        // typed-error wrapper and surface as opaque programmer errors. Coerce
+        // them to a VerificationError (MalformedHeader) so a malformed bootstrap
+        // reads as a verify failure, consistent with the fail-fast contract.
+        // (LOW-01/LOW-02)
+        let parsed: { result?: string };
+        try {
+          parsed = JSON.parse(rawText) as { result?: string };
+        } catch (_err) {
+          throw new MalformedHeader(
+            "eth_chainId.result",
+            rawText,
+            "auto-derived chainId could not be parsed (pass `chainId` explicitly): bootstrap body is not valid JSON",
+          );
+        }
+        if (typeof parsed.result !== "string" || !/^0x[0-9a-fA-F]+$/.test(parsed.result)) {
+          throw new MalformedHeader(
+            "eth_chainId.result",
+            String(parsed.result),
+            "auto-derived chainId could not be parsed (pass `chainId` explicitly): expected 0x-hex chain id",
+          );
+        }
         // BigInt() directly off the hex string — no number round-trip (a chain
         // id may exceed 2^53−1 and must bind the full u64 into the pre-image).
-        const parsed = JSON.parse(rawText) as { result?: string };
-        const cid = BigInt(parsed.result as string);
+        const cid = BigInt(parsed.result);
         // Self-consistent verification: verify the eth_chainId response using
         // its OWN claimed result as the chainId binding. It only verifies if the
         // node signed for exactly C — a tampered/forged/unsigned bootstrap fails

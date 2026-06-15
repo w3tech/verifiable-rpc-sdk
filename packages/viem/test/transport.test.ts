@@ -18,7 +18,13 @@ import { describe, expect, test } from "bun:test";
 // Same family identity the ethers adapter re-exports — proves a caller cannot
 // tell the two adapters apart by error shape (cross-adapter parity).
 import { VerificationError as CoreVerificationError } from "@ankr.com/vrpc-core";
-import { BadSignature, MissingHeader, VerificationError, vrpcHttp } from "@ankr.com/vrpc-viem";
+import {
+  BadSignature,
+  MalformedHeader,
+  MissingHeader,
+  VerificationError,
+  vrpcHttp,
+} from "@ankr.com/vrpc-viem";
 import { createPublicClient, encodeFunctionResult, HttpRequestError, parseAbi } from "viem";
 
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
@@ -120,6 +126,10 @@ function autoDeriveFetch(
     bootstrapSigningChainId?: bigint;
     bootstrapUnsigned?: boolean;
     bootstrapTamper?: boolean;
+    // Override the bootstrap body with a raw (possibly malformed) string —
+    // bad JSON, missing `result`, or non-hex `result`. Returned UNSIGNED since
+    // the parse/shape guard must reject it BEFORE verifyResponse runs. (LOW-01/02)
+    bootstrapRawBody?: string;
     signingChainId?: bigint;
     bootstrapHits?: { n: number };
   } = {},
@@ -131,6 +141,14 @@ function autoDeriveFetch(
     if (payload.method === "eth_chainId") {
       if (seam.bootstrapHits) {
         seam.bootstrapHits.n += 1;
+      }
+      if (seam.bootstrapRawBody !== undefined) {
+        // Malformed bootstrap body: must be rejected at parse/shape time with a
+        // typed MalformedHeader BEFORE verifyResponse — no signature needed.
+        return new Response(seam.bootstrapRawBody, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
       }
       const bootstrapBody = JSON.stringify({
         jsonrpc: "2.0",
@@ -542,6 +560,45 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     await expect(
       transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
     ).rejects.toBeInstanceOf(MissingHeader);
+  });
+
+  test("auto-derive FAIL-FAST: a malformed bootstrap body → typed MalformedHeader (not raw SyntaxError/TypeError) AT BOOTSTRAP (LOW-01/02)", async () => {
+    // Invalid JSON → would throw a raw SyntaxError before verify; coerced to a
+    // typed VerificationError so the malformed bootstrap reads as a verify
+    // failure (LOW-02).
+    const badJson = vrpcHttp(URL, {
+      fetchFn: autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), {
+        bootstrapRawBody: "{not valid json",
+      }),
+      replayWindowMs: WIDE_WINDOW,
+    })({} as never);
+    await expect(
+      badJson.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
+    ).rejects.toBeInstanceOf(MalformedHeader);
+
+    // Missing `result` → would throw a raw TypeError from BigInt(undefined);
+    // coerced to MalformedHeader (LOW-01).
+    const missingResult = vrpcHttp(URL, {
+      fetchFn: autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), {
+        bootstrapRawBody: JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32000 } }),
+      }),
+      replayWindowMs: WIDE_WINDOW,
+    })({} as never);
+    await expect(
+      missingResult.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
+    ).rejects.toBeInstanceOf(MalformedHeader);
+
+    // Non-hex `result` → would throw a raw SyntaxError from BigInt("0xZZ");
+    // coerced to MalformedHeader (LOW-01).
+    const nonHex = vrpcHttp(URL, {
+      fetchFn: autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), {
+        bootstrapRawBody: JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0xZZ" }),
+      }),
+      replayWindowMs: WIDE_WINDOW,
+    })({} as never);
+    await expect(
+      nonHex.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
+    ).rejects.toBeInstanceOf(MalformedHeader);
   });
 
   test("explicit-pin → ZERO bootstrap fetch (eth_chainId is never issued)", async () => {
