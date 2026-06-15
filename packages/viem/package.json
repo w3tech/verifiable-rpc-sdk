@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "viem adapter for Ankr's verifiable RPC (stub — vrpcHttp transport lands in Phase 31).",
+  "description": "viem drop-in for Ankr's verifiable RPC — vrpcHttp custom transport verifies every JSON-RPC response (Ed25519) before parse, fail-closed.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
