@@ -28,7 +28,9 @@
     "example:05-gzip-transport": "bun run examples/05-gzip-transport.ts",
     "example:06-via-shark": "bun run examples/06-via-shark.ts",
     "example:07-attestation-via-shark": "bun run examples/07-attestation-via-shark.ts",
-    "example:all": "bun run example:01-signed-call && bun run example:02-batch-and-replay && bun run example:03-fetch-attestation && bun run example:04-end-to-end && bun run example:05-gzip-transport && bun run example:06-via-shark && bun run example:07-attestation-via-shark"
+    "example:08-vrpc-ethers-verified-read": "bun run examples/08-vrpc-ethers-verified-read.ts",
+    "example:09-vrpc-viem-verified-read": "bun run examples/09-vrpc-viem-verified-read.ts",
+    "example:all": "bun run example:01-signed-call && bun run example:02-batch-and-replay && bun run example:03-fetch-attestation && bun run example:04-end-to-end && bun run example:05-gzip-transport && bun run example:06-via-shark && bun run example:07-attestation-via-shark && bun run example:08-vrpc-ethers-verified-read && bun run example:09-vrpc-viem-verified-read"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",
