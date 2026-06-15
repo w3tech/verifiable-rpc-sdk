@@ -102,6 +102,43 @@ export async function signFixture(
   return { requestBytes, responseBytes, headers, timestampMs };
 }
 
+/**
+ * Sign an arbitrary `(requestBytes, responseBytes)` pair with `TEST_SEED` and
+ * return the matching `vRPC-*` headers. Unlike `signFixture` (which signs a
+ * fixed request string), this signs over the EXACT request bytes a transport
+ * actually emitted — used by Plan 30-02's request-aware `getUrlFunc` so a real
+ * ethers `getBalance`/Contract payload (whose key order, id counter and
+ * resolved blockTag are ethers-internal) verifies without the fixture having to
+ * predict those bytes. The wiring under test is `_send` → `verifyResponse`,
+ * not pre-image construction (that is core's TEST-01).
+ */
+export async function signResponseBytes(
+  requestBytes: Uint8Array,
+  responseBytes: Uint8Array,
+  opts: SignFixtureOptions = {},
+): Promise<Record<string, string>> {
+  const chainId = opts.chainId ?? CHAIN_ID;
+  const timestampMs = opts.timestampMs ?? FIXTURE_TIMESTAMP_MS;
+  const preImage = buildPreImage(
+    opts.signingChainId ?? chainId,
+    requestBytes,
+    responseBytes,
+    timestampMs,
+  );
+  const signature = await signAsync(preImage, TEST_SEED);
+  const pubkey = await getPublicKeyAsync(TEST_SEED);
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "vRPC-Signature": `0x${toHex(signature)}`,
+    "vRPC-Timestamp": timestampMs.toString(),
+    "vRPC-Pubkey": `0x${toHex(pubkey)}`,
+  };
+  if (opts.nodeId !== undefined) {
+    headers["vRPC-NodeId"] = opts.nodeId;
+  }
+  return headers;
+}
+
 // ---------------------------------------------------------------------------
 // The five static fixtures. All sign with the single fixed TEST_SEED, so the
 // matching pubkey is deterministic. Synthesized eagerly at module load.

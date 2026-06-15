@@ -6,9 +6,6 @@
 // (consumer-supplied, single instance); ALL verification logic is reused from
 // @ankr.com/vrpc-core — never copied (no viem import here, manifest isolation).
 
-export { VrpcProvider } from "./provider";
-export type { VrpcOptions, VrpcVerification } from "./options";
-
 // Re-export the shared vrpc-core error family so consumers `instanceof`-check
 // without importing core directly. This is the SAME error type the viem adapter
 // (Phase 31) will reuse — one error family across both adapters (VERIFY-03).
@@ -19,3 +16,5 @@ export {
   StaleTimestamp,
   VerificationError,
 } from "@ankr.com/vrpc-core";
+export type { VrpcOptions, VrpcVerification } from "./options";
+export { VrpcProvider } from "./provider";

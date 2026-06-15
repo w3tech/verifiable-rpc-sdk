@@ -15,17 +15,16 @@
 // passes the parsed body through. Any non-VerificationError (e.g. ethers
 // SERVER_ERROR from `assertOk`) always propagates in both modes.
 
+import { VerificationError, verifyResponse } from "@ankr.com/vrpc-core";
 import {
-  FetchRequest,
+  type FetchRequest,
   type JsonRpcPayload,
-  type JsonRpcResult,
   JsonRpcProvider,
+  type JsonRpcResult,
   Network,
   toUtf8Bytes,
   toUtf8String,
 } from "ethers";
-
-import { VerificationError, verifyResponse } from "@ankr.com/vrpc-core";
 
 import type { VrpcOptions, VrpcVerification } from "./options";
 
