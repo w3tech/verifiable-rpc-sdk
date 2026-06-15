@@ -46,12 +46,17 @@ const defaultLogger = (msg: string, err: unknown): void => {
  *
  * Drop-in: `createPublicClient({ transport: vrpcHttp(url) })` substitutes for
  * `http(url)`. The chain id bound into the signed pre-image is OPTIONAL — omit
- * it and the transport lazily derives it via one UNVERIFIED `eth_chainId`
- * bootstrap on the first request (fail-closed-safe). Passing it explicitly —
- * `vrpcHttp(url, { chainId })` — is STRONGLY RECOMMENDED: it skips the bootstrap
- * round-trip and pins the binding. Every read (getBalance, readContract/call,
- * getLogs, getBlock, estimateGas, getTransactionReceipt, sendRawTransaction, …)
- * funnels through the single verifying `request`.
+ * it and the transport lazily derives it from a SIGNED `eth_chainId` response on
+ * the first request, verifying that signature self-consistently (the response's
+ * own `result` IS the chainId, so it only verifies if the node really signed for
+ * that chain). A tampered/forged/unsigned bootstrap fails FAST with a
+ * `VerificationError`; there is no unverified fallback. Passing it explicitly —
+ * `vrpcHttp(url, { chainId })` — is STRONGLY RECOMMENDED: it pins to YOUR
+ * expected chain (catching a wrong-node / wrong-URL misconfig that auto-derive,
+ * which trusts the node's self-reported chain, would not) and skips the
+ * bootstrap round-trip. Every read (getBalance, readContract/call, getLogs,
+ * getBlock, estimateGas, getTransactionReceipt, sendRawTransaction, …) funnels
+ * through the single verifying `request`.
  */
 export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vrpc-http"> {
   const verification = opts.verification ?? "strict";
@@ -71,15 +76,22 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
     const timeout = opts.timeout ?? injectedTimeout ?? 10_000;
 
     /**
-     * Lazily derive the chain id via ONE UNVERIFIED `eth_chainId` bootstrap. The
-     * promise is assigned BEFORE awaiting so N concurrent first `request` calls
-     * share a single in-flight fetch (memoization). It reuses the in-scope
-     * `fetchFn`/`headers`/`timeout` so x-api-key / routing carry over, does NOT
-     * call `verifyResponse` (the bootstrap is intentionally unverified — chainId
-     * is a binding parameter, not a trust anchor), and its result is used ONLY
-     * to set `chainIdResolved`; it is NEVER returned to the caller. A lying
-     * bootstrap can only cause a fail-closed `BadSignature` DoS, never
-     * silent-accept.
+     * Lazily derive the chain id from ONE SELF-CONSISTENTLY VERIFIED
+     * `eth_chainId` response. The promise is assigned BEFORE awaiting so N
+     * concurrent first `request` calls share a single in-flight fetch
+     * (memoization). It reuses the in-scope `fetchFn`/`headers`/`timeout` so
+     * x-api-key / routing carry over, and its result is used ONLY to set
+     * `chainIdResolved`; it is NEVER returned to the caller.
+     *
+     * The `eth_chainId` response is itself a signed vRPC response whose `result`
+     * IS the chainId. We parse `C = BigInt(result)` then call `verifyResponse`
+     * with `{ chainId: C }`: the signature is over a pre-image binding
+     * chainId=C, so it only verifies if the node really signed for C
+     * (self-consistent). On any verify failure (BadSignature / MissingHeader /
+     * tampered / unsigned) the error PROPAGATES (fail-FAST at bootstrap) — we
+     * never set `chainIdResolved` and never fall back to an unverified value. A
+     * lying/forged/tampered bootstrap fails immediately instead of deferring to
+     * a later BadSignature on a real read.
      */
     const resolveChainId = (): Promise<bigint> => {
       if (chainIdResolved != null) {
@@ -90,16 +102,36 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
       }
       chainIdPromise = (async () => {
         const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] });
+        const requestBytes = new TextEncoder().encode(body);
         const res = await fetchFn(url, {
           method: "POST",
           headers: { "content-type": "application/json", ...opts.headers },
           body,
           ...(timeout ? { signal: AbortSignal.timeout(timeout) } : {}),
         });
+        // res.text() decodes gzip/br transparently — the sidecar signs the
+        // decoded body, so encode that exact text for the verify pre-image.
+        const rawText = await res.text();
+        const rawResponseBytes = new TextEncoder().encode(rawText);
         // BigInt() directly off the hex string — no number round-trip (a chain
         // id may exceed 2^53−1 and must bind the full u64 into the pre-image).
-        const parsed = JSON.parse(await res.text()) as { result?: string };
+        const parsed = JSON.parse(rawText) as { result?: string };
         const cid = BigInt(parsed.result as string);
+        // Self-consistent verification: verify the eth_chainId response using
+        // its OWN claimed result as the chainId binding. It only verifies if the
+        // node signed for exactly C — a tampered/forged/unsigned bootstrap fails
+        // FAST here. Fail-closed: do NOT set chainIdResolved, do NOT fall back.
+        try {
+          await verifyResponse(requestBytes, rawResponseBytes, res.headers, {
+            chainId: cid,
+            ...(opts.replayWindowMs != null ? { replayWindowMs: opts.replayWindowMs } : {}),
+          });
+        } catch (err) {
+          if (err instanceof VerificationError) {
+            err.message = `auto-derived chainId could not be verified (pass \`chainId\` explicitly): ${err.message}`;
+          }
+          throw err;
+        }
         chainIdResolved = cid;
         return cid;
       })();
