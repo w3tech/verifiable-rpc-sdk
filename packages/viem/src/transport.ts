@@ -23,7 +23,7 @@
 // as `.cause`.
 
 import { VerificationError, verifyResponse } from "@ankr.com/vrpc-core";
-import { type Transport, createTransport, RpcRequestError } from "viem";
+import { createTransport, RpcRequestError, type Transport } from "viem";
 
 import type { VrpcHttpOptions } from "./options";
 
