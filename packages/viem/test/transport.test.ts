@@ -19,7 +19,7 @@ import { describe, expect, test } from "bun:test";
 // tell the two adapters apart by error shape (cross-adapter parity).
 import { VerificationError as CoreVerificationError } from "@ankr.com/vrpc-core";
 import { BadSignature, MissingHeader, VerificationError, vrpcHttp } from "@ankr.com/vrpc-viem";
-import { createPublicClient, encodeFunctionResult, parseAbi } from "viem";
+import { createPublicClient, encodeFunctionResult, HttpRequestError, parseAbi } from "viem";
 
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
 
@@ -42,6 +42,10 @@ interface SeamOptions {
   counter?: { n: number };
   /** Capture the raw POST body of each call (batch-default assertion). */
   bodies?: string[];
+  /** Override the HTTP status code (e.g. 502) for the MD-01 status check. */
+  status?: number;
+  /** Capture each call's RequestInit (e.g. to assert the timeout signal). */
+  inits?: RequestInit[];
 }
 
 /**
@@ -57,6 +61,9 @@ function signingFetch(
     if (seam.counter) {
       seam.counter.n += 1;
     }
+    if (seam.inits) {
+      seam.inits.push(init);
+    }
     const bodyStr = init.body as string;
     if (seam.bodies) {
       seam.bodies.push(bodyStr);
@@ -66,7 +73,7 @@ function signingFetch(
 
     if (seam.unsigned) {
       return new Response(responseBody, {
-        status: 200,
+        status: seam.status ?? 200,
         headers: { "content-type": "application/json" },
       });
     }
@@ -85,7 +92,7 @@ function signingFetch(
       const flipped = ch === "9" ? "8" : String(Number(ch) + 1);
       outBody = responseBody.slice(0, idx) + flipped + responseBody.slice(idx + 1);
     }
-    return new Response(outBody, { status: 200, headers });
+    return new Response(outBody, { status: seam.status ?? 200, headers });
   };
 }
 
@@ -304,5 +311,94 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     expect(err).toBeInstanceOf(MissingHeader);
     expect(err).toBeInstanceOf(VerificationError);
     expect(err).toBeInstanceOf(CoreVerificationError);
+  });
+
+  // MD-01 — an UNSIGNED non-2xx response (gateway 502 / timeout error page)
+  // surfaces as a transport-level HttpRequestError BEFORE verify, NOT as a
+  // MissingHeader that looks like a verify attack. Parity with the ethers
+  // adapter's `response.assertOk()` → SERVER_ERROR (not a VerificationError).
+  test("MD-01: unsigned non-2xx → HttpRequestError (not MissingHeader), NOT a VerificationError", async () => {
+    const transport = vrpcHttp(URL, {
+      chainId: CHAIN_ID,
+      fetchFn: signingFetch("upstream unavailable", { unsigned: true, status: 502 }),
+      replayWindowMs: WIDE_WINDOW,
+    })({} as never);
+    const err = await transport.config
+      .request({ method: "eth_getBalance", params: [ADDR, "latest"] })
+      .then(
+        () => {
+          throw new Error("expected rejection");
+        },
+        (e) => e,
+      );
+    expect(err).toBeInstanceOf(HttpRequestError);
+    expect(err).not.toBeInstanceOf(VerificationError);
+  });
+
+  // MD-01 — fail-closed is NOT weakened by the status check: a SIGNED non-2xx
+  // body still flows into verifyResponse, and its signed JSON-RPC {error}
+  // surfaces as an ordinary RpcError (NOT an HttpRequestError, NOT a
+  // VerificationError) — the sidecar attested the error response.
+  test("MD-01: signed non-2xx with {error} body still verifies, surfaces as ordinary RpcError", async () => {
+    const transport = vrpcHttp(URL, {
+      chainId: CHAIN_ID,
+      fetchFn: signingFetch(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          error: { code: -32000, message: "execution reverted" },
+        }),
+        { status: 500 },
+      ),
+      replayWindowMs: WIDE_WINDOW,
+    })({} as never);
+    const err = await transport.config
+      .request({ method: "eth_getBalance", params: [ADDR, "latest"] })
+      .then(
+        () => {
+          throw new Error("expected rejection");
+        },
+        (e) => e,
+      );
+    expect(err).not.toBeInstanceOf(HttpRequestError);
+    expect(err).not.toBeInstanceOf(VerificationError);
+  });
+
+  // MD-02 / LO-01 — in permissive mode, a body that failed verify AND is invalid
+  // JSON logs TWICE (the verify-downgrade warning + the parse-failure diagnostic)
+  // and still throws the SyntaxError (fail-closed: no unverified data returned).
+  // Parity with the ethers `downgraded`-gated parse-failure log (LO-03).
+  test("MD-02: permissive + invalid JSON logs the parse failure and still throws", async () => {
+    const msgs: string[] = [];
+    const logger = (msg: string) => {
+      msgs.push(msg);
+    };
+    const transport = vrpcHttp(URL, {
+      chainId: CHAIN_ID,
+      // tamper makes verify fail (→ downgraded in permissive); the body is not
+      // valid JSON so JSON.parse throws after the downgrade.
+      fetchFn: signingFetch("not json <html>5</html>", { tamper: true }),
+      verification: "permissive",
+      logger,
+      replayWindowMs: WIDE_WINDOW,
+    })({} as never);
+    await expect(
+      transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
+    ).rejects.toThrow();
+    expect(msgs).toEqual([
+      "verification failed (permissive mode, passing through)",
+      "permissive passthrough: response body is not valid JSON",
+    ]);
+  });
+
+  // LO-03 — the transport `timeout` is applied to the actual fetch as an
+  // AbortSignal (parity with viem `http()`). createPublicClient injects a
+  // default timeout, so the own-fetch init carries a signal.
+  test("LO-03: transport timeout is applied to the fetch as an AbortSignal", async () => {
+    const inits: RequestInit[] = [];
+    const c = client(signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { inits }));
+    await c.getBalance({ address: ADDR });
+    expect(inits).toHaveLength(1);
+    expect(inits[0]?.signal).toBeInstanceOf(AbortSignal);
   });
 });
