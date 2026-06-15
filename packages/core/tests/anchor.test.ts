@@ -85,7 +85,9 @@ function installSharkMock(scenario: SharkScenario = {}): SharkMockState {
       reqBytes = new Uint8Array(0);
     }
 
-    const signedBody = new TextEncoder().encode(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x12345" }));
+    const signedBody = new TextEncoder().encode(
+      JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x12345" }),
+    );
     const preImage = buildPreImage(CHAIN_ID, reqBytes, signedBody, nowMs);
     const signature = await signAsync(preImage, TEST_SEED);
     const pubkey = await getPublicKeyAsync(TEST_SEED);

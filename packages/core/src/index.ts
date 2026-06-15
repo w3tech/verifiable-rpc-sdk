@@ -10,6 +10,8 @@
 //   - ./preimage    — canonical 80-byte pre-image builder (exported for
 //                     advanced consumers and test infrastructure)
 
+export type { AnchorTrustOptions, AnchorTrustResult } from "./anchor";
+export { anchorTrust } from "./anchor";
 export type {
   Attestation,
   FetchAttestationViaSharkOptions,
