@@ -26,20 +26,25 @@ import { signingRequest } from "./helpers";
 
 /**
  * Build a `FetchRequest` whose `getUrlFunc`:
- *  - answers an UNVERIFIED `eth_chainId` bootstrap with a plain (unsigned)
- *    `{result}` carrying `bootstrapChainId` (default CHAIN_ID), and
+ *  - answers a SIGNED `eth_chainId` bootstrap whose `{result}` carries
+ *    `bootstrapChainId` (default CHAIN_ID), signed over the exact request bytes
+ *    bound to `bootstrapSigningChainId` (default `bootstrapChainId`, i.e. a
+ *    self-consistent bootstrap), then optionally tampered/unsigned, and
  *  - answers every OTHER method with `responseBody`, SIGNED over the exact bytes
  *    posted, bound to `signingChainId` (default CHAIN_ID).
  *
  * `bootstrapHits` counts the bootstrap fetches (memoization / zero-bootstrap
- * assertions). Used by the auto-derive scenarios: the chainId the adapter binds
- * comes from the (untrusted) bootstrap, while the real response is signed for a
- * possibly-different chain — so a lying bootstrap fails closed.
+ * assertions). The bootstrap is now VERIFIED self-consistently: a bootstrap
+ * whose claimed `result` differs from the chain it was signed for, a tampered
+ * bootstrap, or an unsigned bootstrap all fail FAST at `#resolveChainId`.
  */
 function autoDeriveRequest(
   responseBody: string,
   opts: {
     bootstrapChainId?: bigint;
+    bootstrapSigningChainId?: bigint;
+    bootstrapUnsigned?: boolean;
+    bootstrapTamper?: boolean;
     signingChainId?: bigint;
     bootstrapHits?: { n: number };
   } = {},
@@ -54,16 +59,37 @@ function autoDeriveRequest(
       if (opts.bootstrapHits) {
         opts.bootstrapHits.n += 1;
       }
-      // UNSIGNED bootstrap: no vRPC-* headers — it must never flow to verify.
-      const body = new TextEncoder().encode(
-        JSON.stringify({ jsonrpc: "2.0", id: 1, result: `0x${bootstrapChainId.toString(16)}` }),
+      const bootstrapResult = `0x${bootstrapChainId.toString(16)}`;
+      let body = new TextEncoder().encode(
+        JSON.stringify({ jsonrpc: "2.0", id: 1, result: bootstrapResult }),
       );
-      return {
-        statusCode: 200,
-        statusMessage: "OK",
-        headers: { "content-type": "application/json" },
-        body,
-      };
+      if (opts.bootstrapUnsigned) {
+        // UNSIGNED bootstrap → MissingHeader fail-fast at bootstrap.
+        return {
+          statusCode: 200,
+          statusMessage: "OK",
+          headers: { "content-type": "application/json" },
+          body,
+        };
+      }
+      // SIGNED bootstrap: by default signed over the SAME chain it claims
+      // (self-consistent → verifies). `bootstrapSigningChainId` forges a
+      // mismatch (signed for a chain != claimed result) → BadSignature.
+      const headers = await signResponseBytes(requestBytes, body, {
+        signingChainId: opts.bootstrapSigningChainId ?? bootstrapChainId,
+      });
+      if (opts.bootstrapTamper) {
+        // Flip the first ASCII digit AFTER signing → BadSignature (body stays
+        // valid JSON so the parse before verify still succeeds).
+        body = new Uint8Array(body);
+        for (let i = 0; i < body.length; i++) {
+          if (body[i] >= 0x30 && body[i] <= 0x39) {
+            body[i] = body[i] === 0x39 ? 0x30 : body[i] + 1;
+            break;
+          }
+        }
+      }
+      return { statusCode: 200, statusMessage: "OK", headers, body };
     }
     const headers = await signResponseBytes(requestBytes, responseBytes, {
       ...(opts.signingChainId !== undefined ? { signingChainId: opts.signingChainId } : {}),
@@ -358,10 +384,11 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
   });
 
   // CHAINID-OPTIONAL — chainId is now optional; the bare-url form auto-derives
-  // it via one UNVERIFIED eth_chainId bootstrap, memoized so concurrent first
-  // calls share a single fetch, and a lying bootstrap can only fail closed.
+  // it from a SIGNED eth_chainId response, VERIFIED self-consistently (the
+  // response's own result IS the chainId), memoized so concurrent first calls
+  // share a single fetch, and a tampered/forged/unsigned bootstrap fails FAST.
 
-  test("bare-url auto-derive: NO chainId → bootstrap derives it, then a verified read succeeds", async () => {
+  test("bare-url auto-derive: NO chainId → SIGNED bootstrap is verified, then a verified read succeeds", async () => {
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX)),
       WIDE_WINDOW,
@@ -385,19 +412,37 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
     expect(bootstrapHits.n).toBe(1);
   });
 
-  test("auto-derive SOUNDNESS: a lying bootstrap (wrong chainId) → BadSignature, fail-closed (never accepted)", async () => {
-    // Bootstrap reports chain 1 (mainnet), but the real response is signed for
-    // arbitrum (CHAIN_ID): the adapter binds the lied chainId into the
-    // pre-image → mismatch → BadSignature. The unverified bootstrap can NEVER
-    // cause a silent-accept; the worst it does is a fail-closed DoS.
+  test("auto-derive FAIL-FAST: a lying bootstrap (result claims a chain ≠ what it was signed for) → BadSignature AT BOOTSTRAP", async () => {
+    // Bootstrap CLAIMS chain 1 (result=0x1) but is SIGNED for arbitrum
+    // (CHAIN_ID). #resolveChainId parses C=1 and verifies with chainId=1 → the
+    // pre-image binds 1 while the signature is over CHAIN_ID → BadSignature,
+    // thrown at bootstrap (fail-FAST) BEFORE any real read. No silent-accept,
+    // no deferred BadSignature on a later call.
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
         bootstrapChainId: 1n,
+        bootstrapSigningChainId: CHAIN_ID,
         signingChainId: CHAIN_ID,
       }),
       WIDE_WINDOW,
     );
     await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
+  });
+
+  test("auto-derive FAIL-FAST: a tampered bootstrap response → BadSignature AT BOOTSTRAP", async () => {
+    const provider = new VrpcProvider(
+      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapTamper: true }),
+      WIDE_WINDOW,
+    );
+    await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
+  });
+
+  test("auto-derive FAIL-FAST: an UNSIGNED bootstrap response → MissingHeader AT BOOTSTRAP", async () => {
+    const provider = new VrpcProvider(
+      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapUnsigned: true }),
+      WIDE_WINDOW,
+    );
+    await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(MissingHeader);
   });
 
   test("explicit-pin → ZERO bootstrap fetch (eth_chainId is never issued)", async () => {

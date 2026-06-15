@@ -43,11 +43,15 @@ function isChainIdArg(value: unknown): value is number | bigint {
  *
  * Drop-in: `new VrpcProvider(url)` substitutes for `new JsonRpcProvider(url)`.
  * The chain id bound into the signed pre-image is OPTIONAL — omit it and the
- * provider lazily derives it via one UNVERIFIED `eth_chainId` bootstrap on first
- * use (fail-closed-safe: a lying bootstrap can only cause a `BadSignature` DoS,
- * never silent-accept). Passing it explicitly — `new VrpcProvider(url, chainId)`
- * — is STRONGLY RECOMMENDED: it skips the bootstrap round-trip, pins the
- * binding, and turns a chain misconfig into an immediate fail-closed error.
+ * provider lazily derives it from a SIGNED `eth_chainId` response on first use,
+ * verifying that signature self-consistently (the response's own `result` IS
+ * the chainId, so it only verifies if the node really signed for that chain). A
+ * tampered/forged/unsigned bootstrap fails FAST with a `VerificationError`;
+ * there is no unverified fallback. Passing it explicitly — `new
+ * VrpcProvider(url, chainId)` — is STRONGLY RECOMMENDED: it pins to YOUR
+ * expected chain (catching a wrong-node / wrong-URL misconfig that auto-derive,
+ * which trusts the node's self-reported chain, would not) and skips the
+ * bootstrap round-trip.
  */
 export class VrpcProvider extends JsonRpcProvider {
   // Mutable: undefined until resolved (lazy derive) or set synchronously (pin).
@@ -116,15 +120,22 @@ export class VrpcProvider extends JsonRpcProvider {
   }
 
   /**
-   * Lazily derive the chain id via ONE unverified `eth_chainId` bootstrap. The
-   * promise is assigned synchronously BEFORE awaiting so N concurrent first
-   * calls share a single in-flight fetch (memoization). The bootstrap does its
-   * OWN request via `_getConnection()` (a fresh `FetchRequest`) — NOT the
-   * verifying `_send` — and its result is used ONLY to set the chainId constant;
-   * it is NEVER returned to the caller or fed to `verifyResponse`. This is
-   * intentionally UNVERIFIED: chainId is a binding parameter, not a trust
-   * anchor, so a lying bootstrap can only cause a fail-closed `BadSignature`
-   * DoS, never silent-accept.
+   * Lazily derive the chain id via ONE SELF-CONSISTENTLY VERIFIED `eth_chainId`
+   * bootstrap. The promise is assigned synchronously BEFORE awaiting so N
+   * concurrent first calls share a single in-flight fetch (memoization). The
+   * bootstrap does its OWN request via `_getConnection()` (a fresh
+   * `FetchRequest`) — NOT the verifying `_send` — and its result is used ONLY to
+   * set the chainId constant; it is NEVER returned to the caller.
+   *
+   * The `eth_chainId` response is itself a signed vRPC response whose `result`
+   * IS the chainId. We parse `C = BigInt(result)` then call `verifyResponse`
+   * with `{ chainId: C }`: the signature is over a pre-image binding chainId=C,
+   * so it only verifies if the node really signed for C (self-consistent). On
+   * any verify failure (BadSignature / MissingHeader / tampered / unsigned) the
+   * error PROPAGATES (fail-FAST at bootstrap) — we never set the chainId and
+   * never fall back to an unverified value. A lying/forged/tampered bootstrap
+   * fails immediately instead of deferring to a later BadSignature on a real
+   * read.
    */
   #resolveChainId(): Promise<bigint> {
     if (this.#chainId != null) {
@@ -135,16 +146,39 @@ export class VrpcProvider extends JsonRpcProvider {
     }
     this.#chainIdPromise = (async () => {
       const request = this._getConnection();
-      request.body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] });
+      const requestBody = JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_chainId",
+        params: [],
+      });
+      const requestBytes = toUtf8Bytes(requestBody);
+      request.body = requestBody;
       request.setHeader("content-type", "application/json");
       const response = await request.send();
       response.assertOk();
-      const parsed = JSON.parse(toUtf8String(response.body ?? new Uint8Array())) as {
+      const rawResponseBytes = response.body ?? new Uint8Array();
+      const parsed = JSON.parse(toUtf8String(rawResponseBytes)) as {
         result?: string;
       };
       // BigInt() directly off the hex string — no number round-trip (a chain id
       // may exceed 2^53−1 and must bind the full u64 into the pre-image).
       const cid = BigInt(parsed.result as string);
+      // Self-consistent verification: verify the eth_chainId response using its
+      // OWN claimed result as the chainId binding. It only verifies if the node
+      // signed for exactly C — a tampered/forged/unsigned bootstrap fails FAST
+      // here. Fail-closed: do NOT set #chainId, do NOT fall back to unverified.
+      try {
+        await verifyResponse(requestBytes, rawResponseBytes, response.headers, {
+          chainId: cid,
+          ...(this.#replayWindowMs != null ? { replayWindowMs: this.#replayWindowMs } : {}),
+        });
+      } catch (err) {
+        if (err instanceof VerificationError) {
+          err.message = `auto-derived chainId could not be verified (pass \`chainId\` explicitly): ${err.message}`;
+        }
+        throw err;
+      }
       this.#chainId = cid;
       return cid;
     })();
