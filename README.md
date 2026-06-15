@@ -1,10 +1,8 @@
 # Ankr Verifiable RPC SDK
 
-**What is it?** When your app reads blockchain data through an RPC endpoint — Ankr, a public gateway, or any node you don't run yourself — you normally have to *trust* that endpoint. Nothing stops a compromised, malicious, or buggy provider from quietly returning a wrong balance, a fake `eth_call` result, or stale data — and your app has no way to tell.
+**Verifiable RPC (vrpc)** is a drop-in ethers/viem RPC client that cryptographically verifies every JSON-RPC response. The blockchain node runs inside a hardware-secured enclave (Intel TDX TEE) and signs each response; this SDK checks that signature on every call — so you don't have to trust the RPC endpoint to return correct, fresh, untampered data. A tampered, substituted, or replayed response is rejected **fail-closed**.
 
-**Verifiable RPC (vrpc) removes that trust.** The blockchain client runs inside a hardware-secured enclave (Intel TDX TEE) and cryptographically signs every response; this SDK verifies that signature on each call. You get the data **and** proof it really came from the approved client on the chain you asked for — a tampered, substituted, or replayed response is rejected automatically.
-
-It's a **drop-in**: swap one line in your existing ethers or viem setup and every call keeps working unchanged — except now each response carries an Ed25519 signature the SDK verifies over the exact node-signed bytes before you ever see the data, **fail-closed**.
+Swap one line in your existing ethers or viem setup and every call keeps working unchanged — each response now carries an Ed25519 signature the SDK verifies over the exact node-signed bytes before you ever see the data.
 
 ```ts
 // ethers — was:  new ethers.JsonRpcProvider(url)
