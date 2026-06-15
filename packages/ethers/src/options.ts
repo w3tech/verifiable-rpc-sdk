@@ -27,6 +27,11 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
    * Replay window (ms) forwarded to `verifyResponse`. Omitted → vrpc-core
    * default (60s). Tests pass a wide window to neutralize static-fixture
    * staleness.
+   *
+   * Note: `0` (exact-millisecond match) is only usable in tests that inject
+   * `nowMs` into `verifyResponse`. `VrpcProvider` does NOT expose `nowMs`, so
+   * `replayWindowMs: 0` in production will always reject due to clock skew —
+   * do not use it outside fixture tests.
    */
   replayWindowMs?: number;
   /**

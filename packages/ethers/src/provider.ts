@@ -90,6 +90,7 @@ export class VrpcProvider extends JsonRpcProvider {
     // vRPC-* headers → MissingHeader fails closed (no bespoke error class).
     const rawResponseBytes = response.body ?? new Uint8Array();
 
+    let downgraded = false;
     try {
       await verifyResponse(requestBytes, rawResponseBytes, response.headers, {
         chainId: this.#chainId,
@@ -100,6 +101,7 @@ export class VrpcProvider extends JsonRpcProvider {
         if (this.#verification === "strict") {
           throw err;
         }
+        downgraded = true;
         this.#logger("verification failed (permissive mode, passing through)", err);
       } else {
         throw err;
@@ -107,11 +109,24 @@ export class VrpcProvider extends JsonRpcProvider {
     }
 
     // Parse ONLY after verification. Normalize to the array ethers' drain loop
-    // correlates by id (single payload → length-1 array).
-    let resp = JSON.parse(toUtf8String(rawResponseBytes));
+    // correlates by id (single payload → length-1 array). In permissive mode a
+    // body that failed verification may also be invalid JSON (e.g. a truncated
+    // response); surface that parse failure through the same logger so the
+    // permissive consumer sees one coherent diagnostic rather than an opaque
+    // SyntaxError. The error still propagates (fail-closed; no unverified data
+    // is returned silently). (LO-03)
+    let resp: unknown;
+    try {
+      resp = JSON.parse(toUtf8String(rawResponseBytes));
+    } catch (err) {
+      if (downgraded) {
+        this.#logger("permissive passthrough: response body is not valid JSON", err);
+      }
+      throw err;
+    }
     if (!Array.isArray(resp)) {
       resp = [resp];
     }
-    return resp;
+    return resp as Array<JsonRpcResult>;
   }
 }
