@@ -2,6 +2,7 @@
 //
 // Implementation lives in:
 //   - ./verifier    — VerifierClient class + options/response types
+//   - ./verify      — transport-agnostic verifyResponse seam (CORE-02)
 //   - ./attestation — fetchAttestation helper + Attestation/GetQuoteResponse types
 //   - ./compose     — ComposeSource interface + InfoEndpoint (dev) / Registry
 //                     (future) implementations + computeComposeHash
@@ -42,3 +43,5 @@ export {
 export { buildPreImage } from "./preimage";
 export type { VerifiedResponse, VerifierClientOptions } from "./verifier";
 export { VerifierClient } from "./verifier";
+export type { ResponseHeaders, VerifiedPair, VerifyResponseOptions } from "./verify";
+export { verifyResponse } from "./verify";

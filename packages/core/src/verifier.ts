@@ -7,22 +7,10 @@
 // All four error branches map to typed `VerificationError` subclasses.
 // `fetchAttestation` is delegated to the standalone helper in `./attestation`.
 
-import { verifyAsync } from "@noble/ed25519";
-
 import { type Attestation, fetchAttestation } from "./attestation";
-import { BadSignature, MalformedHeader, MissingHeader, StaleTimestamp } from "./errors";
-import { buildPreImage, sha256 } from "./preimage";
+import { verifyResponse } from "./verify";
 
 const DEFAULT_REPLAY_WINDOW_MS = 60_000;
-
-const SIGNATURE_HEADER = "vRPC-Signature";
-const TIMESTAMP_HEADER = "vRPC-Timestamp";
-const PUBKEY_HEADER = "vRPC-Pubkey";
-const NODE_ID_HEADER = "vRPC-NodeId";
-
-const SIGNATURE_HEX_RE = /^0x[0-9a-f]{128}$/;
-const PUBKEY_HEX_RE = /^0x[0-9a-f]{64}$/;
-const TIMESTAMP_RE = /^\d+$/;
 
 export interface VerifierClientOptions {
   /**
@@ -81,23 +69,6 @@ export interface VerifiedResponse<T = unknown> {
   };
 }
 
-/**
- * Convert `0x...` hex (already shape-validated) to a `Uint8Array`.
- * Caller is responsible for ensuring the input matches `0x[0-9a-f]{2n}`.
- */
-function hexToBytes(hex0x: string): Uint8Array {
-  const stripped = hex0x.slice(2);
-  const out = new Uint8Array(stripped.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = Number.parseInt(stripped.slice(i * 2, i * 2 + 2), 16);
-  }
-  return out;
-}
-
-function absBigint(n: bigint): bigint {
-  return n < 0n ? -n : n;
-}
-
 export class VerifierClient {
   private readonly url: string;
   private readonly chainId: bigint;
@@ -152,79 +123,24 @@ export class VerifierClient {
     //    the exact bytes received, not a re-serialised form.
     const responseBytes = new Uint8Array(await resp.arrayBuffer());
 
-    // 4. Header parse — missing -> MissingHeader.
-    const sigHex = resp.headers.get(SIGNATURE_HEADER);
-    if (sigHex === null) {
-      throw new MissingHeader(SIGNATURE_HEADER);
-    }
-    const pubkeyHex = resp.headers.get(PUBKEY_HEADER);
-    if (pubkeyHex === null) {
-      throw new MissingHeader(PUBKEY_HEADER);
-    }
-    const tsRaw = resp.headers.get(TIMESTAMP_HEADER);
-    if (tsRaw === null) {
-      throw new MissingHeader(TIMESTAMP_HEADER);
-    }
-    // Optional — older shark proxies omit it, in which case nodeId stays absent.
-    const nodeId = resp.headers.get(NODE_ID_HEADER);
-
-    // 5. Header validate — bad shape -> MalformedHeader.
-    if (!SIGNATURE_HEX_RE.test(sigHex)) {
-      throw new MalformedHeader(SIGNATURE_HEADER, sigHex, "expected 0x + 128 lowercase hex chars");
-    }
-    if (!PUBKEY_HEX_RE.test(pubkeyHex)) {
-      throw new MalformedHeader(PUBKEY_HEADER, pubkeyHex, "expected 0x + 64 lowercase hex chars");
-    }
-    if (!TIMESTAMP_RE.test(tsRaw)) {
-      throw new MalformedHeader(TIMESTAMP_HEADER, tsRaw, "expected decimal u64 ms");
-    }
-    const timestampMs = BigInt(tsRaw);
-
-    // 6. Pre-image reconstruct.
-    const preImage = buildPreImage(this.chainId, requestBytes, responseBytes, timestampMs);
-
-    // 7. Hex -> bytes (cheap, no dep).
-    const sigBytes = hexToBytes(sigHex);
-    const pubkeyBytes = hexToBytes(pubkeyHex);
-
-    // 8. Ed25519 verify — bad signature -> BadSignature.
-    const ok = await verifyAsync(sigBytes, preImage, pubkeyBytes);
-    if (!ok) {
-      throw new BadSignature({
-        signatureHex: sigHex,
-        pubkeyHex,
-        preImageSha256: sha256(preImage),
-      });
-    }
-
-    // 9. Replay-window check — outside the window -> StaleTimestamp.
-    //    Done AFTER signature verify: a tampered timestamp would have failed
-    //    step 8. We only reach here on a valid signature.
-    const nowMs = BigInt(Date.now());
-    const skewMs = timestampMs - nowMs;
-    if (absBigint(skewMs) > BigInt(this.replayWindowMs)) {
-      throw new StaleTimestamp({
-        observedMs: timestampMs,
-        nowMs,
-        skewMs,
-        allowedWindowMs: this.replayWindowMs,
-      });
-    }
+    // 4-9. Delegate the entire verify half to the transport-agnostic seam
+    //      (header parse/validate -> pre-image -> Ed25519 verify -> replay
+    //      window). ONE verify path — `verifyResponse` is the single source of
+    //      truth shared with the ethers/viem adapters.
+    const pair = await verifyResponse(requestBytes, responseBytes, resp.headers, {
+      chainId: this.chainId,
+      replayWindowMs: this.replayWindowMs,
+    });
 
     // 10. JSON-RPC parse — assume 2.0 shape; consumer handles error envelopes.
-    const parsed = JSON.parse(new TextDecoder().decode(responseBytes)) as { result: T };
+    const parsed = JSON.parse(new TextDecoder().decode(pair.responseBytes)) as { result: T };
 
     // 11. Return. Omit nodeId entirely when absent (exactOptionalPropertyTypes).
     return {
       result: parsed.result,
-      ...(nodeId === null ? {} : { nodeId }),
+      ...(pair.nodeId === undefined ? {} : { nodeId: pair.nodeId }),
       raw: { request: requestBytes, response: responseBytes },
-      verification: {
-        signatureHex: sigHex,
-        pubkeyHex,
-        timestampMs,
-        preImageSha256: sha256(preImage),
-      },
+      verification: pair.verification,
     };
   }
 
