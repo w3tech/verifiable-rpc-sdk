@@ -18,17 +18,22 @@
 export type VrpcVerification = "strict" | "permissive";
 
 /**
- * Options accepted by `vrpcHttp(url, opts)`. `chainId` is required (it is bound
- * into the signed pre-image); everything else is optional with safe defaults.
+ * Options accepted by `vrpcHttp(url, opts?)`. `chainId` is OPTIONAL (auto-derived
+ * when omitted); everything else is optional with safe defaults.
  */
 export interface VrpcHttpOptions {
   /**
-   * EVM-style chain id bound into the canonical pre-image. Coerced to `bigint`
-   * via `BigInt()` WITHOUT a number round-trip — chain ids may exceed
+   * EVM-style chain id bound into the canonical pre-image. OPTIONAL: when omitted
+   * the transport lazily derives it via one UNVERIFIED `eth_chainId` bootstrap on
+   * the first request (fail-closed-safe: a lying bootstrap can only cause a
+   * `BadSignature` DoS, never silent-accept). Passing it explicitly is STRONGLY
+   * RECOMMENDED — it removes the bootstrap round-trip, pins the binding, and
+   * turns a chain misconfig into an immediate fail-closed error. Coerced to
+   * `bigint` via `BigInt()` WITHOUT a number round-trip — chain ids may exceed
    * `Number.MAX_SAFE_INTEGER` (2^53−1) and widening through `number` would lose
    * precision and reject intact responses (false `BadSignature`). MD-01.
    */
-  chainId: number | bigint;
+  chainId?: number | bigint;
   /** Verification policy. Defaults to `"strict"` (fail-closed). */
   verification?: VrpcVerification;
   /**

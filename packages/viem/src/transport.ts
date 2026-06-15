@@ -44,24 +44,68 @@ const defaultLogger = (msg: string, err: unknown): void => {
  * A viem `Transport` that Ed25519-verifies every HTTP JSON-RPC response over its
  * raw content-decoded bytes before the value reaches the client.
  *
- * Drop-in: `createPublicClient({ transport: vrpcHttp(url, { chainId }) })`
- * substitutes for `http(url)` with one extra option (the chain id bound into the
- * signed pre-image). Every read (getBalance, readContract/call, getLogs,
- * getBlock, estimateGas, getTransactionReceipt, sendRawTransaction, …) funnels
- * through the single verifying `request`.
+ * Drop-in: `createPublicClient({ transport: vrpcHttp(url) })` substitutes for
+ * `http(url)`. The chain id bound into the signed pre-image is OPTIONAL — omit
+ * it and the transport lazily derives it via one UNVERIFIED `eth_chainId`
+ * bootstrap on the first request (fail-closed-safe). Passing it explicitly —
+ * `vrpcHttp(url, { chainId })` — is STRONGLY RECOMMENDED: it skips the bootstrap
+ * round-trip and pins the binding. Every read (getBalance, readContract/call,
+ * getLogs, getBlock, estimateGas, getTransactionReceipt, sendRawTransaction, …)
+ * funnels through the single verifying `request`.
  */
-export function vrpcHttp(url: string, opts: VrpcHttpOptions): Transport<"vrpc-http"> {
-  // Coerce to bigint WITHOUT a number round-trip (MD-01).
-  const chainId = BigInt(opts.chainId);
+export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vrpc-http"> {
   const verification = opts.verification ?? "strict";
   const fetchFn = opts.fetchFn ?? fetch;
   const logger = opts.logger ?? defaultLogger;
+
+  // Coerce to bigint WITHOUT a number round-trip (MD-01). When chainId is
+  // omitted it is resolved lazily on the first request via an UNVERIFIED
+  // eth_chainId bootstrap, memoized so concurrent first calls share ONE fetch.
+  let chainIdResolved: bigint | undefined = opts.chainId != null ? BigInt(opts.chainId) : undefined;
+  let chainIdPromise: Promise<bigint> | null = null;
 
   return ({ timeout: injectedTimeout }) => {
     // Resolve the effective timeout the viem-`http()` way: explicit option, then
     // the client-injected value, then viem's 10s default. Applied to the own
     // fetch as an AbortSignal below. (LO-03)
     const timeout = opts.timeout ?? injectedTimeout ?? 10_000;
+
+    /**
+     * Lazily derive the chain id via ONE UNVERIFIED `eth_chainId` bootstrap. The
+     * promise is assigned BEFORE awaiting so N concurrent first `request` calls
+     * share a single in-flight fetch (memoization). It reuses the in-scope
+     * `fetchFn`/`headers`/`timeout` so x-api-key / routing carry over, does NOT
+     * call `verifyResponse` (the bootstrap is intentionally unverified — chainId
+     * is a binding parameter, not a trust anchor), and its result is used ONLY
+     * to set `chainIdResolved`; it is NEVER returned to the caller. A lying
+     * bootstrap can only cause a fail-closed `BadSignature` DoS, never
+     * silent-accept.
+     */
+    const resolveChainId = (): Promise<bigint> => {
+      if (chainIdResolved != null) {
+        return Promise.resolve(chainIdResolved);
+      }
+      if (chainIdPromise != null) {
+        return chainIdPromise;
+      }
+      chainIdPromise = (async () => {
+        const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] });
+        const res = await fetchFn(url, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...opts.headers },
+          body,
+          ...(timeout ? { signal: AbortSignal.timeout(timeout) } : {}),
+        });
+        // BigInt() directly off the hex string — no number round-trip (a chain
+        // id may exceed 2^53−1 and must bind the full u64 into the pre-image).
+        const parsed = JSON.parse(await res.text()) as { result?: string };
+        const cid = BigInt(parsed.result as string);
+        chainIdResolved = cid;
+        return cid;
+      })();
+      return chainIdPromise;
+    };
+
     return createTransport(
       {
         key: "vrpc-http",
@@ -71,6 +115,11 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions): Transport<"vrpc-ht
         retryCount: 0,
         timeout,
         async request({ method, params }) {
+          // Single choke point: resolve the chain id (cheap memoized read after
+          // the first derive, or the pre-populated explicit pin) BEFORE building
+          // the request that flows into verify.
+          const cid = chainIdResolved ?? (await resolveChainId());
+
           // Serialize ONCE: the same bytes are POSTed and fed to verify, so the
           // pre-image reconstruction matches what the sidecar signed.
           const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
@@ -115,7 +164,7 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions): Transport<"vrpc-ht
             // Pass the fetch `Headers` object DIRECTLY — verifyResponse reads it
             // case-insensitively; lowercasing into a Record would risk smuggling.
             await verifyResponse(requestBytes, rawResponseBytes, res.headers, {
-              chainId,
+              chainId: cid,
               ...(opts.replayWindowMs != null ? { replayWindowMs: opts.replayWindowMs } : {}),
             });
           } catch (err) {
