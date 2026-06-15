@@ -46,17 +46,6 @@ New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line
 
 See [packages/core/README.md](./packages/core/README.md) for the verification details and the `verifyResponse` / `anchorTrust` API if you want to verify responses yourself.
 
-## How it fits together
-
-```
-your app ──▶ @ankr.com/vrpc-ethers (VrpcProvider)  ─┐
-your app ──▶ @ankr.com/vrpc-viem   (vrpcHttp)       ─┼─▶ @ankr.com/vrpc-core (verifyResponse)
-                                                     │      Ed25519 over node-signed bytes
-                            shark `…/<chain>_vrpc/…` route ──▶ TDX node + verifiable-rpc sidecar
-```
-
-Both adapters route every HTTP response through the single `vrpc-core` verification seam and surface the same `VerificationError` — callers cannot tell the adapters apart by error shape.
-
 ## Development
 
 This is a [Bun](https://bun.sh) workspace monorepo.
@@ -68,10 +57,6 @@ bun run typecheck
 ```
 
 See [AGENTS.md](./AGENTS.md) for the pre-push gate and integration-test setup.
-
-## Companion
-
-The signing side is the **verifiable-rpc sidecar** ([w3tech/verifiable-rpc-sidecar](https://github.com/w3tech/verifiable-rpc-sidecar)) — a byte-opaque proxy co-located with the blockchain client inside the TDX CVM that signs each content-decoded response body. This SDK is the client that verifies those signatures. Pairs with sidecar `v0.2.0` (signature over the content-decoded body).
 
 ## License
 
