@@ -1,4 +1,4 @@
-// Frozen v6.0 helper signatures. v5.0 bodies are throwing stubs — v6.0 replaces
+// Frozen v6.0 verify-step signatures. v5.0 bodies are throwing stubs — v6.0 replaces
 // ONLY the body, never the signature. Kept dependency-free (no @noble/hashes) so
 // v5.0 stays a pure contract+mock with a clean A/B boundary.
 

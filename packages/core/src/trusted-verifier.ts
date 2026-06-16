@@ -1,4 +1,4 @@
-// Verify-and-trust seam (INTEG-01) — the single orchestration unit that combines
+// TrustedVerifier (INTEG-01) — the single orchestration unit that combines
 // the existing Ed25519 verify path (`verifyResponse`) with a TTL pubkey cache and
 // lazy TDX attestation: on an unknown/expired signing pubkey it fetches the node
 // attestation through shark, maps it to the frozen `AttestationBundle`, builds a
@@ -85,16 +85,16 @@ export interface TrustedVerifierOptions {
  * carries a `// GAP v5.0` anchor recording where v6.0 must source the real data.
  */
 export function mapAttestationToBundle(
-  att: Attestation,
+  attestation: Attestation,
   pubkeyHex: string,
   nonce: Uint8Array,
 ): AttestationBundle {
   return {
     quote: {
-      quote: att.quote.quote,
-      event_log: att.quote.event_log,
-      report_data: att.quote.report_data,
-      vm_config: att.quote.vm_config,
+      quote: attestation.quote.quote,
+      event_log: attestation.quote.event_log,
+      report_data: attestation.quote.report_data,
+      vm_config: attestation.quote.vm_config,
     },
     pubkey: pubkeyHex,
     nonce: bytesToHex(nonce),
@@ -111,7 +111,7 @@ export function mapAttestationToBundle(
       app_compose: "",
       event_log: [],
       // composeHash is available as a (recompute-only) hint, never a trust anchor.
-      compose_hash: att.composeHash,
+      compose_hash: attestation.composeHash,
     },
     // GAP v5.0 / fills in v6.0: signature_chain from dstack get_key chain
     // ([link0_sig, k256_signature]) — 3b cross-repo ticket; not emitted by the
@@ -152,7 +152,7 @@ export function buildVerifyPolicy(
  * the pubkey ONLY after a resolved attestation verify (FLOW-05).
  */
 export class TrustedVerifier {
-  private readonly cache = new Map<string, number>(); // pubkeyHex -> expiry epoch-ms
+  private readonly pubkeyExpiryCache = new Map<string, number>(); // pubkeyHex -> expiry epoch-ms
   private readonly opts: TrustedVerifierOptions;
   private readonly ttlMs: number;
   private readonly now: () => number;
@@ -183,13 +183,13 @@ export class TrustedVerifier {
 
   /** True when `pubkeyHex` is cached and the entry has not expired. */
   private isFresh(pubkeyHex: string): boolean {
-    const expiry = this.cache.get(pubkeyHex);
+    const expiry = this.pubkeyExpiryCache.get(pubkeyHex);
     return expiry !== undefined && this.now() < expiry;
   }
 
   /** Cache `pubkeyHex` with a fresh TTL window. Called ONLY on a resolved verify. */
-  private cacheResolved(pubkeyHex: string): void {
-    this.cache.set(pubkeyHex, this.now() + this.ttlMs);
+  private cacheVerifiedPubkey(pubkeyHex: string): void {
+    this.pubkeyExpiryCache.set(pubkeyHex, this.now() + this.ttlMs);
   }
 
   /**
@@ -244,7 +244,7 @@ export class TrustedVerifier {
 
     await this.verifyAttestationImpl(bundle, policy);
 
-    this.cacheResolved(pubkeyHex);
+    this.cacheVerifiedPubkey(pubkeyHex);
     return pair;
   }
 }

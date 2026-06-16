@@ -90,7 +90,7 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
   // chainSlug are set. The public surface stays a strict superset — without this
   // pair the transport behaves byte-identically to before (plain verifyResponse).
   // The routing's chainId is REQUIRED, but the viem chainId may be resolved lazily, so the
-  // single TrustedVerifier is built lazily on the first request AFTER `cid` is
+  // single TrustedVerifier is built lazily on the first request AFTER `chainId` is
   // known and memoized here so all subsequent requests reuse the SAME instance +
   // pubkey cache (one verifier per transport, never per call).
   const attestationRoutingEnabled =
@@ -190,14 +190,14 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
         }
         // BigInt() directly off the hex string — no number round-trip (a chain
         // id may exceed 2^53−1 and must bind the full u64 into the pre-image).
-        const cid = BigInt(parsed.result);
+        const chainId = BigInt(parsed.result);
         // Self-consistent verification: verify the eth_chainId response using
         // its OWN claimed result as the chainId binding. It only verifies if the
         // node signed for exactly C — a tampered/forged/unsigned bootstrap fails
         // FAST here. Fail-closed: do NOT set chainIdResolved, do NOT fall back.
         try {
           await verifyResponse(requestBytes, rawResponseBytes, res.headers, {
-            chainId: cid,
+            chainId,
             ...(opts.replayWindowMs != null ? { replayWindowMs: opts.replayWindowMs } : {}),
           });
         } catch (err) {
@@ -206,8 +206,8 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
           }
           throw err;
         }
-        chainIdResolved = cid;
-        return cid;
+        chainIdResolved = chainId;
+        return chainId;
       })();
       return chainIdPromise;
     };
@@ -224,7 +224,7 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
           // Single choke point: resolve the chain id (cheap memoized read after
           // the first derive, or the pre-populated explicit pin) BEFORE building
           // the request that flows into verify.
-          const cid = chainIdResolved ?? (await resolveChainId());
+          const chainId = chainIdResolved ?? (await resolveChainId());
 
           // Serialize ONCE: the same bytes are POSTed and fed to verify, so the
           // pre-image reconstruction matches what the sidecar signed.
@@ -273,12 +273,12 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
             // on plain verifyResponse (Pitfall 4). Pass the fetch `Headers` object
             // DIRECTLY — verifyResponse/the verifier read it case-insensitively;
             // lowercasing into a Record would risk smuggling.
-            const verifier = getTrustedVerifier(cid);
+            const verifier = getTrustedVerifier(chainId);
             if (verifier !== undefined) {
               await verifier.verify(requestBytes, rawResponseBytes, res.headers);
             } else {
               await verifyResponse(requestBytes, rawResponseBytes, res.headers, {
-                chainId: cid,
+                chainId,
                 ...(opts.replayWindowMs != null ? { replayWindowMs: opts.replayWindowMs } : {}),
               });
             }

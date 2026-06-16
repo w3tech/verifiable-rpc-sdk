@@ -43,8 +43,8 @@ export {
   VerificationError,
 } from "./errors";
 export { buildPreImage } from "./preimage";
-export type { TrustedVerifierOptions } from "./trust";
-export { DEFAULT_PUBKEY_CACHE_TTL_MS, TrustedVerifier } from "./trust";
+export type { TrustedVerifierOptions } from "./trusted-verifier";
+export { DEFAULT_PUBKEY_CACHE_TTL_MS, TrustedVerifier } from "./trusted-verifier";
 export type { VerifiedResponse, VerifierClientOptions } from "./verifier";
 export { VerifierClient } from "./verifier";
 export type { ResponseHeaders, VerifiedPair, VerifyResponseOptions } from "./verify";

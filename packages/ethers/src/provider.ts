@@ -51,10 +51,10 @@ const EMPTY_ALLOWLIST: PinnedAllowlist = {
 
 /** Attestation-routing + forwarding config captured from VrpcOptions (opt-in via attestationBaseUrl+chainSlug). */
 interface AttestationRouting {
-  sharkBase: string;
-  chain: string;
+  attestationBaseUrl: string;
+  chainSlug: string;
   allowlist: PinnedAllowlist;
-  pubkeyCacheTtl?: number;
+  pubkeyCacheTtlMs?: number;
   tcb?: import("@ankr.com/dstack-verify").TcbPolicy;
   pccsUrl?: string;
   apiKey?: string;
@@ -132,7 +132,7 @@ export class VrpcProvider extends JsonRpcProvider {
       pccsUrl,
       apiKey,
       headers,
-      fetch: attFetch,
+      fetch: attestationFetch,
       ...ethersOpts
     } = options;
 
@@ -171,15 +171,15 @@ export class VrpcProvider extends JsonRpcProvider {
     // verifyResponse).
     if (attestationBaseUrl !== undefined && chainSlug !== undefined) {
       this.#attestationRouting = {
-        sharkBase: attestationBaseUrl,
-        chain: chainSlug,
+        attestationBaseUrl,
+        chainSlug,
         allowlist: allowlist ?? EMPTY_ALLOWLIST,
-        ...(pubkeyCacheTtlMs === undefined ? {} : { pubkeyCacheTtl: pubkeyCacheTtlMs }),
+        ...(pubkeyCacheTtlMs === undefined ? {} : { pubkeyCacheTtlMs }),
         ...(tcb === undefined ? {} : { tcb }),
         ...(pccsUrl === undefined ? {} : { pccsUrl }),
         ...(apiKey === undefined ? {} : { apiKey }),
         ...(headers === undefined ? {} : { headers }),
-        ...(attFetch === undefined ? {} : { fetch: attFetch }),
+        ...(attestationFetch === undefined ? {} : { fetch: attestationFetch }),
         ...(replayWindowMs === undefined ? {} : { replayWindowMs }),
       };
       // Explicit-pin path: chainId is known synchronously → build the single
@@ -199,11 +199,13 @@ export class VrpcProvider extends JsonRpcProvider {
     const routing = this.#attestationRouting as AttestationRouting;
     return new TrustedVerifier({
       chainId,
-      attestationBaseUrl: routing.sharkBase,
-      chainSlug: routing.chain,
+      attestationBaseUrl: routing.attestationBaseUrl,
+      chainSlug: routing.chainSlug,
       allowlist: routing.allowlist,
       ...(routing.replayWindowMs === undefined ? {} : { replayWindowMs: routing.replayWindowMs }),
-      ...(routing.pubkeyCacheTtl === undefined ? {} : { pubkeyCacheTtlMs: routing.pubkeyCacheTtl }),
+      ...(routing.pubkeyCacheTtlMs === undefined
+        ? {}
+        : { pubkeyCacheTtlMs: routing.pubkeyCacheTtlMs }),
       ...(routing.tcb === undefined ? {} : { tcb: routing.tcb }),
       ...(routing.pccsUrl === undefined ? {} : { pccsUrl: routing.pccsUrl }),
       ...(routing.apiKey === undefined ? {} : { apiKey: routing.apiKey }),
@@ -292,14 +294,14 @@ export class VrpcProvider extends JsonRpcProvider {
       }
       // BigInt() directly off the hex string — no number round-trip (a chain id
       // may exceed 2^53−1 and must bind the full u64 into the pre-image).
-      const cid = BigInt(parsed.result);
+      const chainId = BigInt(parsed.result);
       // Self-consistent verification: verify the eth_chainId response using its
       // OWN claimed result as the chainId binding. It only verifies if the node
       // signed for exactly C — a tampered/forged/unsigned bootstrap fails FAST
       // here. Fail-closed: do NOT set #chainId, do NOT fall back to unverified.
       try {
         await verifyResponse(requestBytes, rawResponseBytes, response.headers, {
-          chainId: cid,
+          chainId,
           ...(this.#replayWindowMs != null ? { replayWindowMs: this.#replayWindowMs } : {}),
         });
       } catch (err) {
@@ -308,8 +310,8 @@ export class VrpcProvider extends JsonRpcProvider {
         }
         throw err;
       }
-      this.#chainId = cid;
-      return cid;
+      this.#chainId = chainId;
+      return chainId;
     })();
     return this.#chainIdPromise;
   }

@@ -8,7 +8,7 @@ import {
   DEFAULT_PUBKEY_CACHE_TTL_MS,
   TrustedVerifier,
   type TrustedVerifierOptions,
-} from "../src/trust";
+} from "../src/trusted-verifier";
 import type { ResponseHeaders } from "../src/verify";
 
 const SHARK_BASE = "https://rpc.ankr.com";
