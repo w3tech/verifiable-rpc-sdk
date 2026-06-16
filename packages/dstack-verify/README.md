@@ -53,6 +53,17 @@ v5.0 mock-семантика:
 `kind === "Attestation"`. Narrow через `instanceof AttestationError`. Базовый
 union в core НЕ редактируется.
 
+### Verified-pubkey cache TTL (configurable)
+
+Этот пакет only верифицирует attestation — orchestration (lazy fetch + pubkey
+cache) живёт в `@ankr.com/vrpc-core` `TrustedVerifier`. После успешной (в v5.0 —
+mock) верификации signing-pubkey кешируется на configurable TTL
+(`pubkeyCacheTtl`, default `DEFAULT_PUBKEY_CACHE_TTL_MS` = 1h): повторный read в
+пределах TTL skip'ает attestation fetch, после TTL — pubkey ре-аттестуется (no
+stale trust). Adapters (`@ankr.com/vrpc-ethers`, `@ankr.com/vrpc-viem`) пробрасывают
+`pubkeyCacheTtl` в seam. Помните: в v5.0 кешируется результат **mock** проверки —
+см. баннер выше.
+
 ### `CHK-*` checklist
 
 `CHK` — frozen const record, перечисляющий полный chain-of-trust checklist

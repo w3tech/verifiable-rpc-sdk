@@ -1,9 +1,18 @@
 # `@ankr/verifiable-rpc-client` — live examples
 
-These seven scripts drive the SDK against a live Arbitrum-One node running
-geth-nitro inside an Intel TDX confidential VM (scripts 06 and 07 route through
-stage shark-proxy). They are smoke tests and copy-paste references — not
-production code.
+These scripts drive the SDK against a live Arbitrum-One node running geth-nitro
+inside an Intel TDX confidential VM (scripts 06–09 route through stage
+shark-proxy). They are smoke tests and copy-paste references — not production
+code. **Script 10 is the exception: it runs fully OFFLINE** (injected mock fetch,
+no env, no network) and exits 0 in CI — it demonstrates the v5.0
+lazy-attestation flow against the MOCK verifier.
+
+> [!WARNING]
+> **v5.0 attestation is a MOCK — NO real attestation security until v6.0.** Example
+> 10 exercises the lazy-attestation FLOW + pubkey cache against the v5.0 mock
+> verifier (`allowInsecureMock` hard-set true, loud `console.warn` per attestation):
+> *"v5.0 provides NO real attestation security (real verification lands in v6.0)."*
+> Real DCAP/RTMR/compose-hash verification arrives in v6.0.
 
 ## Live target
 
@@ -32,6 +41,9 @@ bun run example:04-end-to-end
 bun run example:05-gzip-transport
 bun run example:06-via-shark              # requires SHARK_STAGE_URL + SHARK_STAGE_TDX_TEST_KEY (see below)
 bun run example:07-attestation-via-shark  # requires SHARK_STAGE_URL + SHARK_STAGE_TDX_TEST_KEY (see below)
+bun run example:08-vrpc-ethers-verified-read  # requires SHARK_STAGE_URL + SHARK_STAGE_TDX_TEST_KEY (see below)
+bun run example:09-vrpc-viem-verified-read    # requires SHARK_STAGE_URL + SHARK_STAGE_TDX_TEST_KEY (see below)
+bun run example:10-vrpc-lazy-attestation      # OFFLINE — no env, no network; exits 0 in CI
 # Or:
 bun run example:all
 ```
@@ -50,6 +62,9 @@ or `FAIL — …` (exit 1).
 | 05 | `05-gzip-transport.ts`       | Sidecar v0.2.0 signs the content-DECODED body: a `Accept-Encoding: gzip` response with `content-encoding: gzip` on the wire is gunzipped and the Ed25519 signature verifies over the decoded plaintext. Negative control — verifying over the compressed wire bytes FAILS — proves the signature covers decoded, not compressed, bytes. |
 | 06 | `06-via-shark.ts`           | Proves the SDK verifies a signed call routed THROUGH stage shark-proxy (vrpc passthrough): byte-exact request/response (signature verifies), vrpc headers survive shark, and the via-shark pubkey matches the direct node /attestation pubkey. On FAIL it raw-fetches both legs to localize the break (headers stripped vs body mutated). |
 | 07 | `07-attestation-via-shark.ts` | Full trustless loop entirely through shark: signed `.call()` → capture `nodeId` (`vRPC-NodeId`) → `fetchAttestationViaShark` by that node_id with a fresh 32B nonce → `verifyAttestationCorrelation` (attestation pubkey == `vRPC-Pubkey`). Negative path: a bogus `node_id` surfaces the typed `AttestationNodeNotFoundError` (404, no retry, no fallback). |
+| 08 | `08-vrpc-ethers-verified-read.ts` | Drop-in ethers `VrpcProvider` verified read + `anchorTrust` correlation through a stage shark `arbitrum_vrpc` route (operator step — live creds via env). |
+| 09 | `09-vrpc-viem-verified-read.ts` | Drop-in viem `vrpcHttp` + `createPublicClient` verified read + `anchorTrust` correlation (symmetric with 08; operator step — live creds via env). |
+| 10 | `10-vrpc-lazy-attestation.ts` | **OFFLINE** (injected mock fetch, no env, no network — exits 0 in CI): the v5.0 lazy-attestation flow through **both** adapters. An unknown signing pubkey triggers one attestation fetch + (MOCK) verify + cache; the second read within TTL reuses the cache (asserts the attestation GET is hit exactly once per adapter). Demonstrates the FLOW, **not real attestation** — the v5.0 verifier is a mock (see the banner above). |
 
 ## Via shark (vrpc routing)
 
@@ -119,6 +134,15 @@ integration needs to think about.
    `.planning/workstreams/vrpc/deliberations/disk-trust-boundary.md` and
    `.planning/workstreams/vrpc/research/geth-disk-integrity-deep-dive.md`
    for the full analysis (Phase 22 + Phase 23).
+
+5. **v5.0 lazy attestation (example 10) is a MOCK — NOT real attestation.**
+   The seam wiring (lazy fetch → correlate → verify → cache) is real and proven
+   offline, but the attestation verifier in v5.0 is a mock with
+   `allowInsecureMock` hard-set true that **bypasses all chain-of-trust checks**
+   and warns on every call: *"v5.0 provides NO real attestation security (real
+   verification lands in v6.0)."* Example 10 demonstrates the FLOW + pubkey
+   cache, not real TDX attestation. Real DCAP/RTMR/compose-hash verification is
+   the v6.0 follow-up.
 
 ## Captured live output
 

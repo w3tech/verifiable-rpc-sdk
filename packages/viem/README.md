@@ -108,6 +108,55 @@ export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleT
 | `fetchFn`        | `(url: string, init: RequestInit) => Promise<Response>`       | global `fetch`         | Injectable fetch seam (mirrors viem `http`'s `fetchFn`). Hook for a routing fetch wrapper or offline tests. |
 | `logger`         | `(msg: string, err: unknown) => void`                         | `console.warn`         | Invoked once per downgraded verification in `permissive` mode. |
 
+#### Lazy-attestation seam options (opt-in)
+
+> [!WARNING]
+> **v5.0 ships a MOCK attestation verifier — NO real attestation security until v6.0.**
+> When the seam is engaged, the v5.0 attestation check is a mock with
+> `allowInsecureMock` **hard-set true**: it **bypasses all chain-of-trust checks**
+> and prints a loud `console.warn` on every attestation. In the contract's own
+> words: *"v5.0 provides NO real attestation security (real verification lands in
+> v6.0)."* Real DCAP/RTMR/compose-hash verification arrives in v6.0; never rely on
+> v5.0 attestation for production trust.
+
+These fields wire the normal verify through `@ankr.com/vrpc-core`'s
+`TrustedVerifier`, which lazily fetches + correlates the serving node's TDX
+attestation on an **unknown** signing pubkey and **caches** the verified pubkey
+(configurable TTL, default 1h). Routing is **strictly opt-in**: it engages **only
+when BOTH `sharkBase` and `chain` are set**. Omit either and the transport behaves
+byte-identically to before (plain `verifyResponse`, no attestation leg). The
+chainId bootstrap always stays on plain `verifyResponse`. The existing `headers`
+and `fetchFn` are **reused** for the attestation-leg fetch (one verifier per
+transport — never per call — so the pubkey cache lives for the transport lifetime).
+
+| Option           | Type                     | Default          | Notes |
+|------------------|--------------------------|------------------|-------|
+| `sharkBase`      | `string`                 | — (off)          | Shark proxy base URL (no trailing slash), e.g. `https://rpc.ankr.com`. Set **with** `chain` to engage the seam; the attestation GET targets `<sharkBase>/<chain>_vrpc/attestation`. |
+| `chain`          | `string`                 | — (off)          | Chain slug for the `<chain>_vrpc` attestation route, e.g. `arbitrum`. Opt-in pair with `sharkBase`. |
+| `pubkeyCacheTtl` | `number`                 | `3_600_000` (1h) | Verified-pubkey cache TTL (ms). A second read within TTL reuses the cache and skips the attestation fetch; past TTL the pubkey is re-attested (no stale trust). |
+| `allowlist`      | `PinnedAllowlist`        | empty            | Pinned trust anchors for the attestation `VerifyPolicy`. The v5.0 mock does not inspect it; defaults to an empty allowlist. |
+| `tcb`            | `TcbPolicy`              | core default     | DCAP TCB acceptance forwarded to the attestation `VerifyPolicy`. |
+| `pccsUrl`        | `string`                 | —                | Operational collateral source for dcap-qvl (NOT a trust dependency). |
+| `apiKey`         | `string`                 | —                | Auth key sent as `x-api-key` on the attestation fetch (parity with the ethers half). `headers` may also carry `x-api-key` for the RPC leg. **SECRET — never logged.** |
+
+`fetchFn` (already documented above) feeds **both** legs — the RPC POST and the
+attestation GET — which is also the offline test/example seam.
+
+```ts
+const client = createPublicClient({
+  transport: vrpcHttp("https://rpc.ankr.com/arbitrum_vrpc", {
+    chainId: 42161,
+    sharkBase: "https://rpc.ankr.com",
+    chain: "arbitrum",
+    apiKey: process.env.SHARK_API_KEY, // attestation-leg auth (never logged)
+    pubkeyCacheTtl: 3_600_000,         // 1h (default)
+  }),
+});
+// Ordinary reads. The first unknown pubkey triggers one attestation fetch +
+// (MOCK) verify + cache; subsequent reads within TTL skip the fetch.
+await client.getBalance({ address: "0x0000000000000000000000000000000000000000" });
+```
+
 ---
 
 ## What is verified
