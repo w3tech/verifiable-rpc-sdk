@@ -86,17 +86,18 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
   let chainIdResolved: bigint | undefined = opts.chainId != null ? BigInt(opts.chainId) : undefined;
   let chainIdPromise: Promise<bigint> | null = null;
 
-  // Opt-in seam routing: engage ONLY when BOTH sharkBase and chain are set. The
-  // public surface stays a strict superset — without this pair the transport
-  // behaves byte-identically to before (plain verifyResponse). The seam's
-  // chainId is REQUIRED, but the viem chainId may be resolved lazily, so the
+  // Opt-in attestation routing: engage ONLY when BOTH attestationBaseUrl and
+  // chainSlug are set. The public surface stays a strict superset — without this
+  // pair the transport behaves byte-identically to before (plain verifyResponse).
+  // The routing's chainId is REQUIRED, but the viem chainId may be resolved lazily, so the
   // single TrustedVerifier is built lazily on the first request AFTER `cid` is
   // known and memoized here so all subsequent requests reuse the SAME instance +
   // pubkey cache (one verifier per transport, never per call).
-  const seamEnabled = opts.attestationBaseUrl !== undefined && opts.chainSlug !== undefined;
+  const attestationRoutingEnabled =
+    opts.attestationBaseUrl !== undefined && opts.chainSlug !== undefined;
   let trustedVerifier: TrustedVerifier | undefined;
   const getTrustedVerifier = (chainId: bigint): TrustedVerifier | undefined => {
-    if (!seamEnabled) {
+    if (!attestationRoutingEnabled) {
       return undefined;
     }
     if (trustedVerifier === undefined) {
@@ -266,15 +267,15 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
 
           let downgraded = false;
           try {
-            // Route the NORMAL verify call through the lazy-attestation seam when
-            // it is engaged (sharkBase+chain set); otherwise verify directly. The
-            // chainId bootstrap (resolveChainId) ALWAYS stays on plain
-            // verifyResponse (Pitfall 4). Pass the fetch `Headers` object DIRECTLY
-            // — verifyResponse/the seam read it case-insensitively; lowercasing
-            // into a Record would risk smuggling.
-            const seam = getTrustedVerifier(cid);
-            if (seam !== undefined) {
-              await seam.verify(requestBytes, rawResponseBytes, res.headers);
+            // Route the NORMAL verify call through the lazy-attestation routing
+            // when it is engaged (attestationBaseUrl+chainSlug set); otherwise
+            // verify directly. The chainId bootstrap (resolveChainId) ALWAYS stays
+            // on plain verifyResponse (Pitfall 4). Pass the fetch `Headers` object
+            // DIRECTLY — verifyResponse/the verifier read it case-insensitively;
+            // lowercasing into a Record would risk smuggling.
+            const verifier = getTrustedVerifier(cid);
+            if (verifier !== undefined) {
+              await verifier.verify(requestBytes, rawResponseBytes, res.headers);
             } else {
               await verifyResponse(requestBytes, rawResponseBytes, res.headers, {
                 chainId: cid,

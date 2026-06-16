@@ -49,8 +49,8 @@ const EMPTY_ALLOWLIST: PinnedAllowlist = {
   kmsIdentities: [],
 };
 
-/** Seam-routing + forwarding config captured from VrpcOptions (opt-in via sharkBase+chain). */
-interface SeamConfig {
+/** Attestation-routing + forwarding config captured from VrpcOptions (opt-in via attestationBaseUrl+chainSlug). */
+interface AttestationRouting {
   sharkBase: string;
   chain: string;
   allowlist: PinnedAllowlist;
@@ -92,8 +92,8 @@ export class VrpcProvider extends JsonRpcProvider {
   readonly #verification: VrpcVerification;
   readonly #replayWindowMs: number | undefined;
   readonly #logger: (msg: string, err: unknown) => void;
-  // Opt-in lazy-attestation seam config (set only when sharkBase+chain present).
-  readonly #seam: SeamConfig | undefined;
+  // Opt-in lazy-attestation routing config (set only when attestationBaseUrl+chainSlug present).
+  readonly #attestationRouting: AttestationRouting | undefined;
   // ONE TrustedVerifier per provider (cache lives for the provider lifetime).
   // Built synchronously on the explicit-pin path; memoized lazily on the
   // auto-derive path (the seam's chainId is required, so it cannot exist before
@@ -165,12 +165,12 @@ export class VrpcProvider extends JsonRpcProvider {
     this.#replayWindowMs = replayWindowMs;
     this.#logger = logger ?? defaultLogger;
 
-    // Opt-in seam routing: engage ONLY when BOTH attestationBaseUrl and
+    // Opt-in attestation routing: engage ONLY when BOTH attestationBaseUrl and
     // chainSlug are set. The public surface stays a strict superset — without
     // this pair the provider behaves byte-identically to before (plain
     // verifyResponse).
     if (attestationBaseUrl !== undefined && chainSlug !== undefined) {
-      this.#seam = {
+      this.#attestationRouting = {
         sharkBase: attestationBaseUrl,
         chain: chainSlug,
         allowlist: allowlist ?? EMPTY_ALLOWLIST,
@@ -190,25 +190,25 @@ export class VrpcProvider extends JsonRpcProvider {
         this.#trustedVerifier = this.#buildTrustedVerifier(this.#chainId);
       }
     } else {
-      this.#seam = undefined;
+      this.#attestationRouting = undefined;
     }
   }
 
   /** Build the per-instance TrustedVerifier for a resolved chainId. */
   #buildTrustedVerifier(chainId: bigint): TrustedVerifier {
-    const seam = this.#seam as SeamConfig;
+    const routing = this.#attestationRouting as AttestationRouting;
     return new TrustedVerifier({
       chainId,
-      attestationBaseUrl: seam.sharkBase,
-      chainSlug: seam.chain,
-      allowlist: seam.allowlist,
-      ...(seam.replayWindowMs === undefined ? {} : { replayWindowMs: seam.replayWindowMs }),
-      ...(seam.pubkeyCacheTtl === undefined ? {} : { pubkeyCacheTtlMs: seam.pubkeyCacheTtl }),
-      ...(seam.tcb === undefined ? {} : { tcb: seam.tcb }),
-      ...(seam.pccsUrl === undefined ? {} : { pccsUrl: seam.pccsUrl }),
-      ...(seam.apiKey === undefined ? {} : { apiKey: seam.apiKey }),
-      ...(seam.headers === undefined ? {} : { headers: seam.headers }),
-      ...(seam.fetch === undefined ? {} : { fetch: seam.fetch }),
+      attestationBaseUrl: routing.sharkBase,
+      chainSlug: routing.chain,
+      allowlist: routing.allowlist,
+      ...(routing.replayWindowMs === undefined ? {} : { replayWindowMs: routing.replayWindowMs }),
+      ...(routing.pubkeyCacheTtl === undefined ? {} : { pubkeyCacheTtlMs: routing.pubkeyCacheTtl }),
+      ...(routing.tcb === undefined ? {} : { tcb: routing.tcb }),
+      ...(routing.pccsUrl === undefined ? {} : { pccsUrl: routing.pccsUrl }),
+      ...(routing.apiKey === undefined ? {} : { apiKey: routing.apiKey }),
+      ...(routing.headers === undefined ? {} : { headers: routing.headers }),
+      ...(routing.fetch === undefined ? {} : { fetch: routing.fetch }),
     });
   }
 
@@ -218,7 +218,7 @@ export class VrpcProvider extends JsonRpcProvider {
    * undefined when the seam is not configured (plain verifyResponse path).
    */
   #getTrustedVerifier(chainId: bigint): TrustedVerifier | undefined {
-    if (this.#seam === undefined) {
+    if (this.#attestationRouting === undefined) {
       return undefined;
     }
     if (this.#trustedVerifier === undefined) {
@@ -352,12 +352,12 @@ export class VrpcProvider extends JsonRpcProvider {
 
     let downgraded = false;
     try {
-      // Route the NORMAL verify call through the lazy-attestation seam when it
-      // is engaged (sharkBase+chain set); otherwise verify directly. The
-      // chainId bootstrap (#resolveChainId) ALWAYS stays on plain verifyResponse.
-      const seam = this.#getTrustedVerifier(chainId);
-      if (seam !== undefined) {
-        await seam.verify(requestBytes, rawResponseBytes, response.headers);
+      // Route the NORMAL verify call through the lazy-attestation routing when it
+      // is engaged (attestationBaseUrl+chainSlug set); otherwise verify directly.
+      // The chainId bootstrap (#resolveChainId) ALWAYS stays on plain verifyResponse.
+      const verifier = this.#getTrustedVerifier(chainId);
+      if (verifier !== undefined) {
+        await verifier.verify(requestBytes, rawResponseBytes, response.headers);
       } else {
         await verifyResponse(requestBytes, rawResponseBytes, response.headers, {
           chainId,
