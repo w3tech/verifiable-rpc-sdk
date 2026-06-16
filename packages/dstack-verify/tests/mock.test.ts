@@ -37,16 +37,19 @@ describe("verifyDstackAttestation mock", () => {
   // Security boundary: only the literal boolean `true` may resolve. Pin that
   // every truthy-but-not-true and falsy value still throws, so a regression to
   // `==`/`Boolean(...)` (instead of strict `=== true`) fails loudly.
-  test.each([1, "true", {}, undefined, null])(
-    "rejects (AttestationError) for truthy-but-not-true / absent allowInsecureMock=%p",
-    async (v) => {
-      await expect(
-        verifyDstackAttestation(bundle, {
-          allowInsecureMock: v,
-        } as unknown as VerifyPolicy),
-      ).rejects.toBeInstanceOf(AttestationError);
-    },
-  );
+  test.each([
+    1,
+    "true",
+    {},
+    undefined,
+    null,
+  ])("rejects (AttestationError) for truthy-but-not-true / absent allowInsecureMock=%p", async (v) => {
+    await expect(
+      verifyDstackAttestation(bundle, {
+        allowInsecureMock: v,
+      } as unknown as VerifyPolicy),
+    ).rejects.toBeInstanceOf(AttestationError);
+  });
 
   test("resolves with allowInsecureMock=true and warns on EVERY call (not memoized)", async () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
