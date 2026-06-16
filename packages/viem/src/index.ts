@@ -16,5 +16,8 @@ export {
   StaleTimestamp,
   VerificationError,
 } from "@ankr.com/vrpc-core";
+// Re-export the pinned-allowlist / TCB policy types so a caller wiring the
+// opt-in seam can type its options without importing dstack-verify directly.
+export type { PinnedAllowlist, TcbPolicy } from "@ankr.com/dstack-verify";
 export type { VrpcHttpOptions, VrpcVerification } from "./options";
 export { vrpcHttp } from "./transport";
