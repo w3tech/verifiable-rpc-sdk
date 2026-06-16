@@ -18,10 +18,22 @@ const RESP_HASH_OFFSET = 40;
 const TIMESTAMP_OFFSET = 72;
 const HASH_LEN = 32;
 
+const U64_MAX = (1n << 64n) - 1n;
+
 /**
  * Encode a u64 as 8 bytes, little-endian. Matches Rust `u64::to_le_bytes`.
+ *
+ * Throws `RangeError` for values outside `[0, 2^64 - 1]`. `setBigUint64`
+ * otherwise SILENTLY reduces modulo 2^64 (and takes two's complement on
+ * negatives), which would weaken the pre-image binding from strict equality to
+ * "equality mod 2^64" — `u64LE(C)` and `u64LE(C + 2^64)` produce identical
+ * bytes. Failing loud keeps the stored chainId/timestamp and the bound bytes in
+ * exact agreement (MED-01). Valid u64 inputs encode byte-for-byte unchanged.
  */
 export function u64LE(n: bigint): Uint8Array {
+  if (n < 0n || n > U64_MAX) {
+    throw new RangeError(`u64 value ${n} out of range [0, 2^64 - 1]`);
+  }
   const buf = new Uint8Array(8);
   new DataView(buf.buffer).setBigUint64(0, n, true);
   return buf;
