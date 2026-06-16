@@ -128,5 +128,5 @@ export interface VerifyPolicy {
    * v5.0 ESCAPE HATCH. When true, the mock verifier resolves (with a loud warning).
    * Removed in v6.0 once the real body lands. Default/absent = fail-closed.
    */
-  allowInsecureMock: boolean;
+  allowInsecureMock?: boolean;
 }
