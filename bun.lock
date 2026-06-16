@@ -38,6 +38,7 @@
       "name": "@ankr.com/vrpc-ethers",
       "version": "0.0.0",
       "dependencies": {
+        "@ankr.com/dstack-verify": "workspace:*",
         "@ankr.com/vrpc-core": "workspace:*",
       },
       "devDependencies": {

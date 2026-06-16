@@ -18,6 +18,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ankr.com/dstack-verify": "workspace:*",
     "@ankr.com/vrpc-core": "workspace:*"
   },
   "peerDependencies": {

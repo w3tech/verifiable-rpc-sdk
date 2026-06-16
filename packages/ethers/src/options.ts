@@ -4,6 +4,7 @@
 // stock JsonRpcProvider knob (batching, polling, etc.) is preserved and passed
 // through to `super(...)`, plus the three vRPC-specific knobs.
 
+import type { PinnedAllowlist, TcbPolicy } from "@ankr.com/dstack-verify";
 import type { JsonRpcApiProviderOptions } from "ethers";
 
 /**
@@ -49,4 +50,37 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
    * Defaults to a `console.warn`.
    */
   logger?: (msg: string, err: unknown) => void;
+  /**
+   * Shark proxy base URL (no trailing slash) for the lazy-attestation leg, e.g.
+   * `https://rpc.ankr.com`. OPT-IN: routing through the `TrustedVerifier` seam
+   * (lazy TDX attestation) engages ONLY when BOTH `sharkBase` and `chain` are
+   * set; otherwise the provider verifies via plain `verifyResponse` (unchanged).
+   */
+  sharkBase?: string;
+  /**
+   * Chain slug used to build the `<chain>_vrpc` attestation route, e.g. `eth`.
+   * OPT-IN: see {@link sharkBase} — both are required to engage the seam.
+   */
+  chain?: string;
+  /** Verified-pubkey cache TTL (ms) for the seam; default 1h (vrpc-core). */
+  pubkeyCacheTtl?: number;
+  /** Pinned trust anchors for the attestation `VerifyPolicy`; default empty (v5.0 mock). */
+  allowlist?: PinnedAllowlist;
+  /** DCAP TCB acceptance policy for the attestation `VerifyPolicy`. */
+  tcb?: TcbPolicy;
+  /** Operational collateral source for dcap-qvl (NOT a trust dependency). */
+  pccsUrl?: string;
+  /**
+   * Auth key for the attestation-leg fetch ONLY (sent as `x-api-key` on the
+   * shark `/attestation` GET). ethers carries RPC auth in its `FetchRequest`,
+   * not here. SECRET — MUST NOT be logged.
+   */
+  apiKey?: string;
+  /**
+   * Extra request headers for the attestation-leg fetch ONLY. SECRET — MUST NOT
+   * be logged.
+   */
+  headers?: Record<string, string>;
+  /** `fetch` override for the attestation leg — test injectable. Internal. */
+  fetch?: typeof fetch;
 }
