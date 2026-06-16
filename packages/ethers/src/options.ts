@@ -11,8 +11,8 @@ import type { JsonRpcApiProviderOptions } from "ethers";
  * Verification policy:
  *   - `strict`     (default) — a `VerificationError` from `verifyResponse`
  *     propagates out of `_send`; no unverified data is ever returned.
- *   - `permissive` — a `VerificationError` is caught, the `logger` fires once,
- *     and the parsed body is returned anyway. Opt-in only.
+ *   - `permissive` — a `VerificationError` is caught and the body is passed
+ *     through (silently; no logging — use `strict` to enforce). Opt-in only.
  */
 export type VrpcVerification = "strict" | "permissive";
 
@@ -45,11 +45,6 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
    * do not use it outside fixture tests.
    */
   replayWindowMs?: number;
-  /**
-   * Invoked once per downgraded verification failure in permissive mode.
-   * Defaults to a `console.warn`.
-   */
-  logger?: (msg: string, err: unknown) => void;
   /**
    * Shark proxy base URL (no trailing slash) for the lazy-attestation leg, e.g.
    * `https://rpc.ankr.com`. OPT-IN: routing through the `TrustedVerifier` seam

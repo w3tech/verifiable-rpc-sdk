@@ -6,8 +6,8 @@
 // vrpc-core's `verifyResponse` (the SAME seam the ethers `_send` override uses,
 // PKG-05). Only after verification passes is the body parsed and the result
 // returned. Verification is fail-closed by default (strict); permissive mode
-// (opt-in) downgrades a `VerificationError` to one logged warning and passes the
-// parsed body through. A signed JSON-RPC `{error}` body surfaces as viem's own
+// (opt-in) silently swallows a `VerificationError` and passes the parsed body
+// through — the library logs nothing. A signed JSON-RPC `{error}` body surfaces as viem's own
 // `RpcRequestError` (NOT a VerificationError) so `buildRequest` maps it by code.
 //
 // HTTP-status parity (MD-01): mirrors the ethers `_send` override's
@@ -42,10 +42,6 @@ import { createTransport, HttpRequestError, RpcRequestError, type Transport } fr
 
 import type { VrpcHttpOptions } from "./options";
 
-const defaultLogger = (msg: string, err: unknown): void => {
-  console.warn(`[vrpc-viem] ${msg}`, err);
-};
-
 /**
  * A viem `Transport` that Ed25519-verifies every HTTP JSON-RPC response over its
  * raw content-decoded bytes before the value reaches the client.
@@ -67,7 +63,6 @@ const defaultLogger = (msg: string, err: unknown): void => {
 export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vrpc-http"> {
   const verification = opts.verification ?? "strict";
   const fetchFn = opts.fetchFn ?? fetch;
-  const logger = opts.logger ?? defaultLogger;
 
   // Coerce to bigint WITHOUT a number round-trip (MD-01). When chainId is
   // omitted it is resolved lazily on the first request via an UNVERIFIED
@@ -254,7 +249,6 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
             });
           }
 
-          let downgraded = false;
           try {
             // Route the NORMAL verify call through the lazy-attestation routing
             // when it is engaged (attestationBaseUrl+chainSlug set); otherwise
@@ -273,36 +267,24 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
             }
           } catch (err) {
             if (err instanceof VerificationError && verification === "permissive") {
-              // Mark the verify as actually DOWNGRADED so the parse-failure log
-              // below fires only on a genuinely-downgraded body, not on every
-              // invalid signed body. (LO-01, parity with ethers `downgraded`.)
-              downgraded = true;
-              logger("verification failed (permissive mode, passing through)", err);
+              // Permissive mode: silently swallow the VerificationError and pass
+              // the (unverified) body through. The library logs nothing — use
+              // `strict` to enforce.
             } else {
               // strict fail-closed + any non-VerificationError always propagates.
               throw err;
             }
           }
 
-          // Parse ONLY after verification. In permissive mode a body that failed
-          // verification may also be invalid JSON (truncated / HTML error page);
-          // surface that parse failure through the same logger so the permissive
-          // consumer sees one coherent diagnostic rather than an opaque
-          // SyntaxError. The error still propagates (fail-closed; no unverified
-          // data is returned silently). (MD-02, parity with ethers LO-03.)
+          // Parse ONLY after verification. A JSON.parse failure propagates
+          // naturally (fail-closed; no unverified data is returned silently) — in
+          // permissive mode a body that failed verification may also be invalid
+          // JSON, and that SyntaxError surfaces to the caller unmodified.
           // `JSON.parse` returns `any` so `parsed.result` flows back through the
           // viem `EIP1193RequestFn` return without a cast (parity with viem's own
           // `http` transport, which returns the parsed value untyped).
           // biome-ignore lint/suspicious/noExplicitAny: viem request returns untyped.
-          let parsed: any;
-          try {
-            parsed = JSON.parse(rawText);
-          } catch (err) {
-            if (downgraded) {
-              logger("permissive passthrough: response body is not valid JSON", err);
-            }
-            throw err;
-          }
+          const parsed: any = JSON.parse(rawText);
           // `"error" in parsed` (not a truthy check): a signed JSON-RPC error
           // body is identified by the PRESENCE of the `error` key, matching
           // JSON-RPC semantics. (LO-02)

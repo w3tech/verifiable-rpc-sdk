@@ -1,7 +1,7 @@
 // vrpcHttp transport options (Phase 31, VIEM-01).
 //
 // `VrpcHttpOptions` mirrors the vrpc-ethers `VrpcOptions` verification knobs
-// (verification policy, replay window, logger) and adds the viem-specific
+// (verification policy, replay window) and adds the viem-specific
 // transport passthroughs: per-request `headers` (x-api-key / shark `chain_vrpc`
 // route) and an injectable `fetchFn` seam (mirrors viem's own `http` transport
 // `fetchFn`) — the cleanest offline-wiring test seam AND a hook for a consumer's
@@ -20,8 +20,8 @@ import type { PinnedAllowlist, TcbPolicy } from "@ankr.com/dstack-verify";
  * Verification policy:
  *   - `strict`     (default) — a `VerificationError` from `verifyResponse`
  *     propagates out of the transport `request`; no unverified data is returned.
- *   - `permissive` — a `VerificationError` is caught, the `logger` fires once,
- *     and the parsed body is returned anyway. Opt-in only.
+ *   - `permissive` — a `VerificationError` is caught and the body is passed
+ *     through (silently; no logging — use `strict` to enforce). Opt-in only.
  */
 export type VrpcVerification = "strict" | "permissive";
 
@@ -55,11 +55,6 @@ export interface VrpcHttpOptions {
    * do not use it outside fixture tests.
    */
   replayWindowMs?: number;
-  /**
-   * Invoked once per downgraded verification failure in permissive mode.
-   * Defaults to a `console.warn`.
-   */
-  logger?: (msg: string, err: unknown) => void;
   /**
    * Extra request headers merged into every POST (e.g. `x-api-key`, or the
    * shark `chain_vrpc` route header). `content-type: application/json` is always

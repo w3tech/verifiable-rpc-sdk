@@ -11,9 +11,10 @@
 // correlates the array results back to callers by id.
 //
 // Verification is fail-closed by default: a `VerificationError` propagates out
-// of `_send`. Permissive mode (opt-in) downgrades it to a logged warning and
-// passes the parsed body through. Any non-VerificationError (e.g. ethers
-// SERVER_ERROR from `assertOk`) always propagates in both modes.
+// of `_send`. Permissive mode (opt-in) silently swallows it and passes the
+// (unverified) parsed body through — the library logs nothing. Any
+// non-VerificationError (e.g. ethers SERVER_ERROR from `assertOk`) always
+// propagates in both modes.
 
 import { EMPTY_ALLOWLIST, type PinnedAllowlist } from "@ankr.com/dstack-verify";
 import {
@@ -33,10 +34,6 @@ import {
 } from "ethers";
 
 import type { VrpcOptions, VrpcVerification } from "./options";
-
-const defaultLogger = (msg: string, err: unknown): void => {
-  console.warn(`[vrpc-ethers] ${msg}`, err);
-};
 
 /** Attestation-routing + forwarding config captured from VrpcOptions (opt-in via attestationBaseUrl+chainSlug). */
 interface AttestationRouting {
@@ -80,7 +77,6 @@ export class VrpcProvider extends JsonRpcProvider {
   #chainIdPromise: Promise<bigint> | null = null;
   readonly #verification: VrpcVerification;
   readonly #replayWindowMs: number | undefined;
-  readonly #logger: (msg: string, err: unknown) => void;
   // Opt-in lazy-attestation routing config (set only when attestationBaseUrl+chainSlug present).
   readonly #attestationRouting: AttestationRouting | undefined;
   // ONE TrustedVerifier per provider (cache lives for the provider lifetime).
@@ -111,7 +107,6 @@ export class VrpcProvider extends JsonRpcProvider {
     const {
       verification = "strict",
       replayWindowMs,
-      logger,
       chainId: _drop,
       attestationBaseUrl,
       chainSlug,
@@ -152,7 +147,6 @@ export class VrpcProvider extends JsonRpcProvider {
 
     this.#verification = verification;
     this.#replayWindowMs = replayWindowMs;
-    this.#logger = logger ?? defaultLogger;
 
     // Opt-in attestation routing: engage ONLY when BOTH attestationBaseUrl and
     // chainSlug are set. The public surface stays a strict superset — without
@@ -341,7 +335,6 @@ export class VrpcProvider extends JsonRpcProvider {
     // vRPC-* headers → MissingHeader fails closed (no bespoke error class).
     const rawResponseBytes = response.body ?? new Uint8Array();
 
-    let downgraded = false;
     try {
       // Route the NORMAL verify call through the lazy-attestation routing when it
       // is engaged (attestationBaseUrl+chainSlug set); otherwise verify directly.
@@ -360,29 +353,20 @@ export class VrpcProvider extends JsonRpcProvider {
         if (this.#verification === "strict") {
           throw err;
         }
-        downgraded = true;
-        this.#logger("verification failed (permissive mode, passing through)", err);
+        // Permissive mode: silently swallow the VerificationError and pass the
+        // (unverified) body through. The library logs nothing — use `strict` to
+        // enforce.
       } else {
         throw err;
       }
     }
 
     // Parse ONLY after verification. Normalize to the array ethers' drain loop
-    // correlates by id (single payload → length-1 array). In permissive mode a
-    // body that failed verification may also be invalid JSON (e.g. a truncated
-    // response); surface that parse failure through the same logger so the
-    // permissive consumer sees one coherent diagnostic rather than an opaque
-    // SyntaxError. The error still propagates (fail-closed; no unverified data
-    // is returned silently). (LO-03)
-    let resp: unknown;
-    try {
-      resp = JSON.parse(toUtf8String(rawResponseBytes));
-    } catch (err) {
-      if (downgraded) {
-        this.#logger("permissive passthrough: response body is not valid JSON", err);
-      }
-      throw err;
-    }
+    // correlates by id (single payload → length-1 array). A JSON.parse failure
+    // propagates naturally (fail-closed; no unverified data is returned
+    // silently) — in permissive mode a body that failed verification may also be
+    // invalid JSON, and that SyntaxError surfaces to the caller unmodified.
+    let resp: unknown = JSON.parse(toUtf8String(rawResponseBytes));
     if (!Array.isArray(resp)) {
       resp = [resp];
     }

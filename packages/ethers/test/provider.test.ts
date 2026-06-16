@@ -181,19 +181,14 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
     await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(MissingHeader);
   });
 
-  test("permissive mode passes tampered data through with exactly one warning", async () => {
-    let calls = 0;
-    const logger = () => {
-      calls++;
-    };
+  test("permissive mode silently passes tampered data through", async () => {
     const provider = new VrpcProvider(
       signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { tamper: true }),
       CHAIN_ID_NUMBER,
-      { verification: "permissive", logger, ...WIDE_WINDOW },
+      { verification: "permissive", ...WIDE_WINDOW },
     );
     const balance = await provider.getBalance(ADDR);
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
-    expect(calls).toBe(1);
   });
 
   test("signed JSON-RPC {error} → ordinary ethers RPC error, NOT a VerificationError", async () => {

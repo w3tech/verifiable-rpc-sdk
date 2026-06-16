@@ -192,7 +192,7 @@ function autoDeriveFetch(
 
 function client(
   fetchFn: (url: string, init: RequestInit) => Promise<Response>,
-  overrides: { chainId?: bigint; verification?: "strict" | "permissive"; logger?: () => void } = {},
+  overrides: { chainId?: bigint; verification?: "strict" | "permissive" } = {},
 ) {
   return createPublicClient({
     transport: vrpcHttp(URL, {
@@ -200,7 +200,6 @@ function client(
       fetchFn,
       replayWindowMs: WIDE_WINDOW,
       ...(overrides.verification ? { verification: overrides.verification } : {}),
-      ...(overrides.logger ? { logger: overrides.logger } : {}),
     }),
   });
 }
@@ -294,19 +293,13 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     ).rejects.toBeInstanceOf(MissingHeader);
   });
 
-  // VIEM-02 — permissive mode passes a tampered value through, logging once.
-  test("permissive mode passes tampered data through with exactly one warning", async () => {
-    let calls = 0;
-    const logger = () => {
-      calls++;
-    };
+  // VIEM-02 — permissive mode silently passes a tampered value through.
+  test("permissive mode silently passes tampered data through", async () => {
     const c = client(signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { tamper: true }), {
       verification: "permissive",
-      logger,
     });
     const balance = await c.getBalance({ address: ADDR });
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
-    expect(calls).toBe(1);
   });
 
   // VIEM-02 — a signed JSON-RPC {error} body is an ordinary RPC error, NOT a
@@ -454,31 +447,21 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     expect(err).not.toBeInstanceOf(VerificationError);
   });
 
-  // MD-02 / LO-01 — in permissive mode, a body that failed verify AND is invalid
-  // JSON logs TWICE (the verify-downgrade warning + the parse-failure diagnostic)
-  // and still throws the SyntaxError (fail-closed: no unverified data returned).
-  // Parity with the ethers `downgraded`-gated parse-failure log (LO-03).
-  test("MD-02: permissive + invalid JSON logs the parse failure and still throws", async () => {
-    const msgs: string[] = [];
-    const logger = (msg: string) => {
-      msgs.push(msg);
-    };
+  // MD-02 — in permissive mode, a body that failed verify AND is invalid JSON
+  // still throws the SyntaxError (fail-closed: no unverified data returned). The
+  // library logs nothing; the parse failure propagates unmodified.
+  test("MD-02: permissive + invalid JSON still throws (silently)", async () => {
     const transport = vrpcHttp(URL, {
       chainId: CHAIN_ID,
-      // tamper makes verify fail (→ downgraded in permissive); the body is not
-      // valid JSON so JSON.parse throws after the downgrade.
+      // tamper makes verify fail (swallowed in permissive); the body is not
+      // valid JSON so JSON.parse throws after the swallow.
       fetchFn: signingFetch("not json <html>5</html>", { tamper: true }),
       verification: "permissive",
-      logger,
       replayWindowMs: WIDE_WINDOW,
     })({} as never);
     await expect(
       transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
     ).rejects.toThrow();
-    expect(msgs).toEqual([
-      "verification failed (permissive mode, passing through)",
-      "permissive passthrough: response body is not valid JSON",
-    ]);
   });
 
   // LO-03 — the transport `timeout` is applied to the actual fetch as an
