@@ -401,6 +401,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
   test("bare-url auto-derive: NO chainId → SIGNED bootstrap is verified, then a verified read succeeds", async () => {
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX)),
+      undefined,
       WIDE_WINDOW,
     );
     const balance = await provider.getBalance(ADDR);
@@ -411,6 +412,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
     const bootstrapHits = { n: 0 };
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
+      undefined,
       { ...WIDE_WINDOW, batchMaxCount: 1 },
     );
     await Promise.all([
@@ -434,6 +436,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
         bootstrapSigningChainId: CHAIN_ID,
         signingChainId: CHAIN_ID,
       }),
+      undefined,
       WIDE_WINDOW,
     );
     await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
@@ -442,6 +445,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
   test("auto-derive FAIL-FAST: a tampered bootstrap response → BadSignature AT BOOTSTRAP", async () => {
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapTamper: true }),
+      undefined,
       WIDE_WINDOW,
     );
     await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
@@ -450,6 +454,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
   test("auto-derive FAIL-FAST: an UNSIGNED bootstrap response → MissingHeader AT BOOTSTRAP", async () => {
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapUnsigned: true }),
+      undefined,
       WIDE_WINDOW,
     );
     await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(MissingHeader);
@@ -463,6 +468,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
         bootstrapRawBody: "{not valid json",
       }),
+      undefined,
       WIDE_WINDOW,
     );
     await expect(badJson.getBalance(ADDR)).rejects.toBeInstanceOf(MalformedHeader);
@@ -473,6 +479,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
         bootstrapRawBody: JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32000 } }),
       }),
+      undefined,
       WIDE_WINDOW,
     );
     await expect(missingResult.getBalance(ADDR)).rejects.toBeInstanceOf(MalformedHeader);
@@ -483,6 +490,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
         bootstrapRawBody: JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0xZZ" }),
       }),
+      undefined,
       WIDE_WINDOW,
     );
     await expect(nonHex.getBalance(ADDR)).rejects.toBeInstanceOf(MalformedHeader);
@@ -500,11 +508,12 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
     expect(bootstrapHits.n).toBe(0);
   });
 
-  test("options-only overload: chainId carried in the options object pins (zero bootstrap)", async () => {
+  test("positional bigint chainId pins (zero bootstrap)", async () => {
     const bootstrapHits = { n: 0 };
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
-      { chainId: CHAIN_ID, ...WIDE_WINDOW },
+      CHAIN_ID,
+      WIDE_WINDOW,
     );
     const balance = await provider.getBalance(ADDR);
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));

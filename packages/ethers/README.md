@@ -86,10 +86,8 @@ try {
 ### `class VrpcProvider extends JsonRpcProvider`
 
 ```ts
-// chainId optional + three equivalent constructor forms:
-new VrpcProvider(url: string | FetchRequest)
-new VrpcProvider(url: string | FetchRequest, chainId: number | bigint, options?: VrpcOptions)
-new VrpcProvider(url: string | FetchRequest, options?: VrpcOptions) // options may carry chainId
+// single signature — chainId is an optional positional arg:
+new VrpcProvider(url: string | FetchRequest, chainId?: number | bigint, options?: VrpcOptions)
 ```
 
 - **`url`** — node/proxy URL or a `FetchRequest` (use the latter to attach
@@ -98,13 +96,14 @@ new VrpcProvider(url: string | FetchRequest, options?: VrpcOptions) // options m
   Bound into the signed pre-image. Coerced with `BigInt()` *without* a `number`
   round-trip, so chain ids beyond `Number.MAX_SAFE_INTEGER` (2^53−1) bind exactly
   — no precision loss, no false `BadSignature`.
-  - **Explicit (recommended)** — `new VrpcProvider(url, chainId)` or
-    `new VrpcProvider(url, { chainId })`. The constructor pins this as a static
-    network (`staticNetwork: true`) so the provider issues **zero** `eth_chainId`
-    round-trips; this only skips the round-trip and does not weaken the signature
-    binding. It also pins to **your expected chain**, catching a wrong-node /
-    wrong-URL misconfig where auto-derive (which trusts the node's self-reported
-    chain) would happily verify *genuine* data from the *wrong* chain.
+  - **Explicit (recommended)** — `new VrpcProvider(url, chainId)`. The
+    constructor pins this as a static network (`staticNetwork: true`) so the
+    provider issues **zero** `eth_chainId` round-trips; this only skips the
+    round-trip and does not weaken the signature binding. It also pins to **your
+    expected chain**, catching a wrong-node / wrong-URL misconfig where
+    auto-derive (which trusts the node's self-reported chain) would happily
+    verify *genuine* data from the *wrong* chain. To pass options without pinning
+    a chain id, use `new VrpcProvider(url, undefined, { ... })`.
   - **Omitted (auto-derive)** — `new VrpcProvider(url)`. On first use the
     provider derives the chain id from a **signed `eth_chainId` response**,
     memoized so concurrent first calls share a single fetch, and **verifies that

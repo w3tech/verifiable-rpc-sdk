@@ -49,11 +49,6 @@ interface AttestationRouting {
   replayWindowMs?: number;
 }
 
-/** Narrow a 2nd constructor arg to a chainId Numeric (vs. an options object). */
-function isChainIdArg(value: unknown): value is number | bigint {
-  return typeof value === "number" || typeof value === "bigint";
-}
-
 /**
  * A `JsonRpcProvider` that Ed25519-verifies every JSON-RPC response over its raw
  * content-decoded bytes before the value reaches the caller.
@@ -85,29 +80,12 @@ export class VrpcProvider extends JsonRpcProvider {
   // #resolveChainId runs).
   #trustedVerifier: TrustedVerifier | undefined;
 
-  constructor(url: string | FetchRequest, chainId: number | bigint, options?: VrpcOptions);
-  constructor(url: string | FetchRequest, options?: VrpcOptions);
-  constructor(
-    url: string | FetchRequest,
-    chainIdOrOptions?: number | bigint | VrpcOptions,
-    maybeOptions: VrpcOptions = {},
-  ) {
-    // Normalize the overloads: a Numeric 2nd arg is the explicit chainId pin;
-    // anything else is the options object (which MAY carry `chainId`).
-    let options: VrpcOptions;
-    let explicitChainId: number | bigint | undefined;
-    if (isChainIdArg(chainIdOrOptions)) {
-      explicitChainId = chainIdOrOptions;
-      options = maybeOptions;
-    } else {
-      options = chainIdOrOptions ?? {};
-      explicitChainId = options.chainId;
-    }
+  constructor(url: string | FetchRequest, chainId?: number | bigint, options: VrpcOptions = {}) {
+    const explicitChainId = chainId;
 
     const {
       verification = "strict",
       replayWindowMs,
-      chainId: _drop,
       attestationBaseUrl,
       chainSlug,
       pubkeyCacheTtlMs,
