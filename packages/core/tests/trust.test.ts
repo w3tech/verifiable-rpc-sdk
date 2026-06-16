@@ -102,8 +102,8 @@ function baseOpts(overrides: Partial<TrustedVerifierOptions> = {}): TrustedVerif
   return {
     chainId: CHAIN_ID,
     replayWindowMs: 60_000,
-    sharkBase: SHARK_BASE,
-    chain: CHAIN,
+    attestationBaseUrl: SHARK_BASE,
+    chainSlug: CHAIN,
     allowlist: EMPTY_ALLOWLIST,
     now: () => NOW,
     nonceSource: () => NONCE,
@@ -216,7 +216,7 @@ describe("TrustedVerifier / trust seam", () => {
     const ttlMs = 5_000;
     let fakeT = NOW;
     const tv = new TrustedVerifier(
-      baseOpts({ fetch: mock.fetch, pubkeyCacheTtl: ttlMs, now: () => fakeT }),
+      baseOpts({ fetch: mock.fetch, pubkeyCacheTtlMs: ttlMs, now: () => fakeT }),
     );
 
     await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
@@ -234,7 +234,7 @@ describe("TrustedVerifier / trust seam", () => {
   });
 
   test("ttlDefaultIsOneHour", async () => {
-    // No pubkeyCacheTtl → DEFAULT_PUBKEY_CACHE_TTL_MS (1h): a < 1h shift is a
+    // No pubkeyCacheTtlMs → DEFAULT_PUBKEY_CACHE_TTL_MS (1h): a < 1h shift is a
     // hit, a > 1h shift re-verifies.
     const mock = installAttestationMock();
     const pair = await signedPair();

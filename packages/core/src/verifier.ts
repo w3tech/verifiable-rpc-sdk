@@ -48,7 +48,7 @@ export interface VerifierClientOptions {
    * TTL of a verified pubkey in the trust cache, ms; default 3_600_000 (1h).
    * Surfaced here for the trust-and-verify seam; wired in Phase 35.
    */
-  pubkeyCacheTtl?: number;
+  pubkeyCacheTtlMs?: number;
   /**
    * Pinned trust anchors used to build the attestation `VerifyPolicy`.
    * Surfaced here; consumed by the seam in Phase 35.

@@ -124,9 +124,9 @@ export class VrpcProvider extends JsonRpcProvider {
       replayWindowMs,
       logger,
       chainId: _drop,
-      sharkBase,
-      chain,
-      pubkeyCacheTtl,
+      attestationBaseUrl,
+      chainSlug,
+      pubkeyCacheTtlMs,
       allowlist,
       tcb,
       pccsUrl,
@@ -165,15 +165,16 @@ export class VrpcProvider extends JsonRpcProvider {
     this.#replayWindowMs = replayWindowMs;
     this.#logger = logger ?? defaultLogger;
 
-    // Opt-in seam routing: engage ONLY when BOTH sharkBase and chain are set.
-    // The public surface stays a strict superset — without this pair the
-    // provider behaves byte-identically to before (plain verifyResponse).
-    if (sharkBase !== undefined && chain !== undefined) {
+    // Opt-in seam routing: engage ONLY when BOTH attestationBaseUrl and
+    // chainSlug are set. The public surface stays a strict superset — without
+    // this pair the provider behaves byte-identically to before (plain
+    // verifyResponse).
+    if (attestationBaseUrl !== undefined && chainSlug !== undefined) {
       this.#seam = {
-        sharkBase,
-        chain,
+        sharkBase: attestationBaseUrl,
+        chain: chainSlug,
         allowlist: allowlist ?? EMPTY_ALLOWLIST,
-        ...(pubkeyCacheTtl === undefined ? {} : { pubkeyCacheTtl }),
+        ...(pubkeyCacheTtlMs === undefined ? {} : { pubkeyCacheTtl: pubkeyCacheTtlMs }),
         ...(tcb === undefined ? {} : { tcb }),
         ...(pccsUrl === undefined ? {} : { pccsUrl }),
         ...(apiKey === undefined ? {} : { apiKey }),
@@ -198,11 +199,11 @@ export class VrpcProvider extends JsonRpcProvider {
     const seam = this.#seam as SeamConfig;
     return new TrustedVerifier({
       chainId,
-      sharkBase: seam.sharkBase,
-      chain: seam.chain,
+      attestationBaseUrl: seam.sharkBase,
+      chainSlug: seam.chain,
       allowlist: seam.allowlist,
       ...(seam.replayWindowMs === undefined ? {} : { replayWindowMs: seam.replayWindowMs }),
-      ...(seam.pubkeyCacheTtl === undefined ? {} : { pubkeyCacheTtl: seam.pubkeyCacheTtl }),
+      ...(seam.pubkeyCacheTtl === undefined ? {} : { pubkeyCacheTtlMs: seam.pubkeyCacheTtl }),
       ...(seam.tcb === undefined ? {} : { tcb: seam.tcb }),
       ...(seam.pccsUrl === undefined ? {} : { pccsUrl: seam.pccsUrl }),
       ...(seam.apiKey === undefined ? {} : { apiKey: seam.apiKey }),

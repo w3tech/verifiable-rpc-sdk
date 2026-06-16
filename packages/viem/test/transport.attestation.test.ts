@@ -97,8 +97,8 @@ describe("vrpcHttp lazy-attestation seam (TEST-03, viem half)", () => {
     const c = createPublicClient({
       transport: vrpcHttp(URL, {
         chainId: CHAIN_ID,
-        sharkBase: SHARK_BASE,
-        chain: CHAIN,
+        attestationBaseUrl: SHARK_BASE,
+        chainSlug: CHAIN,
         fetchFn: seam.fetchFn,
         replayWindowMs: WIDE_WINDOW,
       }),
@@ -119,8 +119,8 @@ describe("vrpcHttp lazy-attestation seam (TEST-03, viem half)", () => {
     const seam = seamFetch({ withNodeId: false });
     const transport = vrpcHttp(URL, {
       chainId: CHAIN_ID,
-      sharkBase: SHARK_BASE,
-      chain: CHAIN,
+      attestationBaseUrl: SHARK_BASE,
+      chainSlug: CHAIN,
       fetchFn: seam.fetchFn,
       replayWindowMs: WIDE_WINDOW,
     })({} as never);

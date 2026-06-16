@@ -58,10 +58,10 @@ union in core is NOT edited.
 This package only verifies attestation — the orchestration (lazy fetch + pubkey
 cache) lives in `@ankr.com/vrpc-core`'s `TrustedVerifier`. After a successful
 (in v5.0 — mock) verification the signing pubkey is cached for a configurable
-TTL (`pubkeyCacheTtl`, default `DEFAULT_PUBKEY_CACHE_TTL_MS` = 1h): a repeat read
+TTL (`pubkeyCacheTtlMs`, default `DEFAULT_PUBKEY_CACHE_TTL_MS` = 1h): a repeat read
 within the TTL skips the attestation fetch; after the TTL the pubkey is
 re-attested (no stale trust). The adapters (`@ankr.com/vrpc-ethers`,
-`@ankr.com/vrpc-viem`) forward `pubkeyCacheTtl` into the seam. Remember: in v5.0
+`@ankr.com/vrpc-viem`) forward `pubkeyCacheTtlMs` into the seam. Remember: in v5.0
 the cached result is from the **mock** check — see the banner above.
 
 ### `CHK-*` checklist

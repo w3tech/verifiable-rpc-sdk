@@ -119,8 +119,8 @@ function VrpcProviderWith(mock: AttMockState, signOpts: { nodeId?: string }): Vr
     signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), signOpts),
     CHAIN_ID_NUMBER,
     {
-      sharkBase: SHARK_BASE,
-      chain: CHAIN,
+      attestationBaseUrl: SHARK_BASE,
+      chainSlug: CHAIN,
       fetch: mock.fetch,
       replayWindowMs: WIDE,
     },

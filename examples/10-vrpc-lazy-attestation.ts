@@ -2,7 +2,7 @@
 //
 // Demonstrates the v5.0 lazy-attestation seam end-to-end, fully OFFLINE (no env,
 // no real network — injected mock fetch serves BOTH legs). When a VrpcProvider /
-// vrpcHttp transport is constructed with the opt-in `sharkBase` + `chain` pair,
+// vrpcHttp transport is constructed with the opt-in `attestationBaseUrl` + `chainSlug` pair,
 // the normal verify routes through vrpc-core's `TrustedVerifier`: on an UNKNOWN
 // signing pubkey it fetches the node's `/attestation`, correlates it, runs the
 // (v5.0 MOCK) attestation verifier, and CACHES the pubkey; a second ordinary read
@@ -112,8 +112,8 @@ async function attestationResponse(): Promise<Response> {
   }) as unknown as typeof fetch;
 
   const provider = new VrpcProvider(req, CHAIN_ID, {
-    sharkBase: SHARK_BASE,
-    chain: CHAIN,
+    attestationBaseUrl: SHARK_BASE,
+    chainSlug: CHAIN,
     fetch: attFetch,
     replayWindowMs: WIDE_REPLAY_MS,
   });
@@ -153,8 +153,8 @@ async function attestationResponse(): Promise<Response> {
   const client = createPublicClient({
     transport: vrpcHttp(VRPC_URL, {
       chainId: CHAIN_ID,
-      sharkBase: SHARK_BASE,
-      chain: CHAIN,
+      attestationBaseUrl: SHARK_BASE,
+      chainSlug: CHAIN,
       fetchFn,
       replayWindowMs: WIDE_REPLAY_MS,
     }),

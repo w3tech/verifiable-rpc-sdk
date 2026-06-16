@@ -123,7 +123,7 @@ These fields wire the normal verify through `@ankr.com/vrpc-core`'s
 `TrustedVerifier`, which lazily fetches + correlates the serving node's TDX
 attestation on an **unknown** signing pubkey and **caches** the verified pubkey
 (configurable TTL, default 1h). Routing is **strictly opt-in**: it engages **only
-when BOTH `sharkBase` and `chain` are set**. Omit either and the transport behaves
+when BOTH `attestationBaseUrl` and `chainSlug` are set**. Omit either and the transport behaves
 byte-identically to before (plain `verifyResponse`, no attestation leg). The
 chainId bootstrap always stays on plain `verifyResponse`. The existing `headers`
 and `fetchFn` are **reused** for the attestation-leg fetch (one verifier per
@@ -131,9 +131,9 @@ transport — never per call — so the pubkey cache lives for the transport lif
 
 | Option           | Type                     | Default          | Notes |
 |------------------|--------------------------|------------------|-------|
-| `sharkBase`      | `string`                 | — (off)          | Shark proxy base URL (no trailing slash), e.g. `https://rpc.ankr.com`. Set **with** `chain` to engage the seam; the attestation GET targets `<sharkBase>/<chain>_vrpc/attestation`. |
-| `chain`          | `string`                 | — (off)          | Chain slug for the `<chain>_vrpc` attestation route, e.g. `arbitrum`. Opt-in pair with `sharkBase`. |
-| `pubkeyCacheTtl` | `number`                 | `3_600_000` (1h) | Verified-pubkey cache TTL (ms). A second read within TTL reuses the cache and skips the attestation fetch; past TTL the pubkey is re-attested (no stale trust). |
+| `attestationBaseUrl` | `string`             | — (off)          | Shark proxy base URL (no trailing slash), e.g. `https://rpc.ankr.com`. Set **with** `chainSlug` to engage the seam; the attestation GET targets `<attestationBaseUrl>/<chainSlug>_vrpc/attestation`. |
+| `chainSlug`      | `string`                 | — (off)          | Chain slug for the `<chain>_vrpc` attestation route, e.g. `arbitrum`. Opt-in pair with `attestationBaseUrl`. |
+| `pubkeyCacheTtlMs` | `number`               | `3_600_000` (1h) | Verified-pubkey cache TTL (ms). A second read within TTL reuses the cache and skips the attestation fetch; past TTL the pubkey is re-attested (no stale trust). |
 | `allowlist`      | `PinnedAllowlist`        | empty            | Pinned trust anchors for the attestation `VerifyPolicy`. The v5.0 mock does not inspect it; defaults to an empty allowlist. |
 | `tcb`            | `TcbPolicy`              | core default     | DCAP TCB acceptance forwarded to the attestation `VerifyPolicy`. |
 | `pccsUrl`        | `string`                 | —                | Operational collateral source for dcap-qvl (NOT a trust dependency). |
@@ -146,10 +146,10 @@ attestation GET — which is also the offline test/example seam.
 const client = createPublicClient({
   transport: vrpcHttp("https://rpc.ankr.com/arbitrum_vrpc", {
     chainId: 42161,
-    sharkBase: "https://rpc.ankr.com",
-    chain: "arbitrum",
+    attestationBaseUrl: "https://rpc.ankr.com",
+    chainSlug: "arbitrum",
     apiKey: process.env.SHARK_API_KEY, // attestation-leg auth (never logged)
-    pubkeyCacheTtl: 3_600_000,         // 1h (default)
+    pubkeyCacheTtlMs: 3_600_000,       // 1h (default)
   }),
 });
 // Ordinary reads. The first unknown pubkey triggers one attestation fetch +

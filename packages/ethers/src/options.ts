@@ -53,17 +53,18 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
   /**
    * Shark proxy base URL (no trailing slash) for the lazy-attestation leg, e.g.
    * `https://rpc.ankr.com`. OPT-IN: routing through the `TrustedVerifier` seam
-   * (lazy TDX attestation) engages ONLY when BOTH `sharkBase` and `chain` are
-   * set; otherwise the provider verifies via plain `verifyResponse` (unchanged).
+   * (lazy TDX attestation) engages ONLY when BOTH `attestationBaseUrl` and
+   * `chainSlug` are set; otherwise the provider verifies via plain
+   * `verifyResponse` (unchanged).
    */
-  sharkBase?: string;
+  attestationBaseUrl?: string;
   /**
    * Chain slug used to build the `<chain>_vrpc` attestation route, e.g. `eth`.
-   * OPT-IN: see {@link sharkBase} — both are required to engage the seam.
+   * OPT-IN: see {@link attestationBaseUrl} — both are required to engage the seam.
    */
-  chain?: string;
+  chainSlug?: string;
   /** Verified-pubkey cache TTL (ms) for the seam; default 1h (vrpc-core). */
-  pubkeyCacheTtl?: number;
+  pubkeyCacheTtlMs?: number;
   /** Pinned trust anchors for the attestation `VerifyPolicy`; default empty (v5.0 mock). */
   allowlist?: PinnedAllowlist;
   /** DCAP TCB acceptance policy for the attestation `VerifyPolicy`. */

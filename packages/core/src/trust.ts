@@ -36,7 +36,7 @@ export const DEFAULT_PUBKEY_CACHE_TTL_MS = 3_600_000;
 
 /**
  * Construction options for {@link TrustedVerifier}. The transport inputs
- * (`sharkBase`/`chain`/auth) target the attestation fetch; the policy inputs
+ * (`attestationBaseUrl`/`chainSlug`/auth) target the attestation fetch; the policy inputs
  * (`allowlist`/`tcb`/`pccsUrl`) build the `VerifyPolicy`; the test injectables
  * (`now`/`nonceSource`/`verifyAttestation`) keep TTL + fail-closed tests
  * deterministic and offline.
@@ -51,9 +51,9 @@ export interface TrustedVerifierOptions {
   /** Allowed skew between client clock and signed timestamp; default 60_000 ms. */
   replayWindowMs?: number;
   /** Shark proxy base URL (no trailing slash), e.g. `https://rpc.ankr.com`. */
-  sharkBase: string;
+  attestationBaseUrl: string;
   /** Chain slug used to build the `<chain>_vrpc` attestation route, e.g. `eth`. */
-  chain: string;
+  chainSlug: string;
   /** Auth key sent as `x-api-key` on the attestation fetch. */
   apiKey?: string;
   /** Extra request headers for the attestation fetch; `x-api-key` here wins. */
@@ -61,7 +61,7 @@ export interface TrustedVerifierOptions {
   /** `fetch` override — defaults to `globalThis.fetch`. */
   fetch?: typeof fetch;
   /** Verified-pubkey cache TTL in ms; default {@link DEFAULT_PUBKEY_CACHE_TTL_MS}. */
-  pubkeyCacheTtl?: number;
+  pubkeyCacheTtlMs?: number;
   /** Pinned trust anchors (INTEG-02). Required — built into every `VerifyPolicy`. */
   allowlist: PinnedAllowlist;
   /** DCAP TCB acceptance; default `{ allowedStatuses: [], rejectDebug: true }`. */
@@ -160,22 +160,22 @@ export class TrustedVerifier {
   private readonly verifyAttestationImpl: (b: AttestationBundle, p: VerifyPolicy) => Promise<void>;
   private readonly chainId: bigint;
   private readonly replayWindowMs: number | undefined;
-  private readonly sharkBase: string;
-  private readonly chain: string;
+  private readonly attestationBaseUrl: string;
+  private readonly chainSlug: string;
   private readonly apiKey: string | undefined;
   private readonly headers: Record<string, string> | undefined;
   private readonly fetchImpl: typeof fetch | undefined;
 
   constructor(opts: TrustedVerifierOptions) {
     this.opts = opts;
-    this.ttlMs = opts.pubkeyCacheTtl ?? DEFAULT_PUBKEY_CACHE_TTL_MS;
+    this.ttlMs = opts.pubkeyCacheTtlMs ?? DEFAULT_PUBKEY_CACHE_TTL_MS;
     this.now = opts.now ?? (() => Date.now());
     this.nonceSource = opts.nonceSource ?? (() => crypto.getRandomValues(new Uint8Array(32)));
     this.verifyAttestationImpl = opts.verifyAttestation ?? verifyDstackAttestation;
     this.chainId = opts.chainId;
     this.replayWindowMs = opts.replayWindowMs;
-    this.sharkBase = opts.sharkBase;
-    this.chain = opts.chain;
+    this.attestationBaseUrl = opts.attestationBaseUrl;
+    this.chainSlug = opts.chainSlug;
     this.apiKey = opts.apiKey;
     this.headers = opts.headers;
     this.fetchImpl = opts.fetch;
@@ -228,8 +228,8 @@ export class TrustedVerifier {
     const nonce = this.nonceSource();
 
     const att = await fetchAttestationViaShark({
-      sharkBase: this.sharkBase,
-      chain: this.chain,
+      sharkBase: this.attestationBaseUrl,
+      chain: this.chainSlug,
       nodeId: pair.nodeId,
       nonce,
       ...(this.apiKey === undefined ? {} : { apiKey: this.apiKey }),

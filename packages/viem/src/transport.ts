@@ -93,7 +93,7 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
   // single TrustedVerifier is built lazily on the first request AFTER `cid` is
   // known and memoized here so all subsequent requests reuse the SAME instance +
   // pubkey cache (one verifier per transport, never per call).
-  const seamEnabled = opts.sharkBase !== undefined && opts.chain !== undefined;
+  const seamEnabled = opts.attestationBaseUrl !== undefined && opts.chainSlug !== undefined;
   let trustedVerifier: TrustedVerifier | undefined;
   const getTrustedVerifier = (chainId: bigint): TrustedVerifier | undefined => {
     if (!seamEnabled) {
@@ -102,11 +102,11 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
     if (trustedVerifier === undefined) {
       trustedVerifier = new TrustedVerifier({
         chainId,
-        sharkBase: opts.sharkBase as string,
-        chain: opts.chain as string,
+        attestationBaseUrl: opts.attestationBaseUrl as string,
+        chainSlug: opts.chainSlug as string,
         allowlist: opts.allowlist ?? EMPTY_ALLOWLIST,
         ...(opts.replayWindowMs === undefined ? {} : { replayWindowMs: opts.replayWindowMs }),
-        ...(opts.pubkeyCacheTtl === undefined ? {} : { pubkeyCacheTtl: opts.pubkeyCacheTtl }),
+        ...(opts.pubkeyCacheTtlMs === undefined ? {} : { pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs }),
         ...(opts.tcb === undefined ? {} : { tcb: opts.tcb }),
         ...(opts.pccsUrl === undefined ? {} : { pccsUrl: opts.pccsUrl }),
         ...(opts.apiKey === undefined ? {} : { apiKey: opts.apiKey }),
