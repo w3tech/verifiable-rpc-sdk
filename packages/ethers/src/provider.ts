@@ -15,7 +15,13 @@
 // passes the parsed body through. Any non-VerificationError (e.g. ethers
 // SERVER_ERROR from `assertOk`) always propagates in both modes.
 
-import { MalformedHeader, VerificationError, verifyResponse } from "@ankr.com/vrpc-core";
+import type { PinnedAllowlist } from "@ankr.com/dstack-verify";
+import {
+  MalformedHeader,
+  TrustedVerifier,
+  VerificationError,
+  verifyResponse,
+} from "@ankr.com/vrpc-core";
 import {
   type FetchRequest,
   type JsonRpcPayload,
@@ -31,6 +37,31 @@ import type { VrpcOptions, VrpcVerification } from "./options";
 const defaultLogger = (msg: string, err: unknown): void => {
   console.warn(`[vrpc-ethers] ${msg}`, err);
 };
+
+/** Empty pinned allowlist default — the v5.0 mock verifier never inspects it (A3). */
+const EMPTY_ALLOWLIST: PinnedAllowlist = {
+  composeHashes: [],
+  mrtd: "",
+  rtmr0: "",
+  rtmr1: "",
+  rtmr2: "",
+  osImageHashes: [],
+  kmsIdentities: [],
+};
+
+/** Seam-routing + forwarding config captured from VrpcOptions (opt-in via sharkBase+chain). */
+interface SeamConfig {
+  sharkBase: string;
+  chain: string;
+  allowlist: PinnedAllowlist;
+  pubkeyCacheTtl?: number;
+  tcb?: import("@ankr.com/dstack-verify").TcbPolicy;
+  pccsUrl?: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+  fetch?: typeof fetch;
+  replayWindowMs?: number;
+}
 
 /** Narrow a 2nd constructor arg to a chainId Numeric (vs. an options object). */
 function isChainIdArg(value: unknown): value is number | bigint {
@@ -61,6 +92,13 @@ export class VrpcProvider extends JsonRpcProvider {
   readonly #verification: VrpcVerification;
   readonly #replayWindowMs: number | undefined;
   readonly #logger: (msg: string, err: unknown) => void;
+  // Opt-in lazy-attestation seam config (set only when sharkBase+chain present).
+  readonly #seam: SeamConfig | undefined;
+  // ONE TrustedVerifier per provider (cache lives for the provider lifetime).
+  // Built synchronously on the explicit-pin path; memoized lazily on the
+  // auto-derive path (the seam's chainId is required, so it cannot exist before
+  // #resolveChainId runs).
+  #trustedVerifier: TrustedVerifier | undefined;
 
   constructor(url: string | FetchRequest, chainId: number | bigint, options?: VrpcOptions);
   constructor(url: string | FetchRequest, options?: VrpcOptions);
@@ -86,6 +124,15 @@ export class VrpcProvider extends JsonRpcProvider {
       replayWindowMs,
       logger,
       chainId: _drop,
+      sharkBase,
+      chain,
+      pubkeyCacheTtl,
+      allowlist,
+      tcb,
+      pccsUrl,
+      apiKey,
+      headers,
+      fetch: attFetch,
       ...ethersOpts
     } = options;
 
@@ -117,6 +164,66 @@ export class VrpcProvider extends JsonRpcProvider {
     this.#verification = verification;
     this.#replayWindowMs = replayWindowMs;
     this.#logger = logger ?? defaultLogger;
+
+    // Opt-in seam routing: engage ONLY when BOTH sharkBase and chain are set.
+    // The public surface stays a strict superset — without this pair the
+    // provider behaves byte-identically to before (plain verifyResponse).
+    if (sharkBase !== undefined && chain !== undefined) {
+      this.#seam = {
+        sharkBase,
+        chain,
+        allowlist: allowlist ?? EMPTY_ALLOWLIST,
+        ...(pubkeyCacheTtl === undefined ? {} : { pubkeyCacheTtl }),
+        ...(tcb === undefined ? {} : { tcb }),
+        ...(pccsUrl === undefined ? {} : { pccsUrl }),
+        ...(apiKey === undefined ? {} : { apiKey }),
+        ...(headers === undefined ? {} : { headers }),
+        ...(attFetch === undefined ? {} : { fetch: attFetch }),
+        ...(replayWindowMs === undefined ? {} : { replayWindowMs }),
+      };
+      // Explicit-pin path: chainId is known synchronously → build the single
+      // TrustedVerifier now (its cache lives for the provider lifetime). On the
+      // auto-derive path #chainId is undefined here; defer the build to the
+      // first _send after #resolveChainId (see #getTrustedVerifier).
+      if (this.#chainId != null) {
+        this.#trustedVerifier = this.#buildTrustedVerifier(this.#chainId);
+      }
+    } else {
+      this.#seam = undefined;
+    }
+  }
+
+  /** Build the per-instance TrustedVerifier for a resolved chainId. */
+  #buildTrustedVerifier(chainId: bigint): TrustedVerifier {
+    const seam = this.#seam as SeamConfig;
+    return new TrustedVerifier({
+      chainId,
+      sharkBase: seam.sharkBase,
+      chain: seam.chain,
+      allowlist: seam.allowlist,
+      ...(seam.replayWindowMs === undefined ? {} : { replayWindowMs: seam.replayWindowMs }),
+      ...(seam.pubkeyCacheTtl === undefined ? {} : { pubkeyCacheTtl: seam.pubkeyCacheTtl }),
+      ...(seam.tcb === undefined ? {} : { tcb: seam.tcb }),
+      ...(seam.pccsUrl === undefined ? {} : { pccsUrl: seam.pccsUrl }),
+      ...(seam.apiKey === undefined ? {} : { apiKey: seam.apiKey }),
+      ...(seam.headers === undefined ? {} : { headers: seam.headers }),
+      ...(seam.fetch === undefined ? {} : { fetch: seam.fetch }),
+    });
+  }
+
+  /**
+   * Return the memoized per-instance TrustedVerifier when the seam is engaged,
+   * building it lazily (auto-derive path) once `chainId` is known. Returns
+   * undefined when the seam is not configured (plain verifyResponse path).
+   */
+  #getTrustedVerifier(chainId: bigint): TrustedVerifier | undefined {
+    if (this.#seam === undefined) {
+      return undefined;
+    }
+    if (this.#trustedVerifier === undefined) {
+      this.#trustedVerifier = this.#buildTrustedVerifier(chainId);
+    }
+    return this.#trustedVerifier;
   }
 
   /**
@@ -244,10 +351,18 @@ export class VrpcProvider extends JsonRpcProvider {
 
     let downgraded = false;
     try {
-      await verifyResponse(requestBytes, rawResponseBytes, response.headers, {
-        chainId,
-        ...(this.#replayWindowMs != null ? { replayWindowMs: this.#replayWindowMs } : {}),
-      });
+      // Route the NORMAL verify call through the lazy-attestation seam when it
+      // is engaged (sharkBase+chain set); otherwise verify directly. The
+      // chainId bootstrap (#resolveChainId) ALWAYS stays on plain verifyResponse.
+      const seam = this.#getTrustedVerifier(chainId);
+      if (seam !== undefined) {
+        await seam.verify(requestBytes, rawResponseBytes, response.headers);
+      } else {
+        await verifyResponse(requestBytes, rawResponseBytes, response.headers, {
+          chainId,
+          ...(this.#replayWindowMs != null ? { replayWindowMs: this.#replayWindowMs } : {}),
+        });
+      }
     } catch (err) {
       if (err instanceof VerificationError) {
         if (this.#verification === "strict") {
