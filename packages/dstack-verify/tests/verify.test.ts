@@ -24,7 +24,7 @@ describe("verifyDstackAttestation mock", () => {
       throw new Error("expected rejection");
     } catch (e) {
       expect(e).toBeInstanceOf(AttestationError);
-      expect((e as AttestationError).chk).toBe("CHK-MOCK");
+      expect((e as AttestationError).chkId).toBe("CHK-MOCK");
     }
   });
 

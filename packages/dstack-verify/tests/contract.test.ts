@@ -41,7 +41,7 @@ describe("AttestationError", () => {
     // "Attestation" literal. Read it as string to compare the runtime value.
     expect(e.kind as string).toBe("Attestation");
     expect(e.name).toBe("AttestationError");
-    expect(e.chk).toBe("CHK-MOCK");
+    expect(e.chkId).toBe("CHK-MOCK");
     expect(e.detail).toBe("x");
     expect(e.message).toContain("CHK-MOCK");
   });

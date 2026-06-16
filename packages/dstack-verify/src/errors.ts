@@ -29,11 +29,11 @@ export class AttestationError extends VerificationError {
   readonly kind: VerificationErrorKind = "Attestation" as VerificationErrorKind;
 
   constructor(
-    public readonly chk: ChkId,
+    public readonly chkId: ChkId,
     public readonly detail: string,
     options?: { cause?: unknown },
   ) {
-    super(`Attestation verification failed [${chk}]: ${detail}`);
+    super(`Attestation verification failed [${chkId}]: ${detail}`);
     if (options?.cause !== undefined) {
       (this as { cause?: unknown }).cause = options.cause;
     }
