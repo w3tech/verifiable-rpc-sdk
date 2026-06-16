@@ -13,11 +13,23 @@
 // `verifyAttestationCorrelation` (attestation.ts). `mapAttestationToBundle` and
 // `buildVerifyPolicy` are pure mappers with no crypto.
 
+import {
+  type AttestationBundle,
+  type PinnedAllowlist,
+  type TcbPolicy,
+  type VerifyPolicy,
+  verifyDstackAttestation,
+} from "@ankr.com/dstack-verify";
 import { bytesToHex } from "@noble/hashes/utils.js";
 
-import type { AttestationBundle, PinnedAllowlist, TcbPolicy, VerifyPolicy } from "@ankr.com/dstack-verify";
-
-import { type Attestation } from "./attestation";
+import {
+  type Attestation,
+  fetchAttestationViaShark,
+  verifyAttestationCorrelation,
+} from "./attestation";
+import { MissingHeader } from "./errors";
+import type { VerifiedResponse } from "./verifier";
+import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
 
 /** Default pubkey-cache TTL: 1 hour in ms (FLOW-02 default). */
 export const DEFAULT_PUBKEY_CACHE_TTL_MS = 3_600_000;
@@ -130,4 +142,109 @@ export function buildVerifyPolicy(
     ...(opts.pccsUrl === undefined ? {} : { pccsUrl: opts.pccsUrl }),
     allowInsecureMock: true,
   };
+}
+
+/**
+ * The verify-and-trust seam (INTEG-01). Holds a long-lived pubkey cache (keyed by
+ * `pubkeyHex` → expiry epoch-ms) across `verify()` calls. On a cache hit within
+ * TTL it returns the verified pair before any attestation fetch (FLOW-04); on a
+ * miss/expiry it lazily fetches + correlates + verifies the attestation, caching
+ * the pubkey ONLY after a resolved attestation verify (FLOW-05).
+ */
+export class TrustedVerifier {
+  private readonly cache = new Map<string, number>(); // pubkeyHex -> expiry epoch-ms
+  private readonly opts: TrustedVerifierOptions;
+  private readonly ttlMs: number;
+  private readonly now: () => number;
+  private readonly nonceSource: () => Uint8Array;
+  private readonly verifyAttestationImpl: (b: AttestationBundle, p: VerifyPolicy) => Promise<void>;
+  private readonly chainId: bigint;
+  private readonly replayWindowMs: number | undefined;
+  private readonly sharkBase: string;
+  private readonly chain: string;
+  private readonly apiKey: string | undefined;
+  private readonly headers: Record<string, string> | undefined;
+  private readonly fetchImpl: typeof fetch | undefined;
+
+  constructor(opts: TrustedVerifierOptions) {
+    this.opts = opts;
+    this.ttlMs = opts.pubkeyCacheTtl ?? DEFAULT_PUBKEY_CACHE_TTL_MS;
+    this.now = opts.now ?? (() => Date.now());
+    this.nonceSource = opts.nonceSource ?? (() => crypto.getRandomValues(new Uint8Array(32)));
+    this.verifyAttestationImpl = opts.verifyAttestation ?? verifyDstackAttestation;
+    this.chainId = opts.chainId;
+    this.replayWindowMs = opts.replayWindowMs;
+    this.sharkBase = opts.sharkBase;
+    this.chain = opts.chain;
+    this.apiKey = opts.apiKey;
+    this.headers = opts.headers;
+    this.fetchImpl = opts.fetch;
+  }
+
+  /** True when `pubkeyHex` is cached and the entry has not expired. */
+  private isFresh(pubkeyHex: string): boolean {
+    const expiry = this.cache.get(pubkeyHex);
+    return expiry !== undefined && this.now() < expiry;
+  }
+
+  /** Cache `pubkeyHex` with a fresh TTL window. Called ONLY on a resolved verify. */
+  private cacheResolved(pubkeyHex: string): void {
+    this.cache.set(pubkeyHex, this.now() + this.ttlMs);
+  }
+
+  /**
+   * Verify a (requestBytes, responseBytes, headers) triple and, on an
+   * unknown/expired signing pubkey, lazily attest it. Fail-closed throughout.
+   * Exact ordering (FLOW-03/04/05):
+   *   1. `verifyResponse` (the single Ed25519 path) — throws propagate.
+   *   2. cache hit & fresh → return before any fetch (FLOW-04).
+   *   3. missing nodeId on the miss path → MissingHeader (fail-closed).
+   *   4. one fresh nonce, reused below (no rebinding).
+   *   5. fetch attestation via shark — throws propagate, cache untouched.
+   *   6. correlate att.pubkey == response signer — throws on mismatch.
+   *   7. map → bundle, build policy (same nonce).
+   *   8. attestation verify — throw skips step 9 (FLOW-05). NO try/finally.
+   *   9. cache the pubkey STRICTLY after the resolved verify; return.
+   */
+  async verify(
+    requestBytes: Uint8Array,
+    responseBytes: Uint8Array,
+    headers: ResponseHeaders,
+  ): Promise<VerifiedPair> {
+    const pair = await verifyResponse(requestBytes, responseBytes, headers, {
+      chainId: this.chainId,
+      ...(this.replayWindowMs === undefined ? {} : { replayWindowMs: this.replayWindowMs }),
+    });
+
+    const pubkeyHex = pair.verification.pubkeyHex;
+    if (this.isFresh(pubkeyHex)) {
+      return pair;
+    }
+
+    if (pair.nodeId === undefined) {
+      throw new MissingHeader("vRPC-NodeId");
+    }
+
+    const nonce = this.nonceSource();
+
+    const att = await fetchAttestationViaShark({
+      sharkBase: this.sharkBase,
+      chain: this.chain,
+      nodeId: pair.nodeId,
+      nonce,
+      ...(this.apiKey === undefined ? {} : { apiKey: this.apiKey }),
+      ...(this.headers === undefined ? {} : { headers: this.headers }),
+      ...(this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl }),
+    });
+
+    verifyAttestationCorrelation(att, { verification: { pubkeyHex } } as VerifiedResponse);
+
+    const bundle = mapAttestationToBundle(att, pubkeyHex, nonce);
+    const policy = buildVerifyPolicy(this.opts, pubkeyHex, nonce);
+
+    await this.verifyAttestationImpl(bundle, policy);
+
+    this.cacheResolved(pubkeyHex);
+    return pair;
+  }
 }

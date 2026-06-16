@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
-
 import { AttestationError } from "@ankr.com/dstack-verify";
+import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 
 import { buildPreImage } from "../src/preimage";
 import { buildVerifyPolicy, TrustedVerifier, type TrustedVerifierOptions } from "../src/trust";
@@ -12,7 +11,7 @@ const CHAIN = "arbitrum";
 const CHAIN_ID = 42161n;
 const TEST_SEED = new Uint8Array(32).fill(0x42);
 const NONCE = new Uint8Array(32).fill(0x07);
-const NOW = 1000;
+const NOW = 1_000_000;
 
 /** Empty pinned allowlist — the v5.0 mock does not inspect it (A3). */
 const EMPTY_ALLOWLIST = {
@@ -50,7 +49,9 @@ async function signedPair(): Promise<{
   const responseBytes = new TextEncoder().encode(
     JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x12345" }),
   );
-  const ts = BigInt(NOW);
+  // Sign with a wall-clock timestamp so verifyResponse's replay window (which
+  // uses Date.now(), not the seam's injected cache clock) accepts it.
+  const ts = BigInt(Date.now());
   const preImage = buildPreImage(CHAIN_ID, requestBytes, responseBytes, ts);
   const signature = await signAsync(preImage, TEST_SEED);
   const pubkey = await getPublicKeyAsync(TEST_SEED);
@@ -95,7 +96,7 @@ function installAttestationMock(): AttMockState {
 function baseOpts(overrides: Partial<TrustedVerifierOptions> = {}): TrustedVerifierOptions {
   return {
     chainId: CHAIN_ID,
-    replayWindowMs: 0,
+    replayWindowMs: 60_000,
     sharkBase: SHARK_BASE,
     chain: CHAIN,
     allowlist: EMPTY_ALLOWLIST,
