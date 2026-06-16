@@ -3,7 +3,12 @@ import { AttestationError } from "@ankr.com/dstack-verify";
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 
 import { buildPreImage } from "../src/preimage";
-import { buildVerifyPolicy, TrustedVerifier, type TrustedVerifierOptions } from "../src/trust";
+import {
+  buildVerifyPolicy,
+  DEFAULT_PUBKEY_CACHE_TTL_MS,
+  TrustedVerifier,
+  type TrustedVerifierOptions,
+} from "../src/trust";
 import type { ResponseHeaders } from "../src/verify";
 
 const SHARK_BASE = "https://rpc.ankr.com";
@@ -155,5 +160,96 @@ describe("TrustedVerifier / trust seam", () => {
     }
     expect(caught2).toBeInstanceOf(AttestationError);
     expect(mock.attGetCount).toBeGreaterThanOrEqual(2);
+  });
+
+  // ── Happy-path suite: real mock verifyDstackAttestation (allowInsecureMock
+  // hard-set true by buildVerifyPolicy) → no verifyAttestation override. ──────
+
+  test("cacheMissFetchesAndVerifies", async () => {
+    // FLOW-03: unknown pubkey → attestation fetched + verified → VerifiedPair.
+    const mock = installAttestationMock();
+    const pair = await signedPair();
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
+
+    const verified = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+
+    const expectedPubkey = `0x${toHex(await getPublicKeyAsync(TEST_SEED))}`;
+    expect(verified.verification.pubkeyHex).toBe(expectedPubkey);
+    expect(mock.attGetCount).toBe(1);
+  });
+
+  test("cacheHit", async () => {
+    // FLOW-04: a fresh known pubkey skips the attestation fetch entirely.
+    const mock = installAttestationMock();
+    const pair = await signedPair();
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
+
+    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    expect(mock.attGetCount).toBe(1);
+
+    // Reset the counter; a second verify within TTL must NOT fetch.
+    mock.attGetCount = 0;
+    const second = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    expect(second.verification.pubkeyHex).toBe(`0x${toHex(await getPublicKeyAsync(TEST_SEED))}`);
+    expect(mock.attGetCount).toBe(0);
+  });
+
+  test("knownVsUnknown", async () => {
+    // FLOW-01: first verify (unknown) attests (counter ++), second (known,
+    // within TTL) routes through the cache (counter unchanged).
+    const mock = installAttestationMock();
+    const pair = await signedPair();
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
+
+    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    expect(mock.attGetCount).toBe(1); // miss path
+
+    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    expect(mock.attGetCount).toBe(1); // hit path, no extra fetch
+  });
+
+  test("expiredReVerifies", async () => {
+    // FLOW-02: advancing the injected clock past TTL forces a re-verify — a
+    // cached pubkey is NOT trusted forever (no stale-trust). No real sleep.
+    const mock = installAttestationMock();
+    const pair = await signedPair();
+    const ttlMs = 5_000;
+    let fakeT = NOW;
+    const tv = new TrustedVerifier(
+      baseOpts({ fetch: mock.fetch, pubkeyCacheTtl: ttlMs, now: () => fakeT }),
+    );
+
+    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    expect(mock.attGetCount).toBe(1); // initial verify warms the cache
+
+    // Still within TTL → cache hit, no fetch.
+    fakeT += ttlMs - 1;
+    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    expect(mock.attGetCount).toBe(1);
+
+    // Past TTL → entry expired → re-verify (counter increments again).
+    fakeT += 2;
+    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    expect(mock.attGetCount).toBe(2);
+  });
+
+  test("ttlDefaultIsOneHour", async () => {
+    // No pubkeyCacheTtl → DEFAULT_PUBKEY_CACHE_TTL_MS (1h): a < 1h shift is a
+    // hit, a > 1h shift re-verifies.
+    const mock = installAttestationMock();
+    const pair = await signedPair();
+    let fakeT = NOW;
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, now: () => fakeT }));
+
+    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    expect(mock.attGetCount).toBe(1);
+
+    fakeT += DEFAULT_PUBKEY_CACHE_TTL_MS - 1; // < 1h → still fresh
+    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    expect(mock.attGetCount).toBe(1);
+
+    fakeT += 2; // now > 1h since cache → expired
+    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    expect(mock.attGetCount).toBe(2);
   });
 });
