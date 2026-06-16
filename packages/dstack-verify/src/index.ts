@@ -15,6 +15,7 @@ export { CHK } from "./checklist";
 export type { AttestationErrorKind } from "./errors";
 export { AttestationError } from "./errors";
 export { computeComposeHash, extractKeyProvider, parseReportData, replayRtmr } from "./helpers";
+export { verifyDstackAttestation } from "./mock";
 export type {
   AttestationBundle,
   EventLogEntry,
@@ -26,5 +27,3 @@ export type {
   TcbPolicy,
   VerifyPolicy,
 } from "./types";
-// verifyDstackAttestation (mock body) is added to this barrel in Plan 02:
-// export { verifyDstackAttestation } from "./mock";
