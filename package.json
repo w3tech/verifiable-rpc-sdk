@@ -30,11 +30,19 @@
     "example:07-attestation-via-shark": "bun run examples/07-attestation-via-shark.ts",
     "example:08-vrpc-ethers-verified-read": "bun run examples/08-vrpc-ethers-verified-read.ts",
     "example:09-vrpc-viem-verified-read": "bun run examples/09-vrpc-viem-verified-read.ts",
-    "example:all": "bun run example:01-signed-call && bun run example:02-batch-and-replay && bun run example:03-fetch-attestation && bun run example:04-end-to-end && bun run example:05-gzip-transport && bun run example:06-via-shark && bun run example:07-attestation-via-shark && bun run example:08-vrpc-ethers-verified-read && bun run example:09-vrpc-viem-verified-read"
+    "example:10-vrpc-lazy-attestation": "bun run examples/10-vrpc-lazy-attestation.ts",
+    "example:all": "bun run example:01-signed-call && bun run example:02-batch-and-replay && bun run example:03-fetch-attestation && bun run example:04-end-to-end && bun run example:05-gzip-transport && bun run example:06-via-shark && bun run example:07-attestation-via-shark && bun run example:08-vrpc-ethers-verified-read && bun run example:09-vrpc-viem-verified-read && bun run example:10-vrpc-lazy-attestation"
   },
   "devDependencies": {
+    "@ankr.com/dstack-verify": "workspace:*",
+    "@ankr.com/vrpc-core": "workspace:*",
+    "@ankr.com/vrpc-ethers": "workspace:*",
+    "@ankr.com/vrpc-viem": "workspace:*",
+    "@noble/ed25519": "^3.1.0",
     "@biomejs/biome": "^2.0.0",
     "@types/bun": "latest",
-    "typescript": "^5.9.0"
+    "ethers": "^6.16.0",
+    "typescript": "^5.9.0",
+    "viem": "^2.52.2"
   }
 }

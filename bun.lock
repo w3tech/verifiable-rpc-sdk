@@ -5,9 +5,16 @@
     "": {
       "name": "@ankr/verifiable-rpc-client",
       "devDependencies": {
+        "@ankr.com/dstack-verify": "workspace:*",
+        "@ankr.com/vrpc-core": "workspace:*",
+        "@ankr.com/vrpc-ethers": "workspace:*",
+        "@ankr.com/vrpc-viem": "workspace:*",
         "@biomejs/biome": "^2.0.0",
+        "@noble/ed25519": "^3.1.0",
         "@types/bun": "latest",
+        "ethers": "^6.16.0",
         "typescript": "^5.9.0",
+        "viem": "^2.52.2",
       },
     },
     "packages/core": {
