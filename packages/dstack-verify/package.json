@@ -1,9 +1,9 @@
 {
-  "name": "@ankr.com/vrpc-core",
+  "name": "@ankr.com/dstack-verify",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Transport-agnostic Ed25519 verification primitives for Ankr's verifiable RPC — pre-image, signature verify, attestation, compose.",
+  "description": "Frozen contract for dstack/TDX attestation verification — v5.0 mock, v6.0 real.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -15,14 +15,10 @@
   },
   "scripts": {
     "test": "bun test",
-    "test:unit": "bun test tests/*.test.ts",
-    "test:integration": "bun test tests/integration/",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ankr.com/dstack-verify": "workspace:*",
-    "@noble/ed25519": "^3.1.0",
-    "@noble/hashes": "^2.2.0"
+    "@ankr.com/vrpc-core": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

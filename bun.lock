@@ -14,8 +14,20 @@
       "name": "@ankr.com/vrpc-core",
       "version": "0.0.0",
       "dependencies": {
+        "@ankr.com/dstack-verify": "workspace:*",
         "@noble/ed25519": "^3.1.0",
         "@noble/hashes": "^2.2.0",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@types/node": "*",
+      },
+    },
+    "packages/dstack-verify": {
+      "name": "@ankr.com/dstack-verify",
+      "version": "0.0.0",
+      "dependencies": {
+        "@ankr.com/vrpc-core": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -53,6 +65,8 @@
   },
   "packages": {
     "@adraffy/ens-normalize": ["@adraffy/ens-normalize@1.10.1", "", {}, "sha512-96Z2IP3mYmF1Xg2cDm8f1gWGf/HUVedQ3FMifV4kG/PQ4yEP51xDtRAEfhVNt5f/uzpNkZHwWQuUcu6D6K+Ekw=="],
+
+    "@ankr.com/dstack-verify": ["@ankr.com/dstack-verify@workspace:packages/dstack-verify"],
 
     "@ankr.com/vrpc-core": ["@ankr.com/vrpc-core@workspace:packages/core"],
 
