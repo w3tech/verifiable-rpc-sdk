@@ -1,7 +1,8 @@
-// v5.0 fail-closed MOCK body for verifyDstackAttestation. The signature is
-// frozen in the contract (Plan 01); this file fills only the body. v6.0 replaces
-// this body with real DCAP/RTMR/compose-hash/reportData verification, touching
-// nothing outside this package.
+// verifyDstackAttestation — the public attestation-verifier entrypoint. Its
+// signature is frozen in the contract; this file holds its body. In v5.0 the
+// body is a fail-closed MOCK; v6.0 replaces it IN PLACE with real
+// DCAP/RTMR/compose-hash/reportData verification, touching nothing outside this
+// package.
 //
 // Fail-closed (VPKG-03/VPKG-04): the default path (allowInsecureMock absent or
 // false) THROWS AttestationError("CHK-MOCK"). The verifier resolves void ONLY

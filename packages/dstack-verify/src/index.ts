@@ -5,7 +5,7 @@
 //   - ./errors    — AttestationError extends VerificationError
 //   - ./checklist — ChkId union (CHK-A1..G3 + CHK-MOCK) + frozen CHK record
 //   - ./helpers   — v6.0 helper signatures (v5.0 throwing stubs)
-//   - ./mock      — verifyDstackAttestation mock body (added in Plan 02)
+//   - ./verify    — verifyDstackAttestation entrypoint (v5.0 mock body; v6.0 fills it in place)
 //
 // verbatimModuleSyntax + isolatedModules require `export type { ... }` to be
 // a separate statement from `export { ... }`.
@@ -15,7 +15,6 @@ export { CHK } from "./checklist";
 export type { AttestationErrorKind } from "./errors";
 export { AttestationError } from "./errors";
 export { computeComposeHash, extractKeyProvider, parseReportData, replayRtmr } from "./helpers";
-export { verifyDstackAttestation } from "./mock";
 export type {
   AttestationBundle,
   EventLogEntry,
@@ -27,3 +26,4 @@ export type {
   TcbPolicy,
   VerifyPolicy,
 } from "./types";
+export { verifyDstackAttestation } from "./verify";
