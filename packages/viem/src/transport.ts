@@ -31,13 +31,30 @@
 // `err.walk(e => e instanceof VerificationError)` since buildRequest preserves it
 // as `.cause`.
 
-import { MalformedHeader, VerificationError, verifyResponse } from "@ankr.com/vrpc-core";
+import type { PinnedAllowlist } from "@ankr.com/dstack-verify";
+import {
+  MalformedHeader,
+  TrustedVerifier,
+  VerificationError,
+  verifyResponse,
+} from "@ankr.com/vrpc-core";
 import { createTransport, HttpRequestError, RpcRequestError, type Transport } from "viem";
 
 import type { VrpcHttpOptions } from "./options";
 
 const defaultLogger = (msg: string, err: unknown): void => {
   console.warn(`[vrpc-viem] ${msg}`, err);
+};
+
+/** Empty pinned allowlist default — the v5.0 mock verifier never inspects it (A3). */
+const EMPTY_ALLOWLIST: PinnedAllowlist = {
+  composeHashes: [],
+  mrtd: "",
+  rtmr0: "",
+  rtmr1: "",
+  rtmr2: "",
+  osImageHashes: [],
+  kmsIdentities: [],
 };
 
 /**
@@ -68,6 +85,39 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
   // eth_chainId bootstrap, memoized so concurrent first calls share ONE fetch.
   let chainIdResolved: bigint | undefined = opts.chainId != null ? BigInt(opts.chainId) : undefined;
   let chainIdPromise: Promise<bigint> | null = null;
+
+  // Opt-in seam routing: engage ONLY when BOTH sharkBase and chain are set. The
+  // public surface stays a strict superset — without this pair the transport
+  // behaves byte-identically to before (plain verifyResponse). The seam's
+  // chainId is REQUIRED, but the viem chainId may be resolved lazily, so the
+  // single TrustedVerifier is built lazily on the first request AFTER `cid` is
+  // known and memoized here so all subsequent requests reuse the SAME instance +
+  // pubkey cache (one verifier per transport, never per call).
+  const seamEnabled = opts.sharkBase !== undefined && opts.chain !== undefined;
+  let trustedVerifier: TrustedVerifier | undefined;
+  const getTrustedVerifier = (chainId: bigint): TrustedVerifier | undefined => {
+    if (!seamEnabled) {
+      return undefined;
+    }
+    if (trustedVerifier === undefined) {
+      trustedVerifier = new TrustedVerifier({
+        chainId,
+        sharkBase: opts.sharkBase as string,
+        chain: opts.chain as string,
+        allowlist: opts.allowlist ?? EMPTY_ALLOWLIST,
+        ...(opts.replayWindowMs === undefined ? {} : { replayWindowMs: opts.replayWindowMs }),
+        ...(opts.pubkeyCacheTtl === undefined ? {} : { pubkeyCacheTtl: opts.pubkeyCacheTtl }),
+        ...(opts.tcb === undefined ? {} : { tcb: opts.tcb }),
+        ...(opts.pccsUrl === undefined ? {} : { pccsUrl: opts.pccsUrl }),
+        ...(opts.apiKey === undefined ? {} : { apiKey: opts.apiKey }),
+        ...(opts.headers === undefined ? {} : { headers: opts.headers }),
+        // `fetchFn`'s (url, init) => Promise<Response> aligns with the seam's
+        // `fetch` for the attestation GET leg (Pitfall 6).
+        ...(opts.fetchFn === undefined ? {} : { fetch: opts.fetchFn as typeof fetch }),
+      });
+    }
+    return trustedVerifier;
+  };
 
   return ({ timeout: injectedTimeout }) => {
     // Resolve the effective timeout the viem-`http()` way: explicit option, then
@@ -216,12 +266,21 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
 
           let downgraded = false;
           try {
-            // Pass the fetch `Headers` object DIRECTLY — verifyResponse reads it
-            // case-insensitively; lowercasing into a Record would risk smuggling.
-            await verifyResponse(requestBytes, rawResponseBytes, res.headers, {
-              chainId: cid,
-              ...(opts.replayWindowMs != null ? { replayWindowMs: opts.replayWindowMs } : {}),
-            });
+            // Route the NORMAL verify call through the lazy-attestation seam when
+            // it is engaged (sharkBase+chain set); otherwise verify directly. The
+            // chainId bootstrap (resolveChainId) ALWAYS stays on plain
+            // verifyResponse (Pitfall 4). Pass the fetch `Headers` object DIRECTLY
+            // — verifyResponse/the seam read it case-insensitively; lowercasing
+            // into a Record would risk smuggling.
+            const seam = getTrustedVerifier(cid);
+            if (seam !== undefined) {
+              await seam.verify(requestBytes, rawResponseBytes, res.headers);
+            } else {
+              await verifyResponse(requestBytes, rawResponseBytes, res.headers, {
+                chainId: cid,
+                ...(opts.replayWindowMs != null ? { replayWindowMs: opts.replayWindowMs } : {}),
+              });
+            }
           } catch (err) {
             if (err instanceof VerificationError && verification === "permissive") {
               // Mark the verify as actually DOWNGRADED so the parse-failure log
