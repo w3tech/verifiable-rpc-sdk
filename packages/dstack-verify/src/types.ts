@@ -100,6 +100,25 @@ export interface PinnedAllowlist {
   kmsIdentities: string[];
 }
 
+/**
+ * Canonical empty allowlist — pins NOTHING. v5.0's mock verifier ignores the
+ * allowlist, so callers (the adapters / core seam) use this as the default when
+ * no pins are supplied. The shape lives here because `PinnedAllowlist` is a
+ * dstack-verify domain type — consumers MUST NOT hand-roll their own.
+ * ⚠️ In v6.0 an empty allowlist trusts no anchors and real verification would
+ * reject — production deployments MUST supply real pins. Treat as immutable
+ * (shared reference; do not mutate its arrays).
+ */
+export const EMPTY_ALLOWLIST: PinnedAllowlist = {
+  composeHashes: [],
+  mrtd: "",
+  rtmr0: "",
+  rtmr1: "",
+  rtmr2: "",
+  osImageHashes: [],
+  kmsIdentities: [],
+};
+
 /** TCB acceptance policy for DCAP (CHK-P2). */
 export interface TcbPolicy {
   /** Allowed dcap-qvl TCB statuses, e.g. ["UpToDate","SWHardeningNeeded"]. */

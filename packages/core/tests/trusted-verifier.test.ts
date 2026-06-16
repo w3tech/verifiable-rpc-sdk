@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { AttestationError } from "@ankr.com/dstack-verify";
+import { AttestationError, EMPTY_ALLOWLIST } from "@ankr.com/dstack-verify";
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 
 import { buildPreImage } from "../src/preimage";
@@ -17,17 +17,6 @@ const CHAIN_ID = 42161n;
 const TEST_SEED = new Uint8Array(32).fill(0x42);
 const NONCE = new Uint8Array(32).fill(0x07);
 const NOW = 1_000_000;
-
-/** Empty pinned allowlist — the v5.0 mock does not inspect it (A3). */
-const EMPTY_ALLOWLIST = {
-  composeHashes: [],
-  mrtd: "",
-  rtmr0: "",
-  rtmr1: "",
-  rtmr2: "",
-  osImageHashes: [],
-  kmsIdentities: [],
-};
 
 function toHex(bytes: Uint8Array): string {
   let out = "";

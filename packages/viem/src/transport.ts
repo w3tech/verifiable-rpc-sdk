@@ -31,7 +31,7 @@
 // `err.walk(e => e instanceof VerificationError)` since buildRequest preserves it
 // as `.cause`.
 
-import type { PinnedAllowlist } from "@ankr.com/dstack-verify";
+import { EMPTY_ALLOWLIST } from "@ankr.com/dstack-verify";
 import {
   MalformedHeader,
   TrustedVerifier,
@@ -44,17 +44,6 @@ import type { VrpcHttpOptions } from "./options";
 
 const defaultLogger = (msg: string, err: unknown): void => {
   console.warn(`[vrpc-viem] ${msg}`, err);
-};
-
-/** Empty pinned allowlist default — the v5.0 mock verifier never inspects it (A3). */
-const EMPTY_ALLOWLIST: PinnedAllowlist = {
-  composeHashes: [],
-  mrtd: "",
-  rtmr0: "",
-  rtmr1: "",
-  rtmr2: "",
-  osImageHashes: [],
-  kmsIdentities: [],
 };
 
 /**

@@ -25,6 +25,7 @@ export type {
   TcbPolicy,
   VerifyPolicy,
 } from "./types";
+export { EMPTY_ALLOWLIST } from "./types";
 export { verifyDstackAttestation } from "./verify";
 export {
   computeComposeHash,

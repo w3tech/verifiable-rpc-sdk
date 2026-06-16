@@ -15,7 +15,7 @@
 // passes the parsed body through. Any non-VerificationError (e.g. ethers
 // SERVER_ERROR from `assertOk`) always propagates in both modes.
 
-import type { PinnedAllowlist } from "@ankr.com/dstack-verify";
+import { EMPTY_ALLOWLIST, type PinnedAllowlist } from "@ankr.com/dstack-verify";
 import {
   MalformedHeader,
   TrustedVerifier,
@@ -36,17 +36,6 @@ import type { VrpcOptions, VrpcVerification } from "./options";
 
 const defaultLogger = (msg: string, err: unknown): void => {
   console.warn(`[vrpc-ethers] ${msg}`, err);
-};
-
-/** Empty pinned allowlist default — the v5.0 mock verifier never inspects it (A3). */
-const EMPTY_ALLOWLIST: PinnedAllowlist = {
-  composeHashes: [],
-  mrtd: "",
-  rtmr0: "",
-  rtmr1: "",
-  rtmr2: "",
-  osImageHashes: [],
-  kmsIdentities: [],
 };
 
 /** Attestation-routing + forwarding config captured from VrpcOptions (opt-in via attestationBaseUrl+chainSlug). */
