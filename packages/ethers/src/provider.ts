@@ -119,22 +119,6 @@ export class VrpcProvider extends JsonRpcProvider {
     // (number | bigint), so passing the bigint is compatible.
     const chainIdBig = chainId != null ? BigInt(chainId) : undefined;
 
-    // Verification is ALWAYS active: the TrustedVerifier (plain Ed25519 verify
-    // + lazy TDX attestation) is the single verify path; allowlist defaults to
-    // EMPTY_ALLOWLIST (v5.0 mock passes via allowInsecureMock). Computed as a
-    // local first — `this` is off-limits until super() — then stored on both paths.
-    const verifierConfig: VerifierConfig = {
-      attestationUrl,
-      allowlist: allowlist ?? EMPTY_ALLOWLIST,
-      ...(pubkeyCacheTtlMs === undefined ? {} : { pubkeyCacheTtlMs }),
-      ...(tcb === undefined ? {} : { tcb }),
-      ...(pccsUrl === undefined ? {} : { pccsUrl }),
-      ...(apiKey === undefined ? {} : { apiKey }),
-      ...(headers === undefined ? {} : { headers }),
-      ...(attestationFetch === undefined ? {} : { fetch: attestationFetch }),
-      ...(replayWindowMs === undefined ? {} : { replayWindowMs }),
-    };
-
     // ONE super(): pin → Network.from(chainId) + staticNetwork (sets #network
     // synchronously, skips the startup eth_chainId detection; does NOT weaken the
     // signature binding), with ethersOpts spread FIRST so a user staticNetwork
@@ -147,7 +131,20 @@ export class VrpcProvider extends JsonRpcProvider {
     super(superUrl, network, superOptions);
 
     this.#chainId = chainIdBig;
-    this.#verifierConfig = verifierConfig;
+    // Verification is ALWAYS active: the TrustedVerifier (plain Ed25519 verify +
+    // lazy TDX attestation) is the single verify path; allowlist defaults to
+    // EMPTY_ALLOWLIST (v5.0 mock passes via allowInsecureMock).
+    this.#verifierConfig = {
+      attestationUrl,
+      allowlist: allowlist ?? EMPTY_ALLOWLIST,
+      ...(pubkeyCacheTtlMs === undefined ? {} : { pubkeyCacheTtlMs }),
+      ...(tcb === undefined ? {} : { tcb }),
+      ...(pccsUrl === undefined ? {} : { pccsUrl }),
+      ...(apiKey === undefined ? {} : { apiKey }),
+      ...(headers === undefined ? {} : { headers }),
+      ...(attestationFetch === undefined ? {} : { fetch: attestationFetch }),
+      ...(replayWindowMs === undefined ? {} : { replayWindowMs }),
+    };
     // Pin path: chainId known synchronously → build the single TrustedVerifier
     // now (its cache lives for the provider lifetime). Auto-derive: deferred to
     // the first _send after #resolveChainId (see #getTrustedVerifier).
