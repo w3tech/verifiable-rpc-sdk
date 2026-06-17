@@ -119,16 +119,15 @@ export class VrpcProvider extends JsonRpcProvider {
     // (number | bigint), so passing the bigint is compatible.
     const chainIdBig = chainId != null ? BigInt(chainId) : undefined;
 
-    // ONE super(): pin → Network.from(chainId) + staticNetwork (sets #network
-    // synchronously, skips the startup eth_chainId detection; does NOT weaken the
-    // signature binding), with ethersOpts spread FIRST so a user staticNetwork
-    // can't override ours away (LO-01). Auto-derive → undefined network + plain
-    // ethersOpts; the chain id is resolved lazily by #resolveChainId on first
-    // _send (and _detectNetwork is overridden to feed the same resolver), so
-    // ethers never runs its own eth_chainId through the verifying _send.
-    const network = chainIdBig != null ? Network.from(chainIdBig) : undefined;
+    // ONE super(): a bigint chainId passes straight through as the Networkish —
+    // ethers does Network.from internally (no number round-trip, MD-01) — and with
+    // staticNetwork it sets #network synchronously and skips the startup eth_chainId
+    // detection (does NOT weaken the binding). undefined leaves the network for lazy
+    // auto-derive (#resolveChainId / the _detectNetwork override). staticNetwork is
+    // set ONLY when pinning; ethersOpts is spread FIRST so a user staticNetwork can't
+    // override ours away (LO-01).
     const superOptions = chainIdBig != null ? { ...ethersOpts, staticNetwork: true } : ethersOpts;
-    super(superUrl, network, superOptions);
+    super(superUrl, chainIdBig, superOptions);
 
     this.#chainId = chainIdBig;
     // Verification is ALWAYS active: the TrustedVerifier (plain Ed25519 verify +
