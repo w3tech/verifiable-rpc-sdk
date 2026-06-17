@@ -82,8 +82,6 @@ export class VrpcProvider extends JsonRpcProvider {
   #trustedVerifier: TrustedVerifier | undefined;
 
   constructor(url: string | FetchRequest, chainId?: number | bigint, options: VrpcOptions = {}) {
-    const explicitChainId = chainId;
-
     const {
       replayWindowMs,
       pubkeyCacheTtlMs,
@@ -119,7 +117,7 @@ export class VrpcProvider extends JsonRpcProvider {
     // range, so widening through `number` would lose precision and reject
     // intact responses (false BadSignature). `Network.from` accepts Numeric
     // (number | bigint), so passing the bigint is compatible.
-    const chainIdBig = explicitChainId != null ? BigInt(explicitChainId) : undefined;
+    const chainIdBig = chainId != null ? BigInt(chainId) : undefined;
 
     if (chainIdBig != null) {
       // Explicit-pin path (unchanged behavior): pin the network so the provider
