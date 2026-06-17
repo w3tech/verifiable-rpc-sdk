@@ -135,28 +135,24 @@ export class VrpcProvider extends JsonRpcProvider {
       ...(replayWindowMs === undefined ? {} : { replayWindowMs }),
     };
 
+    // ONE super(): pin → Network.from(chainId) + staticNetwork (sets #network
+    // synchronously, skips the startup eth_chainId detection; does NOT weaken the
+    // signature binding), with ethersOpts spread FIRST so a user staticNetwork
+    // can't override ours away (LO-01). Auto-derive → undefined network + plain
+    // ethersOpts; the chain id is resolved lazily by #resolveChainId on first
+    // _send (and _detectNetwork is overridden to feed the same resolver), so
+    // ethers never runs its own eth_chainId through the verifying _send.
+    const network = chainIdBig != null ? Network.from(chainIdBig) : undefined;
+    const superOptions = chainIdBig != null ? { ...ethersOpts, staticNetwork: true } : ethersOpts;
+    super(superUrl, network, superOptions);
+
+    this.#chainId = chainIdBig;
+    this.#verifierConfig = verifierConfig;
+    // Pin path: chainId known synchronously → build the single TrustedVerifier
+    // now (its cache lives for the provider lifetime). Auto-derive: deferred to
+    // the first _send after #resolveChainId (see #getTrustedVerifier).
     if (chainIdBig != null) {
-      // Explicit-pin path: pin the network so the provider does not fire an
-      // eth_chainId round-trip before the first real call — _detectNetwork
-      // early-returns and #resolveChainId NEVER runs (ZERO bootstrap fetch).
-      // `staticNetwork` only skips the round-trip; it does NOT weaken the
-      // signature binding. Spread ethersOpts FIRST so staticNetwork can never be
-      // overridden away (LO-01).
-      super(superUrl, Network.from(chainIdBig), { ...ethersOpts, staticNetwork: true });
-      this.#chainId = chainIdBig;
-      this.#verifierConfig = verifierConfig;
-      // chainId known synchronously → build the single TrustedVerifier now (its
-      // cache lives for the provider lifetime).
       this.#trustedVerifier = this.#buildTrustedVerifier(chainIdBig);
-    } else {
-      // Auto-derive path: no network pin, no staticNetwork. The chain id is
-      // lazily resolved by #resolveChainId on first verifying _send (and
-      // _detectNetwork is overridden to feed the same resolver), so ethers never
-      // runs its own eth_chainId through the verifying _send. Defer the verifier
-      // build to the first _send after #resolveChainId (see #getTrustedVerifier).
-      super(superUrl, undefined, ethersOpts);
-      this.#chainId = undefined;
-      this.#verifierConfig = verifierConfig;
     }
   }
 
