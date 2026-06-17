@@ -43,6 +43,7 @@ interface VerifierConfig {
   apiKey?: string;
   headers?: Record<string, string>;
   fetch?: typeof fetch;
+  replayWindowMs?: number;
 }
 
 /**
@@ -72,7 +73,6 @@ export class VrpcProvider extends JsonRpcProvider {
   #chainId: bigint | undefined;
   // Memoized in-flight bootstrap so N concurrent first calls share ONE fetch.
   #chainIdPromise: Promise<bigint> | null = null;
-  readonly #replayWindowMs: number | undefined;
   // Verifier construction config (always present — verification is always on).
   readonly #verifierConfig: VerifierConfig;
   // ONE TrustedVerifier per provider (cache lives for the provider lifetime).
@@ -139,8 +139,6 @@ export class VrpcProvider extends JsonRpcProvider {
       this.#chainId = undefined;
     }
 
-    this.#replayWindowMs = replayWindowMs;
-
     // Verification is ALWAYS active: the TrustedVerifier (plain Ed25519 verify
     // + lazy TDX attestation) is the single verify path; allowlist defaults to
     // EMPTY_ALLOWLIST (v5.0 mock passes via allowInsecureMock).
@@ -153,6 +151,7 @@ export class VrpcProvider extends JsonRpcProvider {
       ...(apiKey === undefined ? {} : { apiKey }),
       ...(headers === undefined ? {} : { headers }),
       ...(attestationFetch === undefined ? {} : { fetch: attestationFetch }),
+      ...(replayWindowMs === undefined ? {} : { replayWindowMs }),
     };
     // Explicit-pin path: chainId is known synchronously → build the single
     // TrustedVerifier now (its cache lives for the provider lifetime). On the
@@ -170,7 +169,7 @@ export class VrpcProvider extends JsonRpcProvider {
       chainId,
       attestationUrl: cfg.attestationUrl,
       allowlist: cfg.allowlist,
-      ...(this.#replayWindowMs === undefined ? {} : { replayWindowMs: this.#replayWindowMs }),
+      ...(cfg.replayWindowMs === undefined ? {} : { replayWindowMs: cfg.replayWindowMs }),
       ...(cfg.pubkeyCacheTtlMs === undefined ? {} : { pubkeyCacheTtlMs: cfg.pubkeyCacheTtlMs }),
       ...(cfg.tcb === undefined ? {} : { tcb: cfg.tcb }),
       ...(cfg.pccsUrl === undefined ? {} : { pccsUrl: cfg.pccsUrl }),
