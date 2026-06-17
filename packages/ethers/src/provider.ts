@@ -44,7 +44,6 @@ interface VerifierConfig {
   apiKey?: string;
   headers?: Record<string, string>;
   fetch?: typeof fetch;
-  replayWindowMs?: number;
 }
 
 /**
@@ -155,7 +154,6 @@ export class VrpcProvider extends JsonRpcProvider {
       ...(apiKey === undefined ? {} : { apiKey }),
       ...(headers === undefined ? {} : { headers }),
       ...(attestationFetch === undefined ? {} : { fetch: attestationFetch }),
-      ...(replayWindowMs === undefined ? {} : { replayWindowMs }),
     };
     // Explicit-pin path: chainId is known synchronously → build the single
     // TrustedVerifier now (its cache lives for the provider lifetime). On the
@@ -173,7 +171,7 @@ export class VrpcProvider extends JsonRpcProvider {
       chainId,
       attestationUrl: cfg.attestationUrl,
       allowlist: cfg.allowlist,
-      ...(cfg.replayWindowMs === undefined ? {} : { replayWindowMs: cfg.replayWindowMs }),
+      ...(this.#replayWindowMs === undefined ? {} : { replayWindowMs: this.#replayWindowMs }),
       ...(cfg.pubkeyCacheTtlMs === undefined ? {} : { pubkeyCacheTtlMs: cfg.pubkeyCacheTtlMs }),
       ...(cfg.tcb === undefined ? {} : { tcb: cfg.tcb }),
       ...(cfg.pccsUrl === undefined ? {} : { pccsUrl: cfg.pccsUrl }),
