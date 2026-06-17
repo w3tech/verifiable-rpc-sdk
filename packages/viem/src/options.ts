@@ -8,11 +8,11 @@
 // routing fetch wrapper. All verification logic lives in vrpc-core (PKG-05);
 // these options only feed it.
 //
-// Phase 35 (INTEG-04) adds the opt-in lazy-attestation seam-routing fields
-// (`attestationBaseUrl`/`chainSlug`/`pubkeyCacheTtlMs`/`allowlist`/`tcb`/`pccsUrl`/`apiKey`):
-// when BOTH `attestationBaseUrl` and `chainSlug` are set, `vrpcHttp` routes the
-// normal verify through vrpc-core's `TrustedVerifier`; otherwise behavior is byte-identical to
-// before (plain `verifyResponse`). The public surface stays a strict superset.
+// The transport derives the `_vrpc` RPC route and its `/attestation` sub-route
+// from the single user URL (`deriveVrpcUrls`) and ALWAYS routes the normal verify
+// through vrpc-core's `TrustedVerifier`. The attestation-fetch / trust-policy
+// knobs (`pubkeyCacheTtlMs`/`allowlist`/`tcb`/`pccsUrl`/`apiKey`) feed that
+// verifier; there is no separate attestation base URL or chain slug.
 
 import type { PinnedAllowlist, TcbPolicy } from "@ankr.com/dstack-verify";
 
@@ -66,19 +66,7 @@ export interface VrpcHttpOptions {
    * used, falling back to 10s. (LO-03)
    */
   timeout?: number;
-  /**
-   * Shark proxy base URL (no trailing slash), e.g. `https://rpc.ankr.com`.
-   * Seam-routing opt-in: set with `chainSlug` to route the normal verify through
-   * the lazy-attestation `TrustedVerifier`. Omit (or omit `chainSlug`) → plain
-   * `verifyResponse`, behavior byte-identical to before. (INTEG-03)
-   */
-  attestationBaseUrl?: string;
-  /**
-   * Chain slug used to build the `<chain>_vrpc` attestation route, e.g. `eth`.
-   * Seam-routing opt-in pair with `attestationBaseUrl`. (INTEG-03)
-   */
-  chainSlug?: string;
-  /** Verified-pubkey cache TTL (ms) forwarded to the seam; default 1h. */
+  /** Verified-pubkey cache TTL (ms) forwarded to the verifier; default 1h. */
   pubkeyCacheTtlMs?: number;
   /** Pinned trust anchors (INTEG-02); default `EMPTY_ALLOWLIST` when omitted. */
   allowlist?: PinnedAllowlist;

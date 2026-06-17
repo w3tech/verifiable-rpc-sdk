@@ -61,29 +61,35 @@ or `FAIL — …` (exit 1).
 | 04 | `04-end-to-end.ts`            | Fetch attestation → anchor trust in the returned pubkey → signed call → require the signature pubkey matches the attested pubkey.     |
 | 05 | `05-gzip-transport.ts`       | Sidecar v0.2.0 signs the content-DECODED body: a `Accept-Encoding: gzip` response with `content-encoding: gzip` on the wire is gunzipped and the Ed25519 signature verifies over the decoded plaintext. Negative control — verifying over the compressed wire bytes FAILS — proves the signature covers decoded, not compressed, bytes. |
 | 06 | `06-via-shark.ts`           | Proves the SDK verifies a signed call routed THROUGH stage shark-proxy (vrpc passthrough): byte-exact request/response (signature verifies), vrpc headers survive shark, and the via-shark pubkey matches the direct node /attestation pubkey. On FAIL it raw-fetches both legs to localize the break (headers stripped vs body mutated). |
-| 07 | `07-attestation-via-shark.ts` | Full trustless loop entirely through shark: signed `.call()` → capture `nodeId` (`vRPC-NodeId`) → `fetchAttestationViaShark` by that node_id with a fresh 32B nonce → `verifyAttestationCorrelation` (attestation pubkey == `vRPC-Pubkey`). Negative path: a bogus `node_id` surfaces the typed `AttestationNodeNotFoundError` (404, no retry, no fallback). |
+| 07 | `07-attestation-via-shark.ts` | Full trustless loop entirely through shark: signed `.call()` → capture `nodeId` (`vRPC-NodeId`) → `fetchAttestation({ attestationUrl, nodeId, nonce })` (the attestation URL is derived from the plain shark route via `deriveVrpcUrls`) with a fresh 32B nonce → `verifyAttestationCorrelation` (attestation pubkey == `vRPC-Pubkey`). Negative path: a bogus `node_id` surfaces the typed `AttestationNodeNotFoundError` (404, no retry, no fallback). |
 | 08 | `08-vrpc-ethers-verified-read.ts` | Drop-in ethers `VrpcProvider` verified read + `anchorTrust` correlation through a stage shark `arbitrum_vrpc` route (operator step — live creds via env). |
 | 09 | `09-vrpc-viem-verified-read.ts` | Drop-in viem `vrpcHttp` + `createPublicClient` verified read + `anchorTrust` correlation (symmetric with 08; operator step — live creds via env). |
-| 10 | `10-vrpc-lazy-attestation.ts` | **OFFLINE** (injected mock fetch, no env, no network — exits 0 in CI): the v5.0 lazy-attestation flow through **both** adapters. An unknown signing pubkey triggers one attestation fetch + (MOCK) verify + cache; the second read within TTL reuses the cache (asserts the attestation GET is hit exactly once per adapter). Demonstrates the FLOW, **not real attestation** — the v5.0 verifier is a mock (see the banner above). |
+| 10 | `10-vrpc-lazy-attestation.ts` | **OFFLINE** (injected mock fetch, no env, no network — exits 0 in CI): the v5.0 lazy-attestation flow through **both** adapters, now **always-on** (derived from the single URL — no `attestationBaseUrl`/`chainSlug` opt-in). An unknown signing pubkey triggers one attestation fetch + (MOCK) verify + cache; the second read within TTL reuses the cache (asserts the attestation GET is hit exactly once per adapter). Demonstrates the FLOW, **not real attestation** — the v5.0 verifier is a mock (see the banner above). |
 
 ## Via shark (vrpc routing)
 
 Examples 06 and 07 route the same signed call through stage shark-proxy instead
 of hitting the node directly. Shark recognises a **`_vrpc` chain suffix** as a
-verifiable-RPC route that must pass request/response bytes through unmodified —
-so the vrpc route URL is `<shark-url>/arbitrum_vrpc`. Auth is the **`x-api-key`
-header** (06 sends it via the SDK's `headers` opt; 07 uses the cleaner
-first-class `apiKey` option). A passing signed `.call()` through shark IS the
-cryptographic proof of byte-exact passthrough: the 80-byte pre-image binds
-request_hash + response_hash, so any mutation in either direction surfaces as
-`BadSignature`.
+verifiable-RPC route that must pass request/response bytes through unmodified.
+You pass the SDK **one** plain URL (`<shark-url>/arbitrum`) and it owns the
+route suffix: `deriveVrpcUrls` appends `_vrpc` for the RPC leg
+(`<shark-url>/arbitrum_vrpc`) and `/attestation` for the attestation leg
+(`<shark-url>/arbitrum_vrpc/attestation`), dup-guarded so a URL that already
+ends with `_vrpc` is not doubled. Auth is the **`x-api-key` header** (06 sends
+it via the SDK's `headers` opt; 07 uses the cleaner first-class `apiKey`
+option). A passing signed `.call()` through shark IS the cryptographic proof of
+byte-exact passthrough: the 80-byte pre-image binds request_hash +
+response_hash, so any mutation in either direction surfaces as `BadSignature`.
 
 Stage shark (running `v0.26.21-rc.vrpc.1`) now serves the targeted attestation
 route `GET <shark-url>/arbitrum_vrpc/attestation?nonce=<hex>&node_id=<id>`, so
 example 07 closes the entire trustless loop **through shark**: signed call →
-capture `nodeId` → `fetchAttestationViaShark` by that node_id → pubkey
-correlation. A bogus `node_id` returns `404` as the typed
-`AttestationNodeNotFoundError` with no retry or fallback.
+capture `nodeId` → `fetchAttestation({ attestationUrl, nodeId, nonce })` (one
+`fetchAttestation` — there is no separate `fetchAttestationViaShark`) → pubkey
+correlation. `node_id` is included when present and omitted when absent
+(shark-without-node_id then fails to route, fail-closed). A bogus `node_id`
+returns `404` as the typed `AttestationNodeNotFoundError` with no retry or
+fallback.
 
 Two env vars are required (referenced **by name only** — their values are
 secrets and are never printed, logged, or committed; the example fails clearly

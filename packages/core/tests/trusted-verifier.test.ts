@@ -58,18 +58,40 @@ async function signedPair(): Promise<{
   return { requestBytes, responseBytes, headers };
 }
 
+/**
+ * Like {@link signedPair} but WITHOUT the `vRPC-NodeId` header. Absent nodeId no
+ * longer throws — the seam must fetch the attestation without a `node_id` query
+ * param and still verify + cache (the endpoint decides; fail-closed propagates
+ * only if the fetch itself errors).
+ */
+async function signedPairNoNodeId(): Promise<{
+  requestBytes: Uint8Array;
+  responseBytes: Uint8Array;
+  headers: ResponseHeaders;
+}> {
+  const { requestBytes, responseBytes, headers } = await signedPair();
+  const { "vRPC-NodeId": _omit, ...rest } = headers as Record<string, string>;
+  return { requestBytes, responseBytes, headers: rest };
+}
+
 interface AttMockState {
   fetch: typeof fetch;
   attGetCount: number;
+  lastUrl: string | undefined;
 }
 
 /** Mock only the attestation GET leg; count how many times it is hit. */
 function installAttestationMock(): AttMockState {
-  const state: AttMockState = { fetch: (() => {}) as unknown as typeof fetch, attGetCount: 0 };
+  const state: AttMockState = {
+    fetch: (() => {}) as unknown as typeof fetch,
+    attGetCount: 0,
+    lastUrl: undefined,
+  };
   const impl = async (input: string | URL | Request): Promise<Response> => {
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/attestation")) {
       state.attGetCount += 1;
+      state.lastUrl = url;
       const attPubkey = await getPublicKeyAsync(TEST_SEED);
       const body = {
         quote: { quote: "00", event_log: "00", report_data: "00", vm_config: "" },
@@ -91,8 +113,7 @@ function baseOpts(overrides: Partial<TrustedVerifierOptions> = {}): TrustedVerif
   return {
     chainId: CHAIN_ID,
     replayWindowMs: 60_000,
-    attestationBaseUrl: SHARK_BASE,
-    chainSlug: CHAIN,
+    attestationUrl: `${SHARK_BASE}/${CHAIN}_vrpc/attestation`,
     allowlist: EMPTY_ALLOWLIST,
     now: () => NOW,
     nonceSource: () => NONCE,
@@ -165,6 +186,28 @@ describe("TrustedVerifier / trust seam", () => {
     const expectedPubkey = `0x${toHex(await getPublicKeyAsync(TEST_SEED))}`;
     expect(verified.verification.pubkeyHex).toBe(expectedPubkey);
     expect(mock.attGetCount).toBe(1);
+  });
+
+  test("absentNodeIdFetchesWithoutNodeIdAndVerifies", async () => {
+    // Absent vRPC-NodeId no longer throws MissingHeader: the seam fetches the
+    // attestation WITHOUT a node_id query param, verifies, and caches the pubkey.
+    const mock = installAttestationMock();
+    const pair = await signedPairNoNodeId();
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
+
+    const verified = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+
+    const expectedPubkey = `0x${toHex(await getPublicKeyAsync(TEST_SEED))}`;
+    expect(verified.verification.pubkeyHex).toBe(expectedPubkey);
+    expect(mock.attGetCount).toBe(1);
+    // Fetched WITHOUT node_id.
+    expect(mock.lastUrl).toContain("?nonce=");
+    expect(mock.lastUrl).not.toContain("node_id=");
+
+    // Pubkey cached → a second verify within TTL skips the attestation fetch.
+    mock.attGetCount = 0;
+    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    expect(mock.attGetCount).toBe(0);
   });
 
   test("cacheHit", async () => {

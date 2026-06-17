@@ -33,6 +33,7 @@
 
 import { EMPTY_ALLOWLIST } from "@ankr.com/dstack-verify";
 import {
+  deriveVrpcUrls,
   MalformedHeader,
   TrustedVerifier,
   VerificationError,
@@ -47,7 +48,10 @@ import type { VrpcHttpOptions } from "./options";
  * raw content-decoded bytes before the value reaches the client.
  *
  * Drop-in: `createPublicClient({ transport: vrpcHttp(url) })` substitutes for
- * `http(url)`. The chain id bound into the signed pre-image is OPTIONAL — omit
+ * `http(url)`. The user passes ONE URL (e.g. `https://rpc.ankr.com/arbitrum`);
+ * the transport derives the `_vrpc` RPC route it POSTs to (`…/arbitrum_vrpc`) and
+ * its `/attestation` sub-route via `deriveVrpcUrls`. The chain id bound into the
+ * signed pre-image is OPTIONAL — omit
  * it and the transport lazily derives it from a SIGNED `eth_chainId` response on
  * the first request, verifying that signature self-consistently (the response's
  * own `result` IS the chainId, so it only verifies if the node really signed for
@@ -63,31 +67,29 @@ import type { VrpcHttpOptions } from "./options";
 export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vrpc-http"> {
   const fetchFn = opts.fetchFn ?? fetch;
 
+  // Derive the `_vrpc` RPC route and its `/attestation` sub-route from the single
+  // user URL. The RPC POST goes to `rpcUrl`; the verifier's attestation GET goes
+  // to `attestationUrl`. The user never spells either out
+  // (`https://rpc.ankr.com/arbitrum` → POST `…/arbitrum_vrpc`).
+  const { rpcUrl, attestationUrl } = deriveVrpcUrls(url);
+
   // Coerce to bigint WITHOUT a number round-trip (MD-01). When chainId is
   // omitted it is resolved lazily on the first request via an UNVERIFIED
   // eth_chainId bootstrap, memoized so concurrent first calls share ONE fetch.
   let chainIdResolved: bigint | undefined = opts.chainId != null ? BigInt(opts.chainId) : undefined;
   let chainIdPromise: Promise<bigint> | null = null;
 
-  // Opt-in attestation routing: engage ONLY when BOTH attestationBaseUrl and
-  // chainSlug are set. The public surface stays a strict superset — without this
-  // pair the transport behaves byte-identically to before (plain verifyResponse).
-  // The routing's chainId is REQUIRED, but the viem chainId may be resolved lazily, so the
-  // single TrustedVerifier is built lazily on the first request AFTER `chainId` is
-  // known and memoized here so all subsequent requests reuse the SAME instance +
-  // pubkey cache (one verifier per transport, never per call).
-  const attestationRoutingEnabled =
-    opts.attestationBaseUrl !== undefined && opts.chainSlug !== undefined;
+  // The TrustedVerifier is ALWAYS active. Its chainId is REQUIRED, but the viem
+  // chainId may be resolved lazily, so the single verifier is built lazily on the
+  // first request AFTER `chainId` is known and memoized here so all subsequent
+  // requests reuse the SAME instance + pubkey cache (one verifier per transport,
+  // never per call).
   let trustedVerifier: TrustedVerifier | undefined;
-  const getTrustedVerifier = (chainId: bigint): TrustedVerifier | undefined => {
-    if (!attestationRoutingEnabled) {
-      return undefined;
-    }
+  const getTrustedVerifier = (chainId: bigint): TrustedVerifier => {
     if (trustedVerifier === undefined) {
       trustedVerifier = new TrustedVerifier({
         chainId,
-        attestationBaseUrl: opts.attestationBaseUrl as string,
-        chainSlug: opts.chainSlug as string,
+        attestationUrl,
         allowlist: opts.allowlist ?? EMPTY_ALLOWLIST,
         ...(opts.replayWindowMs === undefined ? {} : { replayWindowMs: opts.replayWindowMs }),
         ...(opts.pubkeyCacheTtlMs === undefined ? {} : { pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs }),
@@ -95,7 +97,7 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
         ...(opts.pccsUrl === undefined ? {} : { pccsUrl: opts.pccsUrl }),
         ...(opts.apiKey === undefined ? {} : { apiKey: opts.apiKey }),
         ...(opts.headers === undefined ? {} : { headers: opts.headers }),
-        // `fetchFn`'s (url, init) => Promise<Response> aligns with the seam's
+        // `fetchFn`'s (url, init) => Promise<Response> aligns with the verifier's
         // `fetch` for the attestation GET leg (Pitfall 6).
         ...(opts.fetchFn === undefined ? {} : { fetch: opts.fetchFn as typeof fetch }),
       });
@@ -137,7 +139,7 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
       chainIdPromise = (async () => {
         const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] });
         const requestBytes = new TextEncoder().encode(body);
-        const res = await fetchFn(url, {
+        const res = await fetchFn(rpcUrl, {
           method: "POST",
           headers: { "content-type": "application/json", ...opts.headers },
           body,
@@ -214,7 +216,7 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
           const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
           const requestBytes = new TextEncoder().encode(body);
 
-          const res = await fetchFn(url, {
+          const res = await fetchFn(rpcUrl, {
             method: "POST",
             headers: { "content-type": "application/json", ...opts.headers },
             body,
@@ -244,27 +246,19 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
               body: { method, params },
               status: res.status,
               headers: res.headers,
-              url,
+              url: rpcUrl,
             });
           }
 
           // Fail-closed: any verify error (VerificationError or otherwise)
-          // propagates out of `request`; no unverified data is returned.
-          // Route the NORMAL verify call through the lazy-attestation routing
-          // when it is engaged (attestationBaseUrl+chainSlug set); otherwise
-          // verify directly. The chainId bootstrap (resolveChainId) ALWAYS stays
-          // on plain verifyResponse (Pitfall 4). Pass the fetch `Headers` object
-          // DIRECTLY — verifyResponse/the verifier read it case-insensitively;
-          // lowercasing into a Record would risk smuggling.
-          const verifier = getTrustedVerifier(chainId);
-          if (verifier !== undefined) {
-            await verifier.verify(requestBytes, rawResponseBytes, res.headers);
-          } else {
-            await verifyResponse(requestBytes, rawResponseBytes, res.headers, {
-              chainId,
-              ...(opts.replayWindowMs != null ? { replayWindowMs: opts.replayWindowMs } : {}),
-            });
-          }
+          // propagates out of `request`; no unverified data is returned. The
+          // NORMAL verify ALWAYS runs through the per-transport TrustedVerifier
+          // (which wraps verifyResponse and lazily attests unknown pubkeys). The
+          // chainId bootstrap (resolveChainId) ALWAYS stays on plain
+          // verifyResponse (Pitfall 4). Pass the fetch `Headers` object DIRECTLY
+          // — the verifier reads it case-insensitively; lowercasing into a Record
+          // would risk smuggling.
+          await getTrustedVerifier(chainId).verify(requestBytes, rawResponseBytes, res.headers);
 
           // Parse ONLY after verification. A JSON.parse failure propagates
           // naturally (fail-closed; no unverified data is returned).
@@ -279,12 +273,16 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
           if (parsed != null && "error" in parsed) {
             // Same class viem's http transport throws — buildRequest maps it by
             // code and `instanceof VerificationError === false`.
-            throw new RpcRequestError({ body: { method, params }, error: parsed.error, url });
+            throw new RpcRequestError({
+              body: { method, params },
+              error: parsed.error,
+              url: rpcUrl,
+            });
           }
           return parsed.result;
         },
       },
-      { url },
+      { url: rpcUrl },
     );
   };
 }

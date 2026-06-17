@@ -165,6 +165,6 @@ export class VerifierClient {
   }
 
   async fetchAttestation(nonce: Uint8Array): Promise<Attestation> {
-    return fetchAttestation(this.url, nonce);
+    return fetchAttestation({ attestationUrl: `${this.url}/attestation`, nonce });
   }
 }

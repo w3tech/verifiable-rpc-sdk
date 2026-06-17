@@ -25,6 +25,7 @@ import {
   VerificationError,
   vrpcHttp,
 } from "@ankr.com/vrpc-viem";
+import { getPublicKeyAsync } from "@noble/ed25519";
 import { createPublicClient, encodeFunctionResult, HttpRequestError, parseAbi } from "viem";
 
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
@@ -34,6 +35,39 @@ const ADDR = "0x1111111111111111111111111111111111111111" as const;
 // Wide window neutralizes the static FIXTURE_TIMESTAMP_MS staleness; production
 // keeps the vrpc-core default (60s).
 const WIDE_WINDOW = Number.MAX_SAFE_INTEGER;
+// Fixed seed used by the fixture signer — its pubkey is what the always-on
+// TrustedVerifier's attestation leg must correlate to (same shape as the core
+// trust mock). The signed responses carry `vRPC-NodeId` so the verifier's
+// attestation GET routes by node id.
+const TEST_SEED = new Uint8Array(32).fill(0x42);
+const NODE_ID = "node-abc";
+
+function hex(bytes: Uint8Array): string {
+  let out = "";
+  for (const b of bytes) {
+    out += b.toString(16).padStart(2, "0");
+  }
+  return out;
+}
+
+/**
+ * Answer the verifier's attestation GET with a body whose `pubkey` correlates to
+ * TEST_SEED (same shape as core/tests/trusted-verifier.test.ts). The always-on
+ * TrustedVerifier fetches this once per unknown pubkey; the mock verifier then
+ * resolves and the verified read proceeds.
+ */
+async function attestationResponse(): Promise<Response> {
+  const attPubkey = await getPublicKeyAsync(TEST_SEED);
+  const body = {
+    quote: { quote: "00", event_log: "00", report_data: "00", vm_config: "" },
+    pubkey: `0x${hex(attPubkey)}`,
+    composeHash: "deadbeef",
+  };
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
 
 interface SeamOptions {
   /** Strip the vRPC-* headers entirely (downgrade attack) → MissingHeader. */
@@ -57,13 +91,21 @@ interface SeamOptions {
 /**
  * Build an injected `fetchFn` that returns `responseBody` signed over the EXACT
  * request bytes the transport POSTed. Mirrors the ethers `signingRequest` helper
- * at the fetch layer.
+ * at the fetch layer. The always-on TrustedVerifier's attestation GET (an unknown
+ * signing pubkey triggers it once) is served with a TEST_SEED-correlated body;
+ * the `counter`/`bodies`/`inits` capture hooks fire ONLY on the RPC POST leg so
+ * the per-action assertions are unaffected by the attestation fetch.
  */
 function signingFetch(
   responseBody: string,
   seam: SeamOptions = {},
 ): (url: string, init: RequestInit) => Promise<Response> {
-  return async (_url, init) => {
+  return async (url, init) => {
+    // Attestation GET leg (no body): serve the correlated-pubkey attestation so
+    // the verifier resolves the unknown pubkey. Do NOT bump the RPC capture hooks.
+    if (url.includes("/attestation")) {
+      return attestationResponse();
+    }
     if (seam.counter) {
       seam.counter.n += 1;
     }
@@ -85,6 +127,7 @@ function signingFetch(
     }
 
     const headers = await signResponseBytes(requestBytes, responseBytes, {
+      nodeId: NODE_ID,
       ...(seam.chainId !== undefined ? { chainId: seam.chainId } : {}),
       ...(seam.signingChainId !== undefined ? { signingChainId: seam.signingChainId } : {}),
     });
@@ -135,7 +178,12 @@ function autoDeriveFetch(
   } = {},
 ): (url: string, init: RequestInit) => Promise<Response> {
   const bootstrapChainId = seam.bootstrapChainId ?? CHAIN_ID;
-  return async (_url, init) => {
+  return async (url, init) => {
+    // Attestation GET leg: served for the always-on verifier's lazy attest of the
+    // (post-bootstrap) read's unknown signing pubkey.
+    if (url.includes("/attestation")) {
+      return attestationResponse();
+    }
     const bodyStr = init.body as string;
     const payload = JSON.parse(bodyStr) as { method?: string };
     if (payload.method === "eth_chainId") {
@@ -184,6 +232,7 @@ function autoDeriveFetch(
     const requestBytes = new TextEncoder().encode(bodyStr);
     const responseBytes = new TextEncoder().encode(responseBody);
     const headers = await signResponseBytes(requestBytes, responseBytes, {
+      nodeId: NODE_ID,
       ...(seam.signingChainId !== undefined ? { signingChainId: seam.signingChainId } : {}),
     });
     return new Response(responseBody, { status: 200, headers });

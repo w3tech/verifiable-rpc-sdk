@@ -46,13 +46,14 @@ const client = createPublicClient({
   transport: http("https://your-shark/arbitrum_vrpc"),
 });
 
-// After — same URL, every response now verified. chainId is optional (auto-
-// derived) but strongly recommended:
+// After — pass the PLAIN route; the SDK appends `_vrpc` (and derives the
+// `/attestation` sub-route) itself. chainId is optional (auto-derived) but
+// strongly recommended:
 import { createPublicClient } from "viem";
 import { vrpcHttp } from "@ankr.com/vrpc-viem";
 
 const client = createPublicClient({
-  transport: vrpcHttp("https://your-shark/arbitrum_vrpc", {
+  transport: vrpcHttp("https://your-shark/arbitrum", {
     chainId: 42161, // bound into the signed pre-image (recommended — pins it)
     headers: { "x-api-key": process.env.SHARK_API_KEY! },
   }),
@@ -60,7 +61,7 @@ const client = createPublicClient({
 
 // Or bare (derives chainId from a SIGNED, self-consistently-verified eth_chainId):
 const bareClient = createPublicClient({
-  transport: vrpcHttp("https://your-shark/arbitrum_vrpc"),
+  transport: vrpcHttp("https://your-shark/arbitrum"),
 });
 
 // Unchanged action code — the returned value IS proof of verification.
@@ -105,31 +106,35 @@ export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleT
 | `timeout`        | `number`                                                      | client-injected, else `10_000` | Per-request HTTP timeout (ms), applied to the own `fetch` as `AbortSignal.timeout` (parity with viem `http()`). |
 | `fetchFn`        | `(url: string, init: RequestInit) => Promise<Response>`       | global `fetch`         | Injectable fetch seam (mirrors viem `http`'s `fetchFn`). Hook for a routing fetch wrapper or offline tests. |
 
-#### Lazy-attestation seam options (opt-in)
+#### Lazy-attestation seam options (always-on)
 
 > [!WARNING]
 > **v5.0 ships a MOCK attestation verifier — NO real attestation security until v6.0.**
-> When the seam is engaged, the v5.0 attestation check is a mock with
-> `allowInsecureMock` **hard-set true**: it **bypasses all chain-of-trust checks**
-> and prints a loud `console.warn` on every attestation. In the contract's own
-> words: *"v5.0 provides NO real attestation security (real verification lands in
-> v6.0)."* Real DCAP/RTMR/compose-hash verification arrives in v6.0; never rely on
-> v5.0 attestation for production trust.
+> The v5.0 attestation check is a mock with `allowInsecureMock` **hard-set true**:
+> it **bypasses all chain-of-trust checks** and prints a loud `console.warn` on
+> every attestation. In the contract's own words: *"v5.0 provides NO real
+> attestation security (real verification lands in v6.0)."* Real
+> DCAP/RTMR/compose-hash verification arrives in v6.0; never rely on v5.0
+> attestation for production trust.
 
-These fields wire the normal verify through `@ankr.com/vrpc-core`'s
-`TrustedVerifier`, which lazily fetches + correlates the serving node's TDX
-attestation on an **unknown** signing pubkey and **caches** the verified pubkey
-(configurable TTL, default 1h). Routing is **strictly opt-in**: it engages **only
-when BOTH `attestationBaseUrl` and `chainSlug` are set**. Omit either and the transport behaves
-byte-identically to before (plain `verifyResponse`, no attestation leg). The
-chainId bootstrap always stays on plain `verifyResponse`. The existing `headers`
-and `fetchFn` are **reused** for the attestation-leg fetch (one verifier per
-transport — never per call — so the pubkey cache lives for the transport lifetime).
+The normal verify routes through `@ankr.com/vrpc-core`'s `TrustedVerifier`,
+which lazily fetches + correlates the serving node's TDX attestation on an
+**unknown** signing pubkey and **caches** the verified pubkey (configurable TTL,
+default 1h). This is **always-on**: the attestation endpoint is **derived from
+the single URL** you pass (the SDK appends `_vrpc` and the `/attestation`
+sub-route, dup-guarded), so there is **no** `attestationBaseUrl` / `chainSlug`
+to set and no opt-out — verification is fail-closed. The chainId bootstrap
+always stays on plain `verifyResponse`. The existing `headers` and `fetchFn` are
+**reused** for the attestation-leg fetch (one verifier per transport — never per
+call — so the pubkey cache lives for the transport lifetime).
+
+The serving node id (`vRPC-NodeId`) is **optional**: it is included in the
+attestation fetch when the response carries it and omitted when absent. A shark
+route that requires a `node_id` but receives none fails to route — the fetch
+errors and propagates (fail-closed).
 
 | Option           | Type                     | Default          | Notes |
 |------------------|--------------------------|------------------|-------|
-| `attestationBaseUrl` | `string`             | — (off)          | Shark proxy base URL (no trailing slash), e.g. `https://rpc.ankr.com`. Set **with** `chainSlug` to engage the seam; the attestation GET targets `<attestationBaseUrl>/<chainSlug>_vrpc/attestation`. |
-| `chainSlug`      | `string`                 | — (off)          | Chain slug for the `<chain>_vrpc` attestation route, e.g. `arbitrum`. Opt-in pair with `attestationBaseUrl`. |
 | `pubkeyCacheTtlMs` | `number`               | `3_600_000` (1h) | Verified-pubkey cache TTL (ms). A second read within TTL reuses the cache and skips the attestation fetch; past TTL the pubkey is re-attested (no stale trust). |
 | `allowlist`      | `PinnedAllowlist`        | empty            | Pinned trust anchors for the attestation `VerifyPolicy`. The v5.0 mock does not inspect it; defaults to an empty allowlist. |
 | `tcb`            | `TcbPolicy`              | core default     | DCAP TCB acceptance forwarded to the attestation `VerifyPolicy`. |
@@ -140,12 +145,12 @@ transport — never per call — so the pubkey cache lives for the transport lif
 attestation GET — which is also the offline test/example seam.
 
 ```ts
+// Attestation is always-on, derived from the single URL — no attestationBaseUrl
+// /chainSlug. Pass the plain route; the SDK appends `_vrpc` and `/attestation`.
 const client = createPublicClient({
-  transport: vrpcHttp("https://rpc.ankr.com/arbitrum_vrpc", {
+  transport: vrpcHttp("https://rpc.ankr.com/arbitrum", {
     chainId: 42161,
-    attestationBaseUrl: "https://rpc.ankr.com",
-    chainSlug: "arbitrum",
-    apiKey: process.env.SHARK_API_KEY, // attestation-leg auth (never logged)
+    headers: { "x-api-key": process.env.SHARK_API_KEY! }, // RPC + attestation auth
     pubkeyCacheTtlMs: 3_600_000,       // 1h (default)
   }),
 });

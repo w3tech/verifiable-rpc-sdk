@@ -1,12 +1,13 @@
 // 10 — OFFLINE lazy-attestation flow through BOTH adapters (TEST-03 / FLOW-06 / DX-01).
 //
 // Demonstrates the v5.0 lazy-attestation seam end-to-end, fully OFFLINE (no env,
-// no real network — injected mock fetch serves BOTH legs). When a VrpcProvider /
-// vrpcHttp transport is constructed with the opt-in `attestationBaseUrl` + `chainSlug` pair,
-// the normal verify routes through vrpc-core's `TrustedVerifier`: on an UNKNOWN
-// signing pubkey it fetches the node's `/attestation`, correlates it, runs the
-// (v5.0 MOCK) attestation verifier, and CACHES the pubkey; a second ordinary read
-// within TTL reuses the cache and skips the attestation fetch.
+// no real network — injected mock fetch serves BOTH legs). Attestation is now
+// ALWAYS-ON: it derives from the single URL (the SDK appends `_vrpc` and the
+// `/attestation` sub-route), so there is no opt-in `attestationBaseUrl`/`chainSlug`
+// pair. The normal verify routes through vrpc-core's `TrustedVerifier`: on an
+// UNKNOWN signing pubkey it fetches the node's `/attestation`, correlates it, runs
+// the (v5.0 MOCK) attestation verifier, and CACHES the pubkey; a second ordinary
+// read within TTL reuses the cache and skips the attestation fetch.
 //
 // >>> INSECURE MOCK — NO real attestation security until v6.0. <<<
 // The v5.0 attestation verifier is a mock (`allowInsecureMock` is hard-set):
@@ -39,9 +40,8 @@ console.log(
 // production key). The attestation GET returns the SAME pubkey so correlation
 // passes. A wide replay window neutralizes wall-clock skew on the signed fixture.
 const CHAIN_ID = 42161n;
-const VRPC_URL = "http://offline.local/arbitrum_vrpc";
-const SHARK_BASE = "http://offline.local";
-const CHAIN = "arbitrum";
+// Plain route — the SDK appends `_vrpc` itself; attestation derives from it.
+const URL_PLAIN = "http://offline.local/arbitrum";
 const TEST_SEED = new Uint8Array(32).fill(0x42);
 const WIDE_REPLAY_MS = 365 * 24 * 60 * 60 * 1000; // 1y — fixture staleness guard
 
@@ -91,7 +91,7 @@ async function attestationResponse(): Promise<Response> {
   let attGetCount = 0;
   const RESULT = "0x100000";
 
-  const req = new FetchRequest(VRPC_URL);
+  const req = new FetchRequest(URL_PLAIN);
   // RPC POST leg: sign over the exact bytes ethers serialized (sentReq.body).
   req.getUrlFunc = async (sentReq) => {
     const requestBytes = sentReq.body ?? new Uint8Array();
@@ -111,9 +111,9 @@ async function attestationResponse(): Promise<Response> {
     throw new Error(`unexpected fetch: ${url}`);
   }) as unknown as typeof fetch;
 
+  // Attestation is always-on (derived from the URL): no attestationBaseUrl/
+  // chainSlug. The injected `fetch` serves the attestation GET leg offline.
   const provider = new VrpcProvider(req, CHAIN_ID, {
-    attestationBaseUrl: SHARK_BASE,
-    chainSlug: CHAIN,
     fetch: attFetch,
     replayWindowMs: WIDE_REPLAY_MS,
   });
@@ -150,11 +150,11 @@ async function attestationResponse(): Promise<Response> {
     return new Response(responseBytes, { status: 200, headers });
   };
 
+  // Attestation is always-on (derived from the URL): no attestationBaseUrl/
+  // chainSlug. The injected `fetchFn` feeds BOTH legs offline.
   const client = createPublicClient({
-    transport: vrpcHttp(VRPC_URL, {
+    transport: vrpcHttp(URL_PLAIN, {
       chainId: CHAIN_ID,
-      attestationBaseUrl: SHARK_BASE,
-      chainSlug: CHAIN,
       fetchFn,
       replayWindowMs: WIDE_REPLAY_MS,
     }),

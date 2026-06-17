@@ -61,6 +61,32 @@ its single verifying `request`.
 > options. **Never hard-code the key** — read it from an env var by name (see the
 > [examples](#runnable-examples) and the workspace secrets rule).
 
+### One URL — the SDK owns the `_vrpc` route
+
+You pass a **single** plain URL (e.g. `https://rpc.ankr.com/arbitrum`). The SDK
+owns the route convention and derives both legs from it:
+
+- the JSON-RPC leg appends `_vrpc` → `https://rpc.ankr.com/arbitrum_vrpc`;
+- the attestation leg appends `/attestation` →
+  `https://rpc.ankr.com/arbitrum_vrpc/attestation`.
+
+The suffix is **dup-guarded** — a URL that already ends with `_vrpc` is left as
+is (never doubled to `_vrpc_vrpc`), so passing either form is safe. Do **not**
+hand-build the `_vrpc` suffix yourself, and there is **no** separate
+`attestationBaseUrl` / `chainSlug` to configure — both were removed.
+
+Attestation correlation is **always-on**: the verifier is always used (there is
+no permissive / opt-out mode — verification is fail-closed). The serving node id
+(`vRPC-NodeId`) is **optional**: it is included in the attestation fetch when the
+response carries it and omitted when absent. A shark route that requires a
+`node_id` but receives none fails to route — the fetch errors and propagates
+(fail-closed), never a silent pass.
+
+The standalone attestation fetch is a **single** `fetchAttestation(opts)` —
+`fetchAttestation({ attestationUrl, nonce, nodeId?, apiKey?, headers? })`. There
+is no `fetchAttestationViaShark`; the same helper covers the via-shark path (pass
+the shark-derived `attestationUrl` and the captured `nodeId`).
+
 ---
 
 ## 2. The `chainId` argument — optional but strongly recommended

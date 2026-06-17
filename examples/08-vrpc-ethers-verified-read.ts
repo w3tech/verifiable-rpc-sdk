@@ -37,19 +37,23 @@ header("08 — ethers VrpcProvider verified read + anchorTrust via stage shark")
 const sharkUrl = requireEnv("SHARK_STAGE_URL", SHARK_STAGE_URL);
 const apiKey = requireEnv("SHARK_STAGE_TDX_TEST_KEY", SHARK_STAGE_TDX_TEST_KEY);
 const chain = "arbitrum";
-const vrpcUrl = `${sharkUrl}/${chain}_vrpc`;
+// Pass the PLAIN route — the SDK appends `_vrpc` itself (single-URL convention).
+const url = `${sharkUrl}/${chain}`;
 
 // Never print the secret URL / key — only confirm they are set.
 kv("SHARK_STAGE_URL", "set");
 kv("SHARK_STAGE_TDX_TEST_KEY", "set");
-kv("vrpc route suffix", `/${chain}_vrpc`);
+kv("route (SDK appends _vrpc)", `/${chain}`);
 
 // ── DROP-IN CONSTRUCTION ──────────────────────────────────────────────────────
 // One-line swap: `new JsonRpcProvider(url)` → `new VrpcProvider(url, chainId)`.
+// Pass the plain URL; the SDK appends the `_vrpc` route suffix (and derives the
+// `/attestation` sub-route) itself — no manual concatenation, no
+// attestationBaseUrl/chainSlug. Attestation is always-on, derived from the URL.
 // The x-api-key auth header is supplied via a FetchRequest, the same mechanism
 // ethers uses for header injection; VrpcOptions extends JsonRpcApiProviderOptions
 // so the FetchRequest passes straight through to the underlying connection.
-const req = new FetchRequest(vrpcUrl);
+const req = new FetchRequest(url);
 req.setHeader("x-api-key", apiKey);
 const provider = new VrpcProvider(req, CHAIN_ID);
 

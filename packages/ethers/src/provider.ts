@@ -5,7 +5,7 @@
 // broadcastTransaction, polling, batches — all of it). We mirror stock `_send`
 // (ethers.js src.ts/providers/provider-jsonrpc.ts:1266-1278) but capture the
 // raw, content-decoded `response.body` BEFORE `JSON.parse` and feed it, with the
-// exact request bytes ethers POSTed, into vrpc-core's `verifyResponse`. Native
+// exact request bytes ethers POSTed, into vrpc-core's verify seam. Native
 // batching is preserved (we do NOT pin batchMaxCount=1): the single-or-array
 // payload is verified once over the whole body, and ethers' drain loop
 // correlates the array results back to callers by id.
@@ -14,8 +14,9 @@
 // `_send`; no unverified data is ever returned. Any non-VerificationError (e.g.
 // ethers SERVER_ERROR from `assertOk`) propagates too.
 
-import { EMPTY_ALLOWLIST, type PinnedAllowlist } from "@ankr.com/dstack-verify";
+import { EMPTY_ALLOWLIST, type PinnedAllowlist, type TcbPolicy } from "@ankr.com/dstack-verify";
 import {
+  deriveVrpcUrls,
   MalformedHeader,
   TrustedVerifier,
   VerificationError,
@@ -33,13 +34,12 @@ import {
 
 import type { VrpcOptions } from "./options";
 
-/** Attestation-routing + forwarding config captured from VrpcOptions (opt-in via attestationBaseUrl+chainSlug). */
-interface AttestationRouting {
-  attestationBaseUrl: string;
-  chainSlug: string;
+/** Verifier construction config captured from VrpcOptions. */
+interface VerifierConfig {
+  attestationUrl: string;
   allowlist: PinnedAllowlist;
   pubkeyCacheTtlMs?: number;
-  tcb?: import("@ankr.com/dstack-verify").TcbPolicy;
+  tcb?: TcbPolicy;
   pccsUrl?: string;
   apiKey?: string;
   headers?: Record<string, string>;
@@ -49,9 +49,15 @@ interface AttestationRouting {
 
 /**
  * A `JsonRpcProvider` that Ed25519-verifies every JSON-RPC response over its raw
- * content-decoded bytes before the value reaches the caller.
+ * content-decoded bytes before the value reaches the caller, and lazily attests
+ * the signing pubkey via TDX on first use (per pubkey, TTL-cached).
  *
  * Drop-in: `new VrpcProvider(url)` substitutes for `new JsonRpcProvider(url)`.
+ * The user passes ONE endpoint URL (e.g. `https://rpc.ankr.com/arbitrum`); the
+ * SDK owns the `_vrpc` route suffix and the `/attestation` sub-route
+ * (`deriveVrpcUrls`), so the provider POSTs to `…/arbitrum_vrpc` and fetches
+ * attestations from `…/arbitrum_vrpc/attestation`.
+ *
  * The chain id bound into the signed pre-image is OPTIONAL — omit it and the
  * provider lazily derives it from a SIGNED `eth_chainId` response on first use,
  * verifying that signature self-consistently (the response's own `result` IS
@@ -69,8 +75,8 @@ export class VrpcProvider extends JsonRpcProvider {
   // Memoized in-flight bootstrap so N concurrent first calls share ONE fetch.
   #chainIdPromise: Promise<bigint> | null = null;
   readonly #replayWindowMs: number | undefined;
-  // Opt-in lazy-attestation routing config (set only when attestationBaseUrl+chainSlug present).
-  readonly #attestationRouting: AttestationRouting | undefined;
+  // Verifier construction config (always present — verification is always on).
+  readonly #verifierConfig: VerifierConfig;
   // ONE TrustedVerifier per provider (cache lives for the provider lifetime).
   // Built synchronously on the explicit-pin path; memoized lazily on the
   // auto-derive path (the seam's chainId is required, so it cannot exist before
@@ -82,8 +88,6 @@ export class VrpcProvider extends JsonRpcProvider {
 
     const {
       replayWindowMs,
-      attestationBaseUrl,
-      chainSlug,
       pubkeyCacheTtlMs,
       allowlist,
       tcb,
@@ -93,6 +97,24 @@ export class VrpcProvider extends JsonRpcProvider {
       fetch: attestationFetch,
       ...ethersOpts
     } = options;
+
+    // Derive the `_vrpc` RPC route + `/attestation` sub-route from the single
+    // user URL. For a string, derive and pass the rpcUrl to super. For a
+    // FetchRequest, clone it and rewrite its url to the rpcUrl so the consumer's
+    // auth/headers ride along to the `_vrpc` route.
+    let superUrl: string | FetchRequest;
+    let attestationUrl: string;
+    if (typeof url === "string") {
+      const urls = deriveVrpcUrls(url);
+      superUrl = urls.rpcUrl;
+      attestationUrl = urls.attestationUrl;
+    } else {
+      const urls = deriveVrpcUrls(url.url);
+      const clone = url.clone();
+      clone.url = urls.rpcUrl;
+      superUrl = clone;
+      attestationUrl = urls.attestationUrl;
+    }
 
     // Coerce to bigint WITHOUT a number round-trip: EVM chain ids may exceed
     // Number.MAX_SAFE_INTEGER (2^53−1) and the pre-image binds the full u64
@@ -108,77 +130,64 @@ export class VrpcProvider extends JsonRpcProvider {
       // bootstrap fetch). `staticNetwork` only skips the round-trip; it does NOT
       // weaken the signature binding. Spread ethersOpts FIRST so staticNetwork
       // can never be overridden away (LO-01).
-      super(url, Network.from(chainIdBig), { ...ethersOpts, staticNetwork: true });
+      super(superUrl, Network.from(chainIdBig), { ...ethersOpts, staticNetwork: true });
       this.#chainId = chainIdBig;
     } else {
       // Auto-derive path: no network pin, no staticNetwork. The chain id is
       // lazily resolved by #resolveChainId on first verifying _send (and
       // _detectNetwork is overridden to feed the same resolver), so ethers never
       // runs its own eth_chainId through the verifying _send.
-      super(url, undefined, ethersOpts);
+      super(superUrl, undefined, ethersOpts);
       this.#chainId = undefined;
     }
 
     this.#replayWindowMs = replayWindowMs;
 
-    // Opt-in attestation routing: engage ONLY when BOTH attestationBaseUrl and
-    // chainSlug are set. The public surface stays a strict superset — without
-    // this pair the provider behaves byte-identically to before (plain
-    // verifyResponse).
-    if (attestationBaseUrl !== undefined && chainSlug !== undefined) {
-      this.#attestationRouting = {
-        attestationBaseUrl,
-        chainSlug,
-        allowlist: allowlist ?? EMPTY_ALLOWLIST,
-        ...(pubkeyCacheTtlMs === undefined ? {} : { pubkeyCacheTtlMs }),
-        ...(tcb === undefined ? {} : { tcb }),
-        ...(pccsUrl === undefined ? {} : { pccsUrl }),
-        ...(apiKey === undefined ? {} : { apiKey }),
-        ...(headers === undefined ? {} : { headers }),
-        ...(attestationFetch === undefined ? {} : { fetch: attestationFetch }),
-        ...(replayWindowMs === undefined ? {} : { replayWindowMs }),
-      };
-      // Explicit-pin path: chainId is known synchronously → build the single
-      // TrustedVerifier now (its cache lives for the provider lifetime). On the
-      // auto-derive path #chainId is undefined here; defer the build to the
-      // first _send after #resolveChainId (see #getTrustedVerifier).
-      if (this.#chainId != null) {
-        this.#trustedVerifier = this.#buildTrustedVerifier(this.#chainId);
-      }
-    } else {
-      this.#attestationRouting = undefined;
+    // Verification is ALWAYS active: the TrustedVerifier (plain Ed25519 verify
+    // + lazy TDX attestation) is the single verify path; allowlist defaults to
+    // EMPTY_ALLOWLIST (v5.0 mock passes via allowInsecureMock).
+    this.#verifierConfig = {
+      attestationUrl,
+      allowlist: allowlist ?? EMPTY_ALLOWLIST,
+      ...(pubkeyCacheTtlMs === undefined ? {} : { pubkeyCacheTtlMs }),
+      ...(tcb === undefined ? {} : { tcb }),
+      ...(pccsUrl === undefined ? {} : { pccsUrl }),
+      ...(apiKey === undefined ? {} : { apiKey }),
+      ...(headers === undefined ? {} : { headers }),
+      ...(attestationFetch === undefined ? {} : { fetch: attestationFetch }),
+      ...(replayWindowMs === undefined ? {} : { replayWindowMs }),
+    };
+    // Explicit-pin path: chainId is known synchronously → build the single
+    // TrustedVerifier now (its cache lives for the provider lifetime). On the
+    // auto-derive path #chainId is undefined here; defer the build to the first
+    // _send after #resolveChainId (see #getTrustedVerifier).
+    if (this.#chainId != null) {
+      this.#trustedVerifier = this.#buildTrustedVerifier(this.#chainId);
     }
   }
 
   /** Build the per-instance TrustedVerifier for a resolved chainId. */
   #buildTrustedVerifier(chainId: bigint): TrustedVerifier {
-    const routing = this.#attestationRouting as AttestationRouting;
+    const cfg = this.#verifierConfig;
     return new TrustedVerifier({
       chainId,
-      attestationBaseUrl: routing.attestationBaseUrl,
-      chainSlug: routing.chainSlug,
-      allowlist: routing.allowlist,
-      ...(routing.replayWindowMs === undefined ? {} : { replayWindowMs: routing.replayWindowMs }),
-      ...(routing.pubkeyCacheTtlMs === undefined
-        ? {}
-        : { pubkeyCacheTtlMs: routing.pubkeyCacheTtlMs }),
-      ...(routing.tcb === undefined ? {} : { tcb: routing.tcb }),
-      ...(routing.pccsUrl === undefined ? {} : { pccsUrl: routing.pccsUrl }),
-      ...(routing.apiKey === undefined ? {} : { apiKey: routing.apiKey }),
-      ...(routing.headers === undefined ? {} : { headers: routing.headers }),
-      ...(routing.fetch === undefined ? {} : { fetch: routing.fetch }),
+      attestationUrl: cfg.attestationUrl,
+      allowlist: cfg.allowlist,
+      ...(cfg.replayWindowMs === undefined ? {} : { replayWindowMs: cfg.replayWindowMs }),
+      ...(cfg.pubkeyCacheTtlMs === undefined ? {} : { pubkeyCacheTtlMs: cfg.pubkeyCacheTtlMs }),
+      ...(cfg.tcb === undefined ? {} : { tcb: cfg.tcb }),
+      ...(cfg.pccsUrl === undefined ? {} : { pccsUrl: cfg.pccsUrl }),
+      ...(cfg.apiKey === undefined ? {} : { apiKey: cfg.apiKey }),
+      ...(cfg.headers === undefined ? {} : { headers: cfg.headers }),
+      ...(cfg.fetch === undefined ? {} : { fetch: cfg.fetch }),
     });
   }
 
   /**
-   * Return the memoized per-instance TrustedVerifier when the seam is engaged,
-   * building it lazily (auto-derive path) once `chainId` is known. Returns
-   * undefined when the seam is not configured (plain verifyResponse path).
+   * Return the memoized per-instance TrustedVerifier, building it lazily
+   * (auto-derive path) once `chainId` is known.
    */
-  #getTrustedVerifier(chainId: bigint): TrustedVerifier | undefined {
-    if (this.#attestationRouting === undefined) {
-      return undefined;
-    }
+  #getTrustedVerifier(chainId: bigint): TrustedVerifier {
     if (this.#trustedVerifier === undefined) {
       this.#trustedVerifier = this.#buildTrustedVerifier(chainId);
     }
@@ -309,19 +318,15 @@ export class VrpcProvider extends JsonRpcProvider {
     const rawResponseBytes = response.body ?? new Uint8Array();
 
     // Fail-closed: any verify error (VerificationError or otherwise) propagates
-    // out of `_send`; no unverified data is ever returned.
-    // Route the NORMAL verify call through the lazy-attestation routing when it
-    // is engaged (attestationBaseUrl+chainSlug set); otherwise verify directly.
-    // The chainId bootstrap (#resolveChainId) ALWAYS stays on plain verifyResponse.
-    const verifier = this.#getTrustedVerifier(chainId);
-    if (verifier !== undefined) {
-      await verifier.verify(requestBytes, rawResponseBytes, response.headers);
-    } else {
-      await verifyResponse(requestBytes, rawResponseBytes, response.headers, {
-        chainId,
-        ...(this.#replayWindowMs != null ? { replayWindowMs: this.#replayWindowMs } : {}),
-      });
-    }
+    // out of `_send`; no unverified data is ever returned. The TrustedVerifier
+    // is the single verify path (plain Ed25519 verify + lazy TDX attestation on
+    // an unknown/expired pubkey). The chainId bootstrap (#resolveChainId)
+    // ALWAYS stays on plain verifyResponse.
+    await this.#getTrustedVerifier(chainId).verify(
+      requestBytes,
+      rawResponseBytes,
+      response.headers,
+    );
 
     // Parse ONLY after verification. Normalize to the array ethers' drain loop
     // correlates by id (single payload → length-1 array). A JSON.parse failure

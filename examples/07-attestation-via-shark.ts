@@ -9,14 +9,17 @@
 // bogus node_id surfaces the typed AttestationNodeNotFoundError (404) with no
 // retry and no fallback node.
 //
-// The vrpc route is `<shark-url>/arbitrum_vrpc`; auth is `x-api-key` passed via
-// the SDK's first-class `apiKey` option. Both SHARK_STAGE_URL and
-// SHARK_STAGE_TDX_TEST_KEY are SECRETS: read via env by NAME, never
-// printed/logged/committed (only "set" is shown).
+// Single-URL convention: pass the plain shark route (`<shark-url>/arbitrum`) to
+// `deriveVrpcUrls`, which appends `_vrpc` for the RPC leg and `/attestation` for
+// the attestation leg (dup-guarded). Auth is `x-api-key` passed via the SDK's
+// first-class `apiKey` option. Both SHARK_STAGE_URL and SHARK_STAGE_TDX_TEST_KEY
+// are SECRETS: read via env by NAME, never printed/logged/committed (only "set"
+// is shown).
 
 import {
   AttestationNodeNotFoundError,
-  fetchAttestationViaShark,
+  deriveVrpcUrls,
+  fetchAttestation,
   VerifierClient,
   verifyAttestationCorrelation,
 } from "@ankr.com/vrpc-core";
@@ -34,7 +37,8 @@ header("07 — full trustless correlation loop via stage shark");
 
 const sharkUrl = requireEnv("SHARK_STAGE_URL", SHARK_STAGE_URL);
 const apiKey = requireEnv("SHARK_STAGE_TDX_TEST_KEY", SHARK_STAGE_TDX_TEST_KEY);
-const vrpcUrl = `${sharkUrl}/arbitrum_vrpc`;
+// Pass the plain shark route; the SDK derives `_vrpc` (RPC) + `/attestation`.
+const { rpcUrl: vrpcUrl, attestationUrl } = deriveVrpcUrls(`${sharkUrl}/arbitrum`);
 
 // Never print the secret URL / key — only confirm they are set.
 kv("SHARK_STAGE_URL", "set");
@@ -82,9 +86,10 @@ const nonce = crypto.getRandomValues(new Uint8Array(32));
 
 // 4. Fetch THIS node's attestation THROUGH shark:
 //    GET <sharkUrl>/arbitrum_vrpc/attestation?nonce=<hex>&node_id=<id>
-const attestation = await fetchAttestationViaShark({
-  sharkBase: sharkUrl,
-  chain: "arbitrum",
+//    nodeId is included because we captured it; absent it would be omitted and
+//    shark would fail to route (fail-closed).
+const attestation = await fetchAttestation({
+  attestationUrl,
   nodeId,
   nonce,
   apiKey,
@@ -109,9 +114,8 @@ const bogusNodeId = "vrpc-node-does-not-exist-0000";
 const negNonce = crypto.getRandomValues(new Uint8Array(32));
 let caught: unknown;
 try {
-  await fetchAttestationViaShark({
-    sharkBase: sharkUrl,
-    chain: "arbitrum",
+  await fetchAttestation({
+    attestationUrl,
     nodeId: bogusNodeId,
     nonce: negNonce,
     apiKey,
@@ -128,5 +132,5 @@ assert(
 kv("bogus node_id → typed 404", "AttestationNodeNotFoundError");
 
 console.log(
-  "\nPASS — trustless loop closes through shark: signed call verified, attestation fetched via shark by node_id, pubkey correlation OK, bogus node_id surfaces typed 404",
+  "\nPASS — trustless loop closes through shark: signed call verified, attestation fetched by node_id, pubkey correlation OK, bogus node_id surfaces typed 404",
 );

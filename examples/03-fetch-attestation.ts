@@ -11,13 +11,18 @@
 // The TDX quote itself is NOT verified against Intel's PCK roots — that's a
 // registry-v1 follow-up (DEC-03 still open). Surfaced here for human eyes only.
 
-import { fetchAttestation } from "@ankr.com/vrpc-core";
+import { deriveVrpcUrls, fetchAttestation } from "@ankr.com/vrpc-core";
 import { assert, header, kv, PINNED_COMPOSE_HASH, URL } from "./shared.ts";
 
 header("03 — fetchAttestation + parse + report_data binding");
 
+// Single-URL convention: the SDK owns the `_vrpc` route + `/attestation`
+// sub-route. Pass the plain endpoint URL and let `deriveVrpcUrls` build the
+// attestation target (dup-guarded if the URL already ends with `_vrpc`).
+const { attestationUrl } = deriveVrpcUrls(URL);
+
 const nonce = crypto.getRandomValues(new Uint8Array(32));
-const att = await fetchAttestation(URL, nonce);
+const att = await fetchAttestation({ attestationUrl, nonce });
 
 kv("pubkey", att.pubkey);
 kv("composeHash (response)", att.composeHash);

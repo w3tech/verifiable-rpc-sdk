@@ -9,7 +9,7 @@
 //
 // This module composes existing primitives — it implements NO crypto: the single
 // Ed25519 path is `verifyResponse` (verify.ts, never forked), the attestation
-// fetch is `fetchAttestationViaShark`, and the pubkey correlation is
+// fetch is `fetchAttestation`, and the pubkey correlation is
 // `verifyAttestationCorrelation` (attestation.ts). `mapAttestationToBundle` and
 // `buildVerifyPolicy` are pure mappers with no crypto.
 
@@ -22,12 +22,7 @@ import {
 } from "@ankr.com/dstack-verify";
 import { bytesToHex } from "@noble/hashes/utils.js";
 
-import {
-  type Attestation,
-  fetchAttestationViaShark,
-  verifyAttestationCorrelation,
-} from "./attestation";
-import { MissingHeader } from "./errors";
+import { type Attestation, fetchAttestation, verifyAttestationCorrelation } from "./attestation";
 import type { VerifiedResponse } from "./verifier";
 import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
 
@@ -36,7 +31,7 @@ export const DEFAULT_PUBKEY_CACHE_TTL_MS = 3_600_000;
 
 /**
  * Construction options for {@link TrustedVerifier}. The transport inputs
- * (`attestationBaseUrl`/`chainSlug`/auth) target the attestation fetch; the policy inputs
+ * (`attestationUrl`/auth) target the attestation fetch; the policy inputs
  * (`allowlist`/`tcb`/`pccsUrl`) build the `VerifyPolicy`; the test injectables
  * (`now`/`nonceSource`/`verifyAttestation`) keep TTL + fail-closed tests
  * deterministic and offline.
@@ -50,10 +45,8 @@ export interface TrustedVerifierOptions {
   chainId: bigint;
   /** Allowed skew between client clock and signed timestamp; default 60_000 ms. */
   replayWindowMs?: number;
-  /** Shark proxy base URL (no trailing slash), e.g. `https://rpc.ankr.com`. */
-  attestationBaseUrl: string;
-  /** Chain slug used to build the `<chain>_vrpc` attestation route, e.g. `eth`. */
-  chainSlug: string;
+  /** Full attestation endpoint URL, e.g. `https://rpc.ankr.com/arbitrum_vrpc/attestation`. */
+  attestationUrl: string;
   /** Auth key sent as `x-api-key` on the attestation fetch. */
   apiKey?: string;
   /** Extra request headers for the attestation fetch; `x-api-key` here wins. */
@@ -160,8 +153,7 @@ export class TrustedVerifier {
   private readonly verifyAttestationImpl: (b: AttestationBundle, p: VerifyPolicy) => Promise<void>;
   private readonly chainId: bigint;
   private readonly replayWindowMs: number | undefined;
-  private readonly attestationBaseUrl: string;
-  private readonly chainSlug: string;
+  private readonly attestationUrl: string;
   private readonly apiKey: string | undefined;
   private readonly headers: Record<string, string> | undefined;
   private readonly fetchImpl: typeof fetch | undefined;
@@ -174,8 +166,7 @@ export class TrustedVerifier {
     this.verifyAttestationImpl = opts.verifyAttestation ?? verifyDstackAttestation;
     this.chainId = opts.chainId;
     this.replayWindowMs = opts.replayWindowMs;
-    this.attestationBaseUrl = opts.attestationBaseUrl;
-    this.chainSlug = opts.chainSlug;
+    this.attestationUrl = opts.attestationUrl;
     this.apiKey = opts.apiKey;
     this.headers = opts.headers;
     this.fetchImpl = opts.fetch;
@@ -198,7 +189,8 @@ export class TrustedVerifier {
    * Exact ordering (FLOW-03/04/05):
    *   1. `verifyResponse` (the single Ed25519 path) — throws propagate.
    *   2. cache hit & fresh → return before any fetch (FLOW-04).
-   *   3. missing nodeId on the miss path → MissingHeader (fail-closed).
+   *   3. nodeId is OPTIONAL — included in the attestation fetch when present,
+   *      omitted when absent (no pre-throw; the endpoint decides — fail-closed).
    *   4. one fresh nonce, reused below (no rebinding).
    *   5. fetch attestation via shark — throws propagate, cache untouched.
    *   6. correlate att.pubkey == response signer — throws on mismatch.
@@ -221,16 +213,14 @@ export class TrustedVerifier {
       return pair;
     }
 
-    if (pair.nodeId === undefined) {
-      throw new MissingHeader("vRPC-NodeId");
-    }
-
     const nonce = this.nonceSource();
 
-    const att = await fetchAttestationViaShark({
-      sharkBase: this.attestationBaseUrl,
-      chain: this.chainSlug,
-      nodeId: pair.nodeId,
+    // nodeId is OPTIONAL: included when the response carried vRPC-NodeId, omitted
+    // otherwise. Absent + behind shark → shark can't route → the fetch errors and
+    // propagates (fail-closed); absent + direct node → the fetch works. No pre-throw.
+    const att = await fetchAttestation({
+      attestationUrl: this.attestationUrl,
+      ...(pair.nodeId === undefined ? {} : { nodeId: pair.nodeId }),
       nonce,
       ...(this.apiKey === undefined ? {} : { apiKey: this.apiKey }),
       ...(this.headers === undefined ? {} : { headers: this.headers }),
