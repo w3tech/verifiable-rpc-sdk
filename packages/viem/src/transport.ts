@@ -37,7 +37,6 @@ import {
   MalformedHeader,
   TrustedVerifier,
   VerificationError,
-  verifyResponse,
 } from "@ankr.com/vrpc-core";
 import { createTransport, HttpRequestError, RpcRequestError, type Transport } from "viem";
 
@@ -176,15 +175,15 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
         // BigInt() directly off the hex string — no number round-trip (a chain
         // id may exceed 2^53−1 and must bind the full u64 into the pre-image).
         const chainId = BigInt(parsed.result);
-        // Self-consistent verification: verify the eth_chainId response using
-        // its OWN claimed result as the chainId binding. It only verifies if the
-        // node signed for exactly C — a tampered/forged/unsigned bootstrap fails
-        // FAST here. Fail-closed: do NOT set chainIdResolved, do NOT fall back.
+        // Verify-AND-attest the bootstrap through the SAME TrustedVerifier built
+        // for this chainId. eth_chainId is itself a vRPC call: its response is
+        // verified self-consistently (the signature must bind its OWN claimed
+        // chainId C) AND the signing pubkey is attested (first-unseen pubkey →
+        // lazy TDX attestation, cached so the first real read reuses it). A
+        // tampered/forged/unsigned bootstrap, or an unattested signer, fails FAST
+        // here. Fail-closed: do NOT set chainIdResolved, do NOT fall back.
         try {
-          await verifyResponse(requestBytes, rawResponseBytes, res.headers, {
-            chainId,
-            ...(opts.replayWindowMs != null ? { replayWindowMs: opts.replayWindowMs } : {}),
-          });
+          await getTrustedVerifier(chainId).verify(requestBytes, rawResponseBytes, res.headers);
         } catch (err) {
           if (err instanceof VerificationError) {
             err.message = `auto-derived chainId could not be verified (pass \`chainId\` explicitly): ${err.message}`;
@@ -252,12 +251,12 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
 
           // Fail-closed: any verify error (VerificationError or otherwise)
           // propagates out of `request`; no unverified data is returned. The
-          // NORMAL verify ALWAYS runs through the per-transport TrustedVerifier
-          // (which wraps verifyResponse and lazily attests unknown pubkeys). The
-          // chainId bootstrap (resolveChainId) ALWAYS stays on plain
-          // verifyResponse (Pitfall 4). Pass the fetch `Headers` object DIRECTLY
-          // — the verifier reads it case-insensitively; lowercasing into a Record
-          // would risk smuggling.
+          // verify ALWAYS runs through the per-transport TrustedVerifier (which
+          // wraps verifyResponse and lazily attests unknown pubkeys) — including
+          // the chainId bootstrap, which runs through the SAME verifier (see
+          // resolveChainId). Pass the fetch `Headers` object DIRECTLY — the
+          // verifier reads it case-insensitively; lowercasing into a Record would
+          // risk smuggling.
           await getTrustedVerifier(chainId).verify(requestBytes, rawResponseBytes, res.headers);
 
           // Parse ONLY after verification. A JSON.parse failure propagates

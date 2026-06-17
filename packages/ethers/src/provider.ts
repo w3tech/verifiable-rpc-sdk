@@ -20,7 +20,6 @@ import {
   MalformedHeader,
   TrustedVerifier,
   VerificationError,
-  verifyResponse,
 } from "@ankr.com/vrpc-core";
 import {
   type FetchRequest,
@@ -258,15 +257,19 @@ export class VrpcProvider extends JsonRpcProvider {
       // BigInt() directly off the hex string — no number round-trip (a chain id
       // may exceed 2^53−1 and must bind the full u64 into the pre-image).
       const chainId = BigInt(parsed.result);
-      // Self-consistent verification: verify the eth_chainId response using its
-      // OWN claimed result as the chainId binding. It only verifies if the node
-      // signed for exactly C — a tampered/forged/unsigned bootstrap fails FAST
-      // here. Fail-closed: do NOT set #chainId, do NOT fall back to unverified.
+      // Verify-AND-attest the bootstrap through the SAME TrustedVerifier built for
+      // this chainId. eth_chainId is itself a vRPC call: its response is verified
+      // self-consistently (the signature must bind its OWN claimed chainId C) AND
+      // the signing pubkey is attested (first-unseen pubkey → lazy TDX attestation,
+      // cached so the first real read reuses it). A tampered/forged/unsigned
+      // bootstrap, or an unattested signer, fails FAST here — fail-closed: #chainId
+      // is NOT set and there is no unverified fallback.
       try {
-        await verifyResponse(requestBytes, rawResponseBytes, response.headers, {
-          chainId,
-          ...(this.#replayWindowMs != null ? { replayWindowMs: this.#replayWindowMs } : {}),
-        });
+        await this.#getTrustedVerifier(chainId).verify(
+          requestBytes,
+          rawResponseBytes,
+          response.headers,
+        );
       } catch (err) {
         if (err instanceof VerificationError) {
           err.message = `auto-derived chainId could not be verified (pass \`chainId\` explicitly): ${err.message}`;
@@ -318,8 +321,8 @@ export class VrpcProvider extends JsonRpcProvider {
     // Fail-closed: any verify error (VerificationError or otherwise) propagates
     // out of `_send`; no unverified data is ever returned. The TrustedVerifier
     // is the single verify path (plain Ed25519 verify + lazy TDX attestation on
-    // an unknown/expired pubkey). The chainId bootstrap (#resolveChainId)
-    // ALWAYS stays on plain verifyResponse.
+    // an unknown/expired pubkey) — including the chainId bootstrap, which runs
+    // through the SAME verifier (see #resolveChainId).
     await this.#getTrustedVerifier(chainId).verify(
       requestBytes,
       rawResponseBytes,
