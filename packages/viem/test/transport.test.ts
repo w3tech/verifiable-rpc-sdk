@@ -3,8 +3,8 @@
 // Asserts ADAPTER WIRING ONLY: that vrpcHttp's `request` routes every viem
 // action through vrpc-core `verifyResponse` over the raw response bytes before
 // parse, maps result/error/null back to callers, forces retryCount:0, defaults
-// to per-request (non-batched) verification, and applies the strict
-// (fail-closed) / permissive policy + the re-exported VerificationError family.
+// to per-request (non-batched) verification, and is fail-closed (always strict)
+// + the re-exported VerificationError family.
 //
 // It does NOT re-test Ed25519 / pre-image / replay-window correctness — that is
 // core's verify.test.ts (TEST-04). The request-aware fetch seam signs over the
@@ -192,14 +192,13 @@ function autoDeriveFetch(
 
 function client(
   fetchFn: (url: string, init: RequestInit) => Promise<Response>,
-  overrides: { chainId?: bigint; verification?: "strict" | "permissive" } = {},
+  overrides: { chainId?: bigint } = {},
 ) {
   return createPublicClient({
     transport: vrpcHttp(URL, {
       chainId: overrides.chainId ?? CHAIN_ID,
       fetchFn,
       replayWindowMs: WIDE_WINDOW,
-      ...(overrides.verification ? { verification: overrides.verification } : {}),
     }),
   });
 }
@@ -291,15 +290,6 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     await expect(
       transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
     ).rejects.toBeInstanceOf(MissingHeader);
-  });
-
-  // VIEM-02 — permissive mode silently passes a tampered value through.
-  test("permissive mode silently passes tampered data through", async () => {
-    const c = client(signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { tamper: true }), {
-      verification: "permissive",
-    });
-    const balance = await c.getBalance({ address: ADDR });
-    expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
   });
 
   // VIEM-02 — a signed JSON-RPC {error} body is an ordinary RPC error, NOT a
@@ -445,23 +435,6 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
       );
     expect(err).not.toBeInstanceOf(HttpRequestError);
     expect(err).not.toBeInstanceOf(VerificationError);
-  });
-
-  // MD-02 — in permissive mode, a body that failed verify AND is invalid JSON
-  // still throws the SyntaxError (fail-closed: no unverified data returned). The
-  // library logs nothing; the parse failure propagates unmodified.
-  test("MD-02: permissive + invalid JSON still throws (silently)", async () => {
-    const transport = vrpcHttp(URL, {
-      chainId: CHAIN_ID,
-      // tamper makes verify fail (swallowed in permissive); the body is not
-      // valid JSON so JSON.parse throws after the swallow.
-      fetchFn: signingFetch("not json <html>5</html>", { tamper: true }),
-      verification: "permissive",
-      replayWindowMs: WIDE_WINDOW,
-    })({} as never);
-    await expect(
-      transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
-    ).rejects.toThrow();
   });
 
   // LO-03 — the transport `timeout` is applied to the actual fetch as an

@@ -10,11 +10,9 @@
 // payload is verified once over the whole body, and ethers' drain loop
 // correlates the array results back to callers by id.
 //
-// Verification is fail-closed by default: a `VerificationError` propagates out
-// of `_send`. Permissive mode (opt-in) silently swallows it and passes the
-// (unverified) parsed body through — the library logs nothing. Any
-// non-VerificationError (e.g. ethers SERVER_ERROR from `assertOk`) always
-// propagates in both modes.
+// Verification is always fail-closed: a `VerificationError` propagates out of
+// `_send`; no unverified data is ever returned. Any non-VerificationError (e.g.
+// ethers SERVER_ERROR from `assertOk`) propagates too.
 
 import { EMPTY_ALLOWLIST, type PinnedAllowlist } from "@ankr.com/dstack-verify";
 import {
@@ -33,7 +31,7 @@ import {
   toUtf8String,
 } from "ethers";
 
-import type { VrpcOptions, VrpcVerification } from "./options";
+import type { VrpcOptions } from "./options";
 
 /** Attestation-routing + forwarding config captured from VrpcOptions (opt-in via attestationBaseUrl+chainSlug). */
 interface AttestationRouting {
@@ -70,7 +68,6 @@ export class VrpcProvider extends JsonRpcProvider {
   #chainId: bigint | undefined;
   // Memoized in-flight bootstrap so N concurrent first calls share ONE fetch.
   #chainIdPromise: Promise<bigint> | null = null;
-  readonly #verification: VrpcVerification;
   readonly #replayWindowMs: number | undefined;
   // Opt-in lazy-attestation routing config (set only when attestationBaseUrl+chainSlug present).
   readonly #attestationRouting: AttestationRouting | undefined;
@@ -84,7 +81,6 @@ export class VrpcProvider extends JsonRpcProvider {
     const explicitChainId = chainId;
 
     const {
-      verification = "strict",
       replayWindowMs,
       attestationBaseUrl,
       chainSlug,
@@ -123,7 +119,6 @@ export class VrpcProvider extends JsonRpcProvider {
       this.#chainId = undefined;
     }
 
-    this.#verification = verification;
     this.#replayWindowMs = replayWindowMs;
 
     // Opt-in attestation routing: engage ONLY when BOTH attestationBaseUrl and
@@ -313,37 +308,24 @@ export class VrpcProvider extends JsonRpcProvider {
     // vRPC-* headers → MissingHeader fails closed (no bespoke error class).
     const rawResponseBytes = response.body ?? new Uint8Array();
 
-    try {
-      // Route the NORMAL verify call through the lazy-attestation routing when it
-      // is engaged (attestationBaseUrl+chainSlug set); otherwise verify directly.
-      // The chainId bootstrap (#resolveChainId) ALWAYS stays on plain verifyResponse.
-      const verifier = this.#getTrustedVerifier(chainId);
-      if (verifier !== undefined) {
-        await verifier.verify(requestBytes, rawResponseBytes, response.headers);
-      } else {
-        await verifyResponse(requestBytes, rawResponseBytes, response.headers, {
-          chainId,
-          ...(this.#replayWindowMs != null ? { replayWindowMs: this.#replayWindowMs } : {}),
-        });
-      }
-    } catch (err) {
-      if (err instanceof VerificationError) {
-        if (this.#verification === "strict") {
-          throw err;
-        }
-        // Permissive mode: silently swallow the VerificationError and pass the
-        // (unverified) body through. The library logs nothing — use `strict` to
-        // enforce.
-      } else {
-        throw err;
-      }
+    // Fail-closed: any verify error (VerificationError or otherwise) propagates
+    // out of `_send`; no unverified data is ever returned.
+    // Route the NORMAL verify call through the lazy-attestation routing when it
+    // is engaged (attestationBaseUrl+chainSlug set); otherwise verify directly.
+    // The chainId bootstrap (#resolveChainId) ALWAYS stays on plain verifyResponse.
+    const verifier = this.#getTrustedVerifier(chainId);
+    if (verifier !== undefined) {
+      await verifier.verify(requestBytes, rawResponseBytes, response.headers);
+    } else {
+      await verifyResponse(requestBytes, rawResponseBytes, response.headers, {
+        chainId,
+        ...(this.#replayWindowMs != null ? { replayWindowMs: this.#replayWindowMs } : {}),
+      });
     }
 
     // Parse ONLY after verification. Normalize to the array ethers' drain loop
     // correlates by id (single payload → length-1 array). A JSON.parse failure
-    // propagates naturally (fail-closed; no unverified data is returned
-    // silently) — in permissive mode a body that failed verification may also be
-    // invalid JSON, and that SyntaxError surfaces to the caller unmodified.
+    // propagates naturally (fail-closed; no unverified data is returned).
     let resp: unknown = JSON.parse(toUtf8String(rawResponseBytes));
     if (!Array.isArray(resp)) {
       resp = [resp];

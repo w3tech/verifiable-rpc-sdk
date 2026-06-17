@@ -42,7 +42,7 @@ export interface SigningRequestOptions extends SignFixtureOptions {
   unsigned?: boolean;
   /**
    * If true, flip a byte of the signed response body so the signature no longer
-   * matches — drives `BadSignature` (and permissive passthrough).
+   * matches — drives `BadSignature`.
    */
   tamper?: boolean;
 }
@@ -76,9 +76,8 @@ export function signingRequest(
     if (opts.tamper) {
       body = new Uint8Array(responseBytes);
       // Mutate ONE digit byte AFTER signing so the bytes differ (→ BadSignature)
-      // while the body stays valid UTF-8/JSON (so permissive-mode parse still
-      // succeeds and the consumer observes the unverified value). Flip the first
-      // ASCII digit (0x30-0x39) found, mapping it to a different digit.
+      // while the body stays valid UTF-8/JSON. Flip the first ASCII digit
+      // (0x30-0x39) found, mapping it to a different digit.
       for (let i = 0; i < body.length; i++) {
         if (body[i] >= 0x30 && body[i] <= 0x39) {
           body[i] = body[i] === 0x39 ? 0x30 : body[i] + 1;

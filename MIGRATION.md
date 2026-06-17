@@ -145,37 +145,17 @@ the on-chain RPC legs around them are signed.
 
 ---
 
-## 4. Strict (default) vs permissive mode
+## 4. Verification is always fail-closed
 
-Both adapters default to **`strict`** (fail-closed): a `VerificationError` from
-`verifyResponse` propagates and no unverified data is ever returned.
-
-**`permissive`** (opt-in) catches a `VerificationError`, fires the `logger`
-**once**, and passes the parsed body through anyway. Use it only when you
-explicitly want to observe-but-not-block (e.g. a staged rollout). Any
+Both adapters are **fail-closed**: a `VerificationError` from `verifyResponse`
+propagates and no unverified data is ever returned. There is no permissive /
+observe-but-not-block opt-in — a failed verification always throws. Any
 non-`VerificationError` (network error, ethers `SERVER_ERROR`, viem
-`HttpRequestError`/`RpcRequestError`) always propagates in both modes.
-
-```ts
-// ethers
-const provider = new VrpcProvider(url, chainId, {
-  verification: "permissive",          // default: "strict"
-  logger: (msg, err) => myLog.warn(msg, err),
-});
-
-// viem
-const client = createPublicClient({
-  transport: vrpcHttp(url, {
-    chainId,
-    verification: "permissive",        // default: "strict"
-    logger: (msg, err) => myLog.warn(msg, err),
-  }),
-});
-```
+`HttpRequestError`/`RpcRequestError`) propagates too.
 
 Other shared knobs: `replayWindowMs` (forwarded to `verifyResponse`; omit →
-vrpc-core default 60s) and `logger`. viem additionally accepts `headers`,
-`fetchFn`, and `timeout`.
+vrpc-core default 60s). viem additionally accepts `headers`, `fetchFn`, and
+`timeout`.
 
 ---
 

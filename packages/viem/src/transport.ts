@@ -5,9 +5,9 @@
 // `JSON.parse`, and feeds them — with the exact request bytes it POSTed — into
 // vrpc-core's `verifyResponse` (the SAME seam the ethers `_send` override uses,
 // PKG-05). Only after verification passes is the body parsed and the result
-// returned. Verification is fail-closed by default (strict); permissive mode
-// (opt-in) silently swallows a `VerificationError` and passes the parsed body
-// through — the library logs nothing. A signed JSON-RPC `{error}` body surfaces as viem's own
+// returned. Verification is always fail-closed: a `VerificationError` propagates
+// out of `request`; no unverified data is returned. A signed JSON-RPC `{error}`
+// body surfaces as viem's own
 // `RpcRequestError` (NOT a VerificationError) so `buildRequest` maps it by code.
 //
 // HTTP-status parity (MD-01): mirrors the ethers `_send` override's
@@ -61,7 +61,6 @@ import type { VrpcHttpOptions } from "./options";
  * through the single verifying `request`.
  */
 export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vrpc-http"> {
-  const verification = opts.verification ?? "strict";
   const fetchFn = opts.fetchFn ?? fetch;
 
   // Coerce to bigint WITHOUT a number round-trip (MD-01). When chainId is
@@ -249,37 +248,26 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
             });
           }
 
-          try {
-            // Route the NORMAL verify call through the lazy-attestation routing
-            // when it is engaged (attestationBaseUrl+chainSlug set); otherwise
-            // verify directly. The chainId bootstrap (resolveChainId) ALWAYS stays
-            // on plain verifyResponse (Pitfall 4). Pass the fetch `Headers` object
-            // DIRECTLY — verifyResponse/the verifier read it case-insensitively;
-            // lowercasing into a Record would risk smuggling.
-            const verifier = getTrustedVerifier(chainId);
-            if (verifier !== undefined) {
-              await verifier.verify(requestBytes, rawResponseBytes, res.headers);
-            } else {
-              await verifyResponse(requestBytes, rawResponseBytes, res.headers, {
-                chainId,
-                ...(opts.replayWindowMs != null ? { replayWindowMs: opts.replayWindowMs } : {}),
-              });
-            }
-          } catch (err) {
-            if (err instanceof VerificationError && verification === "permissive") {
-              // Permissive mode: silently swallow the VerificationError and pass
-              // the (unverified) body through. The library logs nothing — use
-              // `strict` to enforce.
-            } else {
-              // strict fail-closed + any non-VerificationError always propagates.
-              throw err;
-            }
+          // Fail-closed: any verify error (VerificationError or otherwise)
+          // propagates out of `request`; no unverified data is returned.
+          // Route the NORMAL verify call through the lazy-attestation routing
+          // when it is engaged (attestationBaseUrl+chainSlug set); otherwise
+          // verify directly. The chainId bootstrap (resolveChainId) ALWAYS stays
+          // on plain verifyResponse (Pitfall 4). Pass the fetch `Headers` object
+          // DIRECTLY — verifyResponse/the verifier read it case-insensitively;
+          // lowercasing into a Record would risk smuggling.
+          const verifier = getTrustedVerifier(chainId);
+          if (verifier !== undefined) {
+            await verifier.verify(requestBytes, rawResponseBytes, res.headers);
+          } else {
+            await verifyResponse(requestBytes, rawResponseBytes, res.headers, {
+              chainId,
+              ...(opts.replayWindowMs != null ? { replayWindowMs: opts.replayWindowMs } : {}),
+            });
           }
 
           // Parse ONLY after verification. A JSON.parse failure propagates
-          // naturally (fail-closed; no unverified data is returned silently) — in
-          // permissive mode a body that failed verification may also be invalid
-          // JSON, and that SyntaxError surfaces to the caller unmodified.
+          // naturally (fail-closed; no unverified data is returned).
           // `JSON.parse` returns `any` so `parsed.result` flows back through the
           // viem `EIP1193RequestFn` return without a cast (parity with viem's own
           // `http` transport, which returns the parsed value untyped).

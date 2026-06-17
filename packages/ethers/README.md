@@ -127,9 +127,7 @@ passed through to `super(...)` unchanged. The vRPC-specific fields:
 | Field            | Type                                  | Default          | Meaning |
 | ---------------- | ------------------------------------- | ---------------- | ------- |
 | `chainId`        | `number \| bigint`                    | auto-derived     | Optional alternative to the positional 2nd arg. Strongly recommended — pins to **your expected chain** and skips the `eth_chainId` bootstrap. Omit → derived lazily from a **signed, self-consistently-verified** `eth_chainId` response on first use (tampered/forged/unsigned → fail-fast `VerificationError`, no unverified fallback). |
-| `verification`   | `VrpcVerification` (`"strict" \| "permissive"`) | `"strict"` | `strict` = fail-closed (a `VerificationError` propagates out of `_send`). `permissive` = catch it, fire `logger` once, pass the parsed body through. Opt-in only. |
 | `replayWindowMs` | `number`                              | vrpc-core (60s)  | Freshness window forwarded to `verifyResponse`. Omit in production. Do **not** set `0` outside fixture tests — it always rejects on clock skew. |
-| `logger`         | `(msg: string, err: unknown) => void` | `console.warn`   | Invoked once per downgraded failure in permissive mode (and on a permissive-passthrough JSON parse failure). |
 
 Spread order is enforced so `staticNetwork` cannot be overridden away.
 
@@ -175,8 +173,6 @@ const provider = new VrpcProvider(req, 42161n, {
 // (MOCK) verify + cache; subsequent reads within TTL skip the fetch.
 await provider.getBalance("0x0000000000000000000000000000000000000000");
 ```
-
-### `type VrpcVerification = "strict" | "permissive"`
 
 ### `anchorTrust(...)` — opt-in boot-time trust anchor (from `@ankr.com/vrpc-core`)
 
@@ -226,12 +222,9 @@ exactly as you would on a stock `JsonRpcProvider`.
 - **HTTP 4xx/5xx** → ethers `SERVER_ERROR` (from `assertOk`), never a
   `VerificationError`.
 
-In **strict** mode (default) a `VerificationError` propagates and no unverified
-value is ever returned. In **permissive** mode it is caught, `logger` fires once,
-and the parsed body is returned; if a permissively-downgraded body is also
-invalid JSON, the parse error is logged and still propagates (fail-closed — no
-unverified data is returned silently). Non-`VerificationError`s always propagate
-in both modes.
+Verification is always fail-closed: a `VerificationError` propagates out of
+`_send` and no unverified value is ever returned. Non-`VerificationError`s
+propagate too.
 
 ```ts
 import { BadSignature, MissingHeader, VerificationError } from "@ankr.com/vrpc-ethers";

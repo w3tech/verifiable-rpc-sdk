@@ -1,7 +1,7 @@
 // vrpcHttp transport options (Phase 31, VIEM-01).
 //
-// `VrpcHttpOptions` mirrors the vrpc-ethers `VrpcOptions` verification knobs
-// (verification policy, replay window) and adds the viem-specific
+// `VrpcHttpOptions` mirrors the vrpc-ethers `VrpcOptions` knobs (replay window)
+// and adds the viem-specific
 // transport passthroughs: per-request `headers` (x-api-key / shark `chain_vrpc`
 // route) and an injectable `fetchFn` seam (mirrors viem's own `http` transport
 // `fetchFn`) — the cleanest offline-wiring test seam AND a hook for a consumer's
@@ -17,17 +17,11 @@
 import type { PinnedAllowlist, TcbPolicy } from "@ankr.com/dstack-verify";
 
 /**
- * Verification policy:
- *   - `strict`     (default) — a `VerificationError` from `verifyResponse`
- *     propagates out of the transport `request`; no unverified data is returned.
- *   - `permissive` — a `VerificationError` is caught and the body is passed
- *     through (silently; no logging — use `strict` to enforce). Opt-in only.
- */
-export type VrpcVerification = "strict" | "permissive";
-
-/**
  * Options accepted by `vrpcHttp(url, opts?)`. `chainId` is OPTIONAL (auto-derived
  * when omitted); everything else is optional with safe defaults.
+ *
+ * Verification is always fail-closed: a `VerificationError` from `verifyResponse`
+ * propagates out of the transport `request`; no unverified data is returned.
  */
 export interface VrpcHttpOptions {
   /**
@@ -42,8 +36,6 @@ export interface VrpcHttpOptions {
    * precision and reject intact responses (false `BadSignature`). MD-01.
    */
   chainId?: number | bigint;
-  /** Verification policy. Defaults to `"strict"` (fail-closed). */
-  verification?: VrpcVerification;
   /**
    * Replay window (ms) forwarded to `verifyResponse`. Omitted → vrpc-core
    * default (60s). Tests pass a wide window to neutralize static-fixture

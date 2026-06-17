@@ -3,8 +3,8 @@
 // These tests assert ADAPTER WIRING ONLY: that `VrpcProvider._send` routes every
 // JSON-RPC call through `vrpc-core` `verifyResponse` over the raw response bytes
 // before parse, maps results/errors/null back to callers, preserves native
-// batching with id-correlation, and applies the strict (fail-closed) /
-// permissive policy + the re-exported VerificationError family.
+// batching with id-correlation, and is fail-closed (always strict) + the
+// re-exported VerificationError family.
 //
 // They do NOT re-test Ed25519 / pre-image / replay-window correctness — that is
 // core's `packages/core/tests/verify.test.ts` (TEST-01). The request-aware
@@ -179,16 +179,6 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
       WIDE_WINDOW,
     );
     await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(MissingHeader);
-  });
-
-  test("permissive mode silently passes tampered data through", async () => {
-    const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { tamper: true }),
-      CHAIN_ID_NUMBER,
-      { verification: "permissive", ...WIDE_WINDOW },
-    );
-    const balance = await provider.getBalance(ADDR);
-    expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
   });
 
   test("signed JSON-RPC {error} → ordinary ethers RPC error, NOT a VerificationError", async () => {

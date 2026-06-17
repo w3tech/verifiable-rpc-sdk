@@ -90,7 +90,6 @@ where auto-derive (which trusts the node's self-reported chain) would verify
 export function vrpcHttp(url: string, opts?: VrpcHttpOptions): Transport<"vrpc-http">;
 
 export interface VrpcHttpOptions { /* see table below */ }
-export type VrpcVerification = "strict" | "permissive";
 
 // Shared vrpc-core error family — re-exported (SAME identity as @ankr.com/vrpc-ethers):
 export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleTimestamp };
@@ -101,12 +100,10 @@ export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleT
 | Option           | Type                                                          | Default                | Notes |
 |------------------|---------------------------------------------------------------|------------------------|-------|
 | `chainId`        | `number \| bigint`                                            | auto-derived           | **Optional but strongly recommended.** Bound into the canonical pre-image. Coerced via `BigInt()` with **no number round-trip** — chain ids may exceed `2^53−1`, so widening through `number` would lose precision and reject intact responses. Omit → derived lazily from a **signed, self-consistently-verified** `eth_chainId` response on first request (tampered/forged/unsigned → fail-fast `VerificationError`, no unverified fallback); pinning explicitly also pins to **your expected chain**. |
-| `verification`   | `VrpcVerification` (`"strict" \| "permissive"`)               | `"strict"`             | `strict` = fail-closed (a `VerificationError` propagates). `permissive` = catch, log once, pass the parsed body through. Opt-in only. |
 | `replayWindowMs` | `number`                                                      | vrpc-core default (60s)| Forwarded to `verifyResponse`. Omit in production. `0` only works in tests that inject `nowMs`; in production it always rejects on clock skew. |
 | `headers`        | `Record<string, string>`                                      | —                      | Merged into every POST (e.g. `x-api-key`, or the shark `chain_vrpc` route header). `content-type: application/json` is always set by the transport. |
 | `timeout`        | `number`                                                      | client-injected, else `10_000` | Per-request HTTP timeout (ms), applied to the own `fetch` as `AbortSignal.timeout` (parity with viem `http()`). |
 | `fetchFn`        | `(url: string, init: RequestInit) => Promise<Response>`       | global `fetch`         | Injectable fetch seam (mirrors viem `http`'s `fetchFn`). Hook for a routing fetch wrapper or offline tests. |
-| `logger`         | `(msg: string, err: unknown) => void`                         | `console.warn`         | Invoked once per downgraded verification in `permissive` mode. |
 
 #### Lazy-attestation seam options (opt-in)
 
@@ -243,15 +240,11 @@ try {
 extend `VerificationError`, which extends `Error`. They are the identical
 classes re-exported by `@ankr.com/vrpc-ethers` (cross-adapter parity).
 
-### Strict vs permissive
+### Fail-closed
 
-- **`strict`** (default) — a `VerificationError` propagates; no unverified data
-  is returned.
-- **`permissive`** — a `VerificationError` is caught, the `logger` fires **once**,
-  and the parsed body is returned anyway. If a downgraded body also fails
-  `JSON.parse` (truncated / HTML error page), the parse failure is logged
-  through the same `logger` and still thrown — fail-closed, no unverified data
-  returned silently. Opt-in only.
+Verification is always fail-closed: a `VerificationError` propagates out of the
+transport `request` and no unverified data is ever returned. There is no
+permissive / observe-but-not-block opt-in.
 
 ---
 
@@ -302,9 +295,8 @@ SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… \
 ```
 
 See `packages/viem/test/transport.test.ts` for the full wiring suite (verified
-read, tamper → `BadSignature`, unsigned → `MissingHeader`, permissive
-passthrough, `retryCount: 0`, per-request batching default, cross-adapter
-parity).
+read, tamper → `BadSignature`, unsigned → `MissingHeader`, `retryCount: 0`,
+per-request batching default, cross-adapter parity).
 
 ---
 
