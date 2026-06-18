@@ -44,12 +44,12 @@ export interface VrpcHttpOptions {
    * Per-request HTTP timeout (ms) applied to the own `fetch` as an
    * `AbortSignal.timeout`. Mirrors viem `http()` resolution
    * (`config.timeout ?? 10_000`): when omitted, the client-injected timeout is
-   * used, falling back to 10s. (LO-03)
+   * used, falling back to 10s.
    */
   timeout?: number;
   /** Verified-pubkey cache TTL (ms) forwarded to the verifier; default 1h. */
   pubkeyCacheTtlMs?: number;
-  /** Pinned trust anchors (INTEG-02); default `EMPTY_ALLOWLIST` when omitted. */
+  /** Pinned trust anchors; default `EMPTY_ALLOWLIST` when omitted. */
   allowlist?: PinnedAllowlist;
   /** DCAP TCB acceptance forwarded to the seam; default rejects debug quotes. */
   tcb?: TcbPolicy;

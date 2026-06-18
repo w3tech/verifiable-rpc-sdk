@@ -21,14 +21,14 @@ export function parseChainId(rawResponseBytes: Uint8Array): bigint {
     throw new MalformedHeader(
       "eth_chainId.result",
       rawText,
-      "auto-derived chainId could not be parsed (pass `chainId` explicitly): bootstrap body is not valid JSON",
+      "auto-derived chainId could not be parsed: bootstrap body is not valid JSON",
     );
   }
   if (typeof parsed.result !== "string" || !/^0x[0-9a-fA-F]+$/.test(parsed.result)) {
     throw new MalformedHeader(
       "eth_chainId.result",
       String(parsed.result),
-      "auto-derived chainId could not be parsed (pass `chainId` explicitly): expected 0x-hex chain id",
+      "auto-derived chainId could not be parsed: expected 0x-hex chain id",
     );
   }
   return BigInt(parsed.result);
