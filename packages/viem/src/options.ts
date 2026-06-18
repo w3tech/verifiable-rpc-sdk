@@ -1,39 +1,20 @@
-// vrpcHttp transport options (Phase 31, VIEM-01).
-//
-// `VrpcHttpOptions` mirrors the vrpc-ethers `VrpcOptions` knobs (replay window)
-// and adds the viem-specific
-// transport passthroughs: per-request `headers` (x-api-key / shark `chain_vrpc`
-// route) and an injectable `fetchFn` seam (mirrors viem's own `http` transport
-// `fetchFn`) — the cleanest offline-wiring test seam AND a hook for a consumer's
-// routing fetch wrapper. All verification logic lives in vrpc-core (PKG-05);
-// these options only feed it.
-//
-// The transport derives the `_vrpc` RPC route and its `/attestation` sub-route
-// from the single user URL (`deriveVrpcUrls`) and ALWAYS routes the normal verify
-// through vrpc-core's `TrustedVerifier`. The attestation-fetch / trust-policy
-// knobs (`pubkeyCacheTtlMs`/`allowlist`/`tcb`/`pccsUrl`/`apiKey`) feed that
-// verifier; there is no separate attestation base URL or chain slug.
+// vrpcHttp transport options. Mirrors vrpc-ethers' VrpcOptions knobs plus the
+// viem-specific passthroughs: `headers` (x-api-key / shark route) and an
+// injectable `fetchFn` seam. All verification lives in vrpc-core; these only feed it.
 
 import type { PinnedAllowlist, TcbPolicy } from "@ankr.com/dstack-verify";
 
 /**
- * Options accepted by `vrpcHttp(url, opts?)`. `chainId` is OPTIONAL (auto-derived
- * when omitted); everything else is optional with safe defaults.
- *
- * Verification is always fail-closed: a `VerificationError` from `verifyResponse`
- * propagates out of the transport `request`; no unverified data is returned.
+ * Options for `vrpcHttp(url, opts?)`. `chainId` is optional (auto-derived when
+ * omitted); everything else is optional with safe defaults. Always fail-closed
+ * (see `transport.ts`).
  */
 export interface VrpcHttpOptions {
   /**
-   * EVM-style chain id bound into the canonical pre-image. OPTIONAL: when omitted
-   * the transport lazily derives it via one UNVERIFIED `eth_chainId` bootstrap on
-   * the first request (fail-closed-safe: a lying bootstrap can only cause a
-   * `BadSignature` DoS, never silent-accept). Passing it explicitly is STRONGLY
-   * RECOMMENDED — it removes the bootstrap round-trip, pins the binding, and
-   * turns a chain misconfig into an immediate fail-closed error. Coerced to
-   * `bigint` via `BigInt()` WITHOUT a number round-trip — chain ids may exceed
-   * `Number.MAX_SAFE_INTEGER` (2^53−1) and widening through `number` would lose
-   * precision and reject intact responses (false `BadSignature`). MD-01.
+   * EVM chain id bound into the signed pre-image. Optional: auto-derived from a
+   * verified `eth_chainId` bootstrap on first request when omitted. Coerced to
+   * bigint without a number round-trip (chain ids can exceed 2^53). Passing it
+   * explicitly is RECOMMENDED — skips the bootstrap and pins the binding.
    */
   chainId?: number | bigint;
   /**
