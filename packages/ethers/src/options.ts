@@ -1,4 +1,4 @@
-// VrpcProvider options (Phase 30, ETHERS-01).
+// VrpcProvider options.
 //
 // `VrpcOptions` is a superset of ethers' `JsonRpcApiProviderOptions`: every
 // stock JsonRpcProvider knob (batching, polling, etc.) is preserved and passed
@@ -12,8 +12,7 @@ import type { JsonRpcApiProviderOptions } from "ethers";
  * provider is a true one-line drop-in: any ethers option (e.g. `batchMaxCount`,
  * `polling`) is honored unchanged.
  *
- * Verification is always fail-closed: a `VerificationError` propagates out of
- * `_send`; no unverified data is ever returned.
+ * Verification is always fail-closed (see `provider.ts`).
  */
 export interface VrpcOptions extends JsonRpcApiProviderOptions {
   /**
