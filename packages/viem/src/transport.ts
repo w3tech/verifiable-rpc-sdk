@@ -136,18 +136,12 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
         return chainIdPromise;
       }
       chainIdPromise = (async () => {
-        const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] });
-        const requestBytes = new TextEncoder().encode(body);
-        const res = await fetchFn(rpcUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json", ...opts.headers },
-          body,
-          ...(timeout ? { signal: AbortSignal.timeout(timeout) } : {}),
+        const { requestBytes, rawResponseBytes, res } = await post({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "eth_chainId",
+          params: [],
         });
-        // res.text() decodes gzip/br transparently — the sidecar signs the
-        // decoded body, so encode that exact text for the verify pre-image.
-        const rawText = await res.text();
-        const rawResponseBytes = new TextEncoder().encode(rawText);
         // Convert the response body to a chainId (shared core util). A malformed
         // body throws MalformedHeader → reads as a fail-fast verify failure.
         const chainId = parseChainId(rawResponseBytes);
@@ -172,6 +166,29 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
       return chainIdPromise;
     };
 
+    // Shared POST choke (mirrors the ethers `#post` helper): serialize ONCE, fetch,
+    // capture the RAW content-decoded body. `res.text()` decodes gzip/br transparently
+    // — the sidecar signs the decoded body (ENC-04) — so encode that exact text for the
+    // verify pre-image. Used by both the chainId bootstrap and the request path.
+    const post = async (payload: Record<string, unknown>) => {
+      const body = JSON.stringify(payload);
+      const res = await fetchFn(rpcUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...opts.headers },
+        body,
+        // Apply the transport `timeout` to the actual HTTP request (parity with viem
+        // `http()`). A consumer `fetchFn` wrapper forwards this signal too. (LO-03)
+        ...(timeout ? { signal: AbortSignal.timeout(timeout) } : {}),
+      });
+      const rawText = await res.text();
+      return {
+        requestBytes: new TextEncoder().encode(body),
+        rawText,
+        rawResponseBytes: new TextEncoder().encode(rawText),
+        res,
+      };
+    };
+
     return createTransport(
       {
         key: "vrpc-http",
@@ -186,27 +203,12 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
           // the request that flows into verify.
           const chainId = chainIdResolved ?? (await resolveChainId());
 
-          // Serialize ONCE: the same bytes are POSTed and fed to verify, so the
-          // pre-image reconstruction matches what the sidecar signed.
-          const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
-          const requestBytes = new TextEncoder().encode(body);
-
-          const res = await fetchFn(rpcUrl, {
-            method: "POST",
-            headers: { "content-type": "application/json", ...opts.headers },
-            body,
-            // Apply the transport `timeout` to the actual HTTP request (parity
-            // with viem `http()`, which aborts on timeout). A consumer-provided
-            // `fetchFn` wrapper still forwards this signal to the underlying
-            // fetch. (LO-03)
-            ...(timeout ? { signal: AbortSignal.timeout(timeout) } : {}),
+          const { requestBytes, rawText, rawResponseBytes, res } = await post({
+            jsonrpc: "2.0",
+            id: 1,
+            method,
+            params,
           });
-
-          // RAW, content-decoded bytes exactly as signed. `res.text()` decodes
-          // gzip/br transparently — the sidecar signs the decoded body (ENC-04),
-          // so do NOT read res.body or set Accept-Encoding: identity.
-          const rawText = await res.text();
-          const rawResponseBytes = new TextEncoder().encode(rawText);
 
           // HTTP-status parity with ethers `response.assertOk()` (provider.ts:87):
           // a non-2xx response that is NOT vRPC-signed is a transport-level
