@@ -36,13 +36,6 @@ import {
 import type { VrpcOptions } from "./options";
 
 /**
- * The verifier options this provider forwards to vrpc-core, minus `chainId`
- * (supplied per-build). Aliased off the upstream `TrustedVerifierOptions` so a
- * field rename/addition in vrpc-core surfaces here at compile time.
- */
-type VerifierConfig = Omit<TrustedVerifierOptions, "chainId">;
-
-/**
  * Drop keys whose value is `undefined`. Required because
  * `exactOptionalPropertyTypes` forbids assigning an explicit `undefined` to an
  * optional (`x?: T`) slot — so every absent option must be omitted, not passed
@@ -84,11 +77,13 @@ export class VrpcProvider extends JsonRpcProvider {
   #chainId: bigint | undefined;
   // Memoized in-flight bootstrap so N concurrent first calls share ONE fetch.
   #chainIdPromise: Promise<bigint> | null = null;
-  // Verifier options (always present — verification is always on); chainId added per-build.
-  readonly #verifierConfig: VerifierConfig;
+  // Builds the per-instance TrustedVerifier given the chainId — the ONE field
+  // bound late, because it may be auto-derived AFTER construction. Closes over
+  // the verifier options resolved in the constructor (verification is always on).
+  readonly #makeVerifier: (chainId: bigint) => TrustedVerifier;
   // ONE TrustedVerifier per provider (cache lives for the provider lifetime).
   // Built synchronously on the explicit-pin path; memoized lazily on the
-  // auto-derive path (the seam's chainId is required, so it cannot exist before
+  // auto-derive path (chainId is required, so it cannot exist before
   // #resolveChainId runs).
   #trustedVerifier: TrustedVerifier | undefined;
 
@@ -131,25 +126,31 @@ export class VrpcProvider extends JsonRpcProvider {
     super(superUrl, chainId, superOptions);
 
     this.#chainId = chainId;
-    // Verification is ALWAYS active; allowlist defaults to EMPTY_ALLOWLIST
-    // (v5.0 mock passes via allowInsecureMock). Absent options are dropped, not
-    // forwarded as undefined (see pruneUndefined).
-    this.#verifierConfig = pruneUndefined<VerifierConfig>({
-      attestationUrl,
-      allowlist: allowlist ?? EMPTY_ALLOWLIST,
-      pubkeyCacheTtlMs,
-      tcb,
-      pccsUrl,
-      apiKey,
-      headers,
-      fetch: attestationFetch,
-      replayWindowMs,
-    });
+    // Capture the resolved verifier options behind a chainId -> TrustedVerifier
+    // factory. allowlist defaults to EMPTY_ALLOWLIST (v5.0 mock passes via
+    // allowInsecureMock); absent options are dropped, not forwarded as undefined
+    // (see pruneUndefined). chainId is the only late-bound field, so it is the
+    // factory's parameter rather than part of the stored options.
+    this.#makeVerifier = (resolvedChainId) =>
+      new TrustedVerifier(
+        pruneUndefined<TrustedVerifierOptions>({
+          chainId: resolvedChainId,
+          attestationUrl,
+          allowlist: allowlist ?? EMPTY_ALLOWLIST,
+          pubkeyCacheTtlMs,
+          tcb,
+          pccsUrl,
+          apiKey,
+          headers,
+          fetch: attestationFetch,
+          replayWindowMs,
+        }),
+      );
     // Pin path: chainId known synchronously → build the single TrustedVerifier
     // now (its cache lives for the provider lifetime). Auto-derive: deferred to
     // the first _send after #resolveChainId (see #getTrustedVerifier).
     if (chainId != null) {
-      this.#trustedVerifier = this.#buildTrustedVerifier(chainId);
+      this.#trustedVerifier = this.#makeVerifier(chainId);
     }
   }
 
@@ -257,13 +258,8 @@ export class VrpcProvider extends JsonRpcProvider {
    */
   #getTrustedVerifier(chainId: bigint): TrustedVerifier {
     if (this.#trustedVerifier === undefined) {
-      this.#trustedVerifier = this.#buildTrustedVerifier(chainId);
+      this.#trustedVerifier = this.#makeVerifier(chainId);
     }
     return this.#trustedVerifier;
-  }
-
-  /** Build the per-instance TrustedVerifier for a resolved chainId. */
-  #buildTrustedVerifier(chainId: bigint): TrustedVerifier {
-    return new TrustedVerifier({ ...this.#verifierConfig, chainId });
   }
 }
