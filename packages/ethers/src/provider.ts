@@ -287,44 +287,29 @@ export class VrpcProvider extends JsonRpcProvider {
   override async _send(
     payload: JsonRpcPayload | Array<JsonRpcPayload>,
   ): Promise<Array<JsonRpcResult>> {
-    // Single choke point: resolve the chain id (cheap memoized read after the
-    // first derive, or the synchronously-set pin) BEFORE building the pre-image.
     const chainId = this.#chainId ?? (await this.#resolveChainId());
-
-    // Serialize ONCE: the same bytes are POSTed and fed to verify, so the
-    // pre-image reconstruction matches what the sidecar signed.
-    const requestBody = JSON.stringify(payload);
-    const requestBytes = toUtf8Bytes(requestBody);
-
+    // Configure a POST connection for the requested method (serialize ONCE so the
+    // exact POSTed bytes feed the pre-image).
     const request = this._getConnection();
+    const requestBody = JSON.stringify(payload);
     request.body = requestBody;
     request.setHeader("content-type", "application/json");
-
     const response = await request.send();
-    response.assertOk(); // 4xx/5xx → ethers SERVER_ERROR (not a VerificationError).
+    response.assertOk();
 
-    // Raw, content-decoded bytes exactly as signed. An empty body carries no
-    // vRPC-* headers → MissingHeader fails closed (no bespoke error class).
+    // Verify the RAW content-decoded body BEFORE parsing (stock reads
+    // `response.bodyJson`); null body → empty → MissingHeader, fail-closed.
     const rawResponseBytes = response.body ?? new Uint8Array();
-
-    // Fail-closed: any verify error (VerificationError or otherwise) propagates
-    // out of `_send`; no unverified data is ever returned. The TrustedVerifier
-    // is the single verify path (plain Ed25519 verify + lazy TDX attestation on
-    // an unknown/expired pubkey) — including the chainId bootstrap, which runs
-    // through the SAME verifier (see #resolveChainId).
     await this.#getTrustedVerifier(chainId).verify(
-      requestBytes,
+      toUtf8Bytes(requestBody),
       rawResponseBytes,
       response.headers,
     );
-
-    // Parse ONLY after verification. Normalize to the array ethers' drain loop
-    // correlates by id (single payload → length-1 array). A JSON.parse failure
-    // propagates naturally (fail-closed; no unverified data is returned).
-    let resp: unknown = JSON.parse(toUtf8String(rawResponseBytes));
+    let resp = JSON.parse(toUtf8String(rawResponseBytes));
     if (!Array.isArray(resp)) {
       resp = [resp];
     }
-    return resp as Array<JsonRpcResult>;
+
+    return resp;
   }
 }
