@@ -45,6 +45,6 @@ export { parseChainId } from "./utils";
 export type { VerifiedResponse, VerifierClientOptions } from "./verifier";
 export { VerifierClient } from "./verifier";
 export type { ResponseHeaders, VerifiedPair, VerifyResponseOptions } from "./verify";
-export { verifyResponse } from "./verify";
+export { isSignedVrpcResponse, verifyResponse } from "./verify";
 export type { VrpcUrls } from "./vrpc-url";
 export { deriveVrpcUrls } from "./vrpc-url";

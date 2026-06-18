@@ -9,6 +9,7 @@
 import { EMPTY_ALLOWLIST } from "@ankr.com/dstack-verify";
 import {
   deriveVrpcUrls,
+  isSignedVrpcResponse,
   parseChainId,
   TrustedVerifier,
   type TrustedVerifierOptions,
@@ -146,7 +147,7 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
           // non-2xx (gateway 502 / timeout) is a transport failure → network error,
           // not a `MissingHeader` that looks like an attack. A SIGNED non-2xx body
           // still flows into verify; an unsigned 2xx still fails closed.
-          if (!res.ok && !res.headers.get("vRPC-Signature")) {
+          if (!res.ok && !isSignedVrpcResponse(res.headers)) {
             throw new HttpRequestError({
               body: { method, params },
               status: res.status,
