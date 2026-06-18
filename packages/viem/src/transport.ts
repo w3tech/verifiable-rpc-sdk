@@ -34,7 +34,7 @@
 import { EMPTY_ALLOWLIST } from "@ankr.com/dstack-verify";
 import {
   deriveVrpcUrls,
-  MalformedHeader,
+  parseChainId,
   TrustedVerifier,
   VerificationError,
 } from "@ankr.com/vrpc-core";
@@ -148,33 +148,9 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
         // decoded body, so encode that exact text for the verify pre-image.
         const rawText = await res.text();
         const rawResponseBytes = new TextEncoder().encode(rawText);
-        // A forged/truncated bootstrap body can be invalid JSON (raw
-        // SyntaxError) or carry a missing/non-hex `result` (raw TypeError from
-        // BigInt). Both throw BEFORE verifyResponse, so they would bypass the
-        // typed-error wrapper and surface as opaque programmer errors. Coerce
-        // them to a VerificationError (MalformedHeader) so a malformed bootstrap
-        // reads as a verify failure, consistent with the fail-fast contract.
-        // (LOW-01/LOW-02)
-        let parsed: { result?: string };
-        try {
-          parsed = JSON.parse(rawText) as { result?: string };
-        } catch (_err) {
-          throw new MalformedHeader(
-            "eth_chainId.result",
-            rawText,
-            "auto-derived chainId could not be parsed (pass `chainId` explicitly): bootstrap body is not valid JSON",
-          );
-        }
-        if (typeof parsed.result !== "string" || !/^0x[0-9a-fA-F]+$/.test(parsed.result)) {
-          throw new MalformedHeader(
-            "eth_chainId.result",
-            String(parsed.result),
-            "auto-derived chainId could not be parsed (pass `chainId` explicitly): expected 0x-hex chain id",
-          );
-        }
-        // BigInt() directly off the hex string — no number round-trip (a chain
-        // id may exceed 2^53−1 and must bind the full u64 into the pre-image).
-        const chainId = BigInt(parsed.result);
+        // Convert the response body to a chainId (shared core util). A malformed
+        // body throws MalformedHeader → reads as a fail-fast verify failure.
+        const chainId = parseChainId(rawResponseBytes);
         // Verify-AND-attest the bootstrap through the SAME TrustedVerifier built
         // for this chainId. eth_chainId is itself a vRPC call: its response is
         // verified self-consistently (the signature must bind its OWN claimed

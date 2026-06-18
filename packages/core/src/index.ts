@@ -18,6 +18,7 @@ export type {
   GetQuoteResponse,
 } from "./attestation";
 export { fetchAttestation, verifyAttestationCorrelation } from "./attestation";
+export { parseChainId } from "./chain-id";
 export type {
   ComposeSource,
   InfoEndpointComposeSourceOptions,
