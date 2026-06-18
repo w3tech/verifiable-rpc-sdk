@@ -21,7 +21,6 @@ import {
   parseChainId,
   TrustedVerifier,
   type TrustedVerifierOptions,
-  VerificationError,
 } from "@ankr.com/vrpc-core";
 import {
   type FetchRequest,
@@ -161,11 +160,12 @@ export class VrpcProvider extends JsonRpcProvider {
   override async _send(
     payload: JsonRpcPayload | Array<JsonRpcPayload>,
   ): Promise<Array<JsonRpcResult>> {
-    const chainId = this.#chainId ?? (await this.#resolveChainId());
     const { requestBytes, rawResponseBytes, headers } = await this.#post(payload);
-    // Verify the RAW content-decoded body BEFORE parsing; null body → empty →
-    // MissingHeader (fail-closed).
+
+    // Verify the RAW content-decoded body BEFORE parsing.
+    const chainId = this.#chainId ?? (await this.#resolveChainId());
     await this.#getTrustedVerifier(chainId).verify(requestBytes, rawResponseBytes, headers);
+
     const parsed = JSON.parse(toUtf8String(rawResponseBytes)) as
       | JsonRpcResult
       | Array<JsonRpcResult>;
@@ -232,20 +232,11 @@ export class VrpcProvider extends JsonRpcProvider {
         method: "eth_chainId",
         params: [],
       });
-      // Convert the response body to a chainId (shared core util). A malformed
-      // body throws MalformedHeader → reads as a fail-fast verify failure.
+
+      // Verify the RAW content-decoded body BEFORE parsing.
       const chainId = parseChainId(rawResponseBytes);
-      // Verify AND attest in one pass through the TrustedVerifier built for this
-      // chainId: the signing pubkey is attested on first-unseen (lazy TDX, cached
-      // so the first real read reuses it). On failure #chainId is NOT set.
-      try {
-        await this.#getTrustedVerifier(chainId).verify(requestBytes, rawResponseBytes, headers);
-      } catch (err) {
-        if (err instanceof VerificationError) {
-          err.message = `auto-derived chainId could not be verified (pass \`chainId\` explicitly): ${err.message}`;
-        }
-        throw err;
-      }
+      await this.#getTrustedVerifier(chainId).verify(requestBytes, rawResponseBytes, headers);
+
       this.#chainId = chainId;
       return chainId;
     })();
