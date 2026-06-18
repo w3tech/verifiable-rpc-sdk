@@ -85,7 +85,6 @@ export class VrpcProvider extends JsonRpcProvider {
     super(superUrl, chainId, superOptions);
 
     this.#chainId = chainId;
-    // allowlist defaults to EMPTY_ALLOWLIST (v5.0 mock); absent options dropped.
     this.#makeVerifier = (resolvedChainId) =>
       new TrustedVerifier(
         pruneUndefined<TrustedVerifierOptions>({
@@ -101,7 +100,7 @@ export class VrpcProvider extends JsonRpcProvider {
           replayWindowMs,
         }),
       );
-    // Pin path: build the verifier now; auto-derive defers to the first _send.
+    // Build the verifier now if possible; auto-derive defers to the first _send.
     if (chainId != null) {
       this.#trustedVerifier = this.#makeVerifier(chainId);
     }
@@ -127,8 +126,7 @@ export class VrpcProvider extends JsonRpcProvider {
     return Network.from(await this.#resolveChainId());
   }
 
-  // POST a payload and return the bytes the verify seam needs (request bytes, raw
-  // content-decoded response bytes, headers) — what stock's `bodyJson` discards.
+  // POST a payload, return the request/response bytes + headers the verifier needs.
   async #post(payload: JsonRpcPayload | Array<JsonRpcPayload>) {
     const requestBody = JSON.stringify(payload);
     const request = this._getConnection();
@@ -171,7 +169,7 @@ export class VrpcProvider extends JsonRpcProvider {
     return this.#chainIdPromise;
   }
 
-  // Memoized verifier, built lazily once chainId is known (auto-derive path).
+  // Memoized verifier, built lazily once chainId is known.
   #getTrustedVerifier(chainId: bigint): TrustedVerifier {
     if (this.#trustedVerifier === undefined) {
       this.#trustedVerifier = this.#makeVerifier(chainId);
