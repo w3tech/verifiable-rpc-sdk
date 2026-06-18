@@ -206,19 +206,12 @@ export class VrpcProvider extends JsonRpcProvider {
       return this.#chainIdPromise;
     }
     this.#chainIdPromise = (async () => {
-      const request = this._getConnection();
-      const requestBody = JSON.stringify({
+      const { requestBytes, rawResponseBytes, headers } = await this.#post({
         jsonrpc: "2.0",
         id: 1,
         method: "eth_chainId",
         params: [],
       });
-      const requestBytes = toUtf8Bytes(requestBody);
-      request.body = requestBody;
-      request.setHeader("content-type", "application/json");
-      const response = await request.send();
-      response.assertOk();
-      const rawResponseBytes = response.body ?? new Uint8Array();
       // A forged/truncated bootstrap body can be invalid JSON (raw SyntaxError)
       // or carry a missing/non-hex `result` (raw TypeError from BigInt). Both
       // throw BEFORE verifyResponse, so they would bypass the typed-error
@@ -254,11 +247,7 @@ export class VrpcProvider extends JsonRpcProvider {
       // bootstrap, or an unattested signer, fails FAST here — fail-closed: #chainId
       // is NOT set and there is no unverified fallback.
       try {
-        await this.#getTrustedVerifier(chainId).verify(
-          requestBytes,
-          rawResponseBytes,
-          response.headers,
-        );
+        await this.#getTrustedVerifier(chainId).verify(requestBytes, rawResponseBytes, headers);
       } catch (err) {
         if (err instanceof VerificationError) {
           err.message = `auto-derived chainId could not be verified (pass \`chainId\` explicitly): ${err.message}`;
@@ -281,35 +270,42 @@ export class VrpcProvider extends JsonRpcProvider {
   }
 
   /**
-   * Verifying override of the JSON-RPC HTTP chokepoint. Mirrors stock `_send`
-   * but verifies the raw response bytes before parsing.
+   * POST a JSON-RPC payload through the configured connection — mirrors stock
+   * `JsonRpcProvider._send` up to the raw response, returning the inputs the verify
+   * seam needs (exact request bytes, raw content-decoded response bytes, response
+   * headers) that stock's `response.bodyJson` discards. Shared by `_send` and the
+   * chainId bootstrap (`#resolveChainId`).
+   */
+  async #post(payload: JsonRpcPayload | Array<JsonRpcPayload>) {
+    const requestBody = JSON.stringify(payload);
+    const request = this._getConnection();
+    request.body = requestBody;
+    request.setHeader("content-type", "application/json");
+    const response = await request.send();
+    response.assertOk();
+    return {
+      requestBytes: toUtf8Bytes(requestBody),
+      rawResponseBytes: response.body ?? new Uint8Array(),
+      headers: response.headers,
+    };
+  }
+
+  /**
+   * Verifying override of the JSON-RPC HTTP chokepoint: POST via `#post`, verify
+   * the raw bytes (single path: Ed25519 + lazy attestation), then parse.
    */
   override async _send(
     payload: JsonRpcPayload | Array<JsonRpcPayload>,
   ): Promise<Array<JsonRpcResult>> {
     const chainId = this.#chainId ?? (await this.#resolveChainId());
-    // Configure a POST connection for the requested method (serialize ONCE so the
-    // exact POSTed bytes feed the pre-image).
-    const request = this._getConnection();
-    const requestBody = JSON.stringify(payload);
-    request.body = requestBody;
-    request.setHeader("content-type", "application/json");
-    const response = await request.send();
-    response.assertOk();
-
+    const { requestBytes, rawResponseBytes, headers } = await this.#post(payload);
     // Verify the RAW content-decoded body BEFORE parsing (stock reads
     // `response.bodyJson`); null body → empty → MissingHeader, fail-closed.
-    const rawResponseBytes = response.body ?? new Uint8Array();
-    await this.#getTrustedVerifier(chainId).verify(
-      toUtf8Bytes(requestBody),
-      rawResponseBytes,
-      response.headers,
-    );
+    await this.#getTrustedVerifier(chainId).verify(requestBytes, rawResponseBytes, headers);
     let resp = JSON.parse(toUtf8String(rawResponseBytes));
     if (!Array.isArray(resp)) {
       resp = [resp];
     }
-
     return resp;
   }
 }
