@@ -21,7 +21,7 @@
 import { describe, expect, test } from "bun:test";
 import { vrpcHttp } from "@ankr.com/vrpc-viem";
 import { getPublicKeyAsync } from "@noble/ed25519";
-import { createPublicClient } from "viem";
+import { createPublicClient, defineChain } from "viem";
 
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
 
@@ -33,6 +33,14 @@ const TEST_SEED = new Uint8Array(32).fill(0x42);
 const NODE_ID = "node-abc";
 // Wide window neutralizes the static FIXTURE_TIMESTAMP_MS staleness.
 const WIDE_WINDOW = Number.MAX_SAFE_INTEGER;
+// chainId is pinned via the viem client's `chain` (`chain.id`), not an option;
+// TEST_CHAIN pins CHAIN_ID so these tests skip the eth_chainId bootstrap.
+const TEST_CHAIN = defineChain({
+  id: Number(CHAIN_ID),
+  name: "vrpc-test",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: [URL] } },
+});
 
 function jsonResult(result: unknown): string {
   return JSON.stringify({ jsonrpc: "2.0", id: 1, result });
@@ -99,8 +107,8 @@ describe("vrpcHttp always-on attestation (TEST-03, viem half)", () => {
   test("routesThroughVerifierAndCaches: unknown pubkey attests once, second read within TTL skips the fetch", async () => {
     const seam = seamFetch();
     const c = createPublicClient({
+      chain: TEST_CHAIN,
       transport: vrpcHttp(URL, {
-        chainId: CHAIN_ID,
         fetchFn: seam.fetchFn,
         replayWindowMs: WIDE_WINDOW,
       }),
@@ -120,10 +128,9 @@ describe("vrpcHttp always-on attestation (TEST-03, viem half)", () => {
   test("noNodeIdFetchesWithoutRouting: a signed response without vRPC-NodeId verifies (attestation GET carries no node_id)", async () => {
     const seam = seamFetch({ withNodeId: false });
     const transport = vrpcHttp(URL, {
-      chainId: CHAIN_ID,
       fetchFn: seam.fetchFn,
       replayWindowMs: WIDE_WINDOW,
-    })({} as never);
+    })({ chain: TEST_CHAIN } as never);
     const result = await transport.config.request({
       method: "eth_getBalance",
       params: [ADDR, "latest"],
@@ -137,8 +144,8 @@ describe("vrpcHttp always-on attestation (TEST-03, viem half)", () => {
   test("derivedAttestationRoute: the attestation GET targets the `_vrpc/attestation` route from the single URL", async () => {
     const seam = seamFetch();
     const c = createPublicClient({
+      chain: TEST_CHAIN,
       transport: vrpcHttp(URL, {
-        chainId: CHAIN_ID,
         fetchFn: seam.fetchFn,
         replayWindowMs: WIDE_WINDOW,
       }),

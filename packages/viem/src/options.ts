@@ -5,18 +5,12 @@
 import type { PinnedAllowlist, TcbPolicy } from "@ankr.com/dstack-verify";
 
 /**
- * Options for `vrpcHttp(url, opts?)`. `chainId` is optional (auto-derived when
- * omitted); everything else is optional with safe defaults. Always fail-closed
- * (see `transport.ts`).
+ * Options for `vrpcHttp(url, opts?)`. All optional with safe defaults. Always
+ * fail-closed (see `transport.ts`). The chain id bound into the signed pre-image
+ * comes from the viem client's `chain` (`chain.id`); with no chain set it is
+ * auto-derived from a verified `eth_chainId` bootstrap on the first request.
  */
 export interface VrpcHttpOptions {
-  /**
-   * EVM chain id bound into the signed pre-image. Optional: auto-derived from a
-   * verified `eth_chainId` bootstrap on first request when omitted. Coerced to
-   * bigint without a number round-trip (chain ids can exceed 2^53). Passing it
-   * explicitly is RECOMMENDED — skips the bootstrap and pins the binding.
-   */
-  chainId?: number | bigint;
   /**
    * Replay window (ms) forwarded to `verifyResponse`. Omitted → vrpc-core
    * default (60s). Tests pass a wide window to neutralize static-fixture

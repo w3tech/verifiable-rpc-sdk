@@ -30,10 +30,10 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
  * `createPublicClient({ transport: vrpcHttp(url) })`. The transport derives the
  * `_vrpc` RPC route + `/attestation` sub-route from the single URL.
  *
- * `chainId` is optional — omit it and it is derived from a self-consistently
- * verified `eth_chainId` response on the first request (fail-fast, no unverified
- * fallback). Passing it explicitly is RECOMMENDED: pins YOUR chain and skips the
- * bootstrap.
+ * The chain id bound into the pre-image comes from the viem client's `chain`
+ * (`chain.id`). With no chain set it is derived from a self-consistently verified
+ * `eth_chainId` response on the first request (fail-fast, no unverified fallback);
+ * declaring `chain` on the client pins YOUR chain and skips the bootstrap.
  */
 export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vrpc-http"> {
   const fetchFn = opts.fetchFn ?? fetch;
@@ -41,9 +41,10 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
   // Derive the `_vrpc` RPC route + `/attestation` from the single URL.
   const { rpcUrl, attestationUrl } = deriveVrpcUrls(url);
 
-  // bigint without a number round-trip; auto-derived lazily when omitted, with
-  // the in-flight promise memoized so concurrent first calls share ONE fetch.
-  let chainIdResolved: bigint | undefined = opts.chainId != null ? BigInt(opts.chainId) : undefined;
+  // Pinned from the viem client's chain.id (seeded in the factory below), or
+  // auto-derived lazily when no chain is set; the in-flight bootstrap promise is
+  // memoized so concurrent first calls share ONE fetch.
+  let chainIdResolved: bigint | undefined;
   let chainIdPromise: Promise<bigint> | null = null;
 
   // ONE TrustedVerifier per transport (lifetime pubkey cache); built lazily once
@@ -71,7 +72,13 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
     return trustedVerifier;
   };
 
-  return ({ timeout: injectedTimeout }) => {
+  return ({ chain, timeout: injectedTimeout }) => {
+    // viem injects the client's `chain`; its id is the pin source (chainId left
+    // the options bag — mirrors ethers taking it from the ctor). No chain → the
+    // lazy verified eth_chainId bootstrap fills it on the first request.
+    if (chainIdResolved === undefined && chain?.id != null) {
+      chainIdResolved = BigInt(chain.id);
+    }
     // Effective timeout: explicit option → client-injected → viem's 10s default.
     const timeout = opts.timeout ?? injectedTimeout ?? 10_000;
 
