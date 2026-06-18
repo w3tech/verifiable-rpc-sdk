@@ -18,7 +18,6 @@ export type {
   GetQuoteResponse,
 } from "./attestation";
 export { fetchAttestation, verifyAttestationCorrelation } from "./attestation";
-export { parseChainId } from "./chain-id";
 export type {
   ComposeSource,
   InfoEndpointComposeSourceOptions,
@@ -42,6 +41,7 @@ export {
 export { buildPreImage } from "./preimage";
 export type { TrustedVerifierOptions } from "./trusted-verifier";
 export { DEFAULT_PUBKEY_CACHE_TTL_MS, TrustedVerifier } from "./trusted-verifier";
+export { parseChainId } from "./utils";
 export type { VerifiedResponse, VerifierClientOptions } from "./verifier";
 export { VerifierClient } from "./verifier";
 export type { ResponseHeaders, VerifiedPair, VerifyResponseOptions } from "./verify";
