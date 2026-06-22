@@ -12,14 +12,13 @@ chain-agnostic.
 | Action           | Command                                                                                              |
 | ---------------- | ---------------------------------------------------------------------------------------------------- |
 | Install          | `bun install`                                                                                        |
-| Test             | `bun test`                                                                                           |
-| Unit test only   | `bun run test:unit`                                                                                  |
-| Integration test | `DSTACK_SIMULATOR_BIN=… DSTACK_SIMULATOR_FIXTURES_DIR=… SIDECAR_BIN=… bun run test:integration`      |
+| Test (whole workspace) | `bun test` (from repo root)                                                                    |
+| Unit test only   | per-package: `cd packages/core && bun run test:unit` (or `bun run --filter '@ankr.com/vrpc-core' test:unit`) |
+| Integration test | per-package: `cd packages/core && DSTACK_SIMULATOR_BIN=… DSTACK_SIMULATOR_FIXTURES_DIR=… SIDECAR_BIN=… bun run test:integration` (or via `bun run --filter '@ankr.com/vrpc-core' test:integration`) |
 | Lint             | `bun run lint`                                                                                       |
 | Format check     | `bun run format:check`                                                                               |
 | Format fix       | `bun run format`                                                                                     |
-| Typecheck        | `bun run typecheck`                                                                                  |
-| Build            | `bun run build` (no-op for now — bundling deferred)                                                  |
+| Typecheck        | `bun run typecheck` (root fans out: `bun run --filter '*' typecheck`; per-package leaf is `tsc --noEmit`) |
 
 ## Pre-push gate (mandatory)
 
@@ -41,7 +40,7 @@ deferred to a later ops cycle).
 
 ## Integration tests
 
-End-to-end tests under `tests/integration/` spawn a real sidecar binary backed
+End-to-end tests under `packages/core/tests/integration/` spawn a real sidecar binary backed
 by Phala's dstack simulator and an in-process mock JSON-RPC upstream. They
 prove the SDK matches the live wire contract — the unit tests pin the crypto
 with real Ed25519 keys; the integration tests pin the bytes that flow over the
@@ -65,7 +64,7 @@ not required.
 DSTACK_SIMULATOR_BIN=/private/tmp/dstack-sim-test/dstack-simulator \
 DSTACK_SIMULATOR_FIXTURES_DIR=/private/tmp/dstack-sim-test \
 SIDECAR_BIN=../verifiable-rpc-sidecar/target/debug/rpc-attest-sidecar \
-  bun run test:integration
+  bun run --filter '@ankr.com/vrpc-core' test:integration
 ```
 
 `bun test` (no env vars) runs the unit suite only and emits a one-line skip
@@ -78,16 +77,21 @@ the unit level with real Ed25519 sign+verify
 adding integration-level versions would exercise the same logic against a
 slower harness without catching anything new. Integration tests focus on the
 value adds: happy-path call, cross-endpoint pubkey consistency, and a
-real-wire canonical attestation fixture (`tests/fixtures/attestation-v0.1.0.json`).
+real-wire canonical attestation fixture (`packages/core/tests/fixtures/attestation-v0.1.0.json`).
 
 **CI deferral:** CI runs the unit suite only. A dedicated integration matrix
 with the simulator binary on the runner is tracked separately.
 
 ## Architecture
 
-- Public surface re-exported through `src/index.ts`; implementation lives in
-  `src/verifier.ts`, `src/attestation.ts`, `src/compose.ts`, `src/errors.ts`,
-  `src/preimage.ts`.
+- Monorepo: Bun workspaces under `packages/*` — `core` (`@ankr.com/vrpc-core`,
+  the verification primitives), `ethers` (`@ankr.com/vrpc-ethers`), `viem`
+  (`@ankr.com/vrpc-viem`), and `dstack-verify` (`@ankr.com/dstack-verify`).
+- Public surface re-exported through `packages/core/src/index.ts`; implementation
+  lives in `packages/core/src/verifier.ts`, `packages/core/src/verify.ts`,
+  `packages/core/src/attestation.ts`, `packages/core/src/compose.ts`,
+  `packages/core/src/errors.ts`, `packages/core/src/preimage.ts` (plus
+  `anchor.ts`, `trusted-verifier.ts`, `utils.ts`, `vrpc-url.ts`).
 - SDK is a thin verifier wrapping `fetch` — no JSON-RPC re-implementation, no
   batching, no method-specific decoders.
 - Pairs with `verifiable-rpc-sidecar` `v0.2.0`. Wire contract = the 80-byte
@@ -109,30 +113,27 @@ with the simulator binary on the runner is tracked separately.
 
 | File                          | Responsibility                                                                                                                                                                            |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`                | Public barrel re-exporting `VerifierClient`, `fetchAttestation`, the `ComposeSource` family (`InfoEndpointComposeSource`, `RegistryComposeSource`, `computeComposeHash`), the `VerificationError` family, and `buildPreImage`. |
-| `src/compose.ts`              | `ComposeSource` abstraction for Layer A: `InfoEndpointComposeSource` (dev-only, `/info` self-report — NOT a trust anchor) + `RegistryComposeSource` (future external/GitHub anchor, DEC-03) + `computeComposeHash`. |
-| `tsconfig.json`               | Strict TS config (target ESNext, moduleResolution bundler, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`).                                                                     |
-| `biome.json`                  | Biome lint + formatter config.                                                                                                                                                            |
+| `packages/core/src/index.ts`  | Public barrel re-exporting `VerifierClient`, `verifyResponse`/`isSignedVrpcResponse`, `fetchAttestation`/`verifyAttestationCorrelation`, `anchorTrust`, `TrustedVerifier`, the `ComposeSource` family (`InfoEndpointComposeSource`, `RegistryComposeSource`, `computeComposeHash`), the `VerificationError` family, `buildPreImage`, `parseChainId`, and `deriveVrpcUrls`. |
+| `packages/core/src/compose.ts`| `ComposeSource` abstraction for Layer A: `InfoEndpointComposeSource` (dev-only, `/info` self-report — NOT a trust anchor) + `RegistryComposeSource` (future external/GitHub anchor, DEC-03) + `computeComposeHash`. |
+| `tsconfig.base.json`          | Strict TS config (target ESNext, moduleResolution bundler, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`). Root `tsconfig.json` only `extends` it with `include: []`; each package's `tsconfig.json` extends it too.        |
+| `biome.json`                  | Biome lint + formatter config (root).                                                                                                                                                     |
 | `.github/workflows/ci.yml`    | CI workflow — lint + format:check + typecheck + test on push/PR.                                                                                                                          |
 
 ## Where to look first
 
 | Task                                          | Start here                       |
 | --------------------------------------------- | -------------------------------- |
-| Add a placeholder field to the public surface | `src/index.ts`                   |
+| Add a field to the public surface             | `packages/core/src/index.ts`     |
 | Adjust lint or format rules                   | `biome.json` (Biome 2.x schema)  |
 | Adjust CI pipeline                            | `.github/workflows/ci.yml`       |
-| Change strict-mode TS flags                   | `tsconfig.json`                  |
+| Change strict-mode TS flags                   | `tsconfig.base.json`             |
 
 ## Conventions
 
-- **Commit prefix:** `SHARK-3283: ...` on the v3-entry branch; future phases
-  follow their own Jira keys.
-- **Branch:** `SHARK-3283-verifier-sdk-v3`; one big PR carries the entire entry
-  (convention carried from the sidecar PR stack).
-- **Atomic commits:** one logical chunk per commit (e.g. `package.json +
-  tsconfig`, then `biome.json`, then `src/index.ts`, then
-  `AGENTS.md + CLAUDE.md`, then `ci.yml`).
+- **Commit prefix:** `SHARK-XXXX: ...` using the relevant Jira key.
+- **Branch/PR:** work on `main` + short-lived feature branches; one PR per
+  logical change. Never push to `main` directly, never self-merge.
+- **Atomic commits:** one logical chunk per commit.
 - **ESM-first, `type: "module"`** in `package.json`. No CJS in v3 entry.
 - **No JSON-RPC re-impl** — SDK wraps `fetch`, returns typed
   `VerifiedResponse<T>`. Consumers handle batching, retries.
@@ -144,6 +145,5 @@ with the simulator binary on the runner is tracked separately.
 - **No throw-from-async-constructor** — synchronous fail-fast in
   `new VerifierClient(url, opts)` for config errors; runtime verification
   errors from call sites only.
-- **Worktree rule** from parent `../AGENTS.md` applies in general; the current
-  branch is already checked out in the main checkout, so the work continues
-  there.
+- **Worktree rule** from parent `../AGENTS.md` applies: create a git worktree
+  off `main` for feature work; never switch the checked-out branch in place.
