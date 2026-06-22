@@ -11,6 +11,8 @@
   },
   "packageManager": "pnpm@11.8.0",
   "scripts": {
+    "changeset": "changeset",
+    "version": "changeset version",
     "test": "pnpm -r test",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
@@ -36,6 +38,7 @@
     "@ankr.com/vrpc-ethers": "workspace:*",
     "@ankr.com/vrpc-viem": "workspace:*",
     "@biomejs/biome": "^2.0.0",
+    "@changesets/cli": "^2.31.0",
     "@noble/ed25519": "^3.1.0",
     "ethers": "^6.16.0",
     "tsup": "^8.5.1",
