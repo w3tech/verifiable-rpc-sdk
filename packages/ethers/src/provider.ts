@@ -75,6 +75,18 @@ export class VrpcProvider extends JsonRpcProvider {
       superUrl = clone;
     }
 
+    // Reuse the connection FetchRequest's headers (e.g. `x-api-key`) for the
+    // attestation leg, so a single auth set on the URL covers BOTH legs — parity
+    // with viem, where `headers` feed the RPC POST and the attestation fetch
+    // alike. Without this the attestation GET goes out unauthenticated and a
+    // shark route rejects it (fail-closed). Explicit `options.headers` override
+    // per-key; a string URL carries no headers.
+    const connectionHeaders = typeof url === "string" ? undefined : url.headers;
+    const attestationHeaders =
+      connectionHeaders !== undefined || headers !== undefined
+        ? { ...connectionHeaders, ...headers }
+        : undefined;
+
     // bigint without a number round-trip: chain ids can exceed 2^53 and the
     // pre-image binds the full u64, so widening through `number` would false-reject.
     const chainId = chainIdArg != null ? BigInt(chainIdArg) : undefined;
@@ -95,7 +107,7 @@ export class VrpcProvider extends JsonRpcProvider {
           tcb,
           pccsUrl,
           apiKey,
-          headers,
+          headers: attestationHeaders,
           fetch: attestationFetch,
           replayWindowMs,
         }),
