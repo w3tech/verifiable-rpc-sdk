@@ -12,7 +12,11 @@
 // (the established idiom) — never via core's union — and `error.kind` reads back
 // as the literal "Attestation" at runtime. Do NOT edit core's union.
 
-import { VerificationError, type VerificationErrorKind } from "@ankr.com/vrpc-core";
+// Import the base from the leaf `/errors` subpath (not the full barrel) so we
+// don't pull all of @ankr.com/vrpc-core back in — that closes the
+// core<->dstack-verify ESM init cycle (otherwise VerificationError is undefined
+// at class-extends time under Node's bundled-ESM load order).
+import { VerificationError, type VerificationErrorKind } from "@ankr.com/vrpc-core/errors";
 import type { ChkId } from "./checklist";
 
 /** The discriminant literal this package's error reports, outside core's closed union. */
