@@ -13,6 +13,8 @@
   "scripts": {
     "changeset": "changeset",
     "version": "changeset version",
+    "publish:dry-run": "pnpm -r publish --dry-run --no-git-checks",
+    "release": "pnpm run build && pnpm run publish:dry-run && pnpm -r publish --provenance --no-git-checks",
     "test": "pnpm -r test",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
