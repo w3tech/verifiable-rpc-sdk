@@ -50,12 +50,12 @@ See [packages/core/README.md](./packages/core/README.md) for the verification de
 
 ## Development
 
-This is a [Bun](https://bun.sh) workspace monorepo.
+This is a [pnpm](https://pnpm.io) workspace monorepo.
 
 ```bash
-bun install
-bun test          # whole workspace
-bun run typecheck
+pnpm install
+pnpm -r test      # whole workspace (vitest)
+pnpm -r typecheck
 ```
 
 See [AGENTS.md](./AGENTS.md) for the pre-push gate and integration-test setup.

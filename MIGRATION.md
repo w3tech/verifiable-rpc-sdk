@@ -266,6 +266,6 @@ are referenced **by name only** — never hard-code or print the values:
 | `SHARK_STAGE_TDX_TEST_KEY` | `x-api-key` value for the vrpc route |
 
 ```sh
-SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… bun run examples/08-vrpc-ethers-verified-read.ts
-SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… bun run examples/09-vrpc-viem-verified-read.ts
+SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… pnpm example:08-vrpc-ethers-verified-read
+SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… pnpm example:09-vrpc-viem-verified-read
 ```

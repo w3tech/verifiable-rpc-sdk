@@ -18,8 +18,8 @@ export const PINNED_COMPOSE_HASH =
 
 // Stage shark-proxy config for the via-shark example (06). Read by NAME only —
 // the VALUES are secrets and must never be printed, logged, or committed.
-export const SHARK_STAGE_URL: string | undefined = Bun.env.SHARK_STAGE_URL;
-export const SHARK_STAGE_TDX_TEST_KEY: string | undefined = Bun.env.SHARK_STAGE_TDX_TEST_KEY;
+export const SHARK_STAGE_URL: string | undefined = process.env.SHARK_STAGE_URL;
+export const SHARK_STAGE_TDX_TEST_KEY: string | undefined = process.env.SHARK_STAGE_TDX_TEST_KEY;
 
 /**
  * Return `value` if set, else fail loudly WITHOUT printing the value. `name` is

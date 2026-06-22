@@ -11,6 +11,7 @@
 // and the SDK's verify primitives (buildPreImage + @noble/ed25519 verifyAsync)
 // directly, so we exercise the gzip transport path end to end.
 
+import { gunzipSync } from "node:zlib";
 import { buildPreImage } from "@ankr.com/vrpc-core";
 import { verifyAsync } from "@noble/ed25519";
 import { assert, CHAIN_ID, header, kv, URL } from "./shared.ts";
@@ -65,7 +66,7 @@ if (isGzip) {
 }
 
 // The DECODED plaintext bytes are what the sidecar signed.
-const decodedBytes = isGzip ? new Uint8Array(Bun.gunzipSync(wireBytes)) : wireBytes;
+const decodedBytes = isGzip ? new Uint8Array(gunzipSync(wireBytes)) : wireBytes;
 kv("decoded body length (bytes)", decodedBytes.length);
 kv("decoded body (json)", new TextDecoder().decode(decodedBytes));
 

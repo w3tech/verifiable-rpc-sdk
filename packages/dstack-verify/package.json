@@ -42,7 +42,6 @@
     "@ankr.com/vrpc-core": "workspace:*"
   },
   "devDependencies": {
-    "@types/bun": "latest",
     "@types/node": "*"
   }
 }

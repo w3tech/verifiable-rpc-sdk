@@ -47,6 +47,7 @@
   },
   "devDependencies": {
     "@noble/ed25519": "^3.1.0",
+    "@types/node": "*",
     "ethers": "^6.16.0"
   }
 }
