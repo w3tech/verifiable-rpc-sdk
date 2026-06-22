@@ -4,6 +4,11 @@
   "type": "module",
   "description": "Frozen contract for dstack/TDX attestation verification — v5.0 mock, v6.0 real.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/w3tech/verifiable-rpc-sdk.git",
+    "directory": "packages/dstack-verify"
+  },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
