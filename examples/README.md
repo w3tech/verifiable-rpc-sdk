@@ -33,19 +33,19 @@ and scripts 03 + 04 will fail loudly. Update `PINNED_COMPOSE_HASH` in
 ## Run
 
 ```sh
-bun install
-bun run example:01-signed-call
-bun run example:02-batch-and-replay
-bun run example:03-fetch-attestation
-bun run example:04-end-to-end
-bun run example:05-gzip-transport
-bun run example:06-via-shark              # requires SHARK_STAGE_URL + SHARK_STAGE_TDX_TEST_KEY (see below)
-bun run example:07-attestation-via-shark  # requires SHARK_STAGE_URL + SHARK_STAGE_TDX_TEST_KEY (see below)
-bun run example:08-vrpc-ethers-verified-read  # requires SHARK_STAGE_URL + SHARK_STAGE_TDX_TEST_KEY (see below)
-bun run example:09-vrpc-viem-verified-read    # requires SHARK_STAGE_URL + SHARK_STAGE_TDX_TEST_KEY (see below)
-bun run example:10-vrpc-lazy-attestation      # OFFLINE — no env, no network; exits 0 in CI
+pnpm install
+pnpm example:01-signed-call
+pnpm example:02-batch-and-replay
+pnpm example:03-fetch-attestation
+pnpm example:04-end-to-end
+pnpm example:05-gzip-transport
+pnpm example:06-via-shark              # requires SHARK_STAGE_URL + SHARK_STAGE_TDX_TEST_KEY (see below)
+pnpm example:07-attestation-via-shark  # requires SHARK_STAGE_URL + SHARK_STAGE_TDX_TEST_KEY (see below)
+pnpm example:08-vrpc-ethers-verified-read  # requires SHARK_STAGE_URL + SHARK_STAGE_TDX_TEST_KEY (see below)
+pnpm example:09-vrpc-viem-verified-read    # requires SHARK_STAGE_URL + SHARK_STAGE_TDX_TEST_KEY (see below)
+pnpm example:10-vrpc-lazy-attestation      # OFFLINE — no env, no network; exits 0 in CI
 # Or:
-bun run example:all
+pnpm example:all
 ```
 
 Each script prints its checks line-by-line and ends with `PASS — …` (exit 0)

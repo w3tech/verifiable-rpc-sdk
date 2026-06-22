@@ -318,4 +318,4 @@ from the ethers provider is the same class you catch here.
 
 See `examples/04-end-to-end.ts` (full call + verify + attestation) and
 `examples/07-attestation-via-shark.ts` (the `anchorTrust` flow) at the repo root.
-Run with `bun run example:04-end-to-end` / `bun run example:07-attestation-via-shark`.
+Run with `pnpm example:04-end-to-end` / `pnpm example:07-attestation-via-shark`.

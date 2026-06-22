@@ -16,8 +16,8 @@
 //
 // LIVE RUN IS AN OPERATOR STEP. This script needs the staging URL + x-api-key
 // supplied via env at runtime; offline/CI does NOT execute it live. Run with:
-//   SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… bun run examples/09-vrpc-viem-verified-read.ts
-// (or `bun run example:09-vrpc-viem-verified-read`).
+//   SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… pnpm example:09-vrpc-viem-verified-read
+// (or `tsx examples/09-vrpc-viem-verified-read.ts`).
 
 import { anchorTrust } from "@ankr.com/vrpc-core";
 import { vrpcHttp } from "@ankr.com/vrpc-viem";

@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
+import { describe, expect, test } from "vitest";
 
 import { BadSignature, MalformedHeader, MissingHeader, StaleTimestamp } from "../src/errors";
 import { buildPreImage } from "../src/preimage";

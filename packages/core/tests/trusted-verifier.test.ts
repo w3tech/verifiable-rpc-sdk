@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AttestationError, EMPTY_ALLOWLIST } from "@ankr.com/dstack-verify";
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { buildPreImage } from "../src/preimage";
 import {

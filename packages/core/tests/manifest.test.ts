@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import ethersManifest from "../../ethers/package.json";
 import viemManifest from "../../viem/package.json";
 import coreManifest from "../package.json";

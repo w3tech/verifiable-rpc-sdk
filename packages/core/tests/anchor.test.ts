@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { anchorTrust } from "../src/anchor";
 import {

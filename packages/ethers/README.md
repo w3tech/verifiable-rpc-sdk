@@ -262,7 +262,7 @@ does a real verified read + `anchorTrust` correlation through a stage shark
 
 ```sh
 SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… \
-  bun run examples/08-vrpc-ethers-verified-read.ts
+  pnpm example:08-vrpc-ethers-verified-read
 ```
 
 Both env vars are read **by name** only — their values are never printed or

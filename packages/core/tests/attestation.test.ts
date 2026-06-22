@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { fetchAttestation, verifyAttestationCorrelation } from "../src/attestation";
 import {

@@ -7,7 +7,7 @@
 // or `SIDECAR_BIN` is unset, the entire `describe` block is skipped and a
 // one-line skip message is logged at module load.
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { VerifierClient } from "../../src/index";
 import {

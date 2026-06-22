@@ -300,7 +300,7 @@ hardcoded or printed):
 
 ```sh
 SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… \
-  bun run examples/09-vrpc-viem-verified-read.ts
+  pnpm example:09-vrpc-viem-verified-read
 ```
 
 See `packages/viem/test/transport.test.ts` for the full wiring suite (verified

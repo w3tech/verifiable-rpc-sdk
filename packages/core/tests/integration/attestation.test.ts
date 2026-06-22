@@ -2,9 +2,9 @@
 // simulator. Captures and diff-checks the canonical wire fixture at
 // `tests/fixtures/attestation-v0.1.0.json`.
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { fetchAttestation } from "../../src/index";
 import {
@@ -71,7 +71,7 @@ d("integration: attestation", () => {
   it("captures the canonical attestation-v0.1.0.json fixture", async () => {
     if (!sidecar) throw new Error("sidecar not initialised");
 
-    const fixturesDir = join(import.meta.dir, "..", "fixtures");
+    const fixturesDir = join(import.meta.dirname, "..", "fixtures");
     const fixturePath = join(fixturesDir, "attestation-v0.1.0.json");
 
     const nonce = new Uint8Array(32); // canonical all-zero nonce

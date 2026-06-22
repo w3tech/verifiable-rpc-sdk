@@ -14,7 +14,6 @@
 // isolation) — cross-adapter parity is proved against the vrpc-core class
 // identity that BOTH adapters re-export.
 
-import { describe, expect, test } from "bun:test";
 // Same family identity the ethers adapter re-exports — proves a caller cannot
 // tell the two adapters apart by error shape (cross-adapter parity).
 import { VerificationError as CoreVerificationError } from "@ankr.com/vrpc-core";
@@ -33,6 +32,7 @@ import {
   HttpRequestError,
   parseAbi,
 } from "viem";
+import { describe, expect, test } from "vitest";
 
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
 

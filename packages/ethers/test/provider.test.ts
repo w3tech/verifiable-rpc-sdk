@@ -12,7 +12,6 @@
 // getBalance / Contract / batch payload verifies without the test predicting
 // ethers' internal payload encoding.
 
-import { describe, expect, test } from "bun:test";
 import {
   BadSignature,
   MalformedHeader,
@@ -21,6 +20,7 @@ import {
   VrpcProvider,
 } from "@ankr.com/vrpc-ethers";
 import { Contract, FetchRequest, Interface, toBeHex } from "ethers";
+import { describe, expect, test } from "vitest";
 
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
 import { installAttestationMock, signingRequest } from "./helpers";

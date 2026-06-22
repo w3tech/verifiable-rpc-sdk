@@ -18,10 +18,10 @@
 // core/tests/trusted-verifier.test.ts installAttestationMock). Offline, no live
 // network.
 
-import { describe, expect, test } from "bun:test";
 import { vrpcHttp } from "@ankr.com/vrpc-viem";
 import { getPublicKeyAsync } from "@noble/ed25519";
 import { createPublicClient, defineChain } from "viem";
+import { describe, expect, test } from "vitest";
 
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
 

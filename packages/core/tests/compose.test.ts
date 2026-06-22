@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { describe, expect, test } from "vitest";
 
 import {
   computeComposeHash,

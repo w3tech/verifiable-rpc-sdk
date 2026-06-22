@@ -15,8 +15,8 @@
 // This example proves the FLOW and the cache, NOT real TDX attestation.
 //
 // Run (no env required, exits 0):
-//   bun run examples/10-vrpc-lazy-attestation.ts
-//   (or `bun run example:10-vrpc-lazy-attestation`).
+//   tsx examples/10-vrpc-lazy-attestation.ts
+//   (or `pnpm example:10-vrpc-lazy-attestation`).
 
 import { buildPreImage } from "@ankr.com/vrpc-core";
 import { VrpcProvider } from "@ankr.com/vrpc-ethers";

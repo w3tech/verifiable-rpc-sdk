@@ -4,7 +4,7 @@
 // stubs. v6.0 replaces ONLY the body. Each must throw with a message containing
 // "not implemented in v5.0" so the A/B boundary is explicit and auditable.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 
 import { computeComposeHash, extractKeyProvider, parseReportData, replayRtmr } from "../src/index";
 
