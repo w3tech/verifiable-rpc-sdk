@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "description": "ethers v6 drop-in for Ankr's verifiable RPC — VrpcProvider verifies every JSON-RPC response (Ed25519) inside _send, fail-closed.",
+  "license": "Apache-2.0",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -16,7 +17,8 @@
   "files": [
     "dist",
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "publishConfig": {

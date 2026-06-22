@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Transport-agnostic Ed25519 verification primitives for Ankr's verifiable RPC — pre-image, signature verify, attestation, compose.",
+  "license": "Apache-2.0",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -22,7 +23,8 @@
   "files": [
     "dist",
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "publishConfig": {
