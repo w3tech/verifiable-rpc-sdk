@@ -20,8 +20,9 @@
 
 import { describe, expect, test } from "bun:test";
 import { VrpcProvider } from "@ankr.com/vrpc-ethers";
+import { getPublicKeyAsync } from "@noble/ed25519";
 
-import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX } from "./fixtures";
+import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, TEST_SEED } from "./fixtures";
 import { type AttMockState, installAttestationMock, signingRequest } from "./helpers";
 
 const CHAIN_ID_NUMBER = Number(CHAIN_ID); // 42161 (arbitrum)
@@ -78,5 +79,41 @@ describe("VrpcProvider always-on attestation E2E (TEST-03)", () => {
     const balance = await provider.getBalance(ADDR);
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
     expect(mock.attGetCount).toBe(1);
+  });
+
+  test("connectionAuthReachesAttestation: x-api-key set on the FetchRequest authenticates the attestation leg", async () => {
+    // Regression: the auth header set on the RPC connection (FetchRequest) MUST
+    // also reach the attestation GET — parity with viem's `headers`. Without the
+    // fix the attestation leg went out unauthenticated and a shark route rejected
+    // it. Capture the headers the attestation fetch receives and assert the key.
+    let attHeaders: Headers | undefined;
+    const attPubkey = await getPublicKeyAsync(TEST_SEED);
+    const pubkeyHex = `0x${Array.from(attPubkey, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+    const capturingFetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes("/attestation")) {
+        attHeaders = new Headers(init?.headers);
+        return new Response(
+          JSON.stringify({
+            quote: { quote: "00", event_log: "00", report_data: "00", vm_config: "" },
+            pubkey: pubkeyHex,
+            composeHash: "deadbeef",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`unexpected fetch: ${String(input)}`);
+    }) as typeof fetch;
+
+    const req = signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID });
+    req.setHeader("x-api-key", "regression-key");
+    // No apiKey/headers option — auth comes ONLY from the FetchRequest, like a
+    // consumer who sets x-api-key once on the connection.
+    const provider = new VrpcProvider(req, CHAIN_ID_NUMBER, {
+      fetch: capturingFetch,
+      replayWindowMs: WIDE,
+    });
+
+    await provider.getBalance(ADDR);
+    expect(attHeaders?.get("x-api-key")).toBe("regression-key");
   });
 });
