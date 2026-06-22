@@ -37,18 +37,22 @@ header("09 — viem vrpcHttp + createPublicClient verified read + anchorTrust vi
 const sharkUrl = requireEnv("SHARK_STAGE_URL", SHARK_STAGE_URL);
 const apiKey = requireEnv("SHARK_STAGE_TDX_TEST_KEY", SHARK_STAGE_TDX_TEST_KEY);
 const chain = "arbitrum";
-const vrpcUrl = `${sharkUrl}/${chain}_vrpc`;
+// Pass the PLAIN route — the SDK appends `_vrpc` itself (single-URL convention).
+const url = `${sharkUrl}/${chain}`;
 
 // Never print the secret URL / key — only confirm they are set.
 kv("SHARK_STAGE_URL", "set");
 kv("SHARK_STAGE_TDX_TEST_KEY", "set");
-kv("vrpc route suffix", `/${chain}_vrpc`);
+kv("route (SDK appends _vrpc)", `/${chain}`);
 
 // ── DROP-IN CONSTRUCTION ──────────────────────────────────────────────────────
-// One-line swap: `http(url)` → `vrpcHttp(url, { chainId })`. The x-api-key auth
-// header rides on the transport's per-request `headers`.
+// One-line swap: `http(url)` → `vrpcHttp(url, { chainId })`. Pass the plain URL;
+// the SDK appends the `_vrpc` route suffix (and derives the `/attestation`
+// sub-route) itself — no manual concatenation, no attestationBaseUrl/chainSlug.
+// Attestation is always-on, derived from the URL. The x-api-key auth header
+// rides on the transport's per-request `headers`.
 const client = createPublicClient({
-  transport: vrpcHttp(vrpcUrl, {
+  transport: vrpcHttp(url, {
     chainId: CHAIN_ID,
     headers: { "x-api-key": apiKey },
   }),

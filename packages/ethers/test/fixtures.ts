@@ -16,8 +16,10 @@ import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 /**
  * Fixed 32-byte Ed25519 seed — the literal seed used in core's `verify.test.ts`
  * so the derived pubkey is stable and recognizable across both test suites.
+ * Exported so the attestation-fetch mock can derive the SAME pubkey the RPC
+ * responses are signed with (pubkey correlation in the always-on verify seam).
  */
-const TEST_SEED = new Uint8Array(32).fill(0x42);
+export const TEST_SEED = new Uint8Array(32).fill(0x42);
 
 /**
  * Chain id bound into every fixture's pre-image (arbitrum — matches

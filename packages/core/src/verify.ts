@@ -102,6 +102,16 @@ function getHeader(headers: ResponseHeaders, name: string): string | null {
 }
 
 /**
+ * True if the response carries the `vRPC-Signature` header — i.e. it is a signed
+ * vRPC response, not a bare transport error. Lets adapters distinguish a signed
+ * `{error}` body from an unsigned gateway failure WITHOUT hardcoding the wire
+ * header name (the contract stays owned by core).
+ */
+export function isSignedVrpcResponse(headers: ResponseHeaders): boolean {
+  return getHeader(headers, SIGNATURE_HEADER) !== null;
+}
+
+/**
  * Convert `0x...` hex (already shape-validated) to a `Uint8Array`.
  * Caller is responsible for ensuring the input matches `0x[0-9a-f]{2n}`.
  */

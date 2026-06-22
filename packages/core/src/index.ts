@@ -14,14 +14,10 @@ export type { AnchorTrustOptions, AnchorTrustResult } from "./anchor";
 export { anchorTrust } from "./anchor";
 export type {
   Attestation,
-  FetchAttestationViaSharkOptions,
+  FetchAttestationOptions,
   GetQuoteResponse,
 } from "./attestation";
-export {
-  fetchAttestation,
-  fetchAttestationViaShark,
-  verifyAttestationCorrelation,
-} from "./attestation";
+export { fetchAttestation, verifyAttestationCorrelation } from "./attestation";
 export type {
   ComposeSource,
   InfoEndpointComposeSourceOptions,
@@ -43,7 +39,12 @@ export {
   VerificationError,
 } from "./errors";
 export { buildPreImage } from "./preimage";
+export type { TrustedVerifierOptions } from "./trusted-verifier";
+export { DEFAULT_PUBKEY_CACHE_TTL_MS, TrustedVerifier } from "./trusted-verifier";
+export { parseChainId } from "./utils";
 export type { VerifiedResponse, VerifierClientOptions } from "./verifier";
 export { VerifierClient } from "./verifier";
 export type { ResponseHeaders, VerifiedPair, VerifyResponseOptions } from "./verify";
-export { verifyResponse } from "./verify";
+export { isSignedVrpcResponse, verifyResponse } from "./verify";
+export type { VrpcUrls } from "./vrpc-url";
+export { deriveVrpcUrls } from "./vrpc-url";

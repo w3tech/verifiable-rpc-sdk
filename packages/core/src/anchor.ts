@@ -13,12 +13,12 @@
 // NO COPIED CRYPTO: the Ed25519 signature verification is performed by
 // `VerifierClient.call` (the successful return IS the verification), and the
 // pubkey correlation reuses `verifyAttestationCorrelation`; the attestation
-// fetch reuses `fetchAttestationViaShark`. This file orchestrates those
+// fetch reuses `fetchAttestation`. This file orchestrates those
 // existing primitives and maps their errors — it implements none of the crypto.
 //
 // Mirrors the proven v3.1 flow in examples/07-attestation-via-shark.ts.
 
-import { fetchAttestationViaShark, verifyAttestationCorrelation } from "./attestation";
+import { fetchAttestation, verifyAttestationCorrelation } from "./attestation";
 import { MissingHeader } from "./errors";
 import { VerifierClient } from "./verifier";
 
@@ -94,9 +94,8 @@ export async function anchorTrust(opts: AnchorTrustOptions): Promise<AnchorTrust
   // 3. Fresh 32-byte nonce, then fetch THIS node's attestation through shark.
   const nonceSource = opts.nonceSource ?? defaultNonce;
   const nonce = nonceSource();
-  const attestation = await fetchAttestationViaShark({
-    sharkBase: opts.sharkBase,
-    chain: opts.chain,
+  const attestation = await fetchAttestation({
+    attestationUrl: `${vrpcUrl}/attestation`,
     nodeId,
     nonce,
     ...(opts.apiKey === undefined ? {} : { apiKey: opts.apiKey }),

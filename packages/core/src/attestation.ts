@@ -41,49 +41,26 @@ export interface Attestation {
   composeHash: string;
 }
 
-/**
- * Fetch a fresh TDX attestation quote from the sidecar, bound to the caller
- * supplied 32-byte nonce.
- *
- * The nonce length is validated synchronously — a wrong-length nonce throws
- * {@link InvalidNonce} BEFORE any network call.
- *
- * Sends `GET ${url}/attestation?nonce=<bare-lowercase-hex>` with no headers.
- * The query parameter is encoded without the `0x` prefix; the sidecar's
- * `parse_user_nonce` accepts both forms but bare hex matches the canonical
- * wire convention.
- *
- * On a malformed response body (missing or wrong-typed fields), throws
- * {@link MalformedAttestationResponse} — never {@link BadSignature}, because
- * this route is unsigned.
- */
-export async function fetchAttestation(url: string, nonce: Uint8Array): Promise<Attestation> {
-  // Synchronous fast-fail BEFORE any fetch.
-  if (nonce.length !== 32) {
-    throw new InvalidNonce(`expected 32 bytes, got ${nonce.length}`);
-  }
-
-  // Bare-hex (no 0x prefix) query encoding.
-  const nonceHex = bytesToHex(nonce);
-  const target = `${url}/attestation?nonce=${nonceHex}`;
-
-  // Unsigned route — no headers required, response headers ignored.
-  const resp = await fetch(target);
-  const body = (await resp.json()) as unknown;
-
-  return narrowAttestation(body);
-}
-
-/** Options for {@link fetchAttestationViaShark}. */
-export interface FetchAttestationViaSharkOptions {
-  /** Shark proxy base URL (no trailing slash), e.g. `https://rpc.ankr.com`. */
-  sharkBase: string;
-  /** Chain slug used to build the `<chain>_vrpc` route segment, e.g. `eth`. */
-  chain: string;
-  /** Id of the serving node (from `vRPC-NodeId`) whose attestation to fetch. */
-  nodeId: string;
+/** Options for {@link fetchAttestation}. */
+export interface FetchAttestationOptions {
+  /**
+   * Full attestation endpoint URL (no query), e.g.
+   * `https://rpc.ankr.com/arbitrum_vrpc/attestation`. The transport layer derives
+   * this from the user URL (`deriveVrpcUrls`); the `_vrpc` route convention lives
+   * there, not here.
+   */
+  attestationUrl: string;
   /** Caller-supplied 32-byte attestation nonce. */
   nonce: Uint8Array;
+  /**
+   * Serving node id (`vRPC-NodeId`). Added as `node_id` when present, OMITTED when
+   * absent. Absent + behind shark → shark can't route → error (fail-closed, catches
+   * a "behind shark but no routing id" misconfig); absent + direct node →
+   * `/attestation?nonce=…` works (the node is identified by the connection). NodeId
+   * is attestation ROUTING only — never part of signature verification (the trust
+   * unit is the `vRPC-Pubkey` the signature is checked against).
+   */
+  nodeId?: string;
   /** Auth key sent as `x-api-key`; an explicit `headers` entry wins. */
   apiKey?: string;
   /** Extra request headers; an `x-api-key` entry here overrides `apiKey`. */
@@ -93,28 +70,33 @@ export interface FetchAttestationViaSharkOptions {
 }
 
 /**
- * Fetch a serving node's attestation through the shark proxy's targeted route
- * `GET <sharkBase>/<chain>_vrpc/attestation?nonce=<hex>&node_id=<id>`.
+ * Fetch a fresh TDX attestation quote from the `/attestation` endpoint, bound to
+ * the caller-supplied 32-byte nonce. The single attestation-fetch entry point —
+ * used by both the lazy verify seam ({@link TrustedVerifier}) and the boot-time
+ * `anchorTrust`.
  *
- * The nonce is validated synchronously (32 bytes) and encoded as bare lowercase
- * hex; `node_id` is URL-encoded. A 404 means the node id is stale/unknown and
- * throws {@link AttestationNodeNotFoundError} BEFORE parsing — the SDK does NOT
- * retry or fall back to another node. Other responses are parsed with the same
- * narrowing as the direct-node path; this route is unsigned, so no `vRPC-*`
- * verification runs here.
+ * Sends `GET ${attestationUrl}?nonce=<bare-lowercase-hex>`, plus `&node_id=<id>`
+ * when {@link FetchAttestationOptions.nodeId} is present. The nonce is validated
+ * synchronously (32 bytes) — a wrong length throws {@link InvalidNonce} BEFORE any
+ * network call. The query nonce is bare hex (no `0x` prefix), matching the
+ * sidecar's canonical wire convention.
+ *
+ * A `404` is terminal (stale/unknown node id, or a shark route miss) and throws
+ * {@link AttestationNodeNotFoundError} BEFORE parsing — the SDK does NOT retry or
+ * fall back to another node. This route is unsigned by contract, so no `vRPC-*`
+ * verification runs here; a malformed body throws {@link MalformedAttestationResponse}.
  */
-export async function fetchAttestationViaShark(
-  opts: FetchAttestationViaSharkOptions,
-): Promise<Attestation> {
+export async function fetchAttestation(opts: FetchAttestationOptions): Promise<Attestation> {
   // Synchronous fast-fail BEFORE any fetch.
   if (opts.nonce.length !== 32) {
     throw new InvalidNonce(`expected 32 bytes, got ${opts.nonce.length}`);
   }
 
+  // Bare-hex (no 0x prefix) nonce; node_id only when a serving node id is known.
   const nonceHex = bytesToHex(opts.nonce);
   const target =
-    `${opts.sharkBase}/${opts.chain}_vrpc/attestation` +
-    `?nonce=${nonceHex}&node_id=${encodeURIComponent(opts.nodeId)}`;
+    `${opts.attestationUrl}?nonce=${nonceHex}` +
+    (opts.nodeId === undefined ? "" : `&node_id=${encodeURIComponent(opts.nodeId)}`);
 
   // apiKey-derived x-api-key first so an explicit headers entry wins.
   const headers: Record<string, string> = {
@@ -125,9 +107,9 @@ export async function fetchAttestationViaShark(
   const fetchImpl = opts.fetch ?? globalThis.fetch;
   const resp = await fetchImpl(target, { headers });
 
-  // Stale/unknown node id — terminal, no fallback or retry.
+  // Stale/unknown node id (or shark route miss) — terminal, no fallback or retry.
   if (resp.status === 404) {
-    throw new AttestationNodeNotFoundError(opts.nodeId);
+    throw new AttestationNodeNotFoundError(opts.nodeId ?? "(no node_id)");
   }
 
   const body = (await resp.json()) as unknown;

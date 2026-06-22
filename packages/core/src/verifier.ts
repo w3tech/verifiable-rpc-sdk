@@ -7,6 +7,8 @@
 // All four error branches map to typed `VerificationError` subclasses.
 // `fetchAttestation` is delegated to the standalone helper in `./attestation`.
 
+import type { PinnedAllowlist, TcbPolicy } from "@ankr.com/dstack-verify";
+
 import { type Attestation, fetchAttestation } from "./attestation";
 import { DEFAULT_REPLAY_WINDOW_MS, verifyResponse } from "./verify";
 
@@ -42,6 +44,26 @@ export interface VerifierClientOptions {
    * Defaults to `globalThis.fetch`.
    */
   fetch?: typeof fetch;
+  /**
+   * TTL of a verified pubkey in the trust cache, ms; default 3_600_000 (1h).
+   * Surfaced here for the trust-and-verify seam; wired in Phase 35.
+   */
+  pubkeyCacheTtlMs?: number;
+  /**
+   * Pinned trust anchors used to build the attestation `VerifyPolicy`.
+   * Surfaced here; consumed by the seam in Phase 35.
+   */
+  allowlist?: PinnedAllowlist;
+  /**
+   * DCAP TCB acceptance policy for the attestation `VerifyPolicy`.
+   * Surfaced here; consumed by the seam in Phase 35.
+   */
+  tcb?: TcbPolicy;
+  /**
+   * Operational collateral source for dcap-qvl (NOT a trust dependency).
+   * Surfaced here; consumed by the seam in Phase 35.
+   */
+  pccsUrl?: string;
 }
 
 export interface VerifiedResponse<T = unknown> {
@@ -143,6 +165,6 @@ export class VerifierClient {
   }
 
   async fetchAttestation(nonce: Uint8Array): Promise<Attestation> {
-    return fetchAttestation(this.url, nonce);
+    return fetchAttestation({ attestationUrl: `${this.url}/attestation`, nonce });
   }
 }

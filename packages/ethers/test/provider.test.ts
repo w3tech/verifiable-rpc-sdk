@@ -3,8 +3,8 @@
 // These tests assert ADAPTER WIRING ONLY: that `VrpcProvider._send` routes every
 // JSON-RPC call through `vrpc-core` `verifyResponse` over the raw response bytes
 // before parse, maps results/errors/null back to callers, preserves native
-// batching with id-correlation, and applies the strict (fail-closed) /
-// permissive policy + the re-exported VerificationError family.
+// batching with id-correlation, and is fail-closed (always strict) + the
+// re-exported VerificationError family.
 //
 // They do NOT re-test Ed25519 / pre-image / replay-window correctness — that is
 // core's `packages/core/tests/verify.test.ts` (TEST-01). The request-aware
@@ -23,7 +23,19 @@ import {
 import { Contract, FetchRequest, Interface, toBeHex } from "ethers";
 
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
-import { signingRequest } from "./helpers";
+import { installAttestationMock, signingRequest } from "./helpers";
+
+// Always-on verify seam: the FIRST verified read per pubkey lazily fetches the
+// node attestation. These adapter-WIRING tests are offline — the RPC POST leg is
+// the request-aware getUrlFunc mock (per-instance), and the `/attestation` GET
+// leg is served by this injected `fetch`. The mock's pubkey is derived from the
+// SAME TEST_SEED the RPC responses are signed with, so pubkey correlation passes
+// and the v5.0 mock verifier (allowInsecureMock) resolves — the read reaches its
+// assertion. Each VrpcProvider below threads `fetch: ATT.fetch`; signed RPC
+// responses carry a `vRPC-NodeId` so the seam routes the attestation fetch with
+// `node_id` (the no-node_id path is exercised in provider.attestation.test.ts).
+const ATT = installAttestationMock();
+const NODE_ID = "node-abc";
 
 /**
  * Build a `FetchRequest` whose `getUrlFunc`:
@@ -107,6 +119,7 @@ function autoDeriveRequest(
       return { statusCode: 200, statusMessage: "OK", headers, body };
     }
     const headers = await signResponseBytes(requestBytes, responseBytes, {
+      nodeId: NODE_ID,
       ...(opts.signingChainId !== undefined ? { signingChainId: opts.signingChainId } : {}),
     });
     return { statusCode: 200, statusMessage: "OK", headers, body: responseBytes };
@@ -117,8 +130,9 @@ function autoDeriveRequest(
 const CHAIN_ID_NUMBER = Number(CHAIN_ID); // 42161 (arbitrum)
 const ADDR = "0x1111111111111111111111111111111111111111";
 // Wide window neutralizes the static FIXTURE_TIMESTAMP_MS staleness; production
-// keeps the vrpc-core default (60s).
-const WIDE_WINDOW = { replayWindowMs: Number.MAX_SAFE_INTEGER } as const;
+// keeps the vrpc-core default (60s). `fetch: ATT.fetch` serves the always-on
+// attestation leg offline (every provider below threads it).
+const WIDE_WINDOW = { replayWindowMs: Number.MAX_SAFE_INTEGER, fetch: ATT.fetch } as const;
 
 function jsonResult(id: number, result: unknown): string {
   return JSON.stringify({ jsonrpc: "2.0", id, result });
@@ -129,7 +143,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
     // The id ethers assigns to the first call is 1; the request-aware signer
     // signs whatever ethers actually POSTs, so we only need the response shape.
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX)),
+      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
       WIDE_WINDOW,
     );
@@ -143,7 +157,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
     const value = 123_456_789n;
     const encoded = iface.encodeFunctionResult("totalSupply", [value]);
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, encoded)),
+      signingRequest(jsonResult(1, encoded), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
       WIDE_WINDOW,
     );
@@ -181,21 +195,6 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
     await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(MissingHeader);
   });
 
-  test("permissive mode passes tampered data through with exactly one warning", async () => {
-    let calls = 0;
-    const logger = () => {
-      calls++;
-    };
-    const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { tamper: true }),
-      CHAIN_ID_NUMBER,
-      { verification: "permissive", logger, ...WIDE_WINDOW },
-    );
-    const balance = await provider.getBalance(ADDR);
-    expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
-    expect(calls).toBe(1);
-  });
-
   test("signed JSON-RPC {error} → ordinary ethers RPC error, NOT a VerificationError", async () => {
     const provider = new VrpcProvider(
       signingRequest(
@@ -204,6 +203,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
           id: 1,
           error: { code: -32000, message: "execution reverted" },
         }),
+        { nodeId: NODE_ID },
       ),
       CHAIN_ID_NUMBER,
       WIDE_WINDOW,
@@ -221,7 +221,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
 
   test("signed {result:null} returns null (getBlock of a missing block)", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, null)),
+      signingRequest(jsonResult(1, null), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
       WIDE_WINDOW,
     );
@@ -239,7 +239,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
 
   test("ETHERS-03: verified broadcast — eth_sendRawTransaction returns the verified tx hash", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, TX_HASH)),
+      signingRequest(jsonResult(1, TX_HASH), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
       WIDE_WINDOW,
     );
@@ -288,7 +288,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
 
   test("ETHERS-04: verified eth_getLogs — polling/event funnels through verified _send", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, [LOG_ENTRY])),
+      signingRequest(jsonResult(1, [LOG_ENTRY]), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
       WIDE_WINDOW,
     );
@@ -310,7 +310,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
 
   test("ETHERS-04: verified eth_getFilterChanges — filter-subscription poll funnels through verified _send", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, [LOG_ENTRY])),
+      signingRequest(jsonResult(1, [LOG_ENTRY]), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
       WIDE_WINDOW,
     );
@@ -343,7 +343,10 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
 
   test("MD-01: large chainId > 2^53−1 round-trips exactly (bigint, no precision loss)", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { chainId: LARGE_CHAIN_ID }),
+      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
+        chainId: LARGE_CHAIN_ID,
+        nodeId: NODE_ID,
+      }),
       LARGE_CHAIN_ID,
       WIDE_WINDOW,
     );
@@ -380,7 +383,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
         return { jsonrpc: "2.0", id: p.id, result: SINGLE_RESULT_BALANCE_HEX };
       });
       const responseBytes = new TextEncoder().encode(JSON.stringify(results));
-      const headers = await signResponseBytes(requestBytes, responseBytes, {});
+      const headers = await signResponseBytes(requestBytes, responseBytes, { nodeId: NODE_ID });
       return { statusCode: 200, statusMessage: "OK", headers, body: responseBytes };
     };
 
@@ -406,6 +409,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
   test("bare-url auto-derive: NO chainId → SIGNED bootstrap is verified, then a verified read succeeds", async () => {
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX)),
+      undefined,
       WIDE_WINDOW,
     );
     const balance = await provider.getBalance(ADDR);
@@ -416,6 +420,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
     const bootstrapHits = { n: 0 };
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
+      undefined,
       { ...WIDE_WINDOW, batchMaxCount: 1 },
     );
     await Promise.all([
@@ -439,6 +444,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
         bootstrapSigningChainId: CHAIN_ID,
         signingChainId: CHAIN_ID,
       }),
+      undefined,
       WIDE_WINDOW,
     );
     await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
@@ -447,6 +453,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
   test("auto-derive FAIL-FAST: a tampered bootstrap response → BadSignature AT BOOTSTRAP", async () => {
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapTamper: true }),
+      undefined,
       WIDE_WINDOW,
     );
     await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
@@ -455,6 +462,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
   test("auto-derive FAIL-FAST: an UNSIGNED bootstrap response → MissingHeader AT BOOTSTRAP", async () => {
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapUnsigned: true }),
+      undefined,
       WIDE_WINDOW,
     );
     await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(MissingHeader);
@@ -468,6 +476,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
         bootstrapRawBody: "{not valid json",
       }),
+      undefined,
       WIDE_WINDOW,
     );
     await expect(badJson.getBalance(ADDR)).rejects.toBeInstanceOf(MalformedHeader);
@@ -478,6 +487,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
         bootstrapRawBody: JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32000 } }),
       }),
+      undefined,
       WIDE_WINDOW,
     );
     await expect(missingResult.getBalance(ADDR)).rejects.toBeInstanceOf(MalformedHeader);
@@ -488,6 +498,7 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
         bootstrapRawBody: JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0xZZ" }),
       }),
+      undefined,
       WIDE_WINDOW,
     );
     await expect(nonHex.getBalance(ADDR)).rejects.toBeInstanceOf(MalformedHeader);
@@ -505,11 +516,12 @@ describe("VrpcProvider._send wiring (TEST-02)", () => {
     expect(bootstrapHits.n).toBe(0);
   });
 
-  test("options-only overload: chainId carried in the options object pins (zero bootstrap)", async () => {
+  test("positional bigint chainId pins (zero bootstrap)", async () => {
     const bootstrapHits = { n: 0 };
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
-      { chainId: CHAIN_ID, ...WIDE_WINDOW },
+      CHAIN_ID,
+      WIDE_WINDOW,
     );
     const balance = await provider.getBalance(ADDR);
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));

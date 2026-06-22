@@ -201,17 +201,18 @@ getComposeHash(): Promise<string> }`.
 ### Attestation (unsigned route)
 
 ```ts
-fetchAttestation(url: string, nonce: Uint8Array): Promise<Attestation>;
-fetchAttestationViaShark(opts: FetchAttestationViaSharkOptions): Promise<Attestation>;
+fetchAttestation(opts: FetchAttestationOptions): Promise<Attestation>;
 verifyAttestationCorrelation(attestation: Attestation, verifiedResponse: VerifiedResponse): void;
 ```
 
-`fetchAttestation` calls `GET <url>/attestation?nonce=<bare-hex>`;
-`fetchAttestationViaShark` calls `GET <sharkBase>/<chain>_vrpc/attestation?nonce=<hex>&node_id=<id>`
-(404 → `AttestationNodeNotFoundError`, terminal — no retry/fallback). The nonce
-must be exactly 32 bytes or `InvalidNonce` is thrown **before** any network
-call. This route is unsigned by contract — no `vRPC-*` verification runs, and a
-malformed body throws `MalformedAttestationResponse`.
+`fetchAttestation` (the single attestation-fetch entry point) calls
+`GET <attestationUrl>?nonce=<bare-hex>`, appending `&node_id=<id>` **only when**
+`opts.nodeId` is present. `FetchAttestationOptions` =
+`{ attestationUrl, nonce, nodeId?, apiKey?, headers?, fetch? }`. A `404` →
+`AttestationNodeNotFoundError`, terminal — no retry/fallback. The nonce must be
+exactly 32 bytes or `InvalidNonce` is thrown **before** any network call. This
+route is unsigned by contract — no `vRPC-*` verification runs, and a malformed
+body throws `MalformedAttestationResponse`.
 `verifyAttestationCorrelation` asserts `attestation.pubkey ===
 verifiedResponse.verification.pubkeyHex`, throwing `AttestationCorrelationError`
 on mismatch.
@@ -229,7 +230,7 @@ anchorTrust(opts: AnchorTrustOptions): Promise<AnchorTrustResult>;
 Adapter-neutral, **opt-in**: `await` it once at startup after constructing your
 provider/client. It orchestrates existing primitives (no copied crypto): one
 signed `eth_blockNumber` through `VerifierClient` (the successful return *is* the
-Ed25519 verification), then `fetchAttestationViaShark` for the serving node, then
+Ed25519 verification), then `fetchAttestation` for the serving node, then
 `verifyAttestationCorrelation`. **Fail-closed**: throws a `VerificationError`
 member on any failure — `MissingHeader("vRPC-NodeId")` when the proxy omits the
 node id, `AttestationNodeNotFoundError` on a stale id,

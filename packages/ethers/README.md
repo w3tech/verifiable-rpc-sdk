@@ -62,7 +62,8 @@ import { FetchRequest } from "ethers";
 // Auth (x-api-key) rides on a FetchRequest — the same mechanism ethers uses for
 // header injection. VrpcOptions extends JsonRpcApiProviderOptions, so a
 // FetchRequest passes straight through to the underlying connection.
-const req = new FetchRequest("https://rpc.ankr.com/arbitrum_vrpc");
+// Pass the plain URL — the SDK appends `_vrpc` (and derives `/attestation`).
+const req = new FetchRequest("https://rpc.ankr.com/arbitrum");
 req.setHeader("x-api-key", process.env.ANKR_API_KEY!);
 
 const provider = new VrpcProvider(req, 42161n); // chainId bound into the signature
@@ -86,10 +87,8 @@ try {
 ### `class VrpcProvider extends JsonRpcProvider`
 
 ```ts
-// chainId optional + three equivalent constructor forms:
-new VrpcProvider(url: string | FetchRequest)
-new VrpcProvider(url: string | FetchRequest, chainId: number | bigint, options?: VrpcOptions)
-new VrpcProvider(url: string | FetchRequest, options?: VrpcOptions) // options may carry chainId
+// single signature — chainId is an optional positional arg:
+new VrpcProvider(url: string | FetchRequest, chainId?: number | bigint, options?: VrpcOptions)
 ```
 
 - **`url`** — node/proxy URL or a `FetchRequest` (use the latter to attach
@@ -98,13 +97,14 @@ new VrpcProvider(url: string | FetchRequest, options?: VrpcOptions) // options m
   Bound into the signed pre-image. Coerced with `BigInt()` *without* a `number`
   round-trip, so chain ids beyond `Number.MAX_SAFE_INTEGER` (2^53−1) bind exactly
   — no precision loss, no false `BadSignature`.
-  - **Explicit (recommended)** — `new VrpcProvider(url, chainId)` or
-    `new VrpcProvider(url, { chainId })`. The constructor pins this as a static
-    network (`staticNetwork: true`) so the provider issues **zero** `eth_chainId`
-    round-trips; this only skips the round-trip and does not weaken the signature
-    binding. It also pins to **your expected chain**, catching a wrong-node /
-    wrong-URL misconfig where auto-derive (which trusts the node's self-reported
-    chain) would happily verify *genuine* data from the *wrong* chain.
+  - **Explicit (recommended)** — `new VrpcProvider(url, chainId)`. The
+    constructor pins this as a static network (`staticNetwork: true`) so the
+    provider issues **zero** `eth_chainId` round-trips; this only skips the
+    round-trip and does not weaken the signature binding. It also pins to **your
+    expected chain**, catching a wrong-node / wrong-URL misconfig where
+    auto-derive (which trusts the node's self-reported chain) would happily
+    verify *genuine* data from the *wrong* chain. To pass options without pinning
+    a chain id, use `new VrpcProvider(url, undefined, { ... })`.
   - **Omitted (auto-derive)** — `new VrpcProvider(url)`. On first use the
     provider derives the chain id from a **signed `eth_chainId` response**,
     memoized so concurrent first calls share a single fetch, and **verifies that
@@ -128,13 +128,55 @@ passed through to `super(...)` unchanged. The vRPC-specific fields:
 | Field            | Type                                  | Default          | Meaning |
 | ---------------- | ------------------------------------- | ---------------- | ------- |
 | `chainId`        | `number \| bigint`                    | auto-derived     | Optional alternative to the positional 2nd arg. Strongly recommended — pins to **your expected chain** and skips the `eth_chainId` bootstrap. Omit → derived lazily from a **signed, self-consistently-verified** `eth_chainId` response on first use (tampered/forged/unsigned → fail-fast `VerificationError`, no unverified fallback). |
-| `verification`   | `VrpcVerification` (`"strict" \| "permissive"`) | `"strict"` | `strict` = fail-closed (a `VerificationError` propagates out of `_send`). `permissive` = catch it, fire `logger` once, pass the parsed body through. Opt-in only. |
 | `replayWindowMs` | `number`                              | vrpc-core (60s)  | Freshness window forwarded to `verifyResponse`. Omit in production. Do **not** set `0` outside fixture tests — it always rejects on clock skew. |
-| `logger`         | `(msg: string, err: unknown) => void` | `console.warn`   | Invoked once per downgraded failure in permissive mode (and on a permissive-passthrough JSON parse failure). |
 
 Spread order is enforced so `staticNetwork` cannot be overridden away.
 
-### `type VrpcVerification = "strict" | "permissive"`
+#### Lazy-attestation seam options (always-on)
+
+> [!WARNING]
+> **v5.0 ships a MOCK attestation verifier — NO real attestation security until v6.0.**
+> The v5.0 attestation check is a mock with `allowInsecureMock` **hard-set true**:
+> it **bypasses all chain-of-trust checks** and prints a loud `console.warn` on
+> every attestation. In the contract's own words: *"v5.0 provides NO real
+> attestation security (real verification lands in v6.0)."* Real
+> DCAP/RTMR/compose-hash verification arrives in v6.0; never rely on v5.0
+> attestation for production trust.
+
+The normal verify routes through `@ankr.com/vrpc-core`'s `TrustedVerifier`,
+which lazily fetches + correlates the serving node's TDX attestation on an
+**unknown** signing pubkey and **caches** the verified pubkey (configurable TTL,
+default 1h). This is **always-on**: the attestation endpoint is **derived from
+the single URL** you pass (the SDK appends `_vrpc` and the `/attestation`
+sub-route, dup-guarded), so there is **no** `attestationBaseUrl` / `chainSlug`
+to set and no opt-out — verification is fail-closed. The chainId bootstrap
+always stays on plain `verifyResponse`.
+
+The serving node id (`vRPC-NodeId`) is **optional**: it is included in the
+attestation fetch when the response carries it and omitted when absent. A shark
+route that requires a `node_id` but receives none fails to route — the fetch
+errors and propagates (fail-closed).
+
+| Field            | Type                         | Default          | Meaning |
+| ---------------- | ---------------------------- | ---------------- | ------- |
+| `pubkeyCacheTtlMs` | `number`                   | `3_600_000` (1h) | Verified-pubkey cache TTL (ms). A second read within TTL reuses the cache and skips the attestation fetch; past TTL the pubkey is re-attested (no stale trust). |
+| `allowlist`      | `PinnedAllowlist`            | empty            | Pinned trust anchors for the attestation `VerifyPolicy`. The v5.0 mock does not inspect it; defaults to an empty allowlist. |
+| `tcb`            | `TcbPolicy`                  | core default     | DCAP TCB acceptance policy forwarded to the attestation `VerifyPolicy`. |
+| `pccsUrl`        | `string`                     | —                | Operational collateral source for dcap-qvl (NOT a trust dependency). |
+| `apiKey`         | `string`                     | —                | Auth key for the **attestation-leg** fetch only (sent as `x-api-key` on the `/attestation` GET). The RPC POST keeps using the `FetchRequest` headers. **SECRET — never logged.** |
+| `headers`        | `Record<string, string>`     | —                | Extra headers for the **attestation-leg** fetch only. **SECRET — never logged.** |
+
+```ts
+// Attestation is always-on, derived from the single URL — no attestationBaseUrl
+// /chainSlug. The normal verify routes through TrustedVerifier.
+const provider = new VrpcProvider(req, 42161n, {
+  apiKey: process.env.ANKR_API_KEY, // attestation-leg auth (never logged)
+  pubkeyCacheTtlMs: 3_600_000,      // 1h (default)
+});
+// Ordinary reads. The first unknown pubkey triggers one attestation fetch +
+// (MOCK) verify + cache; subsequent reads within TTL skip the fetch.
+await provider.getBalance("0x0000000000000000000000000000000000000000");
+```
 
 ### `anchorTrust(...)` — opt-in boot-time trust anchor (from `@ankr.com/vrpc-core`)
 
@@ -184,12 +226,9 @@ exactly as you would on a stock `JsonRpcProvider`.
 - **HTTP 4xx/5xx** → ethers `SERVER_ERROR` (from `assertOk`), never a
   `VerificationError`.
 
-In **strict** mode (default) a `VerificationError` propagates and no unverified
-value is ever returned. In **permissive** mode it is caught, `logger` fires once,
-and the parsed body is returned; if a permissively-downgraded body is also
-invalid JSON, the parse error is logged and still propagates (fail-closed — no
-unverified data is returned silently). Non-`VerificationError`s always propagate
-in both modes.
+Verification is always fail-closed: a `VerificationError` propagates out of
+`_send` and no unverified value is ever returned. Non-`VerificationError`s
+propagate too.
 
 ```ts
 import { BadSignature, MissingHeader, VerificationError } from "@ankr.com/vrpc-ethers";

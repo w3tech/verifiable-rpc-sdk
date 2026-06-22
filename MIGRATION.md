@@ -61,6 +61,32 @@ its single verifying `request`.
 > options. **Never hard-code the key** — read it from an env var by name (see the
 > [examples](#runnable-examples) and the workspace secrets rule).
 
+### One URL — the SDK owns the `_vrpc` route
+
+You pass a **single** plain URL (e.g. `https://rpc.ankr.com/arbitrum`). The SDK
+owns the route convention and derives both legs from it:
+
+- the JSON-RPC leg appends `_vrpc` → `https://rpc.ankr.com/arbitrum_vrpc`;
+- the attestation leg appends `/attestation` →
+  `https://rpc.ankr.com/arbitrum_vrpc/attestation`.
+
+The suffix is **dup-guarded** — a URL that already ends with `_vrpc` is left as
+is (never doubled to `_vrpc_vrpc`), so passing either form is safe. Do **not**
+hand-build the `_vrpc` suffix yourself, and there is **no** separate
+`attestationBaseUrl` / `chainSlug` to configure — both were removed.
+
+Attestation correlation is **always-on**: the verifier is always used (there is
+no permissive / opt-out mode — verification is fail-closed). The serving node id
+(`vRPC-NodeId`) is **optional**: it is included in the attestation fetch when the
+response carries it and omitted when absent. A shark route that requires a
+`node_id` but receives none fails to route — the fetch errors and propagates
+(fail-closed), never a silent pass.
+
+The standalone attestation fetch is a **single** `fetchAttestation(opts)` —
+`fetchAttestation({ attestationUrl, nonce, nodeId?, apiKey?, headers? })`. There
+is no `fetchAttestationViaShark`; the same helper covers the via-shark path (pass
+the shark-derived `attestationUrl` and the captured `nodeId`).
+
 ---
 
 ## 2. The `chainId` argument — optional but strongly recommended
@@ -145,37 +171,17 @@ the on-chain RPC legs around them are signed.
 
 ---
 
-## 4. Strict (default) vs permissive mode
+## 4. Verification is always fail-closed
 
-Both adapters default to **`strict`** (fail-closed): a `VerificationError` from
-`verifyResponse` propagates and no unverified data is ever returned.
-
-**`permissive`** (opt-in) catches a `VerificationError`, fires the `logger`
-**once**, and passes the parsed body through anyway. Use it only when you
-explicitly want to observe-but-not-block (e.g. a staged rollout). Any
+Both adapters are **fail-closed**: a `VerificationError` from `verifyResponse`
+propagates and no unverified data is ever returned. There is no permissive /
+observe-but-not-block opt-in — a failed verification always throws. Any
 non-`VerificationError` (network error, ethers `SERVER_ERROR`, viem
-`HttpRequestError`/`RpcRequestError`) always propagates in both modes.
-
-```ts
-// ethers
-const provider = new VrpcProvider(url, chainId, {
-  verification: "permissive",          // default: "strict"
-  logger: (msg, err) => myLog.warn(msg, err),
-});
-
-// viem
-const client = createPublicClient({
-  transport: vrpcHttp(url, {
-    chainId,
-    verification: "permissive",        // default: "strict"
-    logger: (msg, err) => myLog.warn(msg, err),
-  }),
-});
-```
+`HttpRequestError`/`RpcRequestError`) propagates too.
 
 Other shared knobs: `replayWindowMs` (forwarded to `verifyResponse`; omit →
-vrpc-core default 60s) and `logger`. viem additionally accepts `headers`,
-`fetchFn`, and `timeout`.
+vrpc-core default 60s). viem additionally accepts `headers`, `fetchFn`, and
+`timeout`.
 
 ---
 

@@ -46,13 +46,14 @@ const client = createPublicClient({
   transport: http("https://your-shark/arbitrum_vrpc"),
 });
 
-// After — same URL, every response now verified. chainId is optional (auto-
-// derived) but strongly recommended:
+// After — pass the PLAIN route; the SDK appends `_vrpc` (and derives the
+// `/attestation` sub-route) itself. chainId is optional (auto-derived) but
+// strongly recommended:
 import { createPublicClient } from "viem";
 import { vrpcHttp } from "@ankr.com/vrpc-viem";
 
 const client = createPublicClient({
-  transport: vrpcHttp("https://your-shark/arbitrum_vrpc", {
+  transport: vrpcHttp("https://your-shark/arbitrum", {
     chainId: 42161, // bound into the signed pre-image (recommended — pins it)
     headers: { "x-api-key": process.env.SHARK_API_KEY! },
   }),
@@ -60,7 +61,7 @@ const client = createPublicClient({
 
 // Or bare (derives chainId from a SIGNED, self-consistently-verified eth_chainId):
 const bareClient = createPublicClient({
-  transport: vrpcHttp("https://your-shark/arbitrum_vrpc"),
+  transport: vrpcHttp("https://your-shark/arbitrum"),
 });
 
 // Unchanged action code — the returned value IS proof of verification.
@@ -90,7 +91,6 @@ where auto-derive (which trusts the node's self-reported chain) would verify
 export function vrpcHttp(url: string, opts?: VrpcHttpOptions): Transport<"vrpc-http">;
 
 export interface VrpcHttpOptions { /* see table below */ }
-export type VrpcVerification = "strict" | "permissive";
 
 // Shared vrpc-core error family — re-exported (SAME identity as @ankr.com/vrpc-ethers):
 export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleTimestamp };
@@ -101,12 +101,63 @@ export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleT
 | Option           | Type                                                          | Default                | Notes |
 |------------------|---------------------------------------------------------------|------------------------|-------|
 | `chainId`        | `number \| bigint`                                            | auto-derived           | **Optional but strongly recommended.** Bound into the canonical pre-image. Coerced via `BigInt()` with **no number round-trip** — chain ids may exceed `2^53−1`, so widening through `number` would lose precision and reject intact responses. Omit → derived lazily from a **signed, self-consistently-verified** `eth_chainId` response on first request (tampered/forged/unsigned → fail-fast `VerificationError`, no unverified fallback); pinning explicitly also pins to **your expected chain**. |
-| `verification`   | `VrpcVerification` (`"strict" \| "permissive"`)               | `"strict"`             | `strict` = fail-closed (a `VerificationError` propagates). `permissive` = catch, log once, pass the parsed body through. Opt-in only. |
 | `replayWindowMs` | `number`                                                      | vrpc-core default (60s)| Forwarded to `verifyResponse`. Omit in production. `0` only works in tests that inject `nowMs`; in production it always rejects on clock skew. |
 | `headers`        | `Record<string, string>`                                      | —                      | Merged into every POST (e.g. `x-api-key`, or the shark `chain_vrpc` route header). `content-type: application/json` is always set by the transport. |
 | `timeout`        | `number`                                                      | client-injected, else `10_000` | Per-request HTTP timeout (ms), applied to the own `fetch` as `AbortSignal.timeout` (parity with viem `http()`). |
 | `fetchFn`        | `(url: string, init: RequestInit) => Promise<Response>`       | global `fetch`         | Injectable fetch seam (mirrors viem `http`'s `fetchFn`). Hook for a routing fetch wrapper or offline tests. |
-| `logger`         | `(msg: string, err: unknown) => void`                         | `console.warn`         | Invoked once per downgraded verification in `permissive` mode. |
+
+#### Lazy-attestation seam options (always-on)
+
+> [!WARNING]
+> **v5.0 ships a MOCK attestation verifier — NO real attestation security until v6.0.**
+> The v5.0 attestation check is a mock with `allowInsecureMock` **hard-set true**:
+> it **bypasses all chain-of-trust checks** and prints a loud `console.warn` on
+> every attestation. In the contract's own words: *"v5.0 provides NO real
+> attestation security (real verification lands in v6.0)."* Real
+> DCAP/RTMR/compose-hash verification arrives in v6.0; never rely on v5.0
+> attestation for production trust.
+
+The normal verify routes through `@ankr.com/vrpc-core`'s `TrustedVerifier`,
+which lazily fetches + correlates the serving node's TDX attestation on an
+**unknown** signing pubkey and **caches** the verified pubkey (configurable TTL,
+default 1h). This is **always-on**: the attestation endpoint is **derived from
+the single URL** you pass (the SDK appends `_vrpc` and the `/attestation`
+sub-route, dup-guarded), so there is **no** `attestationBaseUrl` / `chainSlug`
+to set and no opt-out — verification is fail-closed. The chainId bootstrap
+always stays on plain `verifyResponse`. The existing `headers` and `fetchFn` are
+**reused** for the attestation-leg fetch (one verifier per transport — never per
+call — so the pubkey cache lives for the transport lifetime).
+
+The serving node id (`vRPC-NodeId`) is **optional**: it is included in the
+attestation fetch when the response carries it and omitted when absent. A shark
+route that requires a `node_id` but receives none fails to route — the fetch
+errors and propagates (fail-closed).
+
+| Option           | Type                     | Default          | Notes |
+|------------------|--------------------------|------------------|-------|
+| `pubkeyCacheTtlMs` | `number`               | `3_600_000` (1h) | Verified-pubkey cache TTL (ms). A second read within TTL reuses the cache and skips the attestation fetch; past TTL the pubkey is re-attested (no stale trust). |
+| `allowlist`      | `PinnedAllowlist`        | empty            | Pinned trust anchors for the attestation `VerifyPolicy`. The v5.0 mock does not inspect it; defaults to an empty allowlist. |
+| `tcb`            | `TcbPolicy`              | core default     | DCAP TCB acceptance forwarded to the attestation `VerifyPolicy`. |
+| `pccsUrl`        | `string`                 | —                | Operational collateral source for dcap-qvl (NOT a trust dependency). |
+| `apiKey`         | `string`                 | —                | Auth key sent as `x-api-key` on the attestation fetch (parity with the ethers half). `headers` may also carry `x-api-key` for the RPC leg. **SECRET — never logged.** |
+
+`fetchFn` (already documented above) feeds **both** legs — the RPC POST and the
+attestation GET — which is also the offline test/example seam.
+
+```ts
+// Attestation is always-on, derived from the single URL — no attestationBaseUrl
+// /chainSlug. Pass the plain route; the SDK appends `_vrpc` and `/attestation`.
+const client = createPublicClient({
+  transport: vrpcHttp("https://rpc.ankr.com/arbitrum", {
+    chainId: 42161,
+    headers: { "x-api-key": process.env.SHARK_API_KEY! }, // RPC + attestation auth
+    pubkeyCacheTtlMs: 3_600_000,       // 1h (default)
+  }),
+});
+// Ordinary reads. The first unknown pubkey triggers one attestation fetch +
+// (MOCK) verify + cache; subsequent reads within TTL skip the fetch.
+await client.getBalance({ address: "0x0000000000000000000000000000000000000000" });
+```
 
 ---
 
@@ -194,15 +245,11 @@ try {
 extend `VerificationError`, which extends `Error`. They are the identical
 classes re-exported by `@ankr.com/vrpc-ethers` (cross-adapter parity).
 
-### Strict vs permissive
+### Fail-closed
 
-- **`strict`** (default) — a `VerificationError` propagates; no unverified data
-  is returned.
-- **`permissive`** — a `VerificationError` is caught, the `logger` fires **once**,
-  and the parsed body is returned anyway. If a downgraded body also fails
-  `JSON.parse` (truncated / HTML error page), the parse failure is logged
-  through the same `logger` and still thrown — fail-closed, no unverified data
-  returned silently. Opt-in only.
+Verification is always fail-closed: a `VerificationError` propagates out of the
+transport `request` and no unverified data is ever returned. There is no
+permissive / observe-but-not-block opt-in.
 
 ---
 
@@ -253,9 +300,8 @@ SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… \
 ```
 
 See `packages/viem/test/transport.test.ts` for the full wiring suite (verified
-read, tamper → `BadSignature`, unsigned → `MissingHeader`, permissive
-passthrough, `retryCount: 0`, per-request batching default, cross-adapter
-parity).
+read, tamper → `BadSignature`, unsigned → `MissingHeader`, `retryCount: 0`,
+per-request batching default, cross-adapter parity).
 
 ---
 

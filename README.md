@@ -16,6 +16,8 @@ const client = createPublicClient({ transport: vrpcHttp(url, { chainId }) });
 
 Everything downstream — `getBalance`, `eth_call`, contract reads, `getLogs`, `getBlock`, `estimateGas`, … — works exactly as before, now verified.
 
+You pass **one** plain URL (e.g. `https://rpc.ankr.com/arbitrum`). The SDK owns the `_vrpc` route convention: it appends `_vrpc` for the RPC leg and `/attestation` for the attestation leg (dup-guarded — a URL that already ends with `_vrpc` is not doubled). There is **no** separate `attestationBaseUrl` / `chainSlug` to configure, and attestation correlation is **always-on**: the verifier is always used. The serving node id (`vRPC-NodeId`) is **optional** — it is included in the attestation fetch when the response carries it and omitted when absent (a shark route that needs a `node_id` but receives none fails to route — fail-closed, never a silent pass).
+
 > `chainId` is **optional** — omit it (`new VrpcProvider(url)` / `vrpcHttp(url)`) and the SDK derives it from a **signed** `eth_chainId` response on first use and **verifies that signature** self-consistently: the response's own `result` IS the chainId, so it only verifies if the node really signed for that chain — the derived chainId is cryptographically attested by the node. A tampered/forged/unsigned `eth_chainId` **fails fast** with a `VerificationError` (no unverified fallback). Passing `chainId` explicitly is still **strongly recommended**: it pins to **your expected chain**, catching a wrong-node / wrong-URL misconfig where you'd otherwise verify genuine data from the *wrong* chain (auto-derive trusts the node's self-reported chain), and it skips the bootstrap round-trip. See the [ethers](./packages/ethers/README.md) and [viem](./packages/viem/README.md) package docs.
 
 ## Packages
@@ -37,7 +39,7 @@ New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line
 
 ## What is verified — and what is not
 
-**Verified:** a response is **signed + untampered + fresh + correctly bound** to the chain you asked for, against a pinned signer key, replay-checked. If any of that fails, the call throws (strict mode is the default; a permissive opt-in downgrades to a warning).
+**Verified:** a response is **signed + untampered + fresh + correctly bound** to the chain you asked for, against a pinned signer key, replay-checked. If any of that fails, the call throws — verification is always fail-closed; no unverified data is ever returned.
 
 **Not verified — know the boundary:**
 - This is **not** full TDX remote attestation. The SDK does not yet verify an Intel PCK-rooted quote or check the compose hash against a registry — a forged quote would pass at this boundary. Full attestation + a compose-hash registry are deferred to a later milestone. Boot-time attestation **correlation** (`anchorTrust`) is available and confirms the node's attestation pubkey matches the response signer, but it is not a substitute for quote verification.

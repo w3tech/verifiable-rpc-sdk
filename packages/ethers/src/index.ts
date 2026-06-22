@@ -16,5 +16,5 @@ export {
   StaleTimestamp,
   VerificationError,
 } from "@ankr.com/vrpc-core";
-export type { VrpcOptions, VrpcVerification } from "./options";
+export type { VrpcOptions } from "./options";
 export { VrpcProvider } from "./provider";

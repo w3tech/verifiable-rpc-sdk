@@ -1,41 +1,16 @@
-// vrpcHttp transport options (Phase 31, VIEM-01).
-//
-// `VrpcHttpOptions` mirrors the vrpc-ethers `VrpcOptions` verification knobs
-// (verification policy, replay window, logger) and adds the viem-specific
-// transport passthroughs: per-request `headers` (x-api-key / shark `chain_vrpc`
-// route) and an injectable `fetchFn` seam (mirrors viem's own `http` transport
-// `fetchFn`) — the cleanest offline-wiring test seam AND a hook for a consumer's
-// routing fetch wrapper. All verification logic lives in vrpc-core (PKG-05);
-// these options only feed it.
+// vrpcHttp transport options. Mirrors vrpc-ethers' VrpcOptions knobs plus the
+// viem-specific passthroughs: `headers` (x-api-key / shark route) and an
+// injectable `fetchFn` seam. All verification lives in vrpc-core; these only feed it.
+
+import type { PinnedAllowlist, TcbPolicy } from "@ankr.com/dstack-verify";
 
 /**
- * Verification policy:
- *   - `strict`     (default) — a `VerificationError` from `verifyResponse`
- *     propagates out of the transport `request`; no unverified data is returned.
- *   - `permissive` — a `VerificationError` is caught, the `logger` fires once,
- *     and the parsed body is returned anyway. Opt-in only.
- */
-export type VrpcVerification = "strict" | "permissive";
-
-/**
- * Options accepted by `vrpcHttp(url, opts?)`. `chainId` is OPTIONAL (auto-derived
- * when omitted); everything else is optional with safe defaults.
+ * Options for `vrpcHttp(url, opts?)`. All optional with safe defaults. Always
+ * fail-closed (see `transport.ts`). The chain id bound into the signed pre-image
+ * comes from the viem client's `chain` (`chain.id`); with no chain set it is
+ * auto-derived from a verified `eth_chainId` bootstrap on the first request.
  */
 export interface VrpcHttpOptions {
-  /**
-   * EVM-style chain id bound into the canonical pre-image. OPTIONAL: when omitted
-   * the transport lazily derives it via one UNVERIFIED `eth_chainId` bootstrap on
-   * the first request (fail-closed-safe: a lying bootstrap can only cause a
-   * `BadSignature` DoS, never silent-accept). Passing it explicitly is STRONGLY
-   * RECOMMENDED — it removes the bootstrap round-trip, pins the binding, and
-   * turns a chain misconfig into an immediate fail-closed error. Coerced to
-   * `bigint` via `BigInt()` WITHOUT a number round-trip — chain ids may exceed
-   * `Number.MAX_SAFE_INTEGER` (2^53−1) and widening through `number` would lose
-   * precision and reject intact responses (false `BadSignature`). MD-01.
-   */
-  chainId?: number | bigint;
-  /** Verification policy. Defaults to `"strict"` (fail-closed). */
-  verification?: VrpcVerification;
   /**
    * Replay window (ms) forwarded to `verifyResponse`. Omitted → vrpc-core
    * default (60s). Tests pass a wide window to neutralize static-fixture
@@ -47,11 +22,6 @@ export interface VrpcHttpOptions {
    * do not use it outside fixture tests.
    */
   replayWindowMs?: number;
-  /**
-   * Invoked once per downgraded verification failure in permissive mode.
-   * Defaults to a `console.warn`.
-   */
-  logger?: (msg: string, err: unknown) => void;
   /**
    * Extra request headers merged into every POST (e.g. `x-api-key`, or the
    * shark `chain_vrpc` route header). `content-type: application/json` is always
@@ -68,7 +38,20 @@ export interface VrpcHttpOptions {
    * Per-request HTTP timeout (ms) applied to the own `fetch` as an
    * `AbortSignal.timeout`. Mirrors viem `http()` resolution
    * (`config.timeout ?? 10_000`): when omitted, the client-injected timeout is
-   * used, falling back to 10s. (LO-03)
+   * used, falling back to 10s.
    */
   timeout?: number;
+  /** Verified-pubkey cache TTL (ms) forwarded to the verifier; default 1h. */
+  pubkeyCacheTtlMs?: number;
+  /** Pinned trust anchors; default `EMPTY_ALLOWLIST` when omitted. */
+  allowlist?: PinnedAllowlist;
+  /** DCAP TCB acceptance forwarded to the seam; default rejects debug quotes. */
+  tcb?: TcbPolicy;
+  /** Operational collateral source for dcap-qvl (NOT a trust dependency). */
+  pccsUrl?: string;
+  /**
+   * Auth key sent as `x-api-key` on the attestation fetch (parity with the
+   * ethers half). `headers` may also carry `x-api-key` for the RPC leg.
+   */
+  apiKey?: string;
 }

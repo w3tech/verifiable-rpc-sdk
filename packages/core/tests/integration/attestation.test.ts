@@ -41,7 +41,7 @@ d("integration: attestation", () => {
     if (!sidecar) throw new Error("sidecar not initialised");
 
     const nonce = new Uint8Array(32).fill(0x01);
-    const att = await fetchAttestation(sidecar.url, nonce);
+    const att = await fetchAttestation({ attestationUrl: `${sidecar.url}/attestation`, nonce });
 
     expect(att.pubkey).toBe(sidecar.pubkeyHex);
     expect(att.quote.quote.length).toBeGreaterThan(0);
@@ -59,8 +59,8 @@ d("integration: attestation", () => {
 
     const n1 = new Uint8Array(32).fill(0xaa);
     const n2 = new Uint8Array(32).fill(0xbb);
-    const a1 = await fetchAttestation(sidecar.url, n1);
-    const a2 = await fetchAttestation(sidecar.url, n2);
+    const a1 = await fetchAttestation({ attestationUrl: `${sidecar.url}/attestation`, nonce: n1 });
+    const a2 = await fetchAttestation({ attestationUrl: `${sidecar.url}/attestation`, nonce: n2 });
 
     expect(a1.pubkey).toBe(a2.pubkey);
     // The nonce flows into REPORTDATA → quote bytes differ per nonce.
@@ -75,7 +75,7 @@ d("integration: attestation", () => {
     const fixturePath = join(fixturesDir, "attestation-v0.1.0.json");
 
     const nonce = new Uint8Array(32); // canonical all-zero nonce
-    const att = await fetchAttestation(sidecar.url, nonce);
+    const att = await fetchAttestation({ attestationUrl: `${sidecar.url}/attestation`, nonce });
 
     const exists = await fs
       .access(fixturePath)
