@@ -49,7 +49,7 @@ v5.0 mock semantics:
 ### `AttestationError`
 
 `extends VerificationError` (the shared abstract base from `@ankr.com/vrpc-core`).
-Carries `chk: ChkId` (which `CHK-*` failed) + `detail: string`. Discriminant
+Carries `chkId: ChkId` (which `CHK-*` failed) + `detail: string`. Discriminant
 `kind === "Attestation"`. Narrow via `instanceof AttestationError`. The base
 union in core is NOT edited.
 

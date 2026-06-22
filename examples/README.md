@@ -22,7 +22,7 @@ lazy-attestation flow against the MOCK verifier.
 | Chain           | Arbitrum One (`chainId 0xa4b1` / 42161)                              |
 | Node client     | `nitro/v3.10.1-d7f07be/linux-amd64/go1.25.10`                        |
 | Sidecar pubkey  | `0x27c6308b5bdb7d8ad6d727c9e749947059e59fc2b3b9a47d443ba34838d393ac` |
-| Compose hash    | `69166ce46dfc031ee6c55ebc6e7758a56aab514c74d847f24b4dda0448513301`   |
+| Compose hash    | `287a19287bb1d6c798e8cc80aacf0e33d7f1c6982ba28c6135bf4aa3e4b1024e`   |
 | Sidecar version | `v0.2.0-rc.1` (compression-aware signing — signs content-decoded body) |
 | Captured        | 2026-06-10                                                           |
 

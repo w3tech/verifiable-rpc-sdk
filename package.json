@@ -16,6 +16,7 @@
   ],
   "scripts": {
     "test": "bun test",
+    "build": "bun run --filter '*' build",
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
@@ -38,10 +39,11 @@
     "@ankr.com/vrpc-core": "workspace:*",
     "@ankr.com/vrpc-ethers": "workspace:*",
     "@ankr.com/vrpc-viem": "workspace:*",
-    "@noble/ed25519": "^3.1.0",
     "@biomejs/biome": "^2.0.0",
+    "@noble/ed25519": "^3.1.0",
     "@types/bun": "latest",
     "ethers": "^6.16.0",
+    "tsup": "^8.5.1",
     "typescript": "^5.9.0",
     "viem": "^2.52.2"
   }

@@ -47,19 +47,20 @@ const client = createPublicClient({
 });
 
 // After — pass the PLAIN route; the SDK appends `_vrpc` (and derives the
-// `/attestation` sub-route) itself. chainId is optional (auto-derived) but
-// strongly recommended:
+// `/attestation` sub-route) itself. The chain id comes from the viem client's
+// `chain.id` — declare `chain` to pin YOUR chain and skip the bootstrap:
 import { createPublicClient } from "viem";
+import { arbitrum } from "viem/chains";
 import { vrpcHttp } from "@ankr.com/vrpc-viem";
 
 const client = createPublicClient({
+  chain: arbitrum, // chain.id is bound into the signed pre-image (pins it)
   transport: vrpcHttp("https://your-shark/arbitrum", {
-    chainId: 42161, // bound into the signed pre-image (recommended — pins it)
     headers: { "x-api-key": process.env.SHARK_API_KEY! },
   }),
 });
 
-// Or bare (derives chainId from a SIGNED, self-consistently-verified eth_chainId):
+// Or bare (no chain → derives chainId from a SIGNED, self-consistently-verified eth_chainId):
 const bareClient = createPublicClient({
   transport: vrpcHttp("https://your-shark/arbitrum"),
 });
@@ -69,19 +70,20 @@ const balance = await client.getBalance({ address: "0x00000000000000000000000000
 const block = await client.getBlockNumber();
 ```
 
-`chainId` is **optional but strongly recommended**. It is bound into the
+The chain id comes from the **viem client's `chain.id`**. It is bound into the
 canonical pre-image, so a wrong/substituted chain produces a different pre-image
-and fails as `BadSignature`. When omitted, the transport derives it from a
-**signed `eth_chainId` response** on the first request, memoized so concurrent
-first calls share a single fetch, and **verifies that signature
-self-consistently**: the response's own `result` IS the chainId, so it only
-verifies if the node really signed for that chain — the derived chainId is
-**cryptographically attested by the node**. A tampered/forged (claims a chain ≠
-the one it was signed for) / unsigned `eth_chainId` **fails fast** with a
-`VerificationError`; there is no unverified fallback. Pass `chainId` explicitly
-to pin to **your expected chain** — catching a wrong-node / wrong-URL misconfig
-where auto-derive (which trusts the node's self-reported chain) would verify
-*genuine* data from the *wrong* chain — and to skip the bootstrap round-trip.
+and fails as `BadSignature`. Declaring `chain` on the client **pins YOUR
+expected chain** and **skips the bootstrap** round-trip. When no `chain` is set,
+the transport auto-derives the chain id from a **signed `eth_chainId` response**
+on the first request, memoized so concurrent first calls share a single fetch,
+and **verifies that signature self-consistently**: the response's own `result`
+IS the chainId, so it only verifies if the node really signed for that chain —
+the derived chainId is **cryptographically attested by the node**. A
+tampered/forged (claims a chain ≠ the one it was signed for) / unsigned
+`eth_chainId` **fails fast** with a `VerificationError`; there is no unverified
+fallback. Declaring `chain` catches a wrong-node / wrong-URL misconfig where
+auto-derive (which trusts the node's self-reported chain) would verify *genuine*
+data from the *wrong* chain.
 
 ---
 
@@ -98,9 +100,11 @@ export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleT
 
 ### `VrpcHttpOptions`
 
+> The pinned chain id is **not** an option — it comes from the viem client's
+> `chain.id` (auto-derived from a signed `eth_chainId` when no `chain` is set).
+
 | Option           | Type                                                          | Default                | Notes |
 |------------------|---------------------------------------------------------------|------------------------|-------|
-| `chainId`        | `number \| bigint`                                            | auto-derived           | **Optional but strongly recommended.** Bound into the canonical pre-image. Coerced via `BigInt()` with **no number round-trip** — chain ids may exceed `2^53−1`, so widening through `number` would lose precision and reject intact responses. Omit → derived lazily from a **signed, self-consistently-verified** `eth_chainId` response on first request (tampered/forged/unsigned → fail-fast `VerificationError`, no unverified fallback); pinning explicitly also pins to **your expected chain**. |
 | `replayWindowMs` | `number`                                                      | vrpc-core default (60s)| Forwarded to `verifyResponse`. Omit in production. `0` only works in tests that inject `nowMs`; in production it always rejects on clock skew. |
 | `headers`        | `Record<string, string>`                                      | —                      | Merged into every POST (e.g. `x-api-key`, or the shark `chain_vrpc` route header). `content-type: application/json` is always set by the transport. |
 | `timeout`        | `number`                                                      | client-injected, else `10_000` | Per-request HTTP timeout (ms), applied to the own `fetch` as `AbortSignal.timeout` (parity with viem `http()`). |
@@ -148,8 +152,8 @@ attestation GET — which is also the offline test/example seam.
 // Attestation is always-on, derived from the single URL — no attestationBaseUrl
 // /chainSlug. Pass the plain route; the SDK appends `_vrpc` and `/attestation`.
 const client = createPublicClient({
+  chain: arbitrum, // chain.id pins the chain (skips the bootstrap)
   transport: vrpcHttp("https://rpc.ankr.com/arbitrum", {
-    chainId: 42161,
     headers: { "x-api-key": process.env.SHARK_API_KEY! }, // RPC + attestation auth
     pubkeyCacheTtlMs: 3_600_000,       // 1h (default)
   }),

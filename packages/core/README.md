@@ -212,7 +212,9 @@ verifyAttestationCorrelation(attestation: Attestation, verifiedResponse: Verifie
 `AttestationNodeNotFoundError`, terminal — no retry/fallback. The nonce must be
 exactly 32 bytes or `InvalidNonce` is thrown **before** any network call. This
 route is unsigned by contract — no `vRPC-*` verification runs, and a malformed
-body throws `MalformedAttestationResponse`.
+body throws `MalformedAttestationResponse`. `fetchAttestation` has two consumers:
+`anchorTrust` (boot-time correlation, below) and `TrustedVerifier`, which calls
+it lazily per request as its attestation seam.
 `verifyAttestationCorrelation` asserts `attestation.pubkey ===
 verifiedResponse.verification.pubkeyHex`, throwing `AttestationCorrelationError`
 on mismatch.
@@ -240,6 +242,18 @@ node id, `AttestationNodeNotFoundError` on a stale id,
 coerced via `BigInt()` without a `number` round-trip), `apiKey?`, `headers?`,
 `fetch?`, `nonceSource?` (defaults to `crypto.getRandomValues`). Returns
 **`AnchorTrustResult`** = `{ nodeId, pubkey }`.
+
+### Additional exports
+
+| Export | Kind | Notes |
+| ------ | ---- | ----- |
+| `TrustedVerifier` | class | Verifier that fetches the signing pubkey via per-call attestation (lazy attestation seam, see `fetchAttestation` below) and caches it. |
+| `TrustedVerifierOptions` | type | Options for `TrustedVerifier`. |
+| `DEFAULT_PUBKEY_CACHE_TTL_MS` | const | Default TTL for the `TrustedVerifier` pubkey cache. |
+| `deriveVrpcUrls(...)` | function | Derives the vRPC endpoint URL set from a base. |
+| `VrpcUrls` | type | Shape returned by `deriveVrpcUrls`. |
+| `parseChainId(...)` | function | Parses/normalizes a chain id input. |
+| `isSignedVrpcResponse(...)` | function | Predicate: whether a response carries the `vRPC-*` signing headers. |
 
 ---
 
@@ -287,7 +301,7 @@ from the ethers provider is the same class you catch here.
 - **Byte-exact pre-image.** `buildPreImage` mirrors the sidecar's
   `build_pre_image` byte-for-byte (`chain_id` LE / `sha256(request)` /
   `sha256(response)` / `timestamp_ms` LE = 80 bytes). Any drift makes intact
-  responses fail as `BadSignature`. Pinned by `tests/preimage.test.ts`.
+  responses fail as `BadSignature`. Pinned by `packages/core/tests/preimage.test.ts`.
 - **`chainId` is load-bearing.** A wrong/substituted chain id binds a different
   pre-image and surfaces as `BadSignature` even on a genuine response.
 - **Bytes must be content-decoded.** `verifyResponse` hashes whatever bytes you

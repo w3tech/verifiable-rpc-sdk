@@ -41,11 +41,12 @@ verifies the raw response bytes before parsing.
 import { http, createPublicClient } from "viem";
 const client = createPublicClient({ transport: http(url) });
 
-// After — chainId optional (auto-derived) but strongly recommended:
+// After — set `chain` on the client (chain id comes from `chain.id`); optional
+// but strongly recommended:
 import { createPublicClient } from "viem";
 import { vrpcHttp } from "@ankr.com/vrpc-viem";
-const client = createPublicClient({ transport: vrpcHttp(url, { chainId }) });
-// or bare-url (auto-derives chainId on first request):
+const client = createPublicClient({ chain, transport: vrpcHttp(url) });
+// or omit `chain` (auto-derives chainId on first request):
 const auto = createPublicClient({ transport: vrpcHttp(url) });
 ```
 
@@ -93,11 +94,11 @@ the shark-derived `attestationUrl` and the captured `nodeId`).
 
 `chainId` is **optional** on both adapters and is `number | bigint`:
 
-- ethers: `new VrpcProvider(url, chainId, options?)` (positional) or
-  `new VrpcProvider(url, { chainId, … })` (options) or `new VrpcProvider(url)`
-  (auto-derive).
-- viem: `vrpcHttp(url, { chainId, … })` (explicit) or `vrpcHttp(url)`
-  (auto-derive).
+- ethers: `new VrpcProvider(url, chainId, options?)` (positional only) or
+  `new VrpcProvider(url)` (auto-derive).
+- viem: set `chain` on the client — `createPublicClient({ chain, transport:
+  vrpcHttp(url) })` (chain id comes from `chain.id`) — or omit `chain` to
+  auto-derive.
 
 **Why it is bound.** The chain id is bound into the signed canonical pre-image:
 
@@ -116,7 +117,8 @@ Both adapters coerce via `BigInt(chainId)` **without** a `number` round-trip, so
 chain ids above `Number.MAX_SAFE_INTEGER` (2^53−1) keep full `u64` precision and
 do not produce false `BadSignature` rejections.
 
-**Why pass it explicitly (recommended).** When `chainId` is omitted, each adapter
+**Why set it explicitly (recommended).** When the chain id is omitted (no
+positional `chainId` for ethers, no `chain` on the viem client), each adapter
 lazily derives it from a **signed `eth_chainId` response** on first use (memoized
 so concurrent first calls share a single fetch) and **verifies that signature
 self-consistently**: the response's own `result` IS the chainId, so the adapter
@@ -125,8 +127,9 @@ pre-image binding that chainId, so it only verifies if the node really signed fo
 that chain — the derived chainId is **cryptographically attested by the node**. A
 tampered, forged (claims a chain ≠ the one it was signed for), or unsigned
 `eth_chainId` **fails fast** at bootstrap with a `VerificationError`; there is no
-unverified fallback. Passing `chainId` explicitly is still **strongly
-recommended** because it:
+unverified fallback. Setting the chain id explicitly (ethers: positional
+`chainId`; viem: `chain` on the client) is still **strongly recommended**
+because it:
 
 - pins to **your expected chain** — catching a wrong-node / wrong-URL misconfig
   where you would otherwise verify *genuine* data from the *wrong* chain
