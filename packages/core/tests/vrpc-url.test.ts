@@ -42,16 +42,16 @@ describe("deriveVrpcUrls", () => {
   });
 
   test("direct node, no path: derives /_vrpc", () => {
-    expect(deriveVrpcUrls("http://40.160.13.104:15269")).toEqual({
-      rpcUrl: "http://40.160.13.104:15269/_vrpc",
-      attestationUrl: "http://40.160.13.104:15269/_vrpc/attestation",
+    expect(deriveVrpcUrls("http://node.example:8545")).toEqual({
+      rpcUrl: "http://node.example:8545/_vrpc",
+      attestationUrl: "http://node.example:8545/_vrpc/attestation",
     });
   });
 
   test("direct node already /_vrpc is unchanged", () => {
-    expect(deriveVrpcUrls("http://40.160.13.104:15269/_vrpc")).toEqual({
-      rpcUrl: "http://40.160.13.104:15269/_vrpc",
-      attestationUrl: "http://40.160.13.104:15269/_vrpc/attestation",
+    expect(deriveVrpcUrls("http://node.example:8545/_vrpc")).toEqual({
+      rpcUrl: "http://node.example:8545/_vrpc",
+      attestationUrl: "http://node.example:8545/_vrpc/attestation",
     });
   });
 });

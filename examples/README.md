@@ -37,10 +37,19 @@ convention: you pass `https://host/<chain>` and the SDK derives the RPC leg
 (`/<chain>_vrpc`) and the attestation leg (`/<chain>_vrpc/attestation`) from it.
 That is why 01/02 target a shark endpoint.
 
-The **core walkthrough** (03) talks to the direct TDX node
-(`http://40.160.13.104:15269`, Arbitrum One, sidecar `v0.2.0`), which serves RPC
-at `/` and attestation at `/attestation` — so it drives `vrpc-core` directly
-(`verifyResponse` / `fetchAttestation` / `VerifierClient`) with no secrets.
+The **core walkthrough** (03) talks to a direct TDX node — set via env, no
+address is hardcoded:
+
+```sh
+VRPC_NODE_URL=http://<host>:<port> \
+VRPC_NODE_CHAIN_ID=42161 \
+VRPC_NODE_COMPOSE_HASH=<expected> \
+  pnpm example:03-vrpc-core-walkthrough
+```
+
+A direct node serves RPC at `/` and attestation at `/attestation`, so 03 drives
+`vrpc-core` directly (`verifyResponse` / `fetchAttestation` / `VerifierClient`).
+Without `VRPC_NODE_URL` it skips with a hint.
 
 ## What is and isn't verified
 

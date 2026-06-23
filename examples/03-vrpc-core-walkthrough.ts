@@ -26,13 +26,26 @@ import {
   verifyResponse,
 } from "@ankr.com/vrpc-core";
 
-import { assert, CHAIN_ID, header, kv, URL as NODE_URL, PINNED_COMPOSE_HASH } from "./shared.js";
+import {
+  assert,
+  CHAIN_ID,
+  header,
+  kv,
+  NODE_CONFIGURED,
+  URL as NODE_URL,
+  PINNED_COMPOSE_HASH,
+} from "./shared.js";
 
 const enc = new TextEncoder();
 const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
 
 async function main(): Promise<void> {
   header("vrpc-core walkthrough");
+  if (!NODE_CONFIGURED) {
+    kv("Skipped", "set VRPC_NODE_URL (+ optional VRPC_NODE_CHAIN_ID, VRPC_NODE_COMPOSE_HASH)");
+    kv("Example", "VRPC_NODE_URL=http://<host>:<port> pnpm example:03-vrpc-core-walkthrough");
+    return;
+  }
   kv("Node", NODE_URL);
   kv("Chain id (signed into pre-image)", CHAIN_ID);
 
@@ -110,7 +123,11 @@ async function main(): Promise<void> {
   kv("Attestation composeHash", attestation.composeHash);
   kv(
     "Matches pinned composeHash?",
-    attestation.composeHash === PINNED_COMPOSE_HASH ? "yes ✓" : "NO ✗",
+    PINNED_COMPOSE_HASH === ""
+      ? "(no pin — set VRPC_NODE_COMPOSE_HASH)"
+      : attestation.composeHash === PINNED_COMPOSE_HASH
+        ? "yes ✓"
+        : "NO ✗",
   );
   verifyAttestationCorrelation(attestation, verified);
   kv("Correlation ✓", "attestation pubkey == response signer");

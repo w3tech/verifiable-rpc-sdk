@@ -1,20 +1,17 @@
-// Shared helpers for the examples — keeps each script self-explanatory while
-// not repeating the pinned config.
+// Shared helpers for the examples. The verifiable node the vrpc-core walkthrough
+// (03) talks to is supplied via env — NO node address is hardcoded in the repo.
+// When `VRPC_NODE_URL` is unset, `NODE_CONFIGURED` is false and the walkthrough
+// skips with a hint (like the ethers/viem examples).
 //
-// `URL` is the live direct TDX node used by the vrpc-core walkthrough (03).
-// `PINNED_COMPOSE_HASH` was last re-pinned 2026-06-23 to the node's current
-// /attestation composeHash (sidecar v0.2.0, compression-aware signing — the
-// signature covers the content-DECODED body). Until a ComposeSource/registry
-// lands this must be re-pinned by hand whenever the node is redeployed (DEC-03).
+//   VRPC_NODE_URL          verifiable node base URL, e.g. http://<host>:<port>
+//   VRPC_NODE_CHAIN_ID     chain_id baked into the signed pre-image (default 42161 = Arbitrum).
+//                          MUST match the sidecar's SIDECAR_CHAIN_ID, else every call → BadSignature.
+//   VRPC_NODE_COMPOSE_HASH (optional) expected /attestation composeHash to compare against.
 
-export const URL = "http://40.160.13.104:15269";
-// chain_id baked into the canonical pre-image by the sidecar — NOT the
-// upstream node's reported eth_chainId. Set at sidecar startup; if mismatched
-// against the SDK's `chainId` opt, every `.call()` throws BadSignature.
-// 42161n = Arbitrum, matching the live node's SIDECAR_CHAIN_ID="42161".
-export const CHAIN_ID = 42161n;
-export const PINNED_COMPOSE_HASH =
-  "e8f728881fa14582f08465431b67c4ee80aa460b592f82ddcddda21b37d02ce3";
+export const URL = process.env.VRPC_NODE_URL ?? "http://127.0.0.1:1234";
+export const NODE_CONFIGURED = (process.env.VRPC_NODE_URL ?? "").length > 0;
+export const CHAIN_ID = BigInt(process.env.VRPC_NODE_CHAIN_ID ?? "42161");
+export const PINNED_COMPOSE_HASH = process.env.VRPC_NODE_COMPOSE_HASH ?? "";
 
 /**
  * Return `value` if set, else fail loudly WITHOUT printing the value. `name` is
