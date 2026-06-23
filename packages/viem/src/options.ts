@@ -2,8 +2,6 @@
 // viem-specific passthroughs: `headers` (x-api-key / shark route) and an
 // injectable `fetchFn` seam. All verification lives in vrpc-core; these only feed it.
 
-import type { PinnedAllowlist, TcbPolicy } from "@ankr.com/dstack-verify";
-
 /**
  * Options for `vrpcHttp(url, opts?)`. All optional with safe defaults. Always
  * fail-closed (see `transport.ts`). The chain id bound into the signed pre-image
@@ -44,10 +42,8 @@ export interface VrpcHttpOptions {
   timeout?: number;
   /** Verified-pubkey cache TTL (ms) forwarded to the verifier; default 1h. */
   pubkeyCacheTtlMs?: number;
-  /** Pinned trust anchors; default `EMPTY_ALLOWLIST` when omitted. */
-  allowlist?: PinnedAllowlist;
-  /** DCAP TCB acceptance forwarded to the seam; default rejects debug quotes. */
-  tcb?: TcbPolicy;
-  /** Operational collateral source for dcap-qvl (NOT a trust dependency). */
-  pccsUrl?: string;
 }
+
+// NOTE (v6.0): `allowlist`/`tcb`/`pccsUrl` were removed — the mock verifier
+// ignores them, so exposing inert security knobs is misleading; v7.0 reintroduces
+// them when the real verifier needs consumer-pinned anchors.

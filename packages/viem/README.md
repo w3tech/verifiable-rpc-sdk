@@ -140,9 +140,10 @@ errors and propagates (fail-closed).
 | Option           | Type                     | Default          | Notes |
 |------------------|--------------------------|------------------|-------|
 | `pubkeyCacheTtlMs` | `number`               | `3_600_000` (1h) | Verified-pubkey cache TTL (ms). A second read within TTL reuses the cache and skips the attestation fetch; past TTL the pubkey is re-attested (no stale trust). |
-| `allowlist`      | `PinnedAllowlist`        | empty            | Pinned trust anchors for the attestation `VerifyPolicy`. The v5.0 mock does not inspect it; defaults to an empty allowlist. |
-| `tcb`            | `TcbPolicy`              | core default     | DCAP TCB acceptance forwarded to the attestation `VerifyPolicy`. |
-| `pccsUrl`        | `string`                 | —                | Operational collateral source for dcap-qvl (NOT a trust dependency). |
+
+> v6.0 removed the inert `allowlist`/`tcb`/`pccsUrl` options — the mock verifier
+> ignores them. v7.0 reintroduces them for the real verifier. `headers` (above)
+> stays — it covers both the RPC POST and the attestation fetch.
 
 `fetchFn` (already documented above) feeds **both** legs — the RPC POST and the
 attestation GET — which is also the offline test/example seam.
