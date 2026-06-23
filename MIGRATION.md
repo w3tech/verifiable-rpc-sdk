@@ -84,7 +84,7 @@ response carries it and omitted when absent. A shark route that requires a
 (fail-closed), never a silent pass.
 
 The standalone attestation fetch is a **single** `fetchAttestation(opts)` —
-`fetchAttestation({ attestationUrl, nonce, nodeId?, apiKey?, headers? })`. There
+`fetchAttestation({ attestationUrl, nonce, nodeId?, headers? })`. There
 is no `fetchAttestationViaShark`; the same helper covers the via-shark path (pass
 the shark-derived `attestationUrl` and the captured `nodeId`).
 
@@ -266,6 +266,6 @@ are referenced **by name only** — never hard-code or print the values:
 | `SHARK_STAGE_TDX_TEST_KEY` | `x-api-key` value for the vrpc route |
 
 ```sh
-SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… bun run examples/08-vrpc-ethers-verified-read.ts
-SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… bun run examples/09-vrpc-viem-verified-read.ts
+SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… pnpm example:08-vrpc-ethers-verified-read
+SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… pnpm example:09-vrpc-viem-verified-read
 ```

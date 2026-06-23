@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 
 import { buildPreImage, buildPreImageFromHashes, sha256, u64LE } from "../src/preimage";
 

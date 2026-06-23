@@ -2,10 +2,10 @@
 //
 // Fail-closed contract: verifyDstackAttestation throws AttestationError("CHK-MOCK")
 // unless policy.allowInsecureMock === true, in which case it resolves void and
-// emits a LOUD console.warn on EVERY call (not memoized). Mirrors the bun:test
+// emits a LOUD console.warn on EVERY call (not memoized). Mirrors the test
 // idiom in core/tests/errors.test.ts.
 
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, test, vi } from "vitest";
 
 import { AttestationError, verifyDstackAttestation } from "../src/index";
 import type { VerifyPolicy } from "../src/types";
@@ -52,7 +52,7 @@ describe("verifyDstackAttestation mock", () => {
   });
 
   test("resolves with allowInsecureMock=true and warns on EVERY call (not memoized)", async () => {
-    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await verifyDstackAttestation(bundle, { allowInsecureMock: true } as never);
     await verifyDstackAttestation(bundle, { allowInsecureMock: true } as never);
     expect(warn).toHaveBeenCalledTimes(2);

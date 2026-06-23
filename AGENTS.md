@@ -4,21 +4,21 @@ TypeScript verifier client for Ankr's verifiable RPC sidecar
 (`verifiable-rpc-sidecar`). Verifies Ed25519-signed JSON-RPC responses and
 fetches TDX attestation quotes from the sidecar. Pairs with sidecar `v0.2.0`
 wire contract — the signature covers the content-DECODED body, so it verifies
-on either transport encoding (gzip or identity). ESM-first, Bun-tested,
+on either transport encoding (gzip or identity). ESM-first, vitest-tested,
 chain-agnostic.
 
 ## Commands
 
 | Action           | Command                                                                                              |
 | ---------------- | ---------------------------------------------------------------------------------------------------- |
-| Install          | `bun install`                                                                                        |
-| Test (whole workspace) | `bun test` (from repo root)                                                                    |
-| Unit test only   | per-package: `cd packages/core && bun run test:unit` (or `bun run --filter '@ankr.com/vrpc-core' test:unit`) |
-| Integration test | per-package: `cd packages/core && DSTACK_SIMULATOR_BIN=… DSTACK_SIMULATOR_FIXTURES_DIR=… SIDECAR_BIN=… bun run test:integration` (or via `bun run --filter '@ankr.com/vrpc-core' test:integration`) |
-| Lint             | `bun run lint`                                                                                       |
-| Format check     | `bun run format:check`                                                                               |
-| Format fix       | `bun run format`                                                                                     |
-| Typecheck        | `bun run typecheck` (root fans out: `bun run --filter '*' typecheck`; per-package leaf is `tsc --noEmit`) |
+| Install          | `pnpm install`                                                                                       |
+| Test (whole workspace) | `pnpm -r test` (from repo root)                                                                |
+| Unit test only   | per-package: `cd packages/core && pnpm run test:unit` (or `pnpm --filter '@ankr.com/vrpc-core' test:unit`) |
+| Integration test | per-package: `cd packages/core && DSTACK_SIMULATOR_BIN=… DSTACK_SIMULATOR_FIXTURES_DIR=… SIDECAR_BIN=… pnpm run test:integration` (or via `pnpm --filter '@ankr.com/vrpc-core' test:integration`) |
+| Lint             | `pnpm run lint`                                                                                      |
+| Format check     | `pnpm run format:check`                                                                              |
+| Format fix       | `pnpm run format`                                                                                    |
+| Typecheck        | `pnpm -r typecheck` (root fans out: `pnpm -r typecheck`; per-package leaf is `tsc --noEmit`) |
 
 ## Pre-push gate (mandatory)
 
@@ -26,13 +26,13 @@ chain-agnostic.
 locally rather than letting CI fail.
 
 ```sh
-bun run format:check    # exit 0 — no diff
-bun run lint            # exit 0
-bun run typecheck       # exit 0 (tsc --noEmit)
-bun test                # all green
+pnpm run format:check   # exit 0 — no diff
+pnpm run lint           # exit 0
+pnpm -r typecheck       # exit 0 (tsc --noEmit)
+pnpm -r test            # all green
 ```
 
-If `bun run format:check` fails: run `bun run format`, commit the diff as a
+If `pnpm run format:check` fails: run `pnpm run format`, commit the diff as a
 SEPARATE commit, do not amend the offending commit.
 
 The pre-push gate is a contract — there is no git hook enforcing it (a hook is
@@ -64,11 +64,11 @@ not required.
 DSTACK_SIMULATOR_BIN=/private/tmp/dstack-sim-test/dstack-simulator \
 DSTACK_SIMULATOR_FIXTURES_DIR=/private/tmp/dstack-sim-test \
 SIDECAR_BIN=../verifiable-rpc-sidecar/target/debug/rpc-attest-sidecar \
-  bun run --filter '@ankr.com/vrpc-core' test:integration
+  pnpm --filter '@ankr.com/vrpc-core' test:integration
 ```
 
-`bun test` (no env vars) runs the unit suite only and emits a one-line skip
-message at module load. `bun test` with all three env vars set runs the unit
+`pnpm -r test` (no env vars) runs the unit suite only and emits a one-line skip
+message at module load. `pnpm -r test` with all three env vars set runs the unit
 suite plus the integration suite.
 
 **Tamper and replay are unit-only.** Both code paths are already covered at
@@ -84,7 +84,7 @@ with the simulator binary on the runner is tracked separately.
 
 ## Architecture
 
-- Monorepo: Bun workspaces under `packages/*` — `core` (`@ankr.com/vrpc-core`,
+- Monorepo: pnpm workspaces under `packages/*` — `core` (`@ankr.com/vrpc-core`,
   the verification primitives), `ethers` (`@ankr.com/vrpc-ethers`), `viem`
   (`@ankr.com/vrpc-viem`), and `dstack-verify` (`@ankr.com/dstack-verify`).
 - Public surface re-exported through `packages/core/src/index.ts`; implementation

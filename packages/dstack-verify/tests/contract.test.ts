@@ -5,8 +5,8 @@
 // carries the new "Attestation" kind + chk/name; the CHK record enumerates the
 // complete CHK-A1..G3 set (+ CHK-MOCK) with non-empty meaning + valid disposition.
 
-import { describe, expect, test } from "bun:test";
 import { VerificationError } from "@ankr.com/vrpc-core";
+import { describe, expect, test } from "vitest";
 
 import {
   AttestationError,

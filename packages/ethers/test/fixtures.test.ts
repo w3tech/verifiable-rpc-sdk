@@ -4,9 +4,8 @@
 // validates the offline test scaffold itself — NOT core crypto behaviors,
 // which `packages/core/tests/verify.test.ts` already covers.
 
-import { describe, expect, test } from "bun:test";
-
 import { verifyResponse } from "@ankr.com/vrpc-core";
+import { describe, expect, test } from "vitest";
 
 import { CHAIN_ID, SINGLE_RESULT } from "./fixtures";
 import { fixtureRequest } from "./helpers";

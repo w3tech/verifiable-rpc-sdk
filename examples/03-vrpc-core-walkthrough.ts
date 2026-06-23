@@ -1,0 +1,76 @@
+// vrpc-core walkthrough: the verification engine the ethers/viem adapters wrap,
+// used directly so you can see each step of the trust chain.
+import crypto from "node:crypto";
+
+import {
+  BadSignature,
+  fetchAttestation,
+  type VerifiedResponse,
+  VerifierClient,
+  verifyAttestationCorrelation,
+  verifyResponse,
+} from "@ankr.com/vrpc-core";
+
+const URL = "https://rpc.ankr.com/arbitrum_vrpc/123456";
+const CHAIN_ID = 42161n;
+
+async function main() {
+  // 1 — make a request; the node attaches vRPC-Signature/Timestamp/Pubkey headers
+  // (signed inside the TEE).
+  const requestBytes = new TextEncoder().encode(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "eth_getBlockByNumber",
+      params: ["latest", false],
+    }),
+  );
+  const res = await fetch(URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: requestBytes,
+  });
+  const responseBytes = new Uint8Array(await res.arrayBuffer());
+
+  // 2 — verify the Ed25519 signature over the canonical pre-image.
+  const verified = await verifyResponse(requestBytes, responseBytes, res.headers, {
+    chainId: CHAIN_ID,
+  });
+
+  // 3 — fail-closed: flip one byte and re-verify → BadSignature.
+  const tampered = Uint8Array.from(responseBytes);
+  const mid = tampered.length >> 1;
+  tampered[mid] = (tampered[mid] ?? 0) ^ 0xff;
+  await verifyResponse(requestBytes, tampered, res.headers, { chainId: CHAIN_ID }).then(
+    () => {
+      throw new Error("tampered response unexpectedly verified");
+    },
+    (err) => {
+      if (!(err instanceof BadSignature)) throw err;
+    },
+  );
+
+  // 4 — anchor the signing key to the TEE: the attestation pubkey must equal the
+  // key that signed our response. (TDX quote verification itself is a v6.0 mock.)
+  const attestation = await fetchAttestation({
+    attestationUrl: `${URL}/attestation`,
+    nonce: crypto.randomBytes(32),
+  });
+  // correlation only needs the signer pubkey; pass the minimal shape the
+  // verifier's own helper uses (verifyResponse returns a VerifiedPair).
+  verifyAttestationCorrelation(attestation, {
+    verification: verified.verification,
+  } as VerifiedResponse);
+
+  // 5 — the everyday one-liner: POST + verify in one call (what the adapters use).
+  const client = new VerifierClient(URL, { chainId: CHAIN_ID });
+  const { result } = await client.call<string>("eth_blockNumber", []);
+
+  console.log({
+    signer: verified.verification.pubkeyHex,
+    attested: attestation.pubkey,
+    blockNumber: result,
+  });
+}
+
+main();

@@ -2,11 +2,11 @@
 // and an in-process mock JSON-RPC upstream. Mirrors the Rust patterns in
 // `verifiable-rpc-sidecar/tests/common/mod.rs::{spawn_simulator,spawn_sidecar,MockUpstream}`.
 //
-// This file deliberately does NOT end in `.test.ts` — Bun's test runner only
+// This file deliberately does NOT end in `.test.ts` — the test runner only
 // picks up `*.test.ts`, so importers can pull these helpers without the file
 // being treated as a test suite.
 //
-// Required env vars (when running `bun test tests/integration/`):
+// Required env vars (when running `pnpm --filter '@ankr.com/vrpc-core' test:integration`):
 //   DSTACK_SIMULATOR_BIN          — absolute path to the simulator binary
 //   DSTACK_SIMULATOR_FIXTURES_DIR — directory with app-compose.json, appkeys.json, etc.
 //   SIDECAR_BIN                   — absolute path to the rpc-attest-sidecar binary
@@ -16,7 +16,8 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
-import { createServer, type Server, type Socket } from "node:net";
+import { createServer as createHttpServer } from "node:http";
+import { type AddressInfo, createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -184,24 +185,24 @@ export async function spawnMockUpstream(canned?: string): Promise<MockUpstreamHa
   const body = canned ?? '{"jsonrpc":"2.0","id":1,"result":"0x1234"}';
   let received = 0;
 
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    fetch() {
-      received++;
-      return new Response(body, { headers: { "content-type": "application/json" } });
-    },
+  const server = createHttpServer((req, res) => {
+    received++;
+    // Drain the request body so the socket can be reused/closed cleanly.
+    req.resume();
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(body);
   });
 
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+
   return {
-    url: `http://127.0.0.1:${server.port}`,
+    url: `http://127.0.0.1:${port}`,
     receivedCount: () => received,
     kill: async () => {
-      try {
-        await server.stop(true);
-      } catch {
-        // best-effort
-      }
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
     },
   };
 }

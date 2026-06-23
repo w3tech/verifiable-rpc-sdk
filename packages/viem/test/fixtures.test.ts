@@ -5,9 +5,8 @@
 // test harness itself — NOT core crypto, which `packages/core/tests/verify.test.ts`
 // already covers (TEST-04). The adapter WIRING proper is Plan 31-02.
 
-import { describe, expect, test } from "bun:test";
-
 import { BadSignature, MissingHeader, verifyResponse } from "@ankr.com/vrpc-core";
+import { describe, expect, test } from "vitest";
 
 import { CHAIN_ID, signResponseBytes } from "./fixtures";
 

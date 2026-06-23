@@ -15,8 +15,7 @@
 
 import {
   type AttestationBundle,
-  type PinnedAllowlist,
-  type TcbPolicy,
+  EMPTY_ALLOWLIST,
   type VerifyPolicy,
   verifyDstackAttestation,
 } from "@ankr.com/dstack-verify";
@@ -31,10 +30,10 @@ export const DEFAULT_PUBKEY_CACHE_TTL_MS = 3_600_000;
 
 /**
  * Construction options for {@link TrustedVerifier}. The transport inputs
- * (`attestationUrl`/auth) target the attestation fetch; the policy inputs
- * (`allowlist`/`tcb`/`pccsUrl`) build the `VerifyPolicy`; the test injectables
+ * (`attestationUrl`/`headers`) target the attestation fetch; the test injectables
  * (`now`/`nonceSource`/`verifyAttestation`) keep TTL + fail-closed tests
- * deterministic and offline.
+ * deterministic and offline. (v6.0: the policy inputs `allowlist`/`tcb`/`pccsUrl`
+ * were removed — the mock verifier ignores them; v7.0 reintroduces them.)
  */
 export interface TrustedVerifierOptions {
   /**
@@ -47,20 +46,16 @@ export interface TrustedVerifierOptions {
   replayWindowMs?: number;
   /** Full attestation endpoint URL, e.g. `https://rpc.ankr.com/arbitrum_vrpc/attestation`. */
   attestationUrl: string;
-  /** Auth key sent as `x-api-key` on the attestation fetch. */
-  apiKey?: string;
-  /** Extra request headers for the attestation fetch; `x-api-key` here wins. */
+  /** Extra request headers for the attestation fetch (e.g. `x-api-key`). */
   headers?: Record<string, string>;
   /** `fetch` override — defaults to `globalThis.fetch`. */
   fetch?: typeof fetch;
   /** Verified-pubkey cache TTL in ms; default {@link DEFAULT_PUBKEY_CACHE_TTL_MS}. */
   pubkeyCacheTtlMs?: number;
-  /** Pinned trust anchors (INTEG-02). Required — built into every `VerifyPolicy`. */
-  allowlist: PinnedAllowlist;
-  /** DCAP TCB acceptance; default `{ allowedStatuses: [], rejectDebug: true }`. */
-  tcb?: TcbPolicy;
-  /** Operational collateral source for dcap-qvl (NOT a trust dependency). */
-  pccsUrl?: string;
+  // NOTE (v6.0): the policy inputs `allowlist`/`tcb`/`pccsUrl` were removed — the
+  // mock verifier ignores them, so exposing them on the published surface is
+  // misleading. v7.0 re-introduces them (consumer-pinned anchors) when the real
+  // verifier needs them; re-adding optional fields is non-breaking.
   /** Injected wall clock (epoch ms); default `() => Date.now()`. Test-only. */
   now?: () => number;
   /** Fresh 32-byte nonce source; default `crypto.getRandomValues`. Test-only. */
@@ -114,25 +109,23 @@ export function mapAttestationToBundle(
 }
 
 /**
- * Build a {@link VerifyPolicy} from client options + the verified pubkey + the
- * SDK-generated nonce (INTEG-02). `binding` carries the reportData binding
- * (`report_data[0:32]==pubkey`, `[32:64]==nonce`); `allowlist` is the pinned
- * trust anchors; `allowInsecureMock` is HARD-SET `true` in v5.0 (v6.0 flips it
- * off with zero changes outside dstack-verify).
+ * Build a {@link VerifyPolicy} from the verified pubkey + the SDK-generated nonce
+ * (INTEG-02). `binding` carries the reportData binding (`report_data[0:32]==pubkey`,
+ * `[32:64]==nonce`); `allowInsecureMock` is HARD-SET `true` in v5.0/v6.0.
+ *
+ * v6.0: `allowlist`/`tcb`/`pccsUrl` are defaulted internally — the mock verifier
+ * ignores them, so they were removed from the public options. v7.0 reintroduces
+ * those options (consumer-pinned anchors) and threads them here when the real
+ * verifier flips `allowInsecureMock` off.
  */
-export function buildVerifyPolicy(
-  opts: TrustedVerifierOptions,
-  pubkeyHex: string,
-  nonce: Uint8Array,
-): VerifyPolicy {
+export function buildVerifyPolicy(pubkeyHex: string, nonce: Uint8Array): VerifyPolicy {
   return {
     binding: {
       expectedPubkey: pubkeyHex,
       expectedNonce: bytesToHex(nonce),
     },
-    allowlist: opts.allowlist,
-    tcb: opts.tcb ?? { allowedStatuses: [], rejectDebug: true },
-    ...(opts.pccsUrl === undefined ? {} : { pccsUrl: opts.pccsUrl }),
+    allowlist: EMPTY_ALLOWLIST,
+    tcb: { allowedStatuses: [], rejectDebug: true },
     allowInsecureMock: true,
   };
 }
@@ -146,7 +139,6 @@ export function buildVerifyPolicy(
  */
 export class TrustedVerifier {
   private readonly pubkeyExpiryCache = new Map<string, number>(); // pubkeyHex -> expiry epoch-ms
-  private readonly opts: TrustedVerifierOptions;
   private readonly ttlMs: number;
   private readonly now: () => number;
   private readonly nonceSource: () => Uint8Array;
@@ -154,12 +146,10 @@ export class TrustedVerifier {
   private readonly chainId: bigint;
   private readonly replayWindowMs: number | undefined;
   private readonly attestationUrl: string;
-  private readonly apiKey: string | undefined;
   private readonly headers: Record<string, string> | undefined;
   private readonly fetchImpl: typeof fetch | undefined;
 
   constructor(opts: TrustedVerifierOptions) {
-    this.opts = opts;
     this.ttlMs = opts.pubkeyCacheTtlMs ?? DEFAULT_PUBKEY_CACHE_TTL_MS;
     this.now = opts.now ?? (() => Date.now());
     this.nonceSource = opts.nonceSource ?? (() => crypto.getRandomValues(new Uint8Array(32)));
@@ -167,7 +157,6 @@ export class TrustedVerifier {
     this.chainId = opts.chainId;
     this.replayWindowMs = opts.replayWindowMs;
     this.attestationUrl = opts.attestationUrl;
-    this.apiKey = opts.apiKey;
     this.headers = opts.headers;
     this.fetchImpl = opts.fetch;
   }
@@ -222,7 +211,6 @@ export class TrustedVerifier {
       attestationUrl: this.attestationUrl,
       ...(pair.nodeId === undefined ? {} : { nodeId: pair.nodeId }),
       nonce,
-      ...(this.apiKey === undefined ? {} : { apiKey: this.apiKey }),
       ...(this.headers === undefined ? {} : { headers: this.headers }),
       ...(this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl }),
     });
@@ -230,7 +218,7 @@ export class TrustedVerifier {
     verifyAttestationCorrelation(att, { verification: { pubkeyHex } } as VerifiedResponse);
 
     const bundle = mapAttestationToBundle(att, pubkeyHex, nonce);
-    const policy = buildVerifyPolicy(this.opts, pubkeyHex, nonce);
+    const policy = buildVerifyPolicy(pubkeyHex, nonce);
 
     await this.verifyAttestationImpl(bundle, policy);
 

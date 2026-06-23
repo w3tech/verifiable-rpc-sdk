@@ -4,7 +4,6 @@
 // batching is preserved. Always fail-closed: a verify failure throws and no
 // unverified data is ever returned.
 
-import { EMPTY_ALLOWLIST } from "@ankr.com/dstack-verify";
 import {
   deriveVrpcUrls,
   parseChainId,
@@ -39,7 +38,7 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
  * verified `eth_chainId` response on first use (fail-fast, no unverified
  * fallback). Passing it explicitly is RECOMMENDED: pins YOUR chain and skips the
  * bootstrap. To pass only options on the auto-derive path:
- * `new VrpcProvider(url, undefined, { allowlist })`.
+ * `new VrpcProvider(url, undefined, { pubkeyCacheTtlMs })`.
  */
 export class VrpcProvider extends JsonRpcProvider {
   #chainId: bigint | undefined;
@@ -52,17 +51,7 @@ export class VrpcProvider extends JsonRpcProvider {
   #trustedVerifier: TrustedVerifier | undefined;
 
   constructor(url: string | FetchRequest, chainIdArg?: number | bigint, options: VrpcOptions = {}) {
-    const {
-      replayWindowMs,
-      pubkeyCacheTtlMs,
-      allowlist,
-      tcb,
-      pccsUrl,
-      apiKey,
-      headers,
-      fetch: attestationFetch,
-      ...ethersOpts
-    } = options;
+    const { replayWindowMs, pubkeyCacheTtlMs, fetch: attestationFetch, ...ethersOpts } = options;
 
     // Derive the `_vrpc` route + `/attestation` from the single URL; for a
     // FetchRequest, clone it so the consumer's auth/headers ride along.
@@ -79,13 +68,8 @@ export class VrpcProvider extends JsonRpcProvider {
     // attestation leg, so a single auth set on the URL covers BOTH legs — parity
     // with viem, where `headers` feed the RPC POST and the attestation fetch
     // alike. Without this the attestation GET goes out unauthenticated and a
-    // shark route rejects it (fail-closed). Explicit `options.headers` override
-    // per-key; a string URL carries no headers.
-    const connectionHeaders = typeof url === "string" ? undefined : url.headers;
-    const attestationHeaders =
-      connectionHeaders !== undefined || headers !== undefined
-        ? { ...connectionHeaders, ...headers }
-        : undefined;
+    // shark route rejects it (fail-closed). A string URL carries no headers.
+    const attestationHeaders = typeof url === "string" ? undefined : url.headers;
 
     // bigint without a number round-trip: chain ids can exceed 2^53 and the
     // pre-image binds the full u64, so widening through `number` would false-reject.
@@ -102,11 +86,7 @@ export class VrpcProvider extends JsonRpcProvider {
         pruneUndefined<TrustedVerifierOptions>({
           chainId: resolvedChainId,
           attestationUrl,
-          allowlist: allowlist ?? EMPTY_ALLOWLIST,
           pubkeyCacheTtlMs,
-          tcb,
-          pccsUrl,
-          apiKey,
           headers: attestationHeaders,
           fetch: attestationFetch,
           replayWindowMs,

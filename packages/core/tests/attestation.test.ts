@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { fetchAttestation, verifyAttestationCorrelation } from "../src/attestation";
 import {
@@ -329,25 +329,15 @@ describe("fetchAttestation", () => {
       expect(state.calls).toBe(1);
     });
 
-    test("apiKeySetsXApiKeyExplicitHeadersWin", async () => {
+    test("headersSetXApiKeyOnAttestationLeg", async () => {
       const state = installSharkMockFetch(GOLDEN_FIXTURE);
       await fetchAttestation({
         attestationUrl: sharkAttestationUrl,
         nodeId: "node-1",
         nonce: new Uint8Array(32),
-        apiKey: "from-option",
-      });
-      expect(state.headers[0]?.["x-api-key"]).toBe("from-option");
-
-      const state2 = installSharkMockFetch(GOLDEN_FIXTURE);
-      await fetchAttestation({
-        attestationUrl: sharkAttestationUrl,
-        nodeId: "node-1",
-        nonce: new Uint8Array(32),
-        apiKey: "from-option",
         headers: { "x-api-key": "from-headers" },
       });
-      expect(state2.headers[0]?.["x-api-key"]).toBe("from-headers");
+      expect(state.headers[0]?.["x-api-key"]).toBe("from-headers");
     });
 
     test("reusesNarrowAttestationOnMalformedBody", async () => {

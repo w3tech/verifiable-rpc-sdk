@@ -106,7 +106,7 @@ export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleT
 | Option           | Type                                                          | Default                | Notes |
 |------------------|---------------------------------------------------------------|------------------------|-------|
 | `replayWindowMs` | `number`                                                      | vrpc-core default (60s)| Forwarded to `verifyResponse`. Omit in production. `0` only works in tests that inject `nowMs`; in production it always rejects on clock skew. |
-| `headers`        | `Record<string, string>`                                      | —                      | Merged into every POST (e.g. `x-api-key`, or the shark `chain_vrpc` route header). `content-type: application/json` is always set by the transport. |
+| `headers`        | `Record<string, string>`                                      | —                      | Applied to BOTH the JSON-RPC POST and the internal attestation fetch (e.g. `x-api-key`, or the shark `chain_vrpc` route header) — a single auth set here covers both legs. `content-type: application/json` is always set by the transport. |
 | `timeout`        | `number`                                                      | client-injected, else `10_000` | Per-request HTTP timeout (ms), applied to the own `fetch` as `AbortSignal.timeout` (parity with viem `http()`). |
 | `fetchFn`        | `(url: string, init: RequestInit) => Promise<Response>`       | global `fetch`         | Injectable fetch seam (mirrors viem `http`'s `fetchFn`). Hook for a routing fetch wrapper or offline tests. |
 
@@ -140,10 +140,10 @@ errors and propagates (fail-closed).
 | Option           | Type                     | Default          | Notes |
 |------------------|--------------------------|------------------|-------|
 | `pubkeyCacheTtlMs` | `number`               | `3_600_000` (1h) | Verified-pubkey cache TTL (ms). A second read within TTL reuses the cache and skips the attestation fetch; past TTL the pubkey is re-attested (no stale trust). |
-| `allowlist`      | `PinnedAllowlist`        | empty            | Pinned trust anchors for the attestation `VerifyPolicy`. The v5.0 mock does not inspect it; defaults to an empty allowlist. |
-| `tcb`            | `TcbPolicy`              | core default     | DCAP TCB acceptance forwarded to the attestation `VerifyPolicy`. |
-| `pccsUrl`        | `string`                 | —                | Operational collateral source for dcap-qvl (NOT a trust dependency). |
-| `apiKey`         | `string`                 | —                | Auth key sent as `x-api-key` on the attestation fetch (parity with the ethers half). `headers` may also carry `x-api-key` for the RPC leg. **SECRET — never logged.** |
+
+> v6.0 removed the inert `allowlist`/`tcb`/`pccsUrl` options — the mock verifier
+> ignores them. v7.0 reintroduces them for the real verifier. `headers` (above)
+> stays — it covers both the RPC POST and the attestation fetch.
 
 `fetchFn` (already documented above) feeds **both** legs — the RPC POST and the
 attestation GET — which is also the offline test/example seam.
@@ -283,7 +283,7 @@ const anchor = await anchorTrust({
   sharkBase: "https://your-shark", // no trailing slash
   chain: "arbitrum",               // builds the <chain>_vrpc route
   chainId: 42161,
-  apiKey: process.env.SHARK_API_KEY!,
+  headers: { "x-api-key": process.env.SHARK_API_KEY! },
 });
 // anchor.nodeId, anchor.pubkey (0x + 64 hex) — pubkey == attestation == response signer
 ```
@@ -300,7 +300,7 @@ hardcoded or printed):
 
 ```sh
 SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… \
-  bun run examples/09-vrpc-viem-verified-read.ts
+  pnpm example:09-vrpc-viem-verified-read
 ```
 
 See `packages/viem/test/transport.test.ts` for the full wiring suite (verified

@@ -4,7 +4,6 @@
 // stock JsonRpcProvider knob (batching, polling, etc.) is preserved and passed
 // through to `super(...)`, plus the vRPC-specific knobs.
 
-import type { PinnedAllowlist, TcbPolicy } from "@ankr.com/dstack-verify";
 import type { JsonRpcApiProviderOptions } from "ethers";
 
 /**
@@ -28,23 +27,12 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
   replayWindowMs?: number;
   /** Verified-pubkey cache TTL (ms) for the attestation seam; default 1h (vrpc-core). */
   pubkeyCacheTtlMs?: number;
-  /** Pinned trust anchors for the attestation `VerifyPolicy`; default empty (v5.0 mock). */
-  allowlist?: PinnedAllowlist;
-  /** DCAP TCB acceptance policy for the attestation `VerifyPolicy`. */
-  tcb?: TcbPolicy;
-  /** Operational collateral source for dcap-qvl (NOT a trust dependency). */
-  pccsUrl?: string;
-  /**
-   * Auth key for the attestation-leg fetch ONLY (sent as `x-api-key` on the
-   * `/attestation` GET). ethers carries RPC auth in its `FetchRequest`, not
-   * here. SECRET — MUST NOT be logged.
-   */
-  apiKey?: string;
-  /**
-   * Extra request headers for the attestation-leg fetch ONLY. SECRET — MUST NOT
-   * be logged.
-   */
-  headers?: Record<string, string>;
   /** `fetch` override for the attestation leg — test injectable. Internal. */
   fetch?: typeof fetch;
 }
+
+// NOTE (v6.0): `allowlist`/`tcb`/`pccsUrl` were removed — the mock verifier
+// ignores them, so exposing inert security knobs is misleading; v7.0 reintroduces
+// them. `headers` was removed too: set auth on the `FetchRequest` you pass as the
+// URL (`req.setHeader("x-api-key", …)`), which already covers BOTH the RPC POST
+// and the internal attestation fetch.

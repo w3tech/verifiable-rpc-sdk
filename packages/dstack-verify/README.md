@@ -85,7 +85,7 @@ Frozen now, bodies filled in v6.0. In v5.0 each throws
 ## Tests
 
 ```bash
-bun test packages/dstack-verify
+pnpm --filter '@ankr.com/dstack-verify' test
 ```
 
 - `tests/contract.test.ts` — exports, `AttestationError extends VerificationError`,

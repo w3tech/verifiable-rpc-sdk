@@ -1,0 +1,73 @@
+# Release pipeline for the four @ankr.com/* packages.
+#
+# Publishing is TOKENLESS: it uses npm Trusted Publishing (OIDC). The runner mints a
+# short-lived OIDC id-token (id-token: write) which the npm CLI exchanges under the hood
+# for a ~1h package-scoped publish credential. There is intentionally no long-lived publish
+# token anywhere in this file.
+#
+# Provenance is emitted for all four packages (NPM_CONFIG_PROVENANCE + --provenance). Note
+# that npm only attaches provenance attestations when BOTH the source repo AND the package
+# are public; installing the private @ankr.com/* deps from the registry would require a
+# read token until the repo + packages are public (moot once public — local frozen-lockfile
+# resolution uses the in-repo workspace tree, not the registry).
+#
+# The per-package npmjs.com trusted-publisher config must reference THIS exact, case-sensitive
+# filename: publish.yml (see docs/PUBLISHING.md).
+name: Publish
+
+on:
+  push:
+    branches:
+      - main
+
+# Serialize releases so two pushes to main cannot publish concurrently.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+# Least privilege at the workflow level; the release job widens only what it needs.
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC token exchange for tokenless Trusted Publishing (critical)
+      contents: read # checkout the source
+      pull-requests: write # open/update the changesets "Version Packages" PR
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      # NOTE: package-manager caching is deliberately DISABLED in the release job per npm
+      # Trusted Publishing guidance (no `cache: 'pnpm'` here, unlike ci.yml).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14'
+          registry-url: 'https://registry.npmjs.org'
+
+      # The OIDC token exchange is performed by the npm CLI under the hood even when pnpm
+      # orchestrates the publish, so npm must be >= 11.5.1.
+      - name: Ensure npm >= 11.5.1 for OIDC
+        run: |
+          npm i -g npm@latest
+          npm -v
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm -r build
+
+      # Changesets opens/updates the "Version Packages" PR; when that PR merges to main this
+      # same workflow runs `publish: pnpm run release`, which gates on the dry-run then does
+      # the real dependency-ordered (topological) provenance publish via pnpm.
+      - name: Create Release PR or publish (tokenless OIDC + provenance)
+        uses: changesets/action@v1
+        with:
+          version: pnpm run version
+          publish: pnpm run release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Tokenless OIDC: no long-lived publish credential is set here on purpose.
+          NPM_CONFIG_PROVENANCE: 'true'

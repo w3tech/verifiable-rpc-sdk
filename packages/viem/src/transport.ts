@@ -6,7 +6,6 @@
 // surfaces as viem's `RpcRequestError` (not a VerificationError) so
 // `buildRequest` maps it by code.
 
-import { EMPTY_ALLOWLIST } from "@ankr.com/dstack-verify";
 import {
   deriveVrpcUrls,
   isSignedVrpcResponse,
@@ -48,7 +47,7 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
   let chainIdPromise: Promise<bigint> | null = null;
 
   // ONE TrustedVerifier per transport (lifetime pubkey cache); built lazily once
-  // chainId is known. allowlist defaults to EMPTY_ALLOWLIST (v5.0 mock).
+  // chainId is known. (v6.0: the verifier defaults the trust policy internally.)
   let trustedVerifier: TrustedVerifier | undefined;
   const getTrustedVerifier = (chainId: bigint): TrustedVerifier => {
     if (trustedVerifier === undefined) {
@@ -56,12 +55,8 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
         pruneUndefined<TrustedVerifierOptions>({
           chainId,
           attestationUrl,
-          allowlist: opts.allowlist ?? EMPTY_ALLOWLIST,
           replayWindowMs: opts.replayWindowMs,
           pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
-          tcb: opts.tcb,
-          pccsUrl: opts.pccsUrl,
-          apiKey: opts.apiKey,
           headers: opts.headers,
           // fetchFn's (url, init) => Promise<Response> aligns with the verifier's
           // `fetch` for the attestation GET leg.

@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AttestationError, EMPTY_ALLOWLIST } from "@ankr.com/dstack-verify";
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { buildPreImage } from "../src/preimage";
 import {
@@ -114,7 +114,6 @@ function baseOpts(overrides: Partial<TrustedVerifierOptions> = {}): TrustedVerif
     chainId: CHAIN_ID,
     replayWindowMs: 60_000,
     attestationUrl: `${SHARK_BASE}/${CHAIN}_vrpc/attestation`,
-    allowlist: EMPTY_ALLOWLIST,
     now: () => NOW,
     nonceSource: () => NONCE,
     ...overrides,
@@ -134,7 +133,7 @@ describe("TrustedVerifier / trust seam", () => {
 
   test("buildsPolicy", async () => {
     const pubkeyHex = `0x${toHex(await getPublicKeyAsync(TEST_SEED))}`;
-    const policy = buildVerifyPolicy(baseOpts(), pubkeyHex, NONCE);
+    const policy = buildVerifyPolicy(pubkeyHex, NONCE);
     expect(policy.allowInsecureMock).toBe(true);
     expect(policy.binding.expectedPubkey).toBe(pubkeyHex);
     expect(policy.binding.expectedNonce).toBe(toHex(NONCE));
