@@ -1,11 +1,11 @@
-// Shared helpers for the live examples — keeps each script self-explanatory
-// while not repeating the pinned config in four places.
+// Shared helpers for the examples — keeps each script self-explanatory while
+// not repeating the pinned config.
 //
-// The scripts target the live TDX node. The node was redeployed
-// 2026-06-10 (sidecar v0.2.0 release, compression-aware signing — the signature
-// now covers the content-DECODED body); `PINNED_COMPOSE_HASH` re-pinned to
-// match the /info.compose_hash of the v0.2.0 app-compose.
-// Until a ComposeSource/registry lands this must be re-pinned by hand (DEC-03).
+// `URL` is the live direct TDX node used by the vrpc-core walkthrough (03).
+// `PINNED_COMPOSE_HASH` was last re-pinned 2026-06-23 to the node's current
+// /attestation composeHash (sidecar v0.2.0, compression-aware signing — the
+// signature covers the content-DECODED body). Until a ComposeSource/registry
+// lands this must be re-pinned by hand whenever the node is redeployed (DEC-03).
 
 export const URL = "http://40.160.13.104:15269";
 // chain_id baked into the canonical pre-image by the sidecar — NOT the
@@ -14,12 +14,7 @@ export const URL = "http://40.160.13.104:15269";
 // 42161n = Arbitrum, matching the live node's SIDECAR_CHAIN_ID="42161".
 export const CHAIN_ID = 42161n;
 export const PINNED_COMPOSE_HASH =
-  "287a19287bb1d6c798e8cc80aacf0e33d7f1c6982ba28c6135bf4aa3e4b1024e";
-
-// Stage shark-proxy config for the via-shark example (06). Read by NAME only —
-// the VALUES are secrets and must never be printed, logged, or committed.
-export const SHARK_STAGE_URL: string | undefined = process.env.SHARK_STAGE_URL;
-export const SHARK_STAGE_TDX_TEST_KEY: string | undefined = process.env.SHARK_STAGE_TDX_TEST_KEY;
+  "e8f728881fa14582f08465431b67c4ee80aa460b592f82ddcddda21b37d02ce3";
 
 /**
  * Return `value` if set, else fail loudly WITHOUT printing the value. `name` is
