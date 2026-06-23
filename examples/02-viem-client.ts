@@ -3,10 +3,13 @@
 // (Ed25519 + TDX attestation) inside the transport before viem decodes it.
 import { vrpcHttp } from "@ankr.com/vrpc-viem";
 import { createPublicClient } from "viem";
+import { arbitrum } from "viem/chains";
 
 async function main() {
+  // chain id is taken from the client's `chain` (mirrors ethers' ctor arg).
   const client = createPublicClient({
-    transport: vrpcHttp("https://rpc.ankr.com/arbitrum/123456", { chainId: 42161n }),
+    chain: arbitrum,
+    transport: vrpcHttp("https://rpc.ankr.com/arbitrum/123456"),
   });
 
   const block = await client.getBlockNumber();

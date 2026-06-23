@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import {
   BadSignature,
   fetchAttestation,
+  type VerifiedResponse,
   VerifierClient,
   verifyAttestationCorrelation,
   verifyResponse,
@@ -38,7 +39,8 @@ async function main() {
 
   // 3 — fail-closed: flip one byte and re-verify → BadSignature.
   const tampered = Uint8Array.from(responseBytes);
-  tampered[tampered.length >> 1] ^= 0xff;
+  const mid = tampered.length >> 1;
+  tampered[mid] = (tampered[mid] ?? 0) ^ 0xff;
   await verifyResponse(requestBytes, tampered, res.headers, { chainId: CHAIN_ID }).then(
     () => {
       throw new Error("tampered response unexpectedly verified");
@@ -54,7 +56,11 @@ async function main() {
     attestationUrl: `${URL}/attestation`,
     nonce: crypto.randomBytes(32),
   });
-  verifyAttestationCorrelation(attestation, verified);
+  // correlation only needs the signer pubkey; pass the minimal shape the
+  // verifier's own helper uses (verifyResponse returns a VerifiedPair).
+  verifyAttestationCorrelation(attestation, {
+    verification: verified.verification,
+  } as VerifiedResponse);
 
   // 5 — the everyday one-liner: POST + verify in one call (what the adapters use).
   const client = new VerifierClient(URL, { chainId: CHAIN_ID });
