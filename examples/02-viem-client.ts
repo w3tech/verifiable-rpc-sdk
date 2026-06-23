@@ -4,11 +4,17 @@
 import { vrpcHttp } from "@ankr.com/vrpc-viem";
 import { createPublicClient } from "viem";
 
-const client = createPublicClient({
-  transport: vrpcHttp("https://rpc.ankr.com/arbitrum/123456", { chainId: 42161n }),
-});
+async function main() {
+  const client = createPublicClient({
+    transport: vrpcHttp("https://rpc.ankr.com/arbitrum/123456", { chainId: 42161n }),
+  });
 
-const block = await client.getBlockNumber();
-const balance = await client.getBalance({ address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" });
+  const block = await client.getBlockNumber();
+  const balance = await client.getBalance({
+    address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+  });
 
-console.log({ block, balance });
+  console.log({ block, balance });
+}
+
+main();
