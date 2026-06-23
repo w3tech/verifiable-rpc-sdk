@@ -25,7 +25,9 @@ import { describe, expect, test } from "vitest";
 
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
 
-const URL = "http://test.invalid";
+// Path-ful URL (chain slug): deriveVrpcUrls inserts `_vrpc` on the chain segment,
+// so `${URL}_vrpc` == the derived rpc route (and `${URL}_vrpc/attestation`).
+const URL = "http://test.invalid/arbitrum";
 const ADDR = "0x1111111111111111111111111111111111111111" as const;
 // Fixed seed used by the fixture signer — its pubkey is what the attestation
 // body must correlate to.
