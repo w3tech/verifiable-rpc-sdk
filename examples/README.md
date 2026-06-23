@@ -16,9 +16,9 @@ pnpm install
 pnpm example:all
 ```
 
-To point at a different chain, edit the URL (`https://rpc.ankr.com/<chain>`) and
-chain id in the example. The adapters own the `_vrpc` suffix and attestation
-sub-route; pass `https://host/<chain>` and the SDK derives the rest.
+To point at a different chain, edit the URL (`https://rpc.ankr.com/<chain>/<key>`)
+and chain id in the example. The adapters own the `_vrpc` suffix and attestation
+sub-route; pass `https://host/<chain>/<key>` and the SDK derives the rest.
 
 ## What is and isn't verified
 

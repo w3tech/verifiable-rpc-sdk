@@ -5,7 +5,7 @@ import { vrpcHttp } from "@ankr.com/vrpc-viem";
 import { createPublicClient } from "viem";
 
 const client = createPublicClient({
-  transport: vrpcHttp("https://rpc.ankr.com/arbitrum", { chainId: 42161n }),
+  transport: vrpcHttp("https://rpc.ankr.com/arbitrum/123456", { chainId: 42161n }),
 });
 
 const block = await client.getBlockNumber();

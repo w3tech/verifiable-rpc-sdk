@@ -10,7 +10,7 @@ import {
   verifyResponse,
 } from "@ankr.com/vrpc-core";
 
-const URL = "https://rpc.ankr.com/arbitrum_vrpc";
+const URL = "https://rpc.ankr.com/arbitrum_vrpc/123456";
 const CHAIN_ID = 42161n;
 
 // 1 — make a request; the node attaches vRPC-Signature/Timestamp/Pubkey headers
