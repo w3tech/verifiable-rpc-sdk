@@ -84,7 +84,7 @@ response carries it and omitted when absent. A shark route that requires a
 (fail-closed), never a silent pass.
 
 The standalone attestation fetch is a **single** `fetchAttestation(opts)` —
-`fetchAttestation({ attestationUrl, nonce, nodeId?, apiKey?, headers? })`. There
+`fetchAttestation({ attestationUrl, nonce, nodeId?, headers? })`. There
 is no `fetchAttestationViaShark`; the same helper covers the via-shark path (pass
 the shark-derived `attestationUrl` and the captured `nodeId`).
 

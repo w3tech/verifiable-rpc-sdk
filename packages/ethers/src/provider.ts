@@ -58,7 +58,6 @@ export class VrpcProvider extends JsonRpcProvider {
       allowlist,
       tcb,
       pccsUrl,
-      apiKey,
       headers,
       fetch: attestationFetch,
       ...ethersOpts
@@ -106,7 +105,6 @@ export class VrpcProvider extends JsonRpcProvider {
           pubkeyCacheTtlMs,
           tcb,
           pccsUrl,
-          apiKey,
           headers: attestationHeaders,
           fetch: attestationFetch,
           replayWindowMs,

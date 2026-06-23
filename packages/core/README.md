@@ -109,7 +109,7 @@ import { VerifierClient } from "@ankr.com/vrpc-core";
 
 const client = new VerifierClient("https://rpc.ankr.com/eth_vrpc", {
   chainId: 1n,
-  apiKey: process.env.ANKR_API_KEY,
+  headers: { "x-api-key": process.env.ANKR_API_KEY },
 });
 
 const { result, verification, nodeId } = await client.call<string>("eth_blockNumber", []);
@@ -169,8 +169,7 @@ auto-incrementing JSON-RPC `id` is maintained per instance.
 | ---------------- | -------------------------- | -------------------- | --------------------------------------------------------------------- |
 | `chainId`        | `bigint`                   | — (required)         | Bound into the pre-image. Mismatch → `BadSignature`.                  |
 | `replayWindowMs` | `number`                   | `60_000`             | Forwarded to `verifyResponse`.                                        |
-| `headers`        | `Record<string, string>`  | `{}`                 | Merged into the POST. Pinned wire headers (`content-type`, `accept-encoding: identity`) always win. |
-| `apiKey`         | `string`                   | —                    | Convenience `x-api-key`; an explicit `headers["x-api-key"]` wins.     |
+| `headers`        | `Record<string, string>`  | `{}`                 | Merged into the POST (e.g. `x-api-key`). Pinned wire headers (`content-type`, `accept-encoding: identity`) always win. |
 | `fetch`          | `typeof fetch`             | `globalThis.fetch`   | Override for tests against a mock sidecar.                            |
 
 **`VerifiedResponse<T>`** → `{ result: T, nodeId?, raw: { request, response }, verification }`.
@@ -208,7 +207,7 @@ verifyAttestationCorrelation(attestation: Attestation, verifiedResponse: Verifie
 `fetchAttestation` (the single attestation-fetch entry point) calls
 `GET <attestationUrl>?nonce=<bare-hex>`, appending `&node_id=<id>` **only when**
 `opts.nodeId` is present. `FetchAttestationOptions` =
-`{ attestationUrl, nonce, nodeId?, apiKey?, headers?, fetch? }`. A `404` →
+`{ attestationUrl, nonce, nodeId?, headers?, fetch? }`. A `404` →
 `AttestationNodeNotFoundError`, terminal — no retry/fallback. The nonce must be
 exactly 32 bytes or `InvalidNonce` is thrown **before** any network call. This
 route is unsigned by contract — no `vRPC-*` verification runs, and a malformed
@@ -239,7 +238,7 @@ node id, `AttestationNodeNotFoundError` on a stale id,
 `AttestationCorrelationError` on pubkey mismatch.
 
 **`AnchorTrustOptions`**: `sharkBase`, `chain`, `chainId` (`number | bigint`,
-coerced via `BigInt()` without a `number` round-trip), `apiKey?`, `headers?`,
+coerced via `BigInt()` without a `number` round-trip), `headers?`,
 `fetch?`, `nonceSource?` (defaults to `crypto.getRandomValues`). Returns
 **`AnchorTrustResult`** = `{ nodeId, pubkey }`.
 

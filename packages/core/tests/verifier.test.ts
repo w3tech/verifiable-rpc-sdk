@@ -478,7 +478,11 @@ describe("VerifierClient", () => {
     expect("nodeId" in verified).toBe(false);
   });
 
-  test("apiKeyOptionSetsXApiKeyOnPost", async () => {
+  // Note: `customHeadersMergeIntoRequest` and `pinnedHeadersWinOverCustom` above
+  // already cover x-api-key-via-headers on the POST and pinned-header precedence.
+  // (The former `apiKey`-option tests were removed in Phase 41 — `apiKey` is gone;
+  // auth flows only through `headers`.)
+  test("headersAreAppliedPerCall", async () => {
     let capturedHeaders: Record<string, string> | undefined;
     const signedBody = makeSignedJsonRpcBody(1, "0x1");
     const ts = BigInt(Date.now());
@@ -489,50 +493,11 @@ describe("VerifierClient", () => {
     }) as typeof fetch;
     const client = new VerifierClient(TEST_URL, {
       chainId: 1n,
-      apiKey: "secret-key",
+      headers: { "x-api-key": "secret-key" },
       fetch: wrapped,
     });
     await client.call("eth_blockNumber", []);
-    expect(capturedHeaders?.["x-api-key"]).toBe("secret-key");
-  });
-
-  test("explicitHeaderXApiKeyOverridesApiKeyOption", async () => {
-    let capturedHeaders: Record<string, string> | undefined;
-    const signedBody = makeSignedJsonRpcBody(1, "0x1");
-    const ts = BigInt(Date.now());
-    const { fetch } = makeMockFetch(signedBody, 1n, ts);
-    const wrapped = (async (input: string | URL, init?: RequestInit) => {
-      capturedHeaders = init?.headers as Record<string, string>;
-      return fetch(input as string, init);
-    }) as typeof fetch;
-    const client = new VerifierClient(TEST_URL, {
-      chainId: 1n,
-      apiKey: "from-option",
-      headers: { "x-api-key": "from-headers" },
-      fetch: wrapped,
-    });
     await client.call("eth_blockNumber", []);
-    expect(capturedHeaders?.["x-api-key"]).toBe("from-headers");
-  });
-
-  test("pinnedHeadersWinRegardlessOfApiKey", async () => {
-    let capturedHeaders: Record<string, string> | undefined;
-    const signedBody = makeSignedJsonRpcBody(1, "0x1");
-    const ts = BigInt(Date.now());
-    const { fetch } = makeMockFetch(signedBody, 1n, ts);
-    const wrapped = (async (input: string | URL, init?: RequestInit) => {
-      capturedHeaders = init?.headers as Record<string, string>;
-      return fetch(input as string, init);
-    }) as typeof fetch;
-    const client = new VerifierClient(TEST_URL, {
-      chainId: 1n,
-      apiKey: "secret-key",
-      headers: { "content-type": "text/plain", "accept-encoding": "gzip" },
-      fetch: wrapped,
-    });
-    await client.call("eth_blockNumber", []);
-    expect(capturedHeaders?.["content-type"]).toBe("application/json");
-    expect(capturedHeaders?.["accept-encoding"]).toBe("identity");
     expect(capturedHeaders?.["x-api-key"]).toBe("secret-key");
   });
 });

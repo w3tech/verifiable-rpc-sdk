@@ -61,9 +61,7 @@ export interface FetchAttestationOptions {
    * unit is the `vRPC-Pubkey` the signature is checked against).
    */
   nodeId?: string;
-  /** Auth key sent as `x-api-key`; an explicit `headers` entry wins. */
-  apiKey?: string;
-  /** Extra request headers; an `x-api-key` entry here overrides `apiKey`. */
+  /** Extra request headers (e.g. `x-api-key`). */
   headers?: Record<string, string>;
   /** `fetch` override — defaults to `globalThis.fetch`. */
   fetch?: typeof fetch;
@@ -98,11 +96,7 @@ export async function fetchAttestation(opts: FetchAttestationOptions): Promise<A
     `${opts.attestationUrl}?nonce=${nonceHex}` +
     (opts.nodeId === undefined ? "" : `&node_id=${encodeURIComponent(opts.nodeId)}`);
 
-  // apiKey-derived x-api-key first so an explicit headers entry wins.
-  const headers: Record<string, string> = {
-    ...(opts.apiKey === undefined ? {} : { "x-api-key": opts.apiKey }),
-    ...(opts.headers ?? {}),
-  };
+  const headers: Record<string, string> = opts.headers ?? {};
 
   const fetchImpl = opts.fetch ?? globalThis.fetch;
   const resp = await fetchImpl(target, { headers });

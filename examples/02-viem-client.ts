@@ -33,13 +33,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Wire the verified transport into a normal viem public client. `headers`
-  // authenticates the RPC leg; `apiKey` authenticates the attestation leg.
+  // Wire the verified transport into a normal viem public client. `headers` is
+  // applied to BOTH the RPC POST and the internal attestation fetch, so a single
+  // auth set here covers both legs — there is no separate apiKey option.
   const client = createPublicClient({
     transport: vrpcHttp(RPC_URL, {
       chainId: CHAIN_ID,
       headers: { "x-api-key": API_KEY },
-      apiKey: API_KEY,
     }),
   });
   kv("Endpoint", RPC_URL);

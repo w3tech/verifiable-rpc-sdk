@@ -23,9 +23,10 @@ export interface VrpcHttpOptions {
    */
   replayWindowMs?: number;
   /**
-   * Extra request headers merged into every POST (e.g. `x-api-key`, or the
-   * shark `chain_vrpc` route header). `content-type: application/json` is always
-   * set by the transport.
+   * Extra request headers (e.g. `x-api-key`, or the shark `chain_vrpc` route
+   * header). Applied to BOTH the JSON-RPC POST and the internal attestation
+   * fetch, so a single auth set here covers both legs. `content-type:
+   * application/json` is always set by the transport.
    */
   headers?: Record<string, string>;
   /**
@@ -49,9 +50,4 @@ export interface VrpcHttpOptions {
   tcb?: TcbPolicy;
   /** Operational collateral source for dcap-qvl (NOT a trust dependency). */
   pccsUrl?: string;
-  /**
-   * Auth key sent as `x-api-key` on the attestation fetch (parity with the
-   * ethers half). `headers` may also carry `x-api-key` for the RPC leg.
-   */
-  apiKey?: string;
 }

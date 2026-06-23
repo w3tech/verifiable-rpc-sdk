@@ -35,14 +35,12 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
   /** Operational collateral source for dcap-qvl (NOT a trust dependency). */
   pccsUrl?: string;
   /**
-   * Auth key for the attestation-leg fetch ONLY (sent as `x-api-key` on the
-   * `/attestation` GET). ethers carries RPC auth in its `FetchRequest`, not
-   * here. SECRET — MUST NOT be logged.
-   */
-  apiKey?: string;
-  /**
-   * Extra request headers for the attestation-leg fetch ONLY. SECRET — MUST NOT
-   * be logged.
+   * Auth headers for the SDK. The idiomatic ethers way is to set them on the
+   * `FetchRequest` you pass as the URL (`req.setHeader("x-api-key", …)`) — those
+   * already ride to BOTH the RPC POST and the internal attestation fetch. This
+   * `headers` option is an additional override for the attestation leg only
+   * (e.g. when attestation needs a different/extra header than the RPC leg);
+   * it merges over the FetchRequest headers per-key. SECRET — MUST NOT be logged.
    */
   headers?: Record<string, string>;
   /** `fetch` override for the attestation leg — test injectable. Internal. */

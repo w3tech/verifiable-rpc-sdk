@@ -61,7 +61,6 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
           pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
           tcb: opts.tcb,
           pccsUrl: opts.pccsUrl,
-          apiKey: opts.apiKey,
           headers: opts.headers,
           // fetchFn's (url, init) => Promise<Response> aligns with the verifier's
           // `fetch` for the attestation GET leg.

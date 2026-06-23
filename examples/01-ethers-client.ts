@@ -36,12 +36,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Create the client exactly like a normal ethers provider. The x-api-key
-  // header authenticates the RPC leg; the apiKey option authenticates the
-  // attestation leg the verifier fetches under the hood.
+  // Create the client exactly like a normal ethers provider. Set auth the
+  // idiomatic ethers way — on the FetchRequest. The SDK reuses these headers for
+  // BOTH the RPC POST and the internal attestation fetch, so there is no
+  // separate apiKey option.
   const req = new FetchRequest(RPC_URL);
   req.setHeader("x-api-key", API_KEY);
-  const provider = new VrpcProvider(req, CHAIN_ID, { apiKey: API_KEY });
+  const provider = new VrpcProvider(req, CHAIN_ID);
   kv("Endpoint", RPC_URL);
   kv("Chain id", CHAIN_ID);
 

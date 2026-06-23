@@ -34,12 +34,6 @@ export interface VerifierClientOptions {
    */
   headers?: Record<string, string>;
   /**
-   * Convenience auth key sent as `x-api-key` on the RPC POST (and reused for
-   * shark attestation fetches). An explicit `headers["x-api-key"]` entry wins
-   * over this value; the pinned wire headers still win over both.
-   */
-  apiKey?: string;
-  /**
    * Optional `fetch` override — primarily for tests against a mock sidecar.
    * Defaults to `globalThis.fetch`.
    */
@@ -95,7 +89,6 @@ export class VerifierClient {
   private readonly replayWindowMs: number;
   private readonly fetchImpl: typeof fetch;
   private readonly extraHeaders: Record<string, string>;
-  private readonly apiKey: string | undefined;
   private idCounter = 0;
 
   constructor(url: string, opts: VerifierClientOptions) {
@@ -107,7 +100,6 @@ export class VerifierClient {
     this.replayWindowMs = opts.replayWindowMs ?? DEFAULT_REPLAY_WINDOW_MS;
     this.fetchImpl = opts.fetch ?? globalThis.fetch;
     this.extraHeaders = opts.headers ?? {};
-    this.apiKey = opts.apiKey;
   }
 
   async call<T = unknown>(method: string, params: unknown[]): Promise<VerifiedResponse<T>> {
@@ -124,14 +116,12 @@ export class VerifierClient {
     //    response-hash leg of the pre-image and surface as a spurious
     //    `BadSignature`. Forcing identity keeps the bytes we hash identical to
     //    the bytes the sidecar signed.
-    //    Precedence (lowest to highest): apiKey-derived x-api-key, then caller
-    //    headers (so an explicit x-api-key wins), then the two pinned headers
-    //    LAST so pinned always win — a caller cannot override the wire-byte
-    //    contract.
+    //    Precedence (lowest to highest): caller `headers` (e.g. `x-api-key`),
+    //    then the two pinned headers LAST so pinned always win — a caller cannot
+    //    override the wire-byte contract.
     const resp = await this.fetchImpl(this.url, {
       method: "POST",
       headers: {
-        ...(this.apiKey === undefined ? {} : { "x-api-key": this.apiKey }),
         ...this.extraHeaders,
         "content-type": "application/json",
         "accept-encoding": "identity",

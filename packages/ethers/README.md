@@ -163,15 +163,16 @@ errors and propagates (fail-closed).
 | `allowlist`      | `PinnedAllowlist`            | empty            | Pinned trust anchors for the attestation `VerifyPolicy`. The v5.0 mock does not inspect it; defaults to an empty allowlist. |
 | `tcb`            | `TcbPolicy`                  | core default     | DCAP TCB acceptance policy forwarded to the attestation `VerifyPolicy`. |
 | `pccsUrl`        | `string`                     | —                | Operational collateral source for dcap-qvl (NOT a trust dependency). |
-| `apiKey`         | `string`                     | —                | Auth key for the **attestation-leg** fetch only (sent as `x-api-key` on the `/attestation` GET). The RPC POST keeps using the `FetchRequest` headers. **SECRET — never logged.** |
-| `headers`        | `Record<string, string>`     | —                | Extra headers for the **attestation-leg** fetch only. **SECRET — never logged.** |
+| `headers`        | `Record<string, string>`     | —                | Override headers for the **attestation-leg** fetch only. Auth normally comes from the `FetchRequest` you pass as the URL (`req.setHeader("x-api-key", …)`), which already covers both the RPC POST and the attestation fetch; use `headers` only when the attestation leg needs a different/extra header. **SECRET — never logged.** |
 
 ```ts
-// Attestation is always-on, derived from the single URL — no attestationBaseUrl
-// /chainSlug. The normal verify routes through TrustedVerifier.
+// Auth the idiomatic ethers way: set it on the FetchRequest. The SDK reuses
+// those headers for BOTH the RPC POST and the internal attestation fetch — there
+// is no separate apiKey option. Attestation is always-on, derived from the URL.
+const req = new FetchRequest("https://rpc.ankr.com/arbitrum");
+req.setHeader("x-api-key", process.env.ANKR_API_KEY); // covers both legs (never logged)
 const provider = new VrpcProvider(req, 42161n, {
-  apiKey: process.env.ANKR_API_KEY, // attestation-leg auth (never logged)
-  pubkeyCacheTtlMs: 3_600_000,      // 1h (default)
+  pubkeyCacheTtlMs: 3_600_000, // 1h (default)
 });
 // Ordinary reads. The first unknown pubkey triggers one attestation fetch +
 // (MOCK) verify + cache; subsequent reads within TTL skip the fetch.
@@ -193,7 +194,7 @@ const anchor = await anchorTrust({
   sharkBase: "https://rpc.ankr.com",
   chain: "arbitrum",
   chainId: 42161n,
-  apiKey: process.env.ANKR_API_KEY,
+  headers: { "x-api-key": process.env.ANKR_API_KEY },
 });
 console.log(anchor.nodeId, anchor.pubkey); // pubkey: 0x + 64 hex
 ```

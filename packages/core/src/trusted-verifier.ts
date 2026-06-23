@@ -47,9 +47,7 @@ export interface TrustedVerifierOptions {
   replayWindowMs?: number;
   /** Full attestation endpoint URL, e.g. `https://rpc.ankr.com/arbitrum_vrpc/attestation`. */
   attestationUrl: string;
-  /** Auth key sent as `x-api-key` on the attestation fetch. */
-  apiKey?: string;
-  /** Extra request headers for the attestation fetch; `x-api-key` here wins. */
+  /** Extra request headers for the attestation fetch (e.g. `x-api-key`). */
   headers?: Record<string, string>;
   /** `fetch` override — defaults to `globalThis.fetch`. */
   fetch?: typeof fetch;
@@ -154,7 +152,6 @@ export class TrustedVerifier {
   private readonly chainId: bigint;
   private readonly replayWindowMs: number | undefined;
   private readonly attestationUrl: string;
-  private readonly apiKey: string | undefined;
   private readonly headers: Record<string, string> | undefined;
   private readonly fetchImpl: typeof fetch | undefined;
 
@@ -167,7 +164,6 @@ export class TrustedVerifier {
     this.chainId = opts.chainId;
     this.replayWindowMs = opts.replayWindowMs;
     this.attestationUrl = opts.attestationUrl;
-    this.apiKey = opts.apiKey;
     this.headers = opts.headers;
     this.fetchImpl = opts.fetch;
   }
@@ -222,7 +218,6 @@ export class TrustedVerifier {
       attestationUrl: this.attestationUrl,
       ...(pair.nodeId === undefined ? {} : { nodeId: pair.nodeId }),
       nonce,
-      ...(this.apiKey === undefined ? {} : { apiKey: this.apiKey }),
       ...(this.headers === undefined ? {} : { headers: this.headers }),
       ...(this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl }),
     });

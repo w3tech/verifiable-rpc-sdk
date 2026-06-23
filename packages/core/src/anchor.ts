@@ -22,7 +22,7 @@ import { fetchAttestation, verifyAttestationCorrelation } from "./attestation";
 import { MissingHeader } from "./errors";
 import { VerifierClient } from "./verifier";
 
-/** Input to {@link anchorTrust}. Secrets (apiKey/headers) are caller-supplied. */
+/** Input to {@link anchorTrust}. Secrets (headers) are caller-supplied. */
 export interface AnchorTrustOptions {
   /** Shark proxy base URL (no trailing slash), e.g. `https://rpc.ankr.com`. */
   sharkBase: string;
@@ -35,9 +35,7 @@ export interface AnchorTrustOptions {
    * and reject intact responses (false `BadSignature`).
    */
   chainId: number | bigint;
-  /** Auth key sent as `x-api-key` on both legs; an explicit `headers` entry wins. */
-  apiKey?: string;
-  /** Extra request headers; an `x-api-key` entry here overrides `apiKey`. */
+  /** Extra request headers sent on both legs (e.g. `x-api-key`). */
   headers?: Record<string, string>;
   /** `fetch` override — defaults to `globalThis.fetch` (used by both legs). */
   fetch?: typeof fetch;
@@ -76,7 +74,6 @@ export async function anchorTrust(opts: AnchorTrustOptions): Promise<AnchorTrust
   //    crypto. eth_blockNumber is cheap and side-effect-free.
   const client = new VerifierClient(vrpcUrl, {
     chainId: BigInt(opts.chainId),
-    ...(opts.apiKey === undefined ? {} : { apiKey: opts.apiKey }),
     ...(opts.headers === undefined ? {} : { headers: opts.headers }),
     ...(opts.fetch === undefined ? {} : { fetch: opts.fetch }),
   });
@@ -98,7 +95,6 @@ export async function anchorTrust(opts: AnchorTrustOptions): Promise<AnchorTrust
     attestationUrl: `${vrpcUrl}/attestation`,
     nodeId,
     nonce,
-    ...(opts.apiKey === undefined ? {} : { apiKey: opts.apiKey }),
     ...(opts.headers === undefined ? {} : { headers: opts.headers }),
     ...(opts.fetch === undefined ? {} : { fetch: opts.fetch }),
   });
