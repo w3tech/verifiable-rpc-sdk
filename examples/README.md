@@ -58,6 +58,6 @@ Without `VRPC_NODE_URL` it skips with a hint.
   pubkey must equal the response signer).
 - **TDX quote cryptographic verification (DCAP/RTMR)** — **MOCK in v6.0** (frozen
   contract); real verification lands in v7.0.
-- **composeHash provenance** — hard-pinned in `shared.ts` (`PINNED_COMPOSE_HASH`);
-  no on-chain registry yet (DEC-03). If the sidecar is redeployed, re-pin it.
+- **composeHash provenance** — pinned by the caller (`VRPC_NODE_COMPOSE_HASH` env in
+  example 03); no on-chain registry yet (DEC-03). Re-pin if the sidecar is redeployed.
 - **Node disk-layer correctness** — NOT verified (the TEE boundary covers RAM).

@@ -26,15 +26,23 @@ import {
   verifyResponse,
 } from "@ankr.com/vrpc-core";
 
-import {
-  assert,
-  CHAIN_ID,
-  header,
-  kv,
-  NODE_CONFIGURED,
-  URL as NODE_URL,
-  PINNED_COMPOSE_HASH,
-} from "./shared.js";
+// Verifiable node config via env — no node address hardcoded. Set VRPC_NODE_URL
+// (+ optional VRPC_NODE_CHAIN_ID, VRPC_NODE_COMPOSE_HASH) to run; otherwise skip.
+const NODE_URL = process.env.VRPC_NODE_URL ?? "http://127.0.0.1:1234";
+const NODE_CONFIGURED = (process.env.VRPC_NODE_URL ?? "").length > 0;
+const CHAIN_ID = BigInt(process.env.VRPC_NODE_CHAIN_ID ?? "42161");
+const PINNED_COMPOSE_HASH = process.env.VRPC_NODE_COMPOSE_HASH ?? "";
+
+// Tiny console helpers (kept local so this file is self-contained).
+const header = (t: string): void => console.log(`\n${"=".repeat(64)}\n  ${t}\n${"=".repeat(64)}`);
+const kv = (label: string, value: unknown): void =>
+  console.log(`  ${label.padEnd(38)} ${String(value)}`);
+function assert(cond: unknown, msg: string): asserts cond {
+  if (!cond) {
+    console.error(`\nFAIL — ${msg}`);
+    process.exit(1);
+  }
+}
 
 const enc = new TextEncoder();
 const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");

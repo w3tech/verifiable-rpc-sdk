@@ -17,7 +17,10 @@
 import { VrpcProvider } from "@ankr.com/vrpc-ethers";
 import { FetchRequest } from "ethers";
 
-import { header, kv } from "./shared.js";
+// Tiny console helpers (kept local so this file is self-contained).
+const header = (t: string): void => console.log(`\n${"=".repeat(64)}\n  ${t}\n${"=".repeat(64)}`);
+const kv = (label: string, value: unknown): void =>
+  console.log(`  ${label.padEnd(38)} ${String(value)}`);
 
 const RPC_URL = process.env.VRPC_RPC_URL;
 const API_KEY = process.env.VRPC_API_KEY;
