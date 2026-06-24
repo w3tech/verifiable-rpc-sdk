@@ -4,7 +4,7 @@
 // CHK-A1 runs FIRST and is UNCONDITIONAL: it shape-gates report_data, then binds
 // report_data[0:32]==expectedPubkey and report_data[32:64]==expectedNonce. A
 // mismatch throws AttestationError("CHK-A1") regardless of allowInsecureMock. After
-// A1 passes, the mock gate throws CHK-MOCK (default) or resolves+warns
+// A1 passes, the mock gate throws CHK-MOCK (default) or resolves silently
 // (allowInsecureMock===true). Fixture: tests/fixtures/attestation-sample.json.
 
 import { readFileSync } from "node:fs";
@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 // synthesizes self-consistent compose pairs with the SAME hashing the verifier
 // uses (raw sha256, no canonicalization).
 import { computeComposeHash } from "@ankr.com/vrpc-core/compose";
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { AttestationError, parseReportData, verifyDstackAttestation } from "../src/index";
 import type { AttestationBundle, TcbInfo, VerifyPolicy } from "../src/types";
@@ -82,15 +82,12 @@ describe("parseReportData (CHK-A1 split)", () => {
 
 describe("verifyDstackAttestation CHK-A1 binding", () => {
   test("happy path: A1 passes, mock gate resolves with allowInsecureMock=true", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await expect(
       verifyDstackAttestation(
         validBundle,
         makePolicy({ ...validBinding, allowInsecureMock: true }),
       ),
     ).resolves.toBeUndefined();
-    expect(warn).toHaveBeenCalledTimes(1);
-    warn.mockRestore();
   });
 
   test("A1 passes then fail-closed CHK-MOCK when allowInsecureMock absent", async () => {
@@ -200,18 +197,19 @@ describe("verifyDstackAttestation mock gate (post-A1)", () => {
     }
   });
 
-  test("resolves with allowInsecureMock=true and warns on EVERY call (not memoized)", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await verifyDstackAttestation(
-      validBundle,
-      makePolicy({ ...validBinding, allowInsecureMock: true }),
-    );
-    await verifyDstackAttestation(
-      validBundle,
-      makePolicy({ ...validBinding, allowInsecureMock: true }),
-    );
-    expect(warn).toHaveBeenCalledTimes(2);
-    warn.mockRestore();
+  test("resolves on every call with allowInsecureMock=true", async () => {
+    await expect(
+      verifyDstackAttestation(
+        validBundle,
+        makePolicy({ ...validBinding, allowInsecureMock: true }),
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      verifyDstackAttestation(
+        validBundle,
+        makePolicy({ ...validBinding, allowInsecureMock: true }),
+      ),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -232,7 +230,6 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
   const selfConsistentHash = computeComposeHash(appCompose);
 
   test("hash-match: self-consistent pair passes, falls through to mock gate", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const bundle = makeBundle(fixture.report_data, {
       app_compose: appCompose,
       compose_hash: selfConsistentHash,
@@ -241,11 +238,9 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
     await expect(
       verifyDstackAttestation(bundle, makePolicy({ ...validBinding, allowInsecureMock: true })),
     ).resolves.toBeUndefined();
-    warn.mockRestore();
   });
 
   test("hash-match: also accepts a 0x-prefixed compose_hash (normalized)", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const bundle = makeBundle(fixture.report_data, {
       app_compose: appCompose,
       compose_hash: `0x${selfConsistentHash.toUpperCase()}`,
@@ -253,7 +248,6 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
     await expect(
       verifyDstackAttestation(bundle, makePolicy({ ...validBinding, allowInsecureMock: true })),
     ).resolves.toBeUndefined();
-    warn.mockRestore();
   });
 
   test("mismatch: wrong compose_hash throws CHK-A2 even with allowInsecureMock=true", async () => {
@@ -291,7 +285,6 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
   });
 
   test("dormant-skip: empty app_compose → A2 skips, mock gate resolves", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     // Non-empty compose_hash but EMPTY app_compose (older node / no /info) — A2
     // must NOT throw; verify completes through to the mock gate.
     const bundle = makeBundle(fixture.report_data, {
@@ -301,11 +294,9 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
     await expect(
       verifyDstackAttestation(bundle, makePolicy({ ...validBinding, allowInsecureMock: true })),
     ).resolves.toBeUndefined();
-    warn.mockRestore();
   });
 
   test("dormant-skip: empty compose_hash (simulator) → A2 skips, no throw", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     // Non-empty app_compose but EMPTY compose_hash — the dstack simulator's
     // --allow-empty-compose-hash posture. A2 must dormant-skip, NOT throw.
     const bundle = makeBundle(fixture.report_data, {
@@ -315,17 +306,14 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
     await expect(
       verifyDstackAttestation(bundle, makePolicy({ ...validBinding, allowInsecureMock: true })),
     ).resolves.toBeUndefined();
-    warn.mockRestore();
   });
 
   test("dormant-skip: absent compose_hash (undefined) → A2 skips, no throw", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     // Non-empty app_compose, compose_hash field entirely absent — A2 dormant-skips.
     const bundle = makeBundle(fixture.report_data, { app_compose: appCompose });
     await expect(
       verifyDstackAttestation(bundle, makePolicy({ ...validBinding, allowInsecureMock: true })),
     ).resolves.toBeUndefined();
-    warn.mockRestore();
   });
 
   test("ordering: CHK-A1 still throws BEFORE CHK-A2 even when compose is self-inconsistent", async () => {

@@ -6,9 +6,9 @@ Frozen contract for dstack / Intel TDX attestation verification.
 >
 > `verifyDstackAttestation` is currently a **mock**. Real DCAP/RTMR/compose-hash
 > verification arrives in a future release. Setting `allowInsecureMock: true` **bypasses
-> all chain-of-trust checks** — it is a deliberate escape hatch that prints a
-> loud `console.warn` on EVERY call and is removed once real verification lands.
-> Never rely on the mock for production attestation security.
+> all chain-of-trust checks** — it is a deliberate escape hatch that resolves
+> `void` silently (the SDK prints nothing) and is removed once real
+> verification lands. Never rely on the mock for production attestation security.
 
 ## What this is
 
@@ -32,9 +32,9 @@ Mock semantics:
 
 - `policy.allowInsecureMock !== true` (absent or `false`) → **throws**
   `AttestationError("CHK-MOCK", ...)` (default-deny).
-- `policy.allowInsecureMock === true` → resolves void + prints a loud
-  `console.warn` banner stating attestation was NOT verified — on EVERY call
-  (not memoized).
+- `policy.allowInsecureMock === true` → resolves `void` **silently** (the SDK
+  prints nothing). It bypasses the hardware root of trust as an explicit caller
+  opt-in (fail-closed by default).
 
 ### Types
 
@@ -107,13 +107,13 @@ quote-signature + RTMR3 replay), **never** CHK-A1 or CHK-A2:
 - **absent / `false`** → after A1+A2 pass, throws `AttestationError("CHK-MOCK")`
   (fail-closed). Only the literal boolean `true` opens the hatch; any other
   truthy value (`1`, `"true"`, `{}`, …) still throws.
-- **`true`** → after A1+A2 pass, resolves `void` and prints a loud `console.warn`
-  partial-verification banner on **every** call (not memoized). It signals that
-  CHK-A1/A2 ran but the hardware root of trust did **not** — proving
-  "signed + bound + fresh", **not** "attested to hardware".
+- **`true`** → after A1+A2 pass, resolves `void` **silently** (the SDK prints
+  nothing). CHK-A1/A2 ran but the hardware root of trust did **not** — proving
+  "signed + bound + fresh", **not** "attested to hardware". Bypassing the
+  hardware root of trust is an explicit caller opt-in (fail-closed by default).
 
 The contract stays `Promise<void>`; there is no separate status surface —
-partial verification is signalled by the warning banner alone.
+partial verification carries no signal beyond the silent resolve.
 
 ### `CHK-*` checklist
 
@@ -141,6 +141,6 @@ pnpm --filter '@ankr.com/dstack-verify' test
 
 - `tests/contract.test.ts` — exports, `AttestationError extends VerificationError`,
   completeness of `CHK-A1..G3`.
-- `tests/mock.test.ts` — fail-closed mock (throws without the flag, resolves with
-  it, warns on every call).
+- `tests/mock.test.ts` — fail-closed mock (throws without the flag, resolves
+  silently with it).
 - `tests/helpers.test.ts` — helper stubs throw "not implemented".

@@ -28,10 +28,10 @@
 // deferred to a future release.
 //
 // After A2, the mock gate still governs the NOT-yet-built DCAP quote-signature +
-// RTMR3-replay layers (VPKG-03/VPKG-04): default (allowInsecureMock absent/false)
-// throws AttestationError("CHK-MOCK"); allowInsecureMock === true resolves void with
-// a prominent console.warn banner on EVERY call (not memoized — a mock must never
-// silently masquerade as real verification in prod logs).
+// RTMR3-replay layers: default (allowInsecureMock absent/false) throws
+// AttestationError("CHK-MOCK"); allowInsecureMock === true resolves void
+// silently (the SDK never prints; bypassing the hardware root of trust is the
+// caller's explicit opt-in).
 
 // computeComposeHash is imported from core's `./compose` LEAF subpath (not the
 // main barrel): the barrel re-exports trusted-verifier.ts which imports
@@ -97,12 +97,6 @@ export async function verifyDstackAttestation(
 
   // --- Mock gate: covers the unimplemented DCAP/RTMR3 layers only ---
   if (policy.allowInsecureMock === true) {
-    console.warn(
-      "[dstack-verify] PARTIAL VERIFICATION: CHK-A1 (report_data key/nonce binding) " +
-        "WAS verified, but the DCAP quote-signature and RTMR3 replay were NOT. " +
-        "allowInsecureMock=true bypasses the hardware root of trust — this proves " +
-        '"signed + bound + fresh", NOT "attested to hardware" (future work).',
-    );
     return;
   }
   throw new AttestationError(
