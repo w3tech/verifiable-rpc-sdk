@@ -4,6 +4,7 @@
   "type": "module",
   "description": "Transport-agnostic Ed25519 verification primitives for Ankr's verifiable RPC — pre-image, signature verify, attestation, compose.",
   "license": "Apache-2.0",
+  "author": "Web3 Technologies, Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/w3tech/verifiable-rpc-sdk.git",
@@ -27,7 +28,8 @@
     "dist",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "sideEffects": false,
   "publishConfig": {

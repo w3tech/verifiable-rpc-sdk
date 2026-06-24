@@ -4,6 +4,7 @@
   "type": "module",
   "description": "viem drop-in for Ankr's verifiable RPC — vrpcHttp custom transport verifies every JSON-RPC response (Ed25519) before parse, fail-closed.",
   "license": "Apache-2.0",
+  "author": "Web3 Technologies, Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/w3tech/verifiable-rpc-sdk.git",
@@ -22,7 +23,8 @@
     "dist",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "sideEffects": false,
   "publishConfig": {

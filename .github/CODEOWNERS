@@ -1,2 +1,5 @@
+# Default owners — requested for review on every pull request.
+* @fasashen @askolesov @memekas @Balevka
+
 # CI/CD workflow definitions require review from the listed owners.
 /.github/workflows/ @megatron757 @fasashen @fruit37
