@@ -157,12 +157,7 @@ export function buildVerifyPolicy(pubkeyHex: string, nonce: Uint8Array): VerifyP
  * (FLOW-05).
  */
 export class TrustedVerifier {
-  // Bounded, auto-evicting cache of verified pubkeys. TTL is a FIXED expiry from
-  // verify-time (updateAgeOnGet/Has = false → reads never extend it), matching the
-  // old `now + ttlMs` semantics; `.set()` re-applies the TTL on re-verify.
   private readonly cache: LRUCache<string, true>;
-  private readonly ttlMs: number;
-  private readonly maxEntries: number;
   // When ttlMs <= 0, caching is disabled so every call re-attests — preserving
   // the old `now + 0` semantics (an entry was never fresh). lru-cache instead
   // treats ttl: 0 as "no expiry" (cache forever) and rejects negative ttls, so
@@ -177,14 +172,13 @@ export class TrustedVerifier {
   private readonly fetchImpl: typeof fetch | undefined;
 
   constructor(opts: TrustedVerifierOptions) {
-    this.ttlMs = opts.pubkeyCacheTtlMs ?? DEFAULT_PUBKEY_CACHE_TTL_MS;
-    this.maxEntries = opts.pubkeyCacheMax ?? DEFAULT_PUBKEY_CACHE_MAX;
-    this.cachingDisabled = this.ttlMs <= 0;
+    const ttlMs = opts.pubkeyCacheTtlMs ?? DEFAULT_PUBKEY_CACHE_TTL_MS;
+    this.cachingDisabled = ttlMs <= 0;
     // A positive ttl is required when caching is enabled; the disabled branch
     // passes a dummy positive ttl that is never exercised (set/has are skipped).
     this.cache = new LRUCache<string, true>({
-      max: this.maxEntries,
-      ttl: this.cachingDisabled ? 1 : this.ttlMs,
+      max: opts.pubkeyCacheMax ?? DEFAULT_PUBKEY_CACHE_MAX,
+      ttl: this.cachingDisabled ? 1 : ttlMs,
       updateAgeOnGet: false,
       updateAgeOnHas: false,
     });
