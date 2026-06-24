@@ -1,60 +1,204 @@
-// Mock verifier behavior — VPKG-03/VPKG-04/TEST-01.
+// verifyDstackAttestation behavior — CHK-A1 binding (BIND-01..05) + the mock gate
+// (VPKG-03/VPKG-04) that still covers the unimplemented DCAP/RTMR3 layers.
 //
-// Fail-closed contract: verifyDstackAttestation throws AttestationError("CHK-MOCK")
-// unless policy.allowInsecureMock === true, in which case it resolves void and
-// emits a LOUD console.warn on EVERY call (not memoized). Mirrors the test
-// idiom in core/tests/errors.test.ts.
+// CHK-A1 runs FIRST and is UNCONDITIONAL: it shape-gates report_data, then binds
+// report_data[0:32]==expectedPubkey and report_data[32:64]==expectedNonce. A
+// mismatch throws AttestationError("CHK-A1") regardless of allowInsecureMock. After
+// A1 passes, the mock gate throws CHK-MOCK (default) or resolves+warns
+// (allowInsecureMock===true). Fixture: tests/fixtures/attestation-sample.json.
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test, vi } from "vitest";
 
-import { AttestationError, verifyDstackAttestation } from "../src/index";
-import type { VerifyPolicy } from "../src/types";
+import { AttestationError, parseReportData, verifyDstackAttestation } from "../src/index";
+import type { AttestationBundle, VerifyPolicy } from "../src/types";
 
-// The mock body never inspects the bundle — it branches only on
-// policy.allowInsecureMock, so a minimal cast is sufficient.
-const bundle = {} as never;
+const fixture = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL("./fixtures/attestation-sample.json", import.meta.url)),
+    "utf8",
+  ),
+) as { pubkey: string; nonce: string; report_data: string };
 
-describe("verifyDstackAttestation mock", () => {
-  test("throws AttestationError(CHK-MOCK) when allowInsecureMock is false", async () => {
-    await expect(
-      verifyDstackAttestation(bundle, { allowInsecureMock: false } as never),
-    ).rejects.toBeInstanceOf(AttestationError);
+// Minimal bundle/policy builders — only the fields CHK-A1 reads are populated;
+// the rest is cast through `unknown` (the package never inspects them here).
+function makeBundle(reportData: string): AttestationBundle {
+  return { quote: { report_data: reportData } } as unknown as AttestationBundle;
+}
+function makePolicy(p: {
+  expectedPubkey: string;
+  expectedNonce: string;
+  allowInsecureMock?: boolean;
+}): VerifyPolicy {
+  return {
+    binding: { expectedPubkey: p.expectedPubkey, expectedNonce: p.expectedNonce },
+    allowInsecureMock: p.allowInsecureMock,
+  } as unknown as VerifyPolicy;
+}
+
+const validBundle = makeBundle(fixture.report_data);
+const validBinding = { expectedPubkey: fixture.pubkey, expectedNonce: fixture.nonce };
+
+describe("parseReportData (CHK-A1 split)", () => {
+  test("splits 128-hex report_data into 0x-pubkey ‖ bare-nonce", () => {
+    const parsed = parseReportData(fixture.report_data);
+    expect(parsed.expectedPubkey).toBe(fixture.pubkey);
+    expect(parsed.expectedNonce).toBe(fixture.nonce);
+  });
+
+  test("accepts a 0x-prefixed report_data", () => {
+    const parsed = parseReportData(`0x${fixture.report_data}`);
+    expect(parsed.expectedPubkey).toBe(fixture.pubkey);
+    expect(parsed.expectedNonce).toBe(fixture.nonce);
+  });
+
+  test.each([
+    fixture.report_data.slice(0, 126), // too short
+    `${fixture.report_data}aa`, // too long
+    `${fixture.report_data.slice(0, 127)}z`, // non-hex char
+    "",
+  ])("throws CHK-A1 on malformed length/charset %#", (bad) => {
     try {
-      await verifyDstackAttestation(bundle, { allowInsecureMock: false } as never);
-      throw new Error("expected rejection");
+      parseReportData(bad);
+      throw new Error("expected throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AttestationError);
+      expect((e as AttestationError).chkId).toBe("CHK-A1");
+    }
+  });
+});
+
+describe("verifyDstackAttestation CHK-A1 binding", () => {
+  test("happy path: A1 passes, mock gate resolves with allowInsecureMock=true", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(
+      verifyDstackAttestation(
+        validBundle,
+        makePolicy({ ...validBinding, allowInsecureMock: true }),
+      ),
+    ).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  test("A1 passes then fail-closed CHK-MOCK when allowInsecureMock absent", async () => {
+    try {
+      await verifyDstackAttestation(validBundle, makePolicy(validBinding));
+      throw new Error("expected throw");
     } catch (e) {
       expect(e).toBeInstanceOf(AttestationError);
       expect((e as AttestationError).chkId).toBe("CHK-MOCK");
     }
   });
 
-  test("throws by default when allowInsecureMock is absent (default-deny)", async () => {
-    await expect(verifyDstackAttestation(bundle, {} as never)).rejects.toBeInstanceOf(
-      AttestationError,
-    );
+  // BIND-04: A1 throws even with allowInsecureMock=true.
+  test("tamper: wrong pubkey throws CHK-A1 even with allowInsecureMock=true", async () => {
+    const wrongPubkey = `0x${"cc".repeat(32)}`;
+    try {
+      await verifyDstackAttestation(
+        validBundle,
+        makePolicy({ ...validBinding, expectedPubkey: wrongPubkey, allowInsecureMock: true }),
+      );
+      throw new Error("expected throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AttestationError);
+      expect((e as AttestationError).chkId).toBe("CHK-A1");
+    }
   });
 
-  // Security boundary: only the literal boolean `true` may resolve. Pin that
-  // every truthy-but-not-true and falsy value still throws, so a regression to
-  // `==`/`Boolean(...)` (instead of strict `=== true`) fails loudly.
+  test("tamper: wrong nonce throws CHK-A1 even with allowInsecureMock=true", async () => {
+    const wrongNonce = "dd".repeat(32);
+    try {
+      await verifyDstackAttestation(
+        validBundle,
+        makePolicy({ ...validBinding, expectedNonce: wrongNonce, allowInsecureMock: true }),
+      );
+      throw new Error("expected throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AttestationError);
+      expect((e as AttestationError).chkId).toBe("CHK-A1");
+    }
+  });
+
+  test("tamper: wrong-length report_data throws CHK-A1 even with allowInsecureMock=true", async () => {
+    const shortRd = fixture.report_data.slice(0, 126);
+    try {
+      await verifyDstackAttestation(
+        makeBundle(shortRd),
+        makePolicy({ ...validBinding, allowInsecureMock: true }),
+      );
+      throw new Error("expected throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AttestationError);
+      expect((e as AttestationError).chkId).toBe("CHK-A1");
+    }
+  });
+
+  test("malformed expectedPubkey (missing 0x / wrong len) throws CHK-A1", async () => {
+    try {
+      await verifyDstackAttestation(
+        validBundle,
+        makePolicy({
+          ...validBinding,
+          expectedPubkey: fixture.pubkey.slice(2),
+          allowInsecureMock: true,
+        }),
+      );
+      throw new Error("expected throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AttestationError);
+      expect((e as AttestationError).chkId).toBe("CHK-A1");
+    }
+  });
+});
+
+describe("verifyDstackAttestation mock gate (post-A1)", () => {
+  test("throws CHK-MOCK when allowInsecureMock is false (A1 passed)", async () => {
+    try {
+      await verifyDstackAttestation(
+        validBundle,
+        makePolicy({ ...validBinding, allowInsecureMock: false }),
+      );
+      throw new Error("expected throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AttestationError);
+      expect((e as AttestationError).chkId).toBe("CHK-MOCK");
+    }
+  });
+
+  // Security boundary: only the literal boolean `true` resolves. Every
+  // truthy-but-not-true / falsy value still throws CHK-MOCK once A1 passes — a
+  // regression to `==`/`Boolean(...)` would fail loudly.
   test.each([
     1,
     "true",
     {},
     undefined,
     null,
-  ])("rejects (AttestationError) for truthy-but-not-true / absent allowInsecureMock=%p", async (v) => {
-    await expect(
-      verifyDstackAttestation(bundle, {
+  ])("throws CHK-MOCK for truthy-but-not-true / absent allowInsecureMock=%p", async (v) => {
+    try {
+      await verifyDstackAttestation(validBundle, {
+        binding: validBinding,
         allowInsecureMock: v,
-      } as unknown as VerifyPolicy),
-    ).rejects.toBeInstanceOf(AttestationError);
+      } as unknown as VerifyPolicy);
+      throw new Error("expected throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AttestationError);
+      expect((e as AttestationError).chkId).toBe("CHK-MOCK");
+    }
   });
 
   test("resolves with allowInsecureMock=true and warns on EVERY call (not memoized)", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await verifyDstackAttestation(bundle, { allowInsecureMock: true } as never);
-    await verifyDstackAttestation(bundle, { allowInsecureMock: true } as never);
+    await verifyDstackAttestation(
+      validBundle,
+      makePolicy({ ...validBinding, allowInsecureMock: true }),
+    );
+    await verifyDstackAttestation(
+      validBundle,
+      makePolicy({ ...validBinding, allowInsecureMock: true }),
+    );
     expect(warn).toHaveBeenCalledTimes(2);
     warn.mockRestore();
   });

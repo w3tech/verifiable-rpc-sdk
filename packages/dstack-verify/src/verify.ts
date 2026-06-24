@@ -1,35 +1,68 @@
 // verifyDstackAttestation — the public attestation-verifier entrypoint. Its
-// signature is frozen in the contract; this file holds its body. In v5.0 the
-// body is a fail-closed MOCK; v6.0 replaces it IN PLACE with real
-// DCAP/RTMR/compose-hash/reportData verification, touching nothing outside this
-// package.
+// signature is frozen in the contract; this file holds its body.
 //
-// Fail-closed (VPKG-03/VPKG-04): the default path (allowInsecureMock absent or
-// false) THROWS AttestationError("CHK-MOCK"). The verifier resolves void ONLY
-// when policy.allowInsecureMock === true, and then it emits a prominent
-// console.warn banner on EVERY call (not memoized — the adapters' "fire once"
-// pattern is deliberately NOT copied here; a mock must never silently masquerade
-// as real verification in prod logs). The body never inspects `bundle` in v5.0 —
-// it branches solely on policy.allowInsecureMock.
+// CHK-A1 (key/nonce binding) runs FIRST and is UNCONDITIONAL: it shape-gates the
+// quote's report_data, then proves report_data[0:32] == policy.binding.expectedPubkey
+// (the Ed25519 key the SDK verifies vRPC-Signature against — swapped-key/wrong-node
+// defence) and report_data[32:64] == policy.binding.expectedNonce (freshness /
+// anti-replay). A mismatch ALWAYS throws AttestationError("CHK-A1"), regardless of
+// allowInsecureMock. This is local + collateral-free: it proves "signed + bound +
+// fresh", NOT "attested to hardware" (a fabricated quote can carry arbitrary
+// report_data — A1 is only meaningful together with the deferred DCAP/RTMR layers).
+//
+// After A1, the mock gate still governs the NOT-yet-built DCAP quote-signature +
+// RTMR3-replay layers (VPKG-03/VPKG-04): default (allowInsecureMock absent/false)
+// throws AttestationError("CHK-MOCK"); allowInsecureMock === true resolves void with
+// a prominent console.warn banner on EVERY call (not memoized — a mock must never
+// silently masquerade as real verification in prod logs).
 
 import { AttestationError } from "./errors";
 import type { AttestationBundle, VerifyPolicy } from "./types";
+import { parseReportData } from "./verify-steps";
+
+/** Bare lowercase hex for comparison (strip optional `0x`, lowercase). */
+function normHex(s: string): string {
+  return s.replace(/^0x/i, "").toLowerCase();
+}
 
 export async function verifyDstackAttestation(
   bundle: AttestationBundle,
   policy: VerifyPolicy,
 ): Promise<void> {
-  void bundle;
+  // --- CHK-A1: report_data → pubkey/nonce binding (unconditional, fail-closed) ---
+  if (!/^0x[0-9a-fA-F]{64}$/.test(policy.binding.expectedPubkey)) {
+    throw new AttestationError(
+      "CHK-A1",
+      "policy.binding.expectedPubkey must be 0x + 64 hex chars (32-byte Ed25519 key)",
+    );
+  }
+  // parseReportData also shape-gates report_data to exactly 128 hex chars (BIND-01).
+  const parsed = parseReportData(bundle.quote.report_data);
+  if (normHex(parsed.expectedPubkey) !== normHex(policy.binding.expectedPubkey)) {
+    throw new AttestationError(
+      "CHK-A1",
+      "report_data[0:32] does not match expected signing pubkey (swapped-key / wrong-node)",
+    );
+  }
+  if (normHex(parsed.expectedNonce) !== normHex(policy.binding.expectedNonce)) {
+    throw new AttestationError(
+      "CHK-A1",
+      "report_data[32:64] does not match expected nonce (possible replay)",
+    );
+  }
+
+  // --- Mock gate: covers the unimplemented DCAP/RTMR3 layers only ---
   if (policy.allowInsecureMock === true) {
     console.warn(
-      "[dstack-verify] INSECURE MOCK: attestation was NOT verified. " +
-        "allowInsecureMock=true bypasses all chain-of-trust checks. " +
-        "v5.0 provides NO real attestation security (real verification lands in v6.0).",
+      "[dstack-verify] PARTIAL VERIFICATION: CHK-A1 (report_data key/nonce binding) " +
+        "WAS verified, but the DCAP quote-signature and RTMR3 replay were NOT. " +
+        "allowInsecureMock=true bypasses the hardware root of trust — this proves " +
+        '"signed + bound + fresh", NOT "attested to hardware" (lands in v7.0).',
     );
     return;
   }
   throw new AttestationError(
     "CHK-MOCK",
-    "real attestation verification is not implemented in v5.0; set allowInsecureMock=true to bypass (INSECURE)",
+    "DCAP quote-signature / RTMR3 verification is not implemented; set allowInsecureMock=true to bypass the hardware root of trust (INSECURE)",
   );
 }

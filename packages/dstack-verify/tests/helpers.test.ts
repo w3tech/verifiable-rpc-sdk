@@ -6,7 +6,13 @@
 
 import { describe, expect, test } from "vitest";
 
-import { computeComposeHash, extractKeyProvider, parseReportData, replayRtmr } from "../src/index";
+import {
+  AttestationError,
+  computeComposeHash,
+  extractKeyProvider,
+  parseReportData,
+  replayRtmr,
+} from "../src/index";
 
 describe("v6.0 helper stubs throw in v5.0", () => {
   test("replayRtmr throws not-implemented", () => {
@@ -17,8 +23,17 @@ describe("v6.0 helper stubs throw in v5.0", () => {
     expect(() => computeComposeHash("")).toThrow("not implemented in v5.0");
   });
 
-  test("parseReportData throws not-implemented", () => {
-    expect(() => parseReportData("")).toThrow("not implemented in v5.0");
+  // parseReportData is implemented (CHK-A1) — it no longer stubs out. Malformed
+  // input throws AttestationError("CHK-A1"); the happy-path split is covered in
+  // verify.test.ts.
+  test("parseReportData throws AttestationError(CHK-A1) on malformed input", () => {
+    try {
+      parseReportData("");
+      throw new Error("expected throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AttestationError);
+      expect((e as AttestationError).chkId).toBe("CHK-A1");
+    }
   });
 
   test("extractKeyProvider throws not-implemented", () => {
