@@ -271,7 +271,7 @@ Every verification failure throws a subclass of the abstract `VerificationError`
 | `MalformedAttestationResponse` | `"MalformedAttestationResponse"`| `/attestation` body off-contract. `.reason`                      |
 | `MalformedInfoResponse`        | `"MalformedInfoResponse"`       | `/info` body off-contract. `.reason`                             |
 | `ComposeSourceNotImplemented`  | `"ComposeSourceNotImplemented"` | `RegistryComposeSource` used before the registry lands. `.reason` |
-| `AttestationNodeNotFoundError` | `"AttestationNodeNotFound"`     | Shark returned 404 for the targeted `node_id`. `.nodeId`         |
+| `AttestationNodeNotFoundError` | `"AttestationNodeNotFound"`     | The RPC gateway returned 404 for the targeted `node_id`. `.nodeId` |
 | `AttestationCorrelationError`  | `"AttestationCorrelation"`      | Attestation pubkey ≠ response signer. `.expectedPubkey/.actualPubkey` |
 
 ```ts
@@ -316,5 +316,5 @@ from the ethers provider is the same class you catch here.
 ## Example
 
 See `examples/04-end-to-end.ts` (full call + verify + attestation) and
-`examples/07-attestation-via-shark.ts` (the `anchorTrust` flow) at the repo root.
-Run with `pnpm example:04-end-to-end` / `pnpm example:07-attestation-via-shark`.
+`examples/07-attestation-via-gateway.ts` (the `anchorTrust` flow) at the repo root.
+Run with `pnpm example:04-end-to-end` / `pnpm example:07-attestation-via-gateway`.

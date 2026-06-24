@@ -66,7 +66,7 @@ export interface VerifiedResponse<T = unknown> {
   result: T;
   /**
    * The serving node's id from the `vRPC-NodeId` response header, used to fetch
-   * that node's attestation via shark. Absent when the proxy is older and does
+   * that node's attestation via the gateway. Absent when the proxy is older and does
    * not emit the header.
    */
   nodeId?: string;

@@ -9,7 +9,7 @@ import {
 } from "../src/errors";
 import { buildPreImage } from "../src/preimage";
 
-const SHARK_BASE = "https://rpc.ankr.com";
+const RPC_BASE = "https://rpc.ankr.com";
 const CHAIN = "arbitrum";
 const CHAIN_ID = 42161n;
 const TEST_SEED = new Uint8Array(32).fill(0x42);
@@ -25,7 +25,7 @@ function toHex(bytes: Uint8Array): string {
   return out;
 }
 
-interface SharkScenario {
+interface GatewayScenario {
   /** Set the `vRPC-NodeId` header on the signed RPC POST response. */
   nodeIdHeader?: string;
   /** HTTP status for the attestation GET (404 → AttestationNodeNotFoundError). */
@@ -34,7 +34,7 @@ interface SharkScenario {
   attestationSeed?: Uint8Array;
 }
 
-interface SharkMockState {
+interface GatewayMockState {
   fetch: typeof fetch;
   urls: string[];
 }
@@ -47,8 +47,8 @@ interface SharkMockState {
  *   2. GET  <base>/<chain>_vrpc/attestation → an attestation body whose `pubkey`
  *      either matches (correlation OK) or differs (correlation fails).
  */
-function installSharkMock(scenario: SharkScenario = {}): SharkMockState {
-  const state: SharkMockState = { fetch: (() => {}) as unknown as typeof fetch, urls: [] };
+function installGatewayMock(scenario: GatewayScenario = {}): GatewayMockState {
+  const state: GatewayMockState = { fetch: (() => {}) as unknown as typeof fetch, urls: [] };
   const nowMs = BigInt(Date.now());
 
   const impl = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
@@ -120,9 +120,9 @@ describe("anchorTrust", () => {
   });
 
   test("resolvesOnPubkeyMatch", async () => {
-    const mock = installSharkMock({ nodeIdHeader: "node-abc" });
+    const mock = installGatewayMock({ nodeIdHeader: "node-abc" });
     const summary = await anchorTrust({
-      rpcBaseUrl: SHARK_BASE,
+      rpcBaseUrl: RPC_BASE,
       chain: CHAIN,
       chainId: CHAIN_ID,
       fetch: mock.fetch,
@@ -138,11 +138,11 @@ describe("anchorTrust", () => {
 
   test("rejectsWithCorrelationErrorOnPubkeyMismatch", async () => {
     // Attestation reports OTHER_SEED's pubkey — must NOT equal the RPC signer's.
-    const mock = installSharkMock({ nodeIdHeader: "node-abc", attestationSeed: OTHER_SEED });
+    const mock = installGatewayMock({ nodeIdHeader: "node-abc", attestationSeed: OTHER_SEED });
     let caught: unknown;
     try {
       await anchorTrust({
-        rpcBaseUrl: SHARK_BASE,
+        rpcBaseUrl: RPC_BASE,
         chain: CHAIN,
         chainId: CHAIN_ID,
         fetch: mock.fetch,
@@ -155,11 +155,11 @@ describe("anchorTrust", () => {
   });
 
   test("rejectsWithNodeNotFoundOn404", async () => {
-    const mock = installSharkMock({ nodeIdHeader: "stale-node", attestationStatus: 404 });
+    const mock = installGatewayMock({ nodeIdHeader: "stale-node", attestationStatus: 404 });
     let caught: unknown;
     try {
       await anchorTrust({
-        rpcBaseUrl: SHARK_BASE,
+        rpcBaseUrl: RPC_BASE,
         chain: CHAIN,
         chainId: CHAIN_ID,
         fetch: mock.fetch,
@@ -176,11 +176,11 @@ describe("anchorTrust", () => {
 
   test("rejectsWithTypedErrorWhenNodeIdAbsent", async () => {
     // Older proxy: no vRPC-NodeId header → boot-time anchor cannot target a node.
-    const mock = installSharkMock({});
+    const mock = installGatewayMock({});
     let caught: unknown;
     try {
       await anchorTrust({
-        rpcBaseUrl: SHARK_BASE,
+        rpcBaseUrl: RPC_BASE,
         chain: CHAIN,
         chainId: CHAIN_ID,
         fetch: mock.fetch,
@@ -197,10 +197,10 @@ describe("anchorTrust", () => {
   });
 
   test("usesFreshNonceFromInjectableSource", async () => {
-    const mock = installSharkMock({ nodeIdHeader: "node-abc" });
+    const mock = installGatewayMock({ nodeIdHeader: "node-abc" });
     let nonceCalls = 0;
     await anchorTrust({
-      rpcBaseUrl: SHARK_BASE,
+      rpcBaseUrl: RPC_BASE,
       chain: CHAIN,
       chainId: CHAIN_ID,
       fetch: mock.fetch,
@@ -220,9 +220,9 @@ describe("anchorTrust", () => {
   test("acceptsNumberChainIdWithoutPrecisionLoss", async () => {
     // anchorTrust accepts number|bigint; coercion must not round-trip through a
     // lossy number for the verify pre-image.
-    const mock = installSharkMock({ nodeIdHeader: "node-abc" });
+    const mock = installGatewayMock({ nodeIdHeader: "node-abc" });
     const summary = await anchorTrust({
-      rpcBaseUrl: SHARK_BASE,
+      rpcBaseUrl: RPC_BASE,
       chain: CHAIN,
       chainId: 42161,
       fetch: mock.fetch,

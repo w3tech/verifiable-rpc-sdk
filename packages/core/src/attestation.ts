@@ -56,8 +56,8 @@ export interface FetchAttestationOptions {
   nonce: Uint8Array;
   /**
    * Serving node id (`vRPC-NodeId`). Added as `node_id` when present, OMITTED when
-   * absent. Absent + behind shark → shark can't route → error (fail-closed, catches
-   * a "behind shark but no routing id" misconfig); absent + direct node →
+   * absent. Absent + behind the gateway → the gateway can't route → error (fail-closed, catches
+   * a "behind the gateway but no routing id" misconfig); absent + direct node →
    * `/attestation?nonce=…` works (the node is identified by the connection). NodeId
    * is attestation ROUTING only — never part of signature verification (the trust
    * unit is the `vRPC-Pubkey` the signature is checked against).
@@ -81,7 +81,7 @@ export interface FetchAttestationOptions {
  * network call. The query nonce is bare hex (no `0x` prefix), matching the
  * sidecar's canonical wire convention.
  *
- * A `404` is terminal (stale/unknown node id, or a shark route miss) and throws
+ * A `404` is terminal (stale/unknown node id, or a gateway route miss) and throws
  * {@link AttestationNodeNotFoundError} BEFORE parsing — the SDK does NOT retry or
  * fall back to another node. This route is unsigned by contract, so no `vRPC-*`
  * verification runs here; a malformed body throws {@link MalformedAttestationResponse}.
@@ -103,7 +103,7 @@ export async function fetchAttestation(opts: FetchAttestationOptions): Promise<A
   const fetchImpl = opts.fetch ?? globalThis.fetch;
   const resp = await fetchImpl(target, { headers });
 
-  // Stale/unknown node id (or shark route miss) — terminal, no fallback or retry.
+  // Stale/unknown node id (or gateway route miss) — terminal, no fallback or retry.
   if (resp.status === 404) {
     throw new AttestationNodeNotFoundError(opts.nodeId ?? "(no node_id)");
   }

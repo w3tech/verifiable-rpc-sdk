@@ -18,7 +18,7 @@
 // fetch reuses `fetchAttestation`. This file orchestrates those
 // existing primitives and maps their errors — it implements none of the crypto.
 //
-// Mirrors the proven v3.1 flow in examples/07-attestation-via-shark.ts.
+// Mirrors the proven v3.1 flow in examples/07-attestation-via-gateway.ts.
 
 import { fetchAttestation, verifyAttestationCorrelation } from "./attestation";
 import { MissingHeader } from "./errors";
@@ -63,7 +63,7 @@ function defaultNonce(): Uint8Array {
 
 /**
  * Confirm the serving node's attestation pubkey matches the pubkey that signed a
- * fresh RPC response, end-to-end through shark. Resolves with the correlated
+ * fresh RPC response, end-to-end through the Ankr RPC gateway. Resolves with the correlated
  * `{ nodeId, pubkey }` on success; throws a `VerificationError`-family member on
  * any failure (fail-closed). Adapter-neutral — call after constructing either a
  * `VrpcProvider` (ethers) or a `vrpcHttp` client (viem).
@@ -71,7 +71,7 @@ function defaultNonce(): Uint8Array {
 export async function anchorTrust(opts: AnchorTrustOptions): Promise<AnchorTrustResult> {
   const vrpcUrl = `${opts.rpcBaseUrl}/${opts.chain}_vrpc`;
 
-  // 1. One signed read through shark. A successful return IS the Ed25519
+  // 1. One signed read through the gateway. A successful return IS the Ed25519
   //    verification (VerifierClient throws BadSignature otherwise) — no copied
   //    crypto. eth_blockNumber is cheap and side-effect-free.
   const client = new VerifierClient(vrpcUrl, {
@@ -90,7 +90,7 @@ export async function anchorTrust(opts: AnchorTrustOptions): Promise<AnchorTrust
   }
   const nodeId = verified.nodeId;
 
-  // 3. Fresh 32-byte nonce, then fetch THIS node's attestation through shark.
+  // 3. Fresh 32-byte nonce, then fetch THIS node's attestation through the gateway.
   const nonceSource = opts.nonceSource ?? defaultNonce;
   const nonce = nonceSource();
   const attestation = await fetchAttestation({

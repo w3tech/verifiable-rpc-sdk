@@ -11,7 +11,7 @@ import {
 } from "../src/trusted-verifier";
 import type { ResponseHeaders } from "../src/verify";
 
-const SHARK_BASE = "https://rpc.ankr.com";
+const RPC_BASE = "https://rpc.ankr.com";
 const CHAIN = "arbitrum";
 const CHAIN_ID = 42161n;
 const TEST_SEED = new Uint8Array(32).fill(0x42);
@@ -133,7 +133,7 @@ function baseOpts(overrides: Partial<TrustedVerifierOptions> = {}): TrustedVerif
   return {
     chainId: CHAIN_ID,
     replayWindowMs: 60_000,
-    attestationUrl: `${SHARK_BASE}/${CHAIN}_vrpc/attestation`,
+    attestationUrl: `${RPC_BASE}/${CHAIN}_vrpc/attestation`,
     nonceSource: () => NONCE,
     ...overrides,
   };

@@ -71,7 +71,7 @@ export interface VerifiedPair {
   responseBytes: Uint8Array;
   /**
    * The serving node's id from the `vRPC-NodeId` response header, used to fetch
-   * that node's attestation via shark. Absent when the proxy is older and does
+   * that node's attestation via the gateway. Absent when the proxy is older and does
    * not emit the header.
    */
   nodeId?: string;
@@ -160,7 +160,7 @@ export async function verifyResponse(
   if (tsRaw === null) {
     throw new MissingHeader(TIMESTAMP_HEADER);
   }
-  // Optional — older shark proxies omit it, in which case nodeId stays absent.
+  // Optional — older proxies omit it, in which case nodeId stays absent.
   const nodeId = getHeader(responseHeaders, NODE_ID_HEADER);
 
   // 5. Header validate — bad shape -> MalformedHeader.

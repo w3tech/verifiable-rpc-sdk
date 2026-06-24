@@ -154,7 +154,7 @@ to set and no opt-out — verification is fail-closed. The chainId bootstrap
 always stays on plain `verifyResponse`.
 
 The serving node id (`vRPC-NodeId`) is **optional**: it is included in the
-attestation fetch when the response carries it and omitted when absent. A shark
+attestation fetch when the response carries it and omitted when absent. A gateway
 route that requires a `node_id` but receives none fails to route — the fetch
 errors and propagates (fail-closed).
 
@@ -186,7 +186,7 @@ await provider.getBalance("0x0000000000000000000000000000000000000000");
 
 After constructing the provider, optionally call `anchorTrust` **once** at
 startup to confirm the serving node's attestation pubkey == the response
-signer's pubkey, end-to-end through shark. It is adapter-neutral, does **not**
+signer's pubkey, end-to-end through the Ankr RPC gateway. It is adapter-neutral, does **not**
 alter the (sync) constructor, and **throws a `VerificationError`-family member on
 failure** (fail-closed).
 
@@ -261,11 +261,11 @@ try {
 ## Runnable example
 
 [`examples/08-vrpc-ethers-verified-read.ts`](../../examples/08-vrpc-ethers-verified-read.ts)
-does a real verified read + `anchorTrust` correlation through a stage shark
+does a real verified read + `anchorTrust` correlation through a staging Ankr RPC gateway
 `arbitrum_vrpc` route. It is an operator step (needs live creds via env):
 
 ```sh
-SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… \
+ANKR_STAGE_URL=… ANKR_STAGE_TDX_TEST_KEY=… \
   pnpm example:08-vrpc-ethers-verified-read
 ```
 

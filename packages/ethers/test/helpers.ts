@@ -114,7 +114,7 @@ export interface AttMockState {
  * TEST_SEED the RPC responses are signed with, so the seam's pubkey correlation
  * passes; the mock verifier (allowInsecureMock) then resolves.
  *
- * `requireNodeId` mimics a shark route that can only resolve WITH a `node_id`
+ * `requireNodeId` mimics a gateway route that can only resolve WITH a `node_id`
  * query param: a fetch lacking `node_id` returns 404 → the seam fails closed
  * (exercises the no-node_id path). Counts how many times `/attestation` is hit.
  */
@@ -124,7 +124,7 @@ export function installAttestationMock(opts: { requireNodeId?: boolean } = {}): 
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/attestation")) {
       state.attGetCount += 1;
-      // Shark-style routing: without a node_id the route cannot resolve → 404,
+      // Gateway-style routing: without a node_id the route cannot resolve → 404,
       // which fetchAttestation maps to AttestationNodeNotFoundError (fail-closed).
       if (opts.requireNodeId === true && !url.includes("node_id=")) {
         return new Response("not found", { status: 404 });

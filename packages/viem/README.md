@@ -43,7 +43,7 @@ bun add @ankr.com/vrpc-viem viem
 import { createPublicClient, http } from "viem";
 
 const client = createPublicClient({
-  transport: http("https://your-shark/arbitrum_vrpc"),
+  transport: http("https://rpc.ankr.com/arbitrum_vrpc"),
 });
 
 // After — pass the PLAIN route; the SDK appends `_vrpc` (and derives the
@@ -55,14 +55,14 @@ import { vrpcHttp } from "@ankr.com/vrpc-viem";
 
 const client = createPublicClient({
   chain: arbitrum, // chain.id is bound into the signed pre-image (pins it)
-  transport: vrpcHttp("https://your-shark/arbitrum", {
-    headers: { "x-api-key": process.env.SHARK_API_KEY! },
+  transport: vrpcHttp("https://rpc.ankr.com/arbitrum", {
+    headers: { "x-api-key": process.env.ANKR_API_KEY! },
   }),
 });
 
 // Or bare (no chain → derives chainId from a SIGNED, self-consistently-verified eth_chainId):
 const bareClient = createPublicClient({
-  transport: vrpcHttp("https://your-shark/arbitrum"),
+  transport: vrpcHttp("https://rpc.ankr.com/arbitrum"),
 });
 
 // Unchanged action code — the returned value IS proof of verification.
@@ -106,7 +106,7 @@ export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleT
 | Option           | Type                                                          | Default                | Notes |
 |------------------|---------------------------------------------------------------|------------------------|-------|
 | `replayWindowMs` | `number`                                                      | vrpc-core default (60s)| Forwarded to `verifyResponse`. Omit in production. `0` only works in tests that inject `nowMs`; in production it always rejects on clock skew. |
-| `headers`        | `Record<string, string>`                                      | —                      | Applied to BOTH the JSON-RPC POST and the internal attestation fetch (e.g. `x-api-key`, or the shark `chain_vrpc` route header) — a single auth set here covers both legs. `content-type: application/json` is always set by the transport. |
+| `headers`        | `Record<string, string>`                                      | —                      | Applied to BOTH the JSON-RPC POST and the internal attestation fetch (e.g. `x-api-key`, or the gateway `chain_vrpc` route header) — a single auth set here covers both legs. `content-type: application/json` is always set by the transport. |
 | `timeout`        | `number`                                                      | client-injected, else `10_000` | Per-request HTTP timeout (ms), applied to the own `fetch` as `AbortSignal.timeout` (parity with viem `http()`). |
 | `fetchFn`        | `(url: string, init: RequestInit) => Promise<Response>`       | global `fetch`         | Injectable fetch seam (mirrors viem `http`'s `fetchFn`). Hook for a routing fetch wrapper or offline tests. |
 
@@ -134,7 +134,7 @@ always stays on plain `verifyResponse`. The existing `headers` and `fetchFn` are
 call — so the pubkey cache lives for the transport lifetime).
 
 The serving node id (`vRPC-NodeId`) is **optional**: it is included in the
-attestation fetch when the response carries it and omitted when absent. A shark
+attestation fetch when the response carries it and omitted when absent. A gateway
 route that requires a `node_id` but receives none fails to route — the fetch
 errors and propagates (fail-closed).
 
@@ -155,7 +155,7 @@ attestation GET — which is also the offline test/example seam.
 const client = createPublicClient({
   chain: arbitrum, // chain.id pins the chain (skips the bootstrap)
   transport: vrpcHttp("https://rpc.ankr.com/arbitrum", {
-    headers: { "x-api-key": process.env.SHARK_API_KEY! }, // RPC + attestation auth
+    headers: { "x-api-key": process.env.ANKR_API_KEY! }, // RPC + attestation auth
     pubkeyCacheTtlMs: 3_600_000,       // 1h (default)
   }),
 });
@@ -271,7 +271,7 @@ the ethers adapter's stance.
 
 `anchorTrust` is an adapter-neutral, **opt-in** helper from
 `@ankr.com/vrpc-core`. Call it **once at startup**, after constructing the
-client. It does a fresh signed read through shark, fetches the serving node's
+client. It does a fresh signed read through the Ankr RPC gateway, fetches the serving node's
 attestation by `vRPC-NodeId`, and correlates that attestation pubkey against
 the response signer — fail-closed (throws a `VerificationError`-family member on
 mismatch / stale node / missing header). It does **not** alter the transport,
@@ -284,7 +284,7 @@ const anchor = await anchorTrust({
   rpcBaseUrl: "https://rpc.ankr.com", // no trailing slash
   chain: "arbitrum",               // builds the <chain>_vrpc route
   chainId: 42161,
-  headers: { "x-api-key": process.env.SHARK_API_KEY! },
+  headers: { "x-api-key": process.env.ANKR_API_KEY! },
 });
 // anchor.nodeId, anchor.pubkey (0x + 64 hex) — pubkey == attestation == response signer
 ```
@@ -294,13 +294,13 @@ const anchor = await anchorTrust({
 ## Runnable example
 
 `examples/09-vrpc-viem-verified-read.ts` builds a `createPublicClient` with
-`vrpcHttp`, does a real verified `getBalance` / `getBlockNumber` through a stage
-shark `arbitrum_vrpc` route, then calls `anchorTrust`. It is an operator step —
+`vrpcHttp`, does a real verified `getBalance` / `getBlockNumber` through a staging
+Ankr RPC gateway `arbitrum_vrpc` route, then calls `anchorTrust`. It is an operator step —
 the staging URL + x-api-key are supplied via env **by name only** (never
 hardcoded or printed):
 
 ```sh
-SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… \
+ANKR_STAGE_URL=… ANKR_STAGE_TDX_TEST_KEY=… \
   pnpm example:09-vrpc-viem-verified-read
 ```
 

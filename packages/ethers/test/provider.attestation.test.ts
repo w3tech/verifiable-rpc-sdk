@@ -7,7 +7,7 @@
 //   - an unknown signing pubkey → the attestation GET is hit ONCE, the mock
 //     verifier resolves, the call returns the decoded value, and a second call
 //     within TTL skips the fetch (cache proof).
-//   - a signed response WITHOUT `vRPC-NodeId` against a shark-style route that
+//   - a signed response WITHOUT `vRPC-NodeId` against a gateway-style route that
 //     requires `node_id` → the attestation fetch 404s → fail-closed (the
 //     no-node_id path: the endpoint decides, the error propagates).
 //   - a signed response WITHOUT `vRPC-NodeId` against a direct node (the route
@@ -61,8 +61,8 @@ describe("VrpcProvider always-on attestation E2E", () => {
     expect(mock.attGetCount).toBe(1); // cache hit → no extra attestation fetch
   });
 
-  test("missingNodeIdShark: signed response without vRPC-NodeId against a shark route fails closed", async () => {
-    // Shark route requires `node_id`; the signed response carries none → the
+  test("missingNodeIdGateway: signed response without vRPC-NodeId against a gateway route fails closed", async () => {
+    // Gateway route requires `node_id`; the signed response carries none → the
     // attestation fetch lacks `node_id` → 404 → AttestationNodeNotFoundError
     // propagates (fail-closed; no unverified data returned).
     const mock = installAttestationMock({ requireNodeId: true });
@@ -84,7 +84,7 @@ describe("VrpcProvider always-on attestation E2E", () => {
   test("connectionAuthReachesAttestation: x-api-key set on the FetchRequest authenticates the attestation leg", async () => {
     // Regression: the auth header set on the RPC connection (FetchRequest) MUST
     // also reach the attestation GET — parity with viem's `headers`. Without the
-    // fix the attestation leg went out unauthenticated and a shark route rejected
+    // fix the attestation leg went out unauthenticated and a gateway route rejected
     // it. Capture the headers the attestation fetch receives and assert the key.
     let attHeaders: Headers | undefined;
     const attPubkey = await getPublicKeyAsync(TEST_SEED);

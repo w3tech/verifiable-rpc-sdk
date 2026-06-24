@@ -70,7 +70,7 @@ export class VrpcProvider extends JsonRpcProvider {
     // attestation leg, so a single auth set on the URL covers BOTH legs — parity
     // with viem, where `headers` feed the RPC POST and the attestation fetch
     // alike. Without this the attestation GET goes out unauthenticated and a
-    // shark route rejects it (fail-closed). A string URL carries no headers.
+    // gateway route rejects it (fail-closed). A string URL carries no headers.
     const attestationHeaders = typeof url === "string" ? undefined : url.headers;
 
     // bigint without a number round-trip: chain ids can exceed 2^53 and the

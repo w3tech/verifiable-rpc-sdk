@@ -3,7 +3,7 @@
 // TrustedVerifier — the single orchestration unit that combines
 // the existing Ed25519 verify path (`verifyResponse`) with a TTL pubkey cache and
 // lazy TDX attestation: on an unknown/expired signing pubkey it fetches the node
-// attestation through shark, maps it to the frozen `AttestationBundle`, builds a
+// attestation through the gateway, maps it to the frozen `AttestationBundle`, builds a
 // `VerifyPolicy` from client options, and calls `verifyDstackAttestation`.
 // Fail-closed: a verified pubkey is cached with a TTL ONLY after a
 // resolved attestation verify; a thrown `AttestationError` propagates and the
@@ -72,7 +72,7 @@ export interface TrustedVerifierOptions {
 }
 
 /**
- * Map a fetched {@link Attestation} (shark `/attestation` wire shape) to the
+ * Map a fetched {@link Attestation} (gateway `/attestation` wire shape) to the
  * frozen {@link AttestationBundle}. The `quote.*` fields and `pubkey` pass
  * through directly; `nonce` is the SDK-generated fetch nonce (bare hex, not from
  * the attestation body). The remaining `tcbInfo` measurement fields and
@@ -226,7 +226,7 @@ export class TrustedVerifier {
    *   3. nodeId is OPTIONAL — included in the attestation fetch when present,
    *      omitted when absent (no pre-throw; the endpoint decides — fail-closed).
    *   4. one fresh nonce, reused below (no rebinding).
-   *   5. fetch attestation via shark — throws propagate, cache untouched.
+   *   5. fetch attestation via the gateway — throws propagate, cache untouched.
    *   6. correlate att.pubkey == response signer — throws on mismatch.
    *   7. map → bundle, build policy (same nonce).
    *   8. attestation verify — throw skips step 9. NO try/finally.
@@ -250,7 +250,7 @@ export class TrustedVerifier {
     const nonce = this.nonceSource();
 
     // nodeId is OPTIONAL: included when the response carried vRPC-NodeId, omitted
-    // otherwise. Absent + behind shark → shark can't route → the fetch errors and
+    // otherwise. Absent + behind the gateway → the gateway can't route → the fetch errors and
     // propagates (fail-closed); absent + direct node → the fetch works. No pre-throw.
     const att = await fetchAttestation({
       attestationUrl: this.attestationUrl,
