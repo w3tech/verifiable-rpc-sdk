@@ -2,6 +2,4 @@
 * @fasashen @askolesov @memekas @Balevka
 
 # CI/CD workflow definitions require review from the listed owners.
-# (Listed after the default rule so it takes precedence for this path —
-# CODEOWNERS applies the last matching pattern.)
 /.github/workflows/ @megatron757 @fasashen @fruit37
