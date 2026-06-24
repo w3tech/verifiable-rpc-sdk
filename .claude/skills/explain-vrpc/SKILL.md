@@ -3,7 +3,7 @@ name: explain-vrpc
 description: >-
   Explain Ankr's verifiable RPC (vRPC) to a user: what it is and why it exists,
   Intel TDX and Phala dstack, the attestation sidecar and what its /attestation
-  and /info endpoints return, the trust model (why a client need not trust Ankr),
+  endpoint returns, the trust model (why a client need not trust Ankr),
   and how this SDK (vrpc-core + the verifier) checks a response. Use when a user
   asks what vRPC / verifiable RPC is, how response verification works, what the
   sidecar returns, what Intel TDX or Phala dstack are, or how to verify a vRPC
@@ -79,8 +79,7 @@ Production runs on real Intel TDX hardware via dstack; local development uses th
 The **sidecar** (`verifiable-rpc-sidecar`, a Rust service, currently v0.4.0) sits
 in front of the real blockchain node's HTTP endpoint **inside the TDX confidential
 VM**. It proxies RPC traffic and signs every response with a TDX-attested key.
-It listens on plain HTTP (default `0.0.0.0:8545`); TLS is terminated by the dstack
-gateway in front of it. (`src/config.rs`, `src/server.rs`.)
+It listens on plain HTTP. (`src/config.rs`, `src/server.rs`.)
 
 ### Per-response signing (the proxy path)
 
@@ -106,9 +105,9 @@ then re-compresses for the client. So the signature verifies whether the client
 asked for gzip or identity. The request body is forwarded byte-for-byte, never
 mutated. (`src/proxy.rs`, sidecar `README.md`.)
 
-The signing key is an **Ed25519** key derived from dstack at boot (default
-derivation path `rpc-sign/v1`); it is the key whose pubkey ends up bound into the
-attestation quote. (`src/main.rs`, `src/signing.rs`.)
+The signing key is an **Ed25519** key derived from dstack at boot; it is the key
+whose pubkey ends up bound into the attestation quote. (`src/main.rs`,
+`src/signing.rs`.)
 
 ### `GET /attestation?nonce=<hex>`
 
@@ -126,20 +125,13 @@ returns JSON (`src/attestation.rs`):
 Inside the quote, **`report_data` is 64 bytes**: `[0:32]` = the signing **pubkey**,
 `[32:64]` = the caller's **nonce** (`src/attestation.rs`). This is what binds the
 signing key and freshness into hardware. Missing/malformed nonce → `400`. The
-`/attestation` and `/info` endpoints carry **no** `vRPC-*` headers (they are not
-proxied RPC).
+`/attestation` endpoint carries **no** `vRPC-*` headers (it is not proxied RPC).
 
 Key relationship (raw bytes, **no canonicalization** — dstack hashes verbatim):
 
 ```
 sha256(utf8(app_compose)) == composeHash
 ```
-
-### `GET /info`
-
-Returns dstack's full `info()` JSON, including `tcb_info.app_compose` (raw compose
-text) and a top-level `compose_hash`. (`src/attestation.rs`.) The SDK reads
-`app_compose` from here for the compose-hash check (§4).
 
 > **Nonce freshness is the caller's responsibility.** The sidecar does not police
 > reused nonces; the SDK generates a fresh random 32-byte nonce per attestation
@@ -213,9 +205,9 @@ the RPC leg (`_vrpc`) and attestation leg (`_vrpc/attestation`) itself via
 3. Rebuild the **same 80-byte pre-image** the sidecar signed (§2 table).
 4. Ed25519-verify the signature over that pre-image (`@noble/ed25519`); fail →
    `BadSignature`.
-5. Check `vRPC-Timestamp` is inside the replay window (default 60_000 ms) — done
-   *after* signature verify, so a tampered timestamp fails at the crypto layer;
-   stale → `StaleTimestamp`.
+5. Check `vRPC-Timestamp` is inside the replay window — done *after* signature
+   verify, so a tampered timestamp fails at the crypto layer; stale →
+   `StaleTimestamp`.
 
 `TrustedVerifier.verify()` wraps that and adds attestation + key trust, in order
 (`packages/core/src/trusted-verifier.ts`):
@@ -228,11 +220,11 @@ the RPC leg (`_vrpc`) and attestation leg (`_vrpc/attestation`) itself via
 5. `fetchAttestation()` → `GET /attestation?nonce=<bare-hex>[&node_id=<id>]`.
 6. **Correlation:** assert the attestation's `pubkey` equals the response signer's
    pubkey (the attested key actually signed your data).
-7. Map to an `AttestationBundle` (incl. `app_compose` from `/info`) + build the
+7. Map to an `AttestationBundle` (incl. the node's `app_compose`) + build the
    policy.
 8. `verifyDstackAttestation(bundle, policy)` (see below).
-9. Cache the pubkey **only after** verification resolves (fail-closed; TTL default
-   1 h, LRU max 1024 keys).
+9. Cache the pubkey **only after** verification resolves (fail-closed), for a
+   bounded time, so later responses from the same key skip re-attestation.
 
 `dstack-verify`'s `verifyDstackAttestation(bundle, policy): Promise<void>` —
 resolves on success, throws `AttestationError(chkId, detail)` on failure
@@ -277,8 +269,7 @@ SDK automates) is:
    bodies.
 4. **Ed25519-verify** `vRPC-Signature` over that pre-image using `vRPC-Pubkey`.
    Fail → reject.
-5. **Check freshness**: `vRPC-Timestamp` within the replay window (default 60 s).
-   Stale → reject.
+5. **Check freshness**: `vRPC-Timestamp` within the replay window. Stale → reject.
 6. **Check chain binding**: the `chain_id` in the pre-image must equal the chain
    you pinned/expected. Mismatch → reject.
 7. **Fetch attestation** with a **fresh random 32-byte nonce**:
