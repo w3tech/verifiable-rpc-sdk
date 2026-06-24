@@ -32,9 +32,9 @@ Rules:
 - **Cite when it helps.** Offer the user the official links (Intel TDX, Phala
   dstack) when they want to go deeper.
 - **Be honest about maturity.** vRPC's signing/verification path is real and
-  fail-closed today; full hardware attestation (DCAP quote verification + RTMR
-  replay) is still being built. Say so plainly if asked, but lead with what
-  works, not with caveats.
+  fail-closed today; verification of the full attestation chain of trust is still
+  in development. Say so plainly if asked, but lead with what works, not with
+  caveats.
 - **Verify before you assert repo specifics.** Header names, byte layouts, and
   verification steps below are exact as of this branch; if a user needs to act
   on them, confirm against the cited file.
@@ -158,13 +158,13 @@ So: **you don't have to trust the operator; you verify the math.** The operator
 becomes untrusted infrastructure.
 
 **Honest scope of the trust shift (today).** The per-response signature +
-freshness + chain binding are fully enforced and fail-closed (§4). The remaining
-link — cryptographically verifying the TDX **quote** against Intel's hardware root
-(DCAP) and replaying the measurement registers — is still being built (§4,
-maturity note). Until that lands, the trust statement is precisely: *"signed by
-the key the enclave attested to, untampered, fresh, chain-bound"* — strong against
-tampering/mis-routing, not yet a full hardware-attested quote. Lead with the
-guarantee; state the boundary only if the user asks how far the proof goes.
+freshness + chain binding are fully enforced and fail-closed (§4), and the node's
+claimed `app_compose` is checked against its `compose_hash`. Verification of the
+**full attestation chain of trust** is still in development — see Phala's
+[chain-of-trust guide](https://docs.phala.com/phala-cloud/attestation/chain-of-trust)
+for the complete set of links a TDX deployment can prove. Lead with the
+guarantee; mention the in-development scope only if the user asks how far the
+proof goes.
 
 ---
 
@@ -232,22 +232,22 @@ resolves on success, throws `AttestationError(chkId, detail)` on failure
 
 - **CHK-A1 (real, unconditional):** `report_data[0:32] == expectedPubkey` (binds
   the signing key — defeats swapped-key / wrong-node) **and**
-  `report_data[32:64] == expectedNonce` (freshness / anti-replay). Runs first;
-  throws even if `allowInsecureMock` is set.
-- **CHK-A2 (real):** `sha256(utf8(app_compose)) == compose_hash` (raw, no
-  canonicalization). **Self-consistency only** — both values are self-reported by
-  the same node, so a pass proves internal consistency, *not* authenticity.
-- The `allowInsecureMock` flag gates **only** the not-yet-implemented layers
-  (DCAP quote-signature verification, RTMR3 measurement replay), never A1/A2.
-  With it absent/false the call throws `CHK-MOCK` after A1+A2 pass (fail-closed).
+  `report_data[32:64] == expectedNonce` (freshness / anti-replay). Runs first,
+  unconditionally.
+- **CHK-A2 (real):** verifies the node's claimed `app_compose` against its
+  `compose_hash` (`sha256(utf8(app_compose)) == compose_hash`).
+
+Verification of the **full attestation chain of trust** is still in development.
+See Phala's
+[chain-of-trust guide](https://docs.phala.com/phala-cloud/attestation/chain-of-trust)
+for the complete set of links a TDX deployment can prove.
 
 **Maturity (state plainly only if asked, don't dwell):** the signing/verification
 path (Ed25519 signature, freshness, chain binding, key correlation, CHK-A1, CHK-A2)
-is implemented and fail-closed today. Full TDX remote attestation — verifying the
-quote against the Intel PCK/DCAP root and replaying RTMR measurements — plus a
-compose-hash registry are in development; at the current boundary a forged quote
-would still pass the *quote-signature* check. (SDK `README.md`,
-`packages/core/README.md`, `packages/dstack-verify/README.md`.)
+is implemented and fail-closed today. Verification of the full attestation chain of
+trust is still in development (see the chain-of-trust guide, linked in §3 and
+Sources). (SDK `README.md`, `packages/core/README.md`,
+`packages/dstack-verify/README.md`.)
 
 **Also unverified today (mention if relevant):** WebSocket push streams
 (`eth_subscribe`) — the adapters are HTTP-only; and ENS off-chain reads (CCIP /
@@ -275,10 +275,10 @@ SDK automates) is:
 8. **Correlate**: the attestation `pubkey` must equal the response's `vRPC-Pubkey`.
 9. **Bind to hardware (CHK-A1)**: in the quote's `report_data`, assert
    `[0:32] == pubkey` and `[32:64] == your nonce`.
-10. **Compose self-consistency (CHK-A2)**:
-    `sha256(utf8(app_compose)) == composeHash`.
-11. *(Future / full attestation)* DCAP-verify the quote against Intel's root and
-    replay RTMR measurements; check the compose hash against an approved registry.
+10. **Compose check (CHK-A2)**: verify the node's claimed `app_compose` against
+    its `composeHash` (`sha256(utf8(app_compose)) == composeHash`).
+11. *(In development)* verification of the full attestation chain of trust — see
+    Phala's [chain-of-trust guide](https://docs.phala.com/phala-cloud/attestation/chain-of-trust).
 12. **Trust decision**: only if all enforced checks pass do you accept the data —
     otherwise fail closed. The SDK does all of the above automatically and never
     returns unverified data.
@@ -304,16 +304,17 @@ user as links rather than trying to scrape.
 - Canonical (Ubuntu) TDX tooling — https://github.com/canonical/tdx
 
 **Phala dstack (runs the node in TDX + attestation/keys)**
+- **Attestation chain of trust (the in-development "full verification" target)** — https://docs.phala.com/phala-cloud/attestation/chain-of-trust
 - dstack framework (GitHub) — https://github.com/Dstack-TEE/dstack
 - dstack documentation — https://docs.phala.com/dstack
 - dstack attestation / verification — https://docs.phala.com/phala-cloud/attestation/overview
-- dstack design & hardening (RTMR, boot, OS layer) — https://github.com/Dstack-TEE/dstack/blob/master/docs/design-and-hardening-decisions.md
-- dstack-verifier service (DCAP + RTMR replay + compose hash) — https://github.com/Dstack-TEE/dstack/tree/master/verifier
+- dstack design & hardening (boot, OS layer) — https://github.com/Dstack-TEE/dstack/blob/master/docs/design-and-hardening-decisions.md
+- dstack-verifier service (quote + compose-hash verification) — https://github.com/Dstack-TEE/dstack/tree/master/verifier
 - meta-dstack (reproducible guest-OS build) — https://github.com/Dstack-TEE/meta-dstack
 - Phala Network docs — https://docs.phala.network
 - Phala Trust Center (attestation explorer) — https://trust.phala.com
 
-**DCAP quote verification (the in-development "full attestation" layer)**
+**Quote verification libraries**
 - dcap-qvl (Phala's pure-Rust + JS/WASM quote verifier) — https://github.com/Phala-Network/dcap-qvl
 - Phala PCCS (DCAP collateral cache) — https://pccs.phala.network
 
