@@ -1,5 +1,5 @@
-// verifyDstackAttestation behavior — CHK-A1 binding (BIND-01..05) + the mock gate
-// (VPKG-03/VPKG-04) that still covers the unimplemented DCAP/RTMR3 layers.
+// verifyDstackAttestation behavior — CHK-A1 binding + the mock gate
+// that still covers the unimplemented DCAP/RTMR3 layers.
 //
 // CHK-A1 runs FIRST and is UNCONDITIONAL: it shape-gates report_data, then binds
 // report_data[0:32]==expectedPubkey and report_data[32:64]==expectedNonce. A
@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 // computeComposeHash from core's leaf subpath — the local dstack-verify
-// re-export (verify-steps.ts) is still a v5.0 throwing stub, so the test
+// re-export (verify-steps.ts) is still a throwing stub, so the test
 // synthesizes self-consistent compose pairs with the SAME hashing the verifier
 // uses (raw sha256, no canonicalization).
 import { computeComposeHash } from "@ankr.com/vrpc-core/compose";
@@ -103,7 +103,7 @@ describe("verifyDstackAttestation CHK-A1 binding", () => {
     }
   });
 
-  // BIND-04: A1 throws even with allowInsecureMock=true.
+  // A1 throws even with allowInsecureMock=true.
   test("tamper: wrong pubkey throws CHK-A1 even with allowInsecureMock=true", async () => {
     const wrongPubkey = `0x${"cc".repeat(32)}`;
     try {
@@ -215,7 +215,7 @@ describe("verifyDstackAttestation mock gate (post-A1)", () => {
   });
 });
 
-// CHK-A2: compose-hash self-consistency (CMP-01/02/05). app_compose +
+// CHK-A2: compose-hash self-consistency. app_compose +
 // compose_hash are both self-reported by the node — A2 proves internal
 // consistency only (forgeable, NOT a trust anchor). It runs after CHK-A1 and
 // before the mock gate, so it throws even under allowInsecureMock=true.
@@ -231,7 +231,7 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
   });
   const selfConsistentHash = computeComposeHash(appCompose);
 
-  test("CMP-01 hash-match: self-consistent pair passes, falls through to mock gate", async () => {
+  test("hash-match: self-consistent pair passes, falls through to mock gate", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const bundle = makeBundle(fixture.report_data, {
       app_compose: appCompose,
@@ -244,7 +244,7 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
     warn.mockRestore();
   });
 
-  test("CMP-01 hash-match: also accepts a 0x-prefixed compose_hash (normalized)", async () => {
+  test("hash-match: also accepts a 0x-prefixed compose_hash (normalized)", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const bundle = makeBundle(fixture.report_data, {
       app_compose: appCompose,
@@ -256,7 +256,7 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
     warn.mockRestore();
   });
 
-  test("CMP-01 mismatch: wrong compose_hash throws CHK-A2 even with allowInsecureMock=true", async () => {
+  test("mismatch: wrong compose_hash throws CHK-A2 even with allowInsecureMock=true", async () => {
     const bundle = makeBundle(fixture.report_data, {
       app_compose: appCompose,
       compose_hash: "00".repeat(32), // not the hash of appCompose
@@ -273,7 +273,7 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
     }
   });
 
-  test("CMP-01 mismatch: tampered app_compose (hash no longer matches) throws CHK-A2", async () => {
+  test("mismatch: tampered app_compose (hash no longer matches) throws CHK-A2", async () => {
     const bundle = makeBundle(fixture.report_data, {
       app_compose: `${appCompose} `, // one trailing space → different sha256
       compose_hash: selfConsistentHash,
@@ -290,7 +290,7 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
     }
   });
 
-  test("CMP-02 dormant-skip: empty app_compose → A2 skips, mock gate resolves", async () => {
+  test("dormant-skip: empty app_compose → A2 skips, mock gate resolves", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     // Non-empty compose_hash but EMPTY app_compose (older node / no /info) — A2
     // must NOT throw; verify completes through to the mock gate.
@@ -304,7 +304,7 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
     warn.mockRestore();
   });
 
-  test("CMP-02 dormant-skip: empty compose_hash (simulator) → A2 skips, no throw", async () => {
+  test("dormant-skip: empty compose_hash (simulator) → A2 skips, no throw", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     // Non-empty app_compose but EMPTY compose_hash — the dstack simulator's
     // --allow-empty-compose-hash posture. A2 must dormant-skip, NOT throw.
@@ -318,7 +318,7 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
     warn.mockRestore();
   });
 
-  test("CMP-02 dormant-skip: absent compose_hash (undefined) → A2 skips, no throw", async () => {
+  test("dormant-skip: absent compose_hash (undefined) → A2 skips, no throw", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     // Non-empty app_compose, compose_hash field entirely absent — A2 dormant-skips.
     const bundle = makeBundle(fixture.report_data, { app_compose: appCompose });

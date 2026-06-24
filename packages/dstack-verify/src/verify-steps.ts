@@ -28,7 +28,7 @@ export function computeComposeHash(appCompose: string): string {
  * CHK-A1: split the 64-byte report_data into pubkey[0:32] ‖ nonce[32:64].
  * `report_data` is bare hex (no `0x`). The returned `expectedPubkey` carries a
  * `0x` prefix to match the `ReportDataBinding`/bundle convention; `expectedNonce`
- * stays bare. Shape-gates the input to exactly 128 hex chars (BIND-01) and throws
+ * stays bare. Shape-gates the input to exactly 128 hex chars and throws
  * `AttestationError("CHK-A1", …)` on malformed input — never a silent slice.
  */
 export function parseReportData(reportDataHex: string): ReportDataBinding {

@@ -2,8 +2,8 @@
 // the existing Ed25519 verify path (`verifyResponse`) with a TTL pubkey cache and
 // lazy TDX attestation: on an unknown/expired signing pubkey it fetches the node
 // attestation through shark, maps it to the frozen `AttestationBundle`, builds a
-// `VerifyPolicy` from client options, and calls `verifyDstackAttestation`
-// (Phase 33). Fail-closed: a verified pubkey is cached with a TTL ONLY after a
+// `VerifyPolicy` from client options, and calls `verifyDstackAttestation`.
+// Fail-closed: a verified pubkey is cached with a TTL ONLY after a
 // resolved attestation verify; a thrown `AttestationError` propagates and the
 // pubkey is NOT cached (FLOW-05).
 //
@@ -33,8 +33,8 @@ export const DEFAULT_PUBKEY_CACHE_TTL_MS = 3_600_000;
  * Construction options for {@link TrustedVerifier}. The transport inputs
  * (`attestationUrl`/`headers`) target the attestation fetch; the test injectables
  * (`now`/`nonceSource`/`verifyAttestation`) keep TTL + fail-closed tests
- * deterministic and offline. (v6.0: the policy inputs `allowlist`/`tcb`/`pccsUrl`
- * were removed — the mock verifier ignores them; v7.0 reintroduces them.)
+ * deterministic and offline. (The policy inputs `allowlist`/`tcb`/`pccsUrl`
+ * were removed — the mock verifier ignores them; a future release reintroduces them.)
  */
 export interface TrustedVerifierOptions {
   /**
@@ -53,10 +53,10 @@ export interface TrustedVerifierOptions {
   fetch?: typeof fetch;
   /** Verified-pubkey cache TTL in ms; default {@link DEFAULT_PUBKEY_CACHE_TTL_MS}. */
   pubkeyCacheTtlMs?: number;
-  // NOTE (v6.0): the policy inputs `allowlist`/`tcb`/`pccsUrl` were removed — the
+  // NOTE: the policy inputs `allowlist`/`tcb`/`pccsUrl` were removed — the
   // mock verifier ignores them, so exposing them on the published surface is
-  // misleading. v7.0 re-introduces them (consumer-pinned anchors) when the real
-  // verifier needs them; re-adding optional fields is non-breaking.
+  // misleading. A future release re-introduces them (consumer-pinned anchors) when
+  // the real verifier needs them; re-adding optional fields is non-breaking.
   /** Injected wall clock (epoch ms); default `() => Date.now()`. Test-only. */
   now?: () => number;
   /** Fresh 32-byte nonce source; default `crypto.getRandomValues`. Test-only. */
@@ -71,10 +71,9 @@ export interface TrustedVerifierOptions {
  * through directly; `nonce` is the SDK-generated fetch nonce (bare hex, not from
  * the attestation body). The remaining `tcbInfo` measurement fields and
  * `signature_chain` are still mock-tolerated stubs — the mock verifier does not
- * inspect them; each carries a `// GAP` anchor recording where v7.0 must source
- * the real data.
+ * inspect them; each records where a future release must source the real data.
  *
- * SRC-01: `tcbInfo.app_compose` is now populated from the node's `GET /info`
+ * `tcbInfo.app_compose` is now populated from the node's `GET /info`
  * (`tcb_info.app_compose`, via {@link InfoEndpointComposeSource}). `appCompose`
  * is OPTIONAL and defaults to `""` — when the caller could not fetch `/info`
  * (older nodes / the simulator / a fetch error) the field stays empty and the
@@ -83,7 +82,7 @@ export interface TrustedVerifierOptions {
  * NOTE: `app_compose` here comes from the SAME node that produced `compose_hash`
  * (self-reported). The pair only proves the node is internally consistent — it
  * is attacker-forgeable and is NOT a trust anchor. Anchoring it (independent
- * compose source + RTMR3 replay + DCAP) lands in v7.0.
+ * compose source + RTMR3 replay + DCAP) is future work.
  */
 export function mapAttestationToBundle(
   attestation: Attestation,
@@ -100,7 +99,7 @@ export function mapAttestationToBundle(
     },
     pubkey: pubkeyHex,
     nonce: bytesToHex(nonce),
-    // GAP / fills in v7.0: structural measurement fields (mrtd/rtmr0-3, event_log)
+    // Future work: structural measurement fields (mrtd/rtmr0-3, event_log)
     // from GET /info tcb_info for RTMR replay anchoring. The mock does not inspect
     // them, so a stub is valid until the real DCAP/RTMR layers land.
     tcbInfo: {
@@ -109,15 +108,15 @@ export function mapAttestationToBundle(
       rtmr1: "",
       rtmr2: "",
       rtmr3: "",
-      // SRC-01: raw app_compose text from GET /info tcb_info (self-reported;
+      // Raw app_compose text from GET /info tcb_info (self-reported;
       // empty when /info was unavailable → CHK-A2 dormant-skips).
       app_compose: appCompose,
       event_log: [],
       // composeHash is available as a (recompute-only) hint, never a trust anchor.
       compose_hash: attestation.composeHash,
     },
-    // GAP v5.0 / fills in v6.0: signature_chain from dstack get_key chain
-    // ([link0_sig, k256_signature]) — 3b cross-repo ticket; not emitted by the
+    // Future work: signature_chain from dstack get_key chain
+    // ([link0_sig, k256_signature]) — cross-repo ticket; not emitted by the
     // current /attestation route.
     signature_chain: [],
   };
@@ -126,12 +125,12 @@ export function mapAttestationToBundle(
 /**
  * Build a {@link VerifyPolicy} from the verified pubkey + the SDK-generated nonce
  * (INTEG-02). `binding` carries the reportData binding (`report_data[0:32]==pubkey`,
- * `[32:64]==nonce`); `allowInsecureMock` is HARD-SET `true` in v5.0/v6.0.
+ * `[32:64]==nonce`); `allowInsecureMock` is HARD-SET `true` for the mock path.
  *
- * v6.0: `allowlist`/`tcb`/`pccsUrl` are defaulted internally — the mock verifier
- * ignores them, so they were removed from the public options. v7.0 reintroduces
- * those options (consumer-pinned anchors) and threads them here when the real
- * verifier flips `allowInsecureMock` off.
+ * `allowlist`/`tcb`/`pccsUrl` are defaulted internally — the mock verifier
+ * ignores them, so they were removed from the public options. A future release
+ * reintroduces those options (consumer-pinned anchors) and threads them here when
+ * the real verifier flips `allowInsecureMock` off.
  */
 export function buildVerifyPolicy(pubkeyHex: string, nonce: Uint8Array): VerifyPolicy {
   return {
@@ -188,7 +187,7 @@ export class TrustedVerifier {
   }
 
   /**
-   * SRC-01: best-effort fetch of the node's raw `app_compose` (GET /info →
+   * Best-effort fetch of the node's raw `app_compose` (GET /info →
    * `tcb_info.app_compose`) for CHK-A2. Returns `""` on ANY failure (no /info
    * route, malformed body, network error) — CHK-A2 then dormant-skips. Never
    * throws; the attestation verify must not fail because /info is unavailable.
@@ -252,7 +251,7 @@ export class TrustedVerifier {
 
     verifyAttestationCorrelation(att, { verification: { pubkeyHex } } as VerifiedResponse);
 
-    // SRC-01: best-effort fetch of the node's raw `app_compose` from GET /info so
+    // Best-effort fetch of the node's raw `app_compose` from GET /info so
     // the SDK can run CHK-A2 (compose-hash self-consistency). NON-FATAL: older
     // nodes / the simulator / a transient /info error leave it empty and CHK-A2
     // dormant-skips — the attestation verify must not fail just because /info is

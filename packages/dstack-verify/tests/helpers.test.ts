@@ -1,8 +1,8 @@
-// Helper-stub tests — VPKG-05.
+// Helper-stub tests.
 //
-// The four v6.0 helper signatures are frozen; their v5.0 bodies are throwing
-// stubs. v6.0 replaces ONLY the body. Each must throw with a message containing
-// "not implemented in v5.0" so the A/B boundary is explicit and auditable.
+// The four helper signatures are frozen; their current bodies are throwing
+// stubs. A future release replaces ONLY the body. Each must throw with a message
+// containing "not implemented in v5.0" so the A/B boundary is explicit and auditable.
 
 import { describe, expect, test } from "vitest";
 

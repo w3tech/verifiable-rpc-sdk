@@ -25,7 +25,7 @@
 // raises the bar against accidental config drift ONLY. Real compose trust needs
 // (a) an INDEPENDENT compose source the node cannot forge, (b) the compose_hash
 // anchored into RTMR3 via event-log replay, and (c) a DCAP-verified quote — all
-// deferred to v7.0.
+// deferred to a future release.
 //
 // After A2, the mock gate still governs the NOT-yet-built DCAP quote-signature +
 // RTMR3-replay layers (VPKG-03/VPKG-04): default (allowInsecureMock absent/false)
@@ -36,7 +36,7 @@
 // computeComposeHash is imported from core's `./compose` LEAF subpath (not the
 // main barrel): the barrel re-exports trusted-verifier.ts which imports
 // @ankr.com/dstack-verify, re-opening the CYCLE-01 ESM init cycle. compose.ts is
-// cycle-free. (The local verify-steps.ts `computeComposeHash` is still a v5.0
+// cycle-free. (The local verify-steps.ts `computeComposeHash` is still a
 // throwing stub — do NOT use it.) This keeps @noble/hashes out of dstack-verify.
 import { computeComposeHash } from "@ankr.com/vrpc-core/compose";
 
@@ -60,7 +60,7 @@ export async function verifyDstackAttestation(
       "policy.binding.expectedPubkey must be 0x + 64 hex chars (32-byte Ed25519 key)",
     );
   }
-  // parseReportData also shape-gates report_data to exactly 128 hex chars (BIND-01).
+  // parseReportData also shape-gates report_data to exactly 128 hex chars.
   const parsed = parseReportData(bundle.quote.report_data);
   if (normHex(parsed.expectedPubkey) !== normHex(policy.binding.expectedPubkey)) {
     throw new AttestationError(
@@ -79,7 +79,7 @@ export async function verifyDstackAttestation(
   // SELF-CONSISTENCY ONLY — see the trust-boundary note at the top of this file.
   // app_compose + compose_hash are BOTH self-reported by the node, so a pass
   // proves only internal consistency (forgeable); it is NOT a hardware/trust
-  // anchor. Anchoring (independent compose source + RTMR3 replay + DCAP) is v7.0.
+  // anchor. Anchoring (independent compose source + RTMR3 replay + DCAP) is future work.
   const appCompose = bundle.tcbInfo?.app_compose ?? "";
   const reportedComposeHash = bundle.tcbInfo?.compose_hash ?? "";
   // Dormant-skip when EITHER side is empty/absent (older nodes / the simulator's
@@ -101,7 +101,7 @@ export async function verifyDstackAttestation(
       "[dstack-verify] PARTIAL VERIFICATION: CHK-A1 (report_data key/nonce binding) " +
         "WAS verified, but the DCAP quote-signature and RTMR3 replay were NOT. " +
         "allowInsecureMock=true bypasses the hardware root of trust — this proves " +
-        '"signed + bound + fresh", NOT "attested to hardware" (lands in v7.0).',
+        '"signed + bound + fresh", NOT "attested to hardware" (future work).',
     );
     return;
   }

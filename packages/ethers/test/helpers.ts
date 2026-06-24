@@ -112,7 +112,7 @@ export interface AttMockState {
  * Mock ONLY the attestation GET leg (the always-on verify seam fetches it on the
  * FIRST read per pubkey). The returned `pubkey` is derived from the SAME
  * TEST_SEED the RPC responses are signed with, so the seam's pubkey correlation
- * passes; the v5.0 mock verifier (allowInsecureMock) then resolves.
+ * passes; the mock verifier (allowInsecureMock) then resolves.
  *
  * `requireNodeId` mimics a shark route that can only resolve WITH a `node_id`
  * query param: a fetch lacking `node_id` returns 404 → the seam fails closed

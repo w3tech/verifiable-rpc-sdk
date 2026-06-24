@@ -2,18 +2,18 @@
 
 Frozen contract for dstack / Intel TDX attestation verification.
 
-> ## ⚠️ v5.0 ships a MOCK verifier — NO real attestation security until v6.0
+> ## ⚠️ This release ships a MOCK verifier — NO real attestation security yet
 >
-> `verifyDstackAttestation` in v5.0 is a **mock**. Real DCAP/RTMR/compose-hash
-> verification only arrives in v6.0. Setting `allowInsecureMock: true` **bypasses
+> `verifyDstackAttestation` is currently a **mock**. Real DCAP/RTMR/compose-hash
+> verification arrives in a future release. Setting `allowInsecureMock: true` **bypasses
 > all chain-of-trust checks** — it is a deliberate escape hatch that prints a
-> loud `console.warn` on EVERY call and is removed entirely in v6.0.
-> Never rely on v5.0 for production attestation security.
+> loud `console.warn` on EVERY call and is removed once real verification lands.
+> Never rely on the mock for production attestation security.
 
 ## What this is
 
-This package freezes the full, **v6.0-complete** public surface of the
-dstack/TDX attestation verifier. v6.0 (real DCAP verification) fills in the
+This package freezes the full, **complete** public surface of the
+dstack/TDX attestation verifier. A future release (real DCAP verification) fills in the
 function/helper bodies **without changing a single exported type or signature** —
 the entire A/B split lives inside this package.
 
@@ -28,7 +28,7 @@ Fail-closed by contract:
 
 Callers never inspect a boolean — they catch `AttestationError`.
 
-v5.0 mock semantics:
+Mock semantics:
 
 - `policy.allowInsecureMock !== true` (absent or `false`) → **throws**
   `AttestationError("CHK-MOCK", ...)` (default-deny).
@@ -38,13 +38,13 @@ v5.0 mock semantics:
 
 ### Types
 
-- `AttestationBundle` — full v6.0 field set: `quote` (`QuoteEnvelope`),
+- `AttestationBundle` — full field set: `quote` (`QuoteEnvelope`),
   `tcbInfo` (`TcbInfo` + `EventLogEntry[]`), `pubkey`, `nonce`, mandatory
-  `signature_chain` (unused in v5.0/3a, frozen for the 3b cross-repo ticket),
+  `signature_chain` (currently unused, frozen for the cross-repo ticket),
   optional `appId`/`instanceId`.
 - `VerifyPolicy` — pinned trust anchors (`PinnedAllowlist`), reportData→pubkey
   binding (`ReportDataBinding`), DCAP TCB acceptance (`TcbPolicy`), optional
-  `pccsUrl`, and the v5.0 escape hatch `allowInsecureMock: boolean`.
+  `pccsUrl`, and the escape hatch `allowInsecureMock: boolean`.
 
 ### `AttestationError`
 
@@ -57,21 +57,21 @@ union in core is NOT edited.
 
 This package only verifies attestation — the orchestration (lazy fetch + pubkey
 cache) lives in `@ankr.com/vrpc-core`'s `TrustedVerifier`. After a successful
-(in v5.0 — mock) verification the signing pubkey is cached for a configurable
+(currently mock) verification the signing pubkey is cached for a configurable
 TTL (`pubkeyCacheTtlMs`, default `DEFAULT_PUBKEY_CACHE_TTL_MS` = 1h): a repeat read
 within the TTL skips the attestation fetch; after the TTL the pubkey is
 re-attested (no stale trust). The adapters (`@ankr.com/vrpc-ethers`,
-`@ankr.com/vrpc-viem`) forward `pubkeyCacheTtlMs` into the seam. Remember: in v5.0
-the cached result is from the **mock** check — see the banner above.
+`@ankr.com/vrpc-viem`) forward `pubkeyCacheTtlMs` into the seam. Remember: while
+the verifier is a mock the cached result is from the **mock** check — see the banner above.
 
-### Trust boundary — what verification actually proves (v6.2)
+### Trust boundary — what verification actually proves
 
 `verifyDstackAttestation` runs two **local, collateral-free** checks before the
 mock gate. They establish **"signed + bound + fresh + self-consistent"** — they
 do **NOT** establish **"attested to genuine Intel TDX hardware"**. A fabricated
 quote can carry arbitrary `report_data` / `compose_hash`, so these checks are
 only meaningful in combination with the **deferred** DCAP signature verification
-(v7.0). They raise the bar (swapped-key MITM, replay, config drift) without
+(a future release). They raise the bar (swapped-key MITM, replay, config drift) without
 claiming a hardware root of trust.
 
 - **CHK-A1 — report_data → pubkey/nonce binding (HARD).** Shape-gates
@@ -97,7 +97,7 @@ claiming a hardware root of trust.
   > attacker-forgeable**. Turning A2 into a real trust anchor requires all of:
   > (a) an **independent** compose source the node cannot forge (a pinned/signed
   > registry), (b) the `compose_hash` **anchored into RTMR3** via event-log
-  > replay, and (c) a **DCAP-verified** quote. All three land in **v7.0**.
+  > replay, and (c) a **DCAP-verified** quote. All three are future work.
 
 ### `allowInsecureMock` — partial-verification semantics
 
@@ -118,14 +118,14 @@ partial verification is signalled by the warning banner alone.
 ### `CHK-*` checklist
 
 `CHK` is a frozen const record enumerating the full chain-of-trust checklist
-`CHK-A1..G3` (verbatim meaning + v6.0 disposition: `implement` / `mock` /
-`pinned` / `out`) plus the synthetic `CHK-MOCK` (`mock-deny`) for the v5.0
-fail-closed path. It is a queryable audit dictionary — v6.0 fills in the bodies
+`CHK-A1..G3` (verbatim meaning + disposition: `implement` / `mock` /
+`pinned` / `out`) plus the synthetic `CHK-MOCK` (`mock-deny`) for the
+fail-closed path. It is a queryable audit dictionary — a future release fills in the bodies
 without changing this set.
 
-### v6.0 helper signatures (v5.0 — throwing stubs)
+### Helper signatures (throwing stubs)
 
-Frozen now, bodies filled in v6.0. In v5.0 each throws
+Frozen now, bodies filled in a future release. Each currently throws
 `Error("... not implemented in v5.0 (filled in v6.0)")`:
 
 - `replayRtmr(events): string` — CHK-A4/P3 (RTMR replay, SHA-384 chain).

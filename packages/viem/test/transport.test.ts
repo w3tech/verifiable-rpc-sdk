@@ -1,4 +1,4 @@
-// TEST-03 — vrpcHttp transport WIRING suite (Phase 31, Wave 2).
+// TEST-03 — vrpcHttp transport WIRING suite.
 //
 // Asserts ADAPTER WIRING ONLY: that vrpcHttp's `request` routes every viem
 // action through vrpc-core `verifyResponse` over the raw response bytes before
@@ -117,7 +117,7 @@ function signingFetch(
     if (url.includes("/attestation")) {
       return attestationResponse(url);
     }
-    // SRC-01 best-effort /info side-fetch (CHK-A2 app_compose): not served here →
+    // Best-effort /info side-fetch (CHK-A2 app_compose): not served here →
     // 404 so the seam's best-effort catch leaves app_compose empty (CHK-A2 skips).
     // Excluded from the RPC capture hooks, same as /attestation.
     if (url.includes("/info")) {
