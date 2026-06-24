@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // Frozen, complete contract types for dstack/TDX attestation verification.
 //
 // Field sets derived from the sidecar /attestation + /info wire shape and the

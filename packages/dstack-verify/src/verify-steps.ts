@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // Frozen verify-step signatures; bodies are throwing stubs until implemented.
 // Only the body is replaced, never the signature. Kept dependency-free (no
 // @noble/hashes) so this stays a pure contract+mock with a clean A/B boundary.

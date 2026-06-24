@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // TrustedVerifier — the single orchestration unit that combines
 // the existing Ed25519 verify path (`verifyResponse`) with a TTL pubkey cache and
 // lazy TDX attestation: on an unknown/expired signing pubkey it fetches the node

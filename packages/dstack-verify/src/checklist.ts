@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // Frozen audit vocabulary for the dstack/TDX chain-of-trust verification.
 //
 // `ChkId` enumerates the complete CHK-A1..G3 checklist (verbatim from

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // VrpcProvider options.
 //
 // `VrpcOptions` is a superset of ethers' `JsonRpcApiProviderOptions`: every

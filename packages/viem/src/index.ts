@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // @ankr.com/vrpc-viem — viem verifiable adapter.
 //
 // `vrpcHttp` is a viem custom transport whose `request` hands raw request + raw

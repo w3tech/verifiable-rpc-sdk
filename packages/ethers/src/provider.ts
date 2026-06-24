@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // VrpcProvider — verifiable drop-in for ethers' JsonRpcProvider. Overrides only
 // `_send` (the single HTTP chokepoint) to verify the raw, content-decoded
 // response body against vrpc-core's Ed25519 seam before `JSON.parse`. Native

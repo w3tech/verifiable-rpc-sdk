@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // vrpcHttp transport options. Mirrors vrpc-ethers' VrpcOptions knobs plus the
 // viem-specific passthroughs: `headers` (x-api-key / shark route) and an
 // injectable `fetchFn` seam. All verification lives in vrpc-core; these only feed it.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // verifyDstackAttestation — the public attestation-verifier entrypoint. Its
 // signature is frozen in the contract; this file holds its body.
 //

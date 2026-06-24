@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // Transport-agnostic verify seam.
 //
 // `verifyResponse` is the verify half (steps 4-9) of `VerifierClient.call()`,

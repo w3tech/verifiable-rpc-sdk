@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // The single error type this package throws. Mirrors the abstract
 // `VerificationError` base in @ankr.com/vrpc-core: `name` is auto-set by the
 // base from `this.constructor.name`, and `kind` is a readonly string-literal.

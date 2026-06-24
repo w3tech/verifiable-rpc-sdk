@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // @ankr.com/vrpc-ethers — ethers v6 verifiable adapter.
 //
 // `VrpcProvider` is a `JsonRpcProvider` subclass whose `_send` override feeds

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // VerifierClient — the public entry point. Wraps `fetch` with:
 //   1. JSON-RPC 2.0 envelope construction (auto-increment id per instance)
 //   2. Canonical 80-byte pre-image reconstruction

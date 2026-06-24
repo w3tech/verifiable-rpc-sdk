@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // vrpc-core walkthrough: the verification engine the ethers/viem adapters wrap,
 // used directly so you can see each step of the trust chain.
 import crypto from "node:crypto";

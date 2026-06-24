@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // anchorTrust — adapter-neutral boot-time attestation-correlation helper.
 //
 // OPT-IN: the developer awaits this ONCE at startup, after constructing their

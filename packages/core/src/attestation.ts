@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // Standalone `fetchAttestation` helper — calls `GET /attestation?nonce=<hex>`
 // against the configured sidecar URL, parses the nested `attestation.quote`
 // wire shape, and returns a typed `Attestation`.

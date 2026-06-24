@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // Canonical 80-byte pre-image builder. Mirrors `verifiable-rpc-sidecar/src/signing.rs::build_pre_image`.
 //
 // Layout (byte-exact, MUST match sidecar):
