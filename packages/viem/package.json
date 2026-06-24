@@ -5,6 +5,17 @@
   "description": "viem drop-in for Ankr's verifiable RPC — vrpcHttp custom transport verifies every JSON-RPC response (Ed25519) before parse, fail-closed.",
   "license": "Apache-2.0",
   "author": "Web3 Technologies, Inc.",
+  "homepage": "https://github.com/w3tech/verifiable-rpc-sdk#readme",
+  "bugs": "https://github.com/w3tech/verifiable-rpc-sdk/issues",
+  "keywords": [
+    "ethereum",
+    "rpc",
+    "verifiable",
+    "attestation",
+    "tdx",
+    "ed25519",
+    "viem"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/w3tech/verifiable-rpc-sdk.git",
