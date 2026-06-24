@@ -343,4 +343,9 @@ describe("TrustedVerifier / trust seam", () => {
     await verifyWith(seedB);
     expect(mock.attGetCount).toBe(5); // B evicted when A re-entered; C still warm
   });
+
+  test("nonPositiveTtlThrows", () => {
+    // A non-positive TTL is a config error — the ctor fails fast.
+    expect(() => new TrustedVerifier(baseOpts({ pubkeyCacheTtlMs: 0 }))).toThrow(RangeError);
+  });
 });

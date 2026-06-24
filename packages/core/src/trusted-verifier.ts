@@ -158,11 +158,6 @@ export function buildVerifyPolicy(pubkeyHex: string, nonce: Uint8Array): VerifyP
  */
 export class TrustedVerifier {
   private readonly cache: LRUCache<string, true>;
-  // When ttlMs <= 0, caching is disabled so every call re-attests — preserving
-  // the old `now + 0` semantics (an entry was never fresh). lru-cache instead
-  // treats ttl: 0 as "no expiry" (cache forever) and rejects negative ttls, so
-  // we must not hand a non-positive ttl to it.
-  private readonly cachingDisabled: boolean;
   private readonly nonceSource: () => Uint8Array;
   private readonly verifyAttestationImpl: (b: AttestationBundle, p: VerifyPolicy) => Promise<void>;
   private readonly chainId: bigint;
@@ -173,12 +168,12 @@ export class TrustedVerifier {
 
   constructor(opts: TrustedVerifierOptions) {
     const ttlMs = opts.pubkeyCacheTtlMs ?? DEFAULT_PUBKEY_CACHE_TTL_MS;
-    this.cachingDisabled = ttlMs <= 0;
-    // A positive ttl is required when caching is enabled; the disabled branch
-    // passes a dummy positive ttl that is never exercised (set/has are skipped).
+    if (ttlMs <= 0) {
+      throw new RangeError("pubkeyCacheTtlMs must be a positive number of milliseconds");
+    }
     this.cache = new LRUCache<string, true>({
       max: opts.pubkeyCacheMax ?? DEFAULT_PUBKEY_CACHE_MAX,
-      ttl: this.cachingDisabled ? 1 : ttlMs,
+      ttl: ttlMs,
       updateAgeOnGet: false,
       updateAgeOnHas: false,
     });
@@ -193,14 +188,11 @@ export class TrustedVerifier {
 
   /** True when `pubkeyHex` is cached and the entry has not expired. */
   private isFresh(pubkeyHex: string): boolean {
-    return !this.cachingDisabled && this.cache.has(pubkeyHex);
+    return this.cache.has(pubkeyHex);
   }
 
   /** Cache `pubkeyHex` with a fresh TTL window. Called ONLY on a resolved verify. */
   private cacheVerifiedPubkey(pubkeyHex: string): void {
-    if (this.cachingDisabled) {
-      return;
-    }
     this.cache.set(pubkeyHex, true);
   }
 
