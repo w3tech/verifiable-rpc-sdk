@@ -27,9 +27,4 @@ export type {
 } from "./types";
 export { EMPTY_ALLOWLIST } from "./types";
 export { verifyDstackAttestation } from "./verify";
-export {
-  computeComposeHash,
-  extractKeyProvider,
-  parseReportData,
-  replayRtmr,
-} from "./verify-steps";
+export { parseReportData } from "./verify-steps";
