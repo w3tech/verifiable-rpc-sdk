@@ -48,7 +48,7 @@ Both must be true before trusted publishing works:
 
 ---
 
-## 2. Per-package trusted-publisher registration (PUB-03)
+## 2. Per-package trusted-publisher registration
 
 Apply this **identical checklist to all four packages**. Trusted publishing is configured
 **per package** (there is no org-wide setting):
@@ -80,7 +80,7 @@ see the bootstrap below.
 
 ---
 
-## 3. First-publish bootstrap (PUB-04)
+## 3. First-publish bootstrap
 
 Trusted publishing **cannot create a brand-new package name** — it can only publish new
 versions of a name that already exists. So each of the four names must be published **once**
