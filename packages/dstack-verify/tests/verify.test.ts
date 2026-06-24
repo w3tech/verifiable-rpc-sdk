@@ -9,10 +9,15 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+// computeComposeHash from core's leaf subpath — the local dstack-verify
+// re-export (verify-steps.ts) is still a v5.0 throwing stub, so the test
+// synthesizes self-consistent compose pairs with the SAME hashing the verifier
+// uses (raw sha256, no canonicalization).
+import { computeComposeHash } from "@ankr.com/vrpc-core/compose";
 import { describe, expect, test, vi } from "vitest";
 
 import { AttestationError, parseReportData, verifyDstackAttestation } from "../src/index";
-import type { AttestationBundle, VerifyPolicy } from "../src/types";
+import type { AttestationBundle, TcbInfo, VerifyPolicy } from "../src/types";
 
 const fixture = JSON.parse(
   readFileSync(
@@ -21,10 +26,16 @@ const fixture = JSON.parse(
   ),
 ) as { pubkey: string; nonce: string; report_data: string };
 
-// Minimal bundle/policy builders — only the fields CHK-A1 reads are populated;
-// the rest is cast through `unknown` (the package never inspects them here).
-function makeBundle(reportData: string): AttestationBundle {
-  return { quote: { report_data: reportData } } as unknown as AttestationBundle;
+// Minimal bundle/policy builders — only the fields CHK-A1 (and, when provided,
+// CHK-A2) read are populated; the rest is cast through `unknown` (the package
+// never inspects them here). `tcbInfo` is optional so existing CHK-A1 callers
+// stay unchanged and CHK-A2 dormant-skips for them (no tcbInfo → undefined →
+// empty app_compose/compose_hash).
+function makeBundle(reportData: string, tcbInfo?: Partial<TcbInfo>): AttestationBundle {
+  return {
+    quote: { report_data: reportData },
+    ...(tcbInfo === undefined ? {} : { tcbInfo }),
+  } as unknown as AttestationBundle;
 }
 function makePolicy(p: {
   expectedPubkey: string;
@@ -201,5 +212,141 @@ describe("verifyDstackAttestation mock gate (post-A1)", () => {
     );
     expect(warn).toHaveBeenCalledTimes(2);
     warn.mockRestore();
+  });
+});
+
+// CHK-A2: compose-hash self-consistency (CMP-01/02/05). app_compose +
+// compose_hash are both self-reported by the node — A2 proves internal
+// consistency only (forgeable, NOT a trust anchor). It runs after CHK-A1 and
+// before the mock gate, so it throws even under allowInsecureMock=true.
+describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
+  // A real-ish app-compose blob; compose_hash is the raw sha256 of its utf8 bytes
+  // (NO canonicalization) — exactly the relationship the sidecar/dstack enforces.
+  const appCompose = JSON.stringify({
+    manifest_version: 2,
+    name: "vrpc-arbitrum",
+    runner: "docker-compose",
+    docker_compose_file:
+      "services:\n  rpc:\n    image: ankrnetwork/ankr-snapshot@sha256:deadbeef\n",
+  });
+  const selfConsistentHash = computeComposeHash(appCompose);
+
+  test("CMP-01 hash-match: self-consistent pair passes, falls through to mock gate", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const bundle = makeBundle(fixture.report_data, {
+      app_compose: appCompose,
+      compose_hash: selfConsistentHash,
+    });
+    // A2 passes (no throw) → mock gate resolves with allowInsecureMock=true.
+    await expect(
+      verifyDstackAttestation(bundle, makePolicy({ ...validBinding, allowInsecureMock: true })),
+    ).resolves.toBeUndefined();
+    warn.mockRestore();
+  });
+
+  test("CMP-01 hash-match: also accepts a 0x-prefixed compose_hash (normalized)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const bundle = makeBundle(fixture.report_data, {
+      app_compose: appCompose,
+      compose_hash: `0x${selfConsistentHash.toUpperCase()}`,
+    });
+    await expect(
+      verifyDstackAttestation(bundle, makePolicy({ ...validBinding, allowInsecureMock: true })),
+    ).resolves.toBeUndefined();
+    warn.mockRestore();
+  });
+
+  test("CMP-01 mismatch: wrong compose_hash throws CHK-A2 even with allowInsecureMock=true", async () => {
+    const bundle = makeBundle(fixture.report_data, {
+      app_compose: appCompose,
+      compose_hash: "00".repeat(32), // not the hash of appCompose
+    });
+    try {
+      await verifyDstackAttestation(
+        bundle,
+        makePolicy({ ...validBinding, allowInsecureMock: true }),
+      );
+      throw new Error("expected throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AttestationError);
+      expect((e as AttestationError).chkId).toBe("CHK-A2");
+    }
+  });
+
+  test("CMP-01 mismatch: tampered app_compose (hash no longer matches) throws CHK-A2", async () => {
+    const bundle = makeBundle(fixture.report_data, {
+      app_compose: `${appCompose} `, // one trailing space → different sha256
+      compose_hash: selfConsistentHash,
+    });
+    try {
+      await verifyDstackAttestation(
+        bundle,
+        makePolicy({ ...validBinding, allowInsecureMock: true }),
+      );
+      throw new Error("expected throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AttestationError);
+      expect((e as AttestationError).chkId).toBe("CHK-A2");
+    }
+  });
+
+  test("CMP-02 dormant-skip: empty app_compose → A2 skips, mock gate resolves", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Non-empty compose_hash but EMPTY app_compose (older node / no /info) — A2
+    // must NOT throw; verify completes through to the mock gate.
+    const bundle = makeBundle(fixture.report_data, {
+      app_compose: "",
+      compose_hash: selfConsistentHash,
+    });
+    await expect(
+      verifyDstackAttestation(bundle, makePolicy({ ...validBinding, allowInsecureMock: true })),
+    ).resolves.toBeUndefined();
+    warn.mockRestore();
+  });
+
+  test("CMP-02 dormant-skip: empty compose_hash (simulator) → A2 skips, no throw", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Non-empty app_compose but EMPTY compose_hash — the dstack simulator's
+    // --allow-empty-compose-hash posture. A2 must dormant-skip, NOT throw.
+    const bundle = makeBundle(fixture.report_data, {
+      app_compose: appCompose,
+      compose_hash: "",
+    });
+    await expect(
+      verifyDstackAttestation(bundle, makePolicy({ ...validBinding, allowInsecureMock: true })),
+    ).resolves.toBeUndefined();
+    warn.mockRestore();
+  });
+
+  test("CMP-02 dormant-skip: absent compose_hash (undefined) → A2 skips, no throw", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Non-empty app_compose, compose_hash field entirely absent — A2 dormant-skips.
+    const bundle = makeBundle(fixture.report_data, { app_compose: appCompose });
+    await expect(
+      verifyDstackAttestation(bundle, makePolicy({ ...validBinding, allowInsecureMock: true })),
+    ).resolves.toBeUndefined();
+    warn.mockRestore();
+  });
+
+  test("ordering: CHK-A1 still throws BEFORE CHK-A2 even when compose is self-inconsistent", async () => {
+    // Wrong nonce (A1 fail) + inconsistent compose (A2 would fail) → A1 wins.
+    const bundle = makeBundle(fixture.report_data, {
+      app_compose: appCompose,
+      compose_hash: "00".repeat(32),
+    });
+    try {
+      await verifyDstackAttestation(
+        bundle,
+        makePolicy({
+          expectedPubkey: fixture.pubkey,
+          expectedNonce: "dd".repeat(32),
+          allowInsecureMock: true,
+        }),
+      );
+      throw new Error("expected throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AttestationError);
+      expect((e as AttestationError).chkId).toBe("CHK-A1");
+    }
   });
 });

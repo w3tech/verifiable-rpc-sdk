@@ -130,8 +130,14 @@ export function installAttestationMock(opts: { requireNodeId?: boolean } = {}): 
         return new Response("not found", { status: 404 });
       }
       const attPubkey = await getPublicKeyAsync(TEST_SEED);
+      // CHK-A1 binds report_data[0:32]==pubkey and [32:64]==the fetch nonce. The
+      // seam sends the nonce as the bare-hex `?nonce=` query param; echo it so
+      // report_data = pubkey(bare) ‖ nonce(bare) passes the 128-hex shape gate +
+      // binding regardless of the (random) nonceSource.
+      const nonceHex = new URL(url).searchParams.get("nonce") ?? "";
+      const reportData = `${toHex(attPubkey)}${nonceHex}`;
       const body = {
-        quote: { quote: "00", event_log: "00", report_data: "00", vm_config: "" },
+        quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
         pubkey: `0x${toHex(attPubkey)}`,
         composeHash: "deadbeef",
       };

@@ -10,11 +10,35 @@
 // fresh", NOT "attested to hardware" (a fabricated quote can carry arbitrary
 // report_data — A1 is only meaningful together with the deferred DCAP/RTMR layers).
 //
-// After A1, the mock gate still governs the NOT-yet-built DCAP quote-signature +
+// CHK-A2 (compose-hash self-consistency) runs AFTER A1, BEFORE the mock gate. It
+// is BEST-EFFORT / DORMANT-BY-DEFAULT: only when bundle.tcbInfo.app_compose is
+// non-empty AND tcbInfo.compose_hash is present + non-empty does it assert
+// computeComposeHash(app_compose) === normalize(compose_hash) (raw sha256, no
+// canonicalization); otherwise it SKIPS (no throw). It throws CHK-A2 on mismatch
+// even under allowInsecureMock (it precedes the mock gate).
+//
+// ⚠️ TRUST BOUNDARY — CHK-A2 is SELF-CONSISTENCY ONLY, NOT a trust anchor.
+// Both `app_compose` and `compose_hash` come from the SAME node (its own GET
+// /info + /attestation). The check only proves the node is internally
+// consistent: a malicious node simply reports an app_compose that hashes to its
+// own forged compose_hash and passes A2 trivially. It is attacker-forgeable and
+// raises the bar against accidental config drift ONLY. Real compose trust needs
+// (a) an INDEPENDENT compose source the node cannot forge, (b) the compose_hash
+// anchored into RTMR3 via event-log replay, and (c) a DCAP-verified quote — all
+// deferred to v7.0.
+//
+// After A2, the mock gate still governs the NOT-yet-built DCAP quote-signature +
 // RTMR3-replay layers (VPKG-03/VPKG-04): default (allowInsecureMock absent/false)
 // throws AttestationError("CHK-MOCK"); allowInsecureMock === true resolves void with
 // a prominent console.warn banner on EVERY call (not memoized — a mock must never
 // silently masquerade as real verification in prod logs).
+
+// computeComposeHash is imported from core's `./compose` LEAF subpath (not the
+// main barrel): the barrel re-exports trusted-verifier.ts which imports
+// @ankr.com/dstack-verify, re-opening the CYCLE-01 ESM init cycle. compose.ts is
+// cycle-free. (The local verify-steps.ts `computeComposeHash` is still a v5.0
+// throwing stub — do NOT use it.) This keeps @noble/hashes out of dstack-verify.
+import { computeComposeHash } from "@ankr.com/vrpc-core/compose";
 
 import { AttestationError } from "./errors";
 import type { AttestationBundle, VerifyPolicy } from "./types";
@@ -49,6 +73,26 @@ export async function verifyDstackAttestation(
       "CHK-A1",
       "report_data[32:64] does not match expected nonce (possible replay)",
     );
+  }
+
+  // --- CHK-A2: compose-hash self-consistency (best-effort, dormant by default) ---
+  // SELF-CONSISTENCY ONLY — see the trust-boundary note at the top of this file.
+  // app_compose + compose_hash are BOTH self-reported by the node, so a pass
+  // proves only internal consistency (forgeable); it is NOT a hardware/trust
+  // anchor. Anchoring (independent compose source + RTMR3 replay + DCAP) is v7.0.
+  const appCompose = bundle.tcbInfo?.app_compose ?? "";
+  const reportedComposeHash = bundle.tcbInfo?.compose_hash ?? "";
+  // Dormant-skip when EITHER side is empty/absent (older nodes / the simulator's
+  // empty composeHash). Both empties are handled explicitly here — no silent pass.
+  if (appCompose !== "" && reportedComposeHash !== "") {
+    // computeComposeHash returns bare lowercase hex; normHex strips any 0x +
+    // lowercases the reported hash so the comparison is canonical on both sides.
+    if (computeComposeHash(appCompose) !== normHex(reportedComposeHash)) {
+      throw new AttestationError(
+        "CHK-A2",
+        "sha256(utf8(app_compose)) does not match the reported compose_hash (config self-inconsistency)",
+      );
+    }
   }
 
   // --- Mock gate: covers the unimplemented DCAP/RTMR3 layers only ---

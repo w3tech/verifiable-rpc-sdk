@@ -10,8 +10,15 @@ import { defineConfig } from "tsup";
 // of the full barrel, breaking the core<->dstack-verify ESM init cycle that
 // otherwise leaves `VerificationError` undefined at class-extends time under
 // Node. `splitting` keeps a single shared chunk so identity is preserved.
+//
+// `compose.ts` is a third leaf entry for the same cycle-avoidance reason:
+// dstack-verify imports `computeComposeHash` from `@ankr.com/vrpc-core/compose`
+// (CHK-A2) instead of the full barrel — the barrel re-exports trusted-verifier.ts
+// which imports `@ankr.com/dstack-verify` (the CYCLE-01 ESM init cycle).
+// compose.ts only depends on @noble/hashes + the leaf ./errors + ./preimage, so
+// it is cycle-free.
 export default defineConfig({
-  entry: ["src/index.ts", "src/errors.ts"],
+  entry: ["src/index.ts", "src/errors.ts", "src/compose.ts"],
   format: ["esm"],
   target: "node20",
   dts: true,

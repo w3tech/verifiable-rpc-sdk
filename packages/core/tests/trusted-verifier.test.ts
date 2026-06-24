@@ -93,8 +93,13 @@ function installAttestationMock(): AttMockState {
       state.attGetCount += 1;
       state.lastUrl = url;
       const attPubkey = await getPublicKeyAsync(TEST_SEED);
+      // report_data is the 64-byte CHK-A1 pre-image pubkey(bare) ‖ nonce(bare):
+      // the seam binds report_data[0:32]==pubkey and [32:64]==the fetch nonce
+      // (baseOpts hard-sets nonceSource -> NONCE = 0x07*32). A bare "00" stub
+      // fails CHK-A1's 128-hex shape gate.
+      const reportData = `${toHex(attPubkey)}${toHex(NONCE)}`;
       const body = {
-        quote: { quote: "00", event_log: "00", report_data: "00", vm_config: "" },
+        quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
         pubkey: `0x${toHex(attPubkey)}`,
         composeHash: "deadbeef",
       };

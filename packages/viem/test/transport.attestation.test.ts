@@ -82,8 +82,12 @@ function seamFetch(opts: { withNodeId?: boolean } = {}): SeamFetch {
       state.attGetCount += 1;
       state.lastAttUrl = url;
       const attPubkey = await getPublicKeyAsync(TEST_SEED);
+      // CHK-A1: report_data = pubkey(bare) ‖ nonce(bare); echo the `?nonce=` query.
+      // Regex-extract (not `new URL`) — viem shadows the global URL constructor here.
+      const nonceHex = url.match(/[?&]nonce=([0-9a-fA-F]+)/)?.[1] ?? "";
+      const reportData = `${toHex(attPubkey)}${nonceHex}`;
       const body = {
-        quote: { quote: "00", event_log: "00", report_data: "00", vm_config: "" },
+        quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
         pubkey: `0x${toHex(attPubkey)}`,
         composeHash: "deadbeef",
       };

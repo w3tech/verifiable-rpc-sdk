@@ -64,6 +64,57 @@ re-attested (no stale trust). The adapters (`@ankr.com/vrpc-ethers`,
 `@ankr.com/vrpc-viem`) forward `pubkeyCacheTtlMs` into the seam. Remember: in v5.0
 the cached result is from the **mock** check — see the banner above.
 
+### Trust boundary — what verification actually proves (v6.2)
+
+`verifyDstackAttestation` runs two **local, collateral-free** checks before the
+mock gate. They establish **"signed + bound + fresh + self-consistent"** — they
+do **NOT** establish **"attested to genuine Intel TDX hardware"**. A fabricated
+quote can carry arbitrary `report_data` / `compose_hash`, so these checks are
+only meaningful in combination with the **deferred** DCAP signature verification
+(v7.0). They raise the bar (swapped-key MITM, replay, config drift) without
+claiming a hardware root of trust.
+
+- **CHK-A1 — report_data → pubkey/nonce binding (HARD).** Shape-gates
+  `report_data` to 64 bytes, then asserts `report_data[0:32] == expectedPubkey`
+  (the Ed25519 key the SDK verifies `vRPC-Signature` against — swapped-key /
+  wrong-node defence) and `report_data[32:64] == expectedNonce` (freshness /
+  anti-replay). A mismatch **always** throws `AttestationError("CHK-A1")` —
+  **regardless of `allowInsecureMock`**.
+
+- **CHK-A2 — compose-hash self-consistency (BEST-EFFORT, dormant by default).**
+  When `tcbInfo.app_compose` is non-empty **and** `tcbInfo.compose_hash` is
+  present + non-empty, asserts `sha256(utf8(app_compose)) == compose_hash` (raw
+  bytes, **no canonicalization**); mismatch throws `AttestationError("CHK-A2")`
+  (it precedes the mock gate, so it throws even under `allowInsecureMock`). When
+  either side is empty/absent (nodes that don't yet serve `app_compose`, or the
+  dstack simulator's empty `compose_hash`) it **skips silently — not an error**.
+
+  > ⚠️ **CHK-A2 is self-consistency ONLY — it is NOT a trust anchor.**
+  > `app_compose` and `compose_hash` both come from the **same node** (its own
+  > `GET /info` + `/attestation`). A pass proves only that the node is internally
+  > consistent. A malicious node simply reports an `app_compose` that hashes to
+  > its own forged `compose_hash` and passes A2 trivially — **A2 is
+  > attacker-forgeable**. Turning A2 into a real trust anchor requires all of:
+  > (a) an **independent** compose source the node cannot forge (a pinned/signed
+  > registry), (b) the `compose_hash` **anchored into RTMR3** via event-log
+  > replay, and (c) a **DCAP-verified** quote. All three land in **v7.0**.
+
+### `allowInsecureMock` — partial-verification semantics
+
+`allowInsecureMock` gates **only** the not-yet-built layers (DCAP
+quote-signature + RTMR3 replay), **never** CHK-A1 or CHK-A2:
+
+- **absent / `false`** → after A1+A2 pass, throws `AttestationError("CHK-MOCK")`
+  (fail-closed). Only the literal boolean `true` opens the hatch; any other
+  truthy value (`1`, `"true"`, `{}`, …) still throws.
+- **`true`** → after A1+A2 pass, resolves `void` and prints a loud `console.warn`
+  partial-verification banner on **every** call (not memoized). It signals that
+  CHK-A1/A2 ran but the hardware root of trust did **not** — proving
+  "signed + bound + fresh", **not** "attested to hardware".
+
+The contract stays `Promise<void>`; there is no separate status surface —
+partial verification is signalled by the warning banner alone.
+
 ### `CHK-*` checklist
 
 `CHK` is a frozen const record enumerating the full chain-of-trust checklist

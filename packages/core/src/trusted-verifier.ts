@@ -22,6 +22,7 @@ import {
 import { bytesToHex } from "@noble/hashes/utils.js";
 
 import { type Attestation, fetchAttestation, verifyAttestationCorrelation } from "./attestation";
+import { InfoEndpointComposeSource } from "./compose";
 import type { VerifiedResponse } from "./verifier";
 import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
 
@@ -68,14 +69,27 @@ export interface TrustedVerifierOptions {
  * Map a fetched {@link Attestation} (shark `/attestation` wire shape) to the
  * frozen {@link AttestationBundle}. The `quote.*` fields and `pubkey` pass
  * through directly; `nonce` is the SDK-generated fetch nonce (bare hex, not from
- * the attestation body). `tcbInfo` and `signature_chain` are mock-tolerated
- * stubs in v5.0 — the v5.0 mock verifier does not inspect `bundle`. Each stub
- * carries a `// GAP v5.0` anchor recording where v6.0 must source the real data.
+ * the attestation body). The remaining `tcbInfo` measurement fields and
+ * `signature_chain` are still mock-tolerated stubs — the mock verifier does not
+ * inspect them; each carries a `// GAP` anchor recording where v7.0 must source
+ * the real data.
+ *
+ * SRC-01: `tcbInfo.app_compose` is now populated from the node's `GET /info`
+ * (`tcb_info.app_compose`, via {@link InfoEndpointComposeSource}). `appCompose`
+ * is OPTIONAL and defaults to `""` — when the caller could not fetch `/info`
+ * (older nodes / the simulator / a fetch error) the field stays empty and the
+ * SDK's CHK-A2 self-consistency check dormant-skips (backward-compatible).
+ *
+ * NOTE: `app_compose` here comes from the SAME node that produced `compose_hash`
+ * (self-reported). The pair only proves the node is internally consistent — it
+ * is attacker-forgeable and is NOT a trust anchor. Anchoring it (independent
+ * compose source + RTMR3 replay + DCAP) lands in v7.0.
  */
 export function mapAttestationToBundle(
   attestation: Attestation,
   pubkeyHex: string,
   nonce: Uint8Array,
+  appCompose = "",
 ): AttestationBundle {
   return {
     quote: {
@@ -86,17 +100,18 @@ export function mapAttestationToBundle(
     },
     pubkey: pubkeyHex,
     nonce: bytesToHex(nonce),
-    // GAP v5.0 / fills in v6.0: structural tcbInfo from GET /info tcb_info — see
-    // InfoEndpointComposeSource in compose.ts (narrowInfoAppCompose) for the
-    // narrower; the current /attestation route does not emit it. Mock does not
-    // inspect bundle, so a stub is valid until v6.0.
+    // GAP / fills in v7.0: structural measurement fields (mrtd/rtmr0-3, event_log)
+    // from GET /info tcb_info for RTMR replay anchoring. The mock does not inspect
+    // them, so a stub is valid until the real DCAP/RTMR layers land.
     tcbInfo: {
       mrtd: "",
       rtmr0: "",
       rtmr1: "",
       rtmr2: "",
       rtmr3: "",
-      app_compose: "",
+      // SRC-01: raw app_compose text from GET /info tcb_info (self-reported;
+      // empty when /info was unavailable → CHK-A2 dormant-skips).
+      app_compose: appCompose,
       event_log: [],
       // composeHash is available as a (recompute-only) hint, never a trust anchor.
       compose_hash: attestation.composeHash,
@@ -173,6 +188,26 @@ export class TrustedVerifier {
   }
 
   /**
+   * SRC-01: best-effort fetch of the node's raw `app_compose` (GET /info →
+   * `tcb_info.app_compose`) for CHK-A2. Returns `""` on ANY failure (no /info
+   * route, malformed body, network error) — CHK-A2 then dormant-skips. Never
+   * throws; the attestation verify must not fail because /info is unavailable.
+   * The base URL is `attestationUrl` with a single trailing `/attestation`
+   * segment removed (InfoEndpointComposeSource re-appends `/info`).
+   */
+  private async fetchAppComposeBestEffort(): Promise<string> {
+    try {
+      const baseUrl = this.attestationUrl.replace(/\/attestation\/?$/i, "");
+      const source = new InfoEndpointComposeSource(baseUrl, {
+        ...(this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl }),
+      });
+      return await source.getAppCompose();
+    } catch {
+      return "";
+    }
+  }
+
+  /**
    * Verify a (requestBytes, responseBytes, headers) triple and, on an
    * unknown/expired signing pubkey, lazily attest it. Fail-closed throughout.
    * Exact ordering (FLOW-03/04/05):
@@ -217,7 +252,15 @@ export class TrustedVerifier {
 
     verifyAttestationCorrelation(att, { verification: { pubkeyHex } } as VerifiedResponse);
 
-    const bundle = mapAttestationToBundle(att, pubkeyHex, nonce);
+    // SRC-01: best-effort fetch of the node's raw `app_compose` from GET /info so
+    // the SDK can run CHK-A2 (compose-hash self-consistency). NON-FATAL: older
+    // nodes / the simulator / a transient /info error leave it empty and CHK-A2
+    // dormant-skips — the attestation verify must not fail just because /info is
+    // missing. The base URL is `attestationUrl` minus its trailing `/attestation`
+    // (InfoEndpointComposeSource appends `/info`).
+    const appCompose = await this.fetchAppComposeBestEffort();
+
+    const bundle = mapAttestationToBundle(att, pubkeyHex, nonce, appCompose);
     const policy = buildVerifyPolicy(pubkeyHex, nonce);
 
     await this.verifyAttestationImpl(bundle, policy);

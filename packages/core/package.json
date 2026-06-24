@@ -22,6 +22,11 @@
       "types": "./src/errors.ts",
       "import": "./dist/errors.js",
       "default": "./dist/errors.js"
+    },
+    "./compose": {
+      "types": "./src/compose.ts",
+      "import": "./dist/compose.js",
+      "default": "./dist/compose.js"
     }
   },
   "files": [
@@ -46,6 +51,11 @@
         "types": "./dist/errors.d.ts",
         "import": "./dist/errors.js",
         "default": "./dist/errors.js"
+      },
+      "./compose": {
+        "types": "./dist/compose.d.ts",
+        "import": "./dist/compose.js",
+        "default": "./dist/compose.js"
       }
     }
   },

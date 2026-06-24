@@ -62,10 +62,15 @@ function hex(bytes: Uint8Array): string {
  * TrustedVerifier fetches this once per unknown pubkey; the mock verifier then
  * resolves and the verified read proceeds.
  */
-async function attestationResponse(): Promise<Response> {
+async function attestationResponse(url: string): Promise<Response> {
   const attPubkey = await getPublicKeyAsync(TEST_SEED);
+  // CHK-A1: report_data = pubkey(bare) ‖ nonce(bare); echo the seam's `?nonce=`
+  // query so the binding + 128-hex shape gate pass (nonceSource is random).
+  // Regex-extract (not `new URL`) — viem shadows the global URL constructor here.
+  const nonceHex = url.match(/[?&]nonce=([0-9a-fA-F]+)/)?.[1] ?? "";
+  const reportData = `${hex(attPubkey)}${nonceHex}`;
   const body = {
-    quote: { quote: "00", event_log: "00", report_data: "00", vm_config: "" },
+    quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
     pubkey: `0x${hex(attPubkey)}`,
     composeHash: "deadbeef",
   };
@@ -110,7 +115,13 @@ function signingFetch(
     // Attestation GET leg (no body): serve the correlated-pubkey attestation so
     // the verifier resolves the unknown pubkey. Do NOT bump the RPC capture hooks.
     if (url.includes("/attestation")) {
-      return attestationResponse();
+      return attestationResponse(url);
+    }
+    // SRC-01 best-effort /info side-fetch (CHK-A2 app_compose): not served here →
+    // 404 so the seam's best-effort catch leaves app_compose empty (CHK-A2 skips).
+    // Excluded from the RPC capture hooks, same as /attestation.
+    if (url.includes("/info")) {
+      return new Response("not found", { status: 404 });
     }
     if (seam.counter) {
       seam.counter.n += 1;
@@ -188,7 +199,7 @@ function autoDeriveFetch(
     // Attestation GET leg: served for the always-on verifier's lazy attest of the
     // (post-bootstrap) read's unknown signing pubkey.
     if (url.includes("/attestation")) {
-      return attestationResponse();
+      return attestationResponse(url);
     }
     const bodyStr = init.body as string;
     const payload = JSON.parse(bodyStr) as { method?: string };

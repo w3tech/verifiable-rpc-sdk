@@ -92,9 +92,13 @@ describe("VrpcProvider always-on attestation E2E (TEST-03)", () => {
     const capturingFetch = (async (input: string | URL | Request, init?: RequestInit) => {
       if (String(input).includes("/attestation")) {
         attHeaders = new Headers(init?.headers);
+        // CHK-A1: report_data = pubkey(bare) ‖ nonce(bare); echo the `?nonce=`
+        // query so the binding + 128-hex shape gate pass.
+        const nonceHex = new URL(String(input)).searchParams.get("nonce") ?? "";
+        const reportData = `${pubkeyHex.slice(2)}${nonceHex}`;
         return new Response(
           JSON.stringify({
-            quote: { quote: "00", event_log: "00", report_data: "00", vm_config: "" },
+            quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
             pubkey: pubkeyHex,
             composeHash: "deadbeef",
           }),
