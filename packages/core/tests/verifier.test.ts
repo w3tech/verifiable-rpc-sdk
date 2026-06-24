@@ -480,7 +480,7 @@ describe("VerifierClient", () => {
 
   // Note: `customHeadersMergeIntoRequest` and `pinnedHeadersWinOverCustom` above
   // already cover x-api-key-via-headers on the POST and pinned-header precedence.
-  // (The former `apiKey`-option tests were removed in Phase 41 — `apiKey` is gone;
+  // (The former `apiKey`-option tests were removed — `apiKey` is gone;
   // auth flows only through `headers`.)
   test("headersAreAppliedPerCall", async () => {
     let capturedHeaders: Record<string, string> | undefined;

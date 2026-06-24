@@ -3,7 +3,7 @@ import ethersManifest from "../../ethers/package.json";
 import viemManifest from "../../viem/package.json";
 import coreManifest from "../package.json";
 
-// TEST-01: encode the dependency-isolation invariants (PKG-02/03/04/05) as a
+// Encode the dependency-isolation invariants as a
 // checkable test now, while the adapters are stubs. A wrong dependency field
 // (e.g. ethers/viem listed under `dependencies` instead of `peerDependencies`)
 // would silently pull a duplicate client-lib instance and break `instanceof`
@@ -20,7 +20,7 @@ const core = coreManifest as Manifest;
 const ethers = ethersManifest as Manifest;
 const viem = viemManifest as Manifest;
 
-describe("vrpc-core dependency isolation (PKG-02)", () => {
+describe("vrpc-core dependency isolation", () => {
   test("core is @ankr.com/vrpc-core", () => {
     expect(core.name).toBe("@ankr.com/vrpc-core");
   });
@@ -41,7 +41,7 @@ describe("vrpc-core dependency isolation (PKG-02)", () => {
   });
 });
 
-describe("vrpc-ethers dependency isolation (PKG-03/PKG-05)", () => {
+describe("vrpc-ethers dependency isolation", () => {
   test("ethers is @ankr.com/vrpc-ethers", () => {
     expect(ethers.name).toBe("@ankr.com/vrpc-ethers");
   });
@@ -57,12 +57,12 @@ describe("vrpc-ethers dependency isolation (PKG-03/PKG-05)", () => {
     expect(ethers.devDependencies?.viem).toBeUndefined();
   });
 
-  test("depends on @ankr.com/vrpc-core as workspace:* (PKG-05)", () => {
+  test("depends on @ankr.com/vrpc-core as workspace:*", () => {
     expect(ethers.dependencies?.["@ankr.com/vrpc-core"]).toBe("workspace:*");
   });
 });
 
-describe("vrpc-viem dependency isolation (PKG-04/PKG-05)", () => {
+describe("vrpc-viem dependency isolation", () => {
   test("viem is @ankr.com/vrpc-viem", () => {
     expect(viem.name).toBe("@ankr.com/vrpc-viem");
   });
@@ -78,7 +78,7 @@ describe("vrpc-viem dependency isolation (PKG-04/PKG-05)", () => {
     expect(viem.devDependencies?.ethers).toBeUndefined();
   });
 
-  test("depends on @ankr.com/vrpc-core as workspace:* (PKG-05)", () => {
+  test("depends on @ankr.com/vrpc-core as workspace:*", () => {
     expect(viem.dependencies?.["@ankr.com/vrpc-core"]).toBe("workspace:*");
   });
 });

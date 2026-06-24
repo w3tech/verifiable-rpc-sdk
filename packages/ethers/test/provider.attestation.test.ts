@@ -1,12 +1,12 @@
-// TEST-03 — VrpcProvider E2E always-on lazy-attestation suite (ethers half).
+// VrpcProvider E2E always-on lazy-attestation suite (ethers half).
 //
 // Verification is ALWAYS on: every VrpcProvider runs the TrustedVerifier (plain
 // Ed25519 verify + lazy TDX attestation). This suite proves the attestation leg
-// end-to-end against the Phase-33 mock verifier (allowInsecureMock hard-set true
+// end-to-end against the mock verifier (allowInsecureMock hard-set true
 // by buildVerifyPolicy in vrpc-core):
 //   - an unknown signing pubkey → the attestation GET is hit ONCE, the mock
 //     verifier resolves, the call returns the decoded value, and a second call
-//     within TTL skips the fetch (cache proof, FLOW-04).
+//     within TTL skips the fetch (cache proof).
 //   - a signed response WITHOUT `vRPC-NodeId` against a shark-style route that
 //     requires `node_id` → the attestation fetch 404s → fail-closed (the
 //     no-node_id path: the endpoint decides, the error propagates).
@@ -47,7 +47,7 @@ function vrpcProviderWith(mock: AttMockState, signOpts: { nodeId?: string }): Vr
   );
 }
 
-describe("VrpcProvider always-on attestation E2E (TEST-03)", () => {
+describe("VrpcProvider always-on attestation E2E", () => {
   test("attestsOnceAndCaches: unknown pubkey attests once, second call within TTL skips fetch", async () => {
     const mock = installAttestationMock();
     const provider = vrpcProviderWith(mock, { nodeId: NODE_ID });

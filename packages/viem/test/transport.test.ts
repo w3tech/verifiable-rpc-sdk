@@ -1,4 +1,4 @@
-// TEST-03 — vrpcHttp transport WIRING suite.
+// vrpcHttp transport WIRING suite.
 //
 // Asserts ADAPTER WIRING ONLY: that vrpcHttp's `request` routes every viem
 // action through vrpc-core `verifyResponse` over the raw response bytes before
@@ -7,7 +7,7 @@
 // + the re-exported VerificationError family.
 //
 // It does NOT re-test Ed25519 / pre-image / replay-window correctness — that is
-// core's verify.test.ts (TEST-04). The request-aware fetch seam signs over the
+// core's verify.test.ts. The request-aware fetch seam signs over the
 // EXACT bytes the transport POSTs (via signResponseBytes), so a real
 // getBalance / readContract / getBlock payload verifies without the test
 // predicting viem's internal body encoding. No `ethers` import (manifest
@@ -279,7 +279,7 @@ function pinnedTransport(fetchFn: (url: string, init: RequestInit) => Promise<Re
   return vrpcHttp(URL, { fetchFn, replayWindowMs: WIDE_WINDOW })(PINNED);
 }
 
-describe("vrpcHttp transport wiring (TEST-03)", () => {
+describe("vrpcHttp transport wiring", () => {
   // VIEM-01/02 — a verified eth_getBalance routes through the transport request.
   test("verified value routes through request: getBalance returns the decoded balance", async () => {
     const c = client(signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX)));
@@ -404,7 +404,7 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     expect(result).toBeNull();
   });
 
-  // TEST-03 (retry) — a single failing action triggers exactly ONE fetch,
+  // Retry — a single failing action triggers exactly ONE fetch,
   // proving retryCount:0 (a verify failure is not retried 3×).
   test("retryCount:0 — injected fetch is called exactly once per failing action", async () => {
     const counter = { n: 0 };

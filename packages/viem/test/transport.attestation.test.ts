@@ -1,11 +1,11 @@
-// TEST-03 (viem half) — E2E always-on attestation suite for vrpcHttp.
+// E2E always-on attestation suite for vrpcHttp (viem half).
 //
 // Proves the viem adapter ALWAYS routes the NORMAL verify through the vrpc-core
-// `TrustedVerifier` end-to-end against the Phase-33 mock verifier
+// `TrustedVerifier` end-to-end against the mock verifier
 // (allowInsecureMock is hard-set true by buildVerifyPolicy):
 //   1. an unknown signing pubkey triggers the attestation GET exactly once, the
 //      mock resolves, the read returns the decoded value, and a second read
-//      within TTL skips the fetch (cache proof — FLOW-04).
+//      within TTL skips the fetch (cache proof).
 //   2. a signed response WITHOUT `vRPC-NodeId` still verifies: the verifier
 //      fetches the attestation WITHOUT a `node_id` query param (the endpoint
 //      decides) and the read succeeds.
@@ -109,7 +109,7 @@ function seamFetch(opts: { withNodeId?: boolean } = {}): SeamFetch {
   return state;
 }
 
-describe("vrpcHttp always-on attestation (TEST-03, viem half)", () => {
+describe("vrpcHttp always-on attestation (viem half)", () => {
   test("routesThroughVerifierAndCaches: unknown pubkey attests once, second read within TTL skips the fetch", async () => {
     const seam = seamFetch();
     const c = createPublicClient({

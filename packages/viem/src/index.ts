@@ -1,4 +1,4 @@
-// @ankr.com/vrpc-viem — viem verifiable adapter (Phase 31).
+// @ankr.com/vrpc-viem — viem verifiable adapter.
 //
 // `vrpcHttp` is a viem custom transport whose `request` hands raw request + raw
 // (content-decoded) response bytes to vrpc-core's verify seam before any value

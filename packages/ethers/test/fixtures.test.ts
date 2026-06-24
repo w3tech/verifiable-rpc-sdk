@@ -1,4 +1,4 @@
-// Scaffold self-check (Wave 0): proves the synthesized SINGLE_RESULT fixture is
+// Scaffold self-check: proves the synthesized SINGLE_RESULT fixture is
 // genuinely verifiable under `@ankr.com/vrpc-core` `verifyResponse`, and that
 // `fixtureRequest` yields the fixture body+headers with no network. This
 // validates the offline test scaffold itself — NOT core crypto behaviors,

@@ -35,7 +35,7 @@
 
 // computeComposeHash is imported from core's `./compose` LEAF subpath (not the
 // main barrel): the barrel re-exports trusted-verifier.ts which imports
-// @ankr.com/dstack-verify, re-opening the CYCLE-01 ESM init cycle. compose.ts is
+// @ankr.com/dstack-verify, re-opening the ESM init cycle. compose.ts is
 // cycle-free. (The local verify-steps.ts `computeComposeHash` is still a
 // throwing stub — do NOT use it.) This keeps @noble/hashes out of dstack-verify.
 import { computeComposeHash } from "@ankr.com/vrpc-core/compose";

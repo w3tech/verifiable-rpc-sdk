@@ -190,8 +190,8 @@ export class AttestationCorrelationError extends VerificationError {
 
 /**
  * A {@link ComposeSource} implementation is not yet available — currently the
- * external `RegistryComposeSource` (the real Layer A trust anchor), pending
- * DEC-03 (compose-hash registry). Use `InfoEndpointComposeSource` for dev.
+ * external `RegistryComposeSource` (the real Layer A trust anchor), pending the
+ * compose-hash registry. Use `InfoEndpointComposeSource` for dev.
  */
 export class ComposeSourceNotImplemented extends VerificationError {
   readonly kind = "ComposeSourceNotImplemented" as const;

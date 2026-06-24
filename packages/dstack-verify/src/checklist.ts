@@ -43,7 +43,7 @@ export interface ChkEntry {
 /**
  * Frozen const record mapping every `ChkId` to its verbatim meaning + v6.0
  * disposition. Frozen so the audit dictionary is immutable and queryable from
- * code and tests (VPKG-05).
+ * code and tests.
  */
 export const CHK = Object.freeze({
   "CHK-A1": {

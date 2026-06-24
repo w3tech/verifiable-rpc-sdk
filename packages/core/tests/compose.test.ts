@@ -75,12 +75,12 @@ describe("InfoEndpointComposeSource", () => {
 });
 
 describe("RegistryComposeSource", () => {
-  test("getAppCompose rejects with ComposeSourceNotImplemented (DEC-03)", async () => {
+  test("getAppCompose rejects with ComposeSourceNotImplemented", async () => {
     const src = new RegistryComposeSource({ source: "github://w3tech/compose-registry" });
     await expect(src.getAppCompose()).rejects.toBeInstanceOf(ComposeSourceNotImplemented);
   });
 
-  test("getComposeHash rejects with ComposeSourceNotImplemented (DEC-03)", async () => {
+  test("getComposeHash rejects with ComposeSourceNotImplemented", async () => {
     const src = new RegistryComposeSource({ source: "github://w3tech/compose-registry" });
     await expect(src.getComposeHash()).rejects.toBeInstanceOf(ComposeSourceNotImplemented);
   });

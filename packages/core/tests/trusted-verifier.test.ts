@@ -194,7 +194,7 @@ describe("TrustedVerifier / trust seam", () => {
   // hard-set true by buildVerifyPolicy) → no verifyAttestation override. ──────
 
   test("cacheMissFetchesAndVerifies", async () => {
-    // FLOW-03: unknown pubkey → attestation fetched + verified → VerifiedPair.
+    // Unknown pubkey → attestation fetched + verified → VerifiedPair.
     const mock = installAttestationMock();
     const pair = await signedPair();
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
@@ -229,7 +229,7 @@ describe("TrustedVerifier / trust seam", () => {
   });
 
   test("cacheHit", async () => {
-    // FLOW-04: a fresh known pubkey skips the attestation fetch entirely.
+    // A fresh known pubkey skips the attestation fetch entirely.
     const mock = installAttestationMock();
     const pair = await signedPair();
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
@@ -245,7 +245,7 @@ describe("TrustedVerifier / trust seam", () => {
   });
 
   test("knownVsUnknown", async () => {
-    // FLOW-01: first verify (unknown) attests (counter ++), second (known,
+    // First verify (unknown) attests (counter ++), second (known,
     // within TTL) routes through the cache (counter unchanged).
     const mock = installAttestationMock();
     const pair = await signedPair();
@@ -259,7 +259,7 @@ describe("TrustedVerifier / trust seam", () => {
   });
 
   test("expiredReVerifies", async () => {
-    // FLOW-02: a cached pubkey is NOT trusted forever (no stale-trust). Uses a
+    // A cached pubkey is NOT trusted forever (no stale-trust). Uses a
     // small REAL ttl + a real wait — vitest fake timers do not drive lru-cache's
     // TTL clock (see `sleep` note). Companion `expiryTestIsClockDependent` proves
     // that WITHOUT the wait the same 2nd verify is a hit (red without advancing).

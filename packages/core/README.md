@@ -192,7 +192,7 @@ computeComposeHash(appCompose: string): string; // sha256(utf8(appCompose)) as b
   body throws `MalformedInfoResponse`.
 - `RegistryComposeSource({ source, ref?, expectedComposeHash?, fetch? })` — the
   *intended* real anchor (external, node-independent registry). **Not yet
-  implemented** (DEC-03); both methods reject with `ComposeSourceNotImplemented`.
+  implemented**; both methods reject with `ComposeSourceNotImplemented`.
 
 Both implement `ComposeSource` = `{ getAppCompose(): Promise<string>;
 getComposeHash(): Promise<string> }`.
@@ -270,7 +270,7 @@ Every verification failure throws a subclass of the abstract `VerificationError`
 | `InvalidNonce`                 | `"InvalidNonce"`                | Attestation nonce not exactly 32 bytes. `.reason`                |
 | `MalformedAttestationResponse` | `"MalformedAttestationResponse"`| `/attestation` body off-contract. `.reason`                      |
 | `MalformedInfoResponse`        | `"MalformedInfoResponse"`       | `/info` body off-contract. `.reason`                             |
-| `ComposeSourceNotImplemented`  | `"ComposeSourceNotImplemented"` | `RegistryComposeSource` used before DEC-03 lands. `.reason`      |
+| `ComposeSourceNotImplemented`  | `"ComposeSourceNotImplemented"` | `RegistryComposeSource` used before the registry lands. `.reason` |
 | `AttestationNodeNotFoundError` | `"AttestationNodeNotFound"`     | Shark returned 404 for the targeted `node_id`. `.nodeId`         |
 | `AttestationCorrelationError`  | `"AttestationCorrelation"`      | Attestation pubkey ≠ response signer. `.expectedPubkey/.actualPubkey` |
 

@@ -193,7 +193,7 @@ This is narrower than full TDX remote attestation, and the gap is intentional:
 - **Full TDX quote attestation is NOT performed** here — the signature proves
   *a key you correlated* produced *exactly these bytes*, not *which enclave
   image* holds that key (Intel PCK quote verification + composeHash registry
-  are deferred to the next milestone).
+  are deferred).
 - **WebSocket push (`eth_subscribe`) is unverified** — the sidecar signs HTTP
   responses only; WS bypasses the signing chokepoint. Use HTTP for anything you
   need a signature on.

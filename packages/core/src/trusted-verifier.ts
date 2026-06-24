@@ -1,11 +1,11 @@
-// TrustedVerifier (INTEG-01) — the single orchestration unit that combines
+// TrustedVerifier — the single orchestration unit that combines
 // the existing Ed25519 verify path (`verifyResponse`) with a TTL pubkey cache and
 // lazy TDX attestation: on an unknown/expired signing pubkey it fetches the node
 // attestation through shark, maps it to the frozen `AttestationBundle`, builds a
 // `VerifyPolicy` from client options, and calls `verifyDstackAttestation`.
 // Fail-closed: a verified pubkey is cached with a TTL ONLY after a
 // resolved attestation verify; a thrown `AttestationError` propagates and the
-// pubkey is NOT cached (FLOW-05).
+// pubkey is NOT cached.
 //
 // This module composes existing primitives — it implements NO crypto: the single
 // Ed25519 path is `verifyResponse` (verify.ts, never forked), the attestation
@@ -27,7 +27,7 @@ import { InfoEndpointComposeSource } from "./compose";
 import type { VerifiedResponse } from "./verifier";
 import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
 
-/** Default pubkey-cache TTL: 1 hour in ms (FLOW-02 default). */
+/** Default pubkey-cache TTL: 1 hour in ms. */
 export const DEFAULT_PUBKEY_CACHE_TTL_MS = 3_600_000;
 
 /** Default max distinct verified pubkeys held in the cache before LRU eviction. */
@@ -128,7 +128,7 @@ export function mapAttestationToBundle(
 
 /**
  * Build a {@link VerifyPolicy} from the verified pubkey + the SDK-generated nonce
- * (INTEG-02). `binding` carries the reportData binding (`report_data[0:32]==pubkey`,
+ * `binding` carries the reportData binding (`report_data[0:32]==pubkey`,
  * `[32:64]==nonce`); `allowInsecureMock` is HARD-SET `true` for the mock path.
  *
  * `allowlist`/`tcb`/`pccsUrl` are defaulted internally — the mock verifier
@@ -149,12 +149,11 @@ export function buildVerifyPolicy(pubkeyHex: string, nonce: Uint8Array): VerifyP
 }
 
 /**
- * The verify-and-trust seam (INTEG-01). Holds a long-lived, bounded pubkey cache
+ * The verify-and-trust seam. Holds a long-lived, bounded pubkey cache
  * (`pubkeyHex` keys, fixed TTL, LRU-evicted) across `verify()` calls. On a cache
- * hit within TTL it returns the verified pair before any attestation fetch
- * (FLOW-04); on a miss/expiry it lazily fetches + correlates + verifies the
- * attestation, caching the pubkey ONLY after a resolved attestation verify
- * (FLOW-05).
+ * hit within TTL it returns the verified pair before any attestation fetch;
+ * on a miss/expiry it lazily fetches + correlates + verifies the
+ * attestation, caching the pubkey ONLY after a resolved attestation verify.
  */
 export class TrustedVerifier {
   private readonly cache: LRUCache<string, true>;
@@ -219,16 +218,16 @@ export class TrustedVerifier {
   /**
    * Verify a (requestBytes, responseBytes, headers) triple and, on an
    * unknown/expired signing pubkey, lazily attest it. Fail-closed throughout.
-   * Exact ordering (FLOW-03/04/05):
+   * Exact ordering:
    *   1. `verifyResponse` (the single Ed25519 path) — throws propagate.
-   *   2. cache hit & fresh → return before any fetch (FLOW-04).
+   *   2. cache hit & fresh → return before any fetch.
    *   3. nodeId is OPTIONAL — included in the attestation fetch when present,
    *      omitted when absent (no pre-throw; the endpoint decides — fail-closed).
    *   4. one fresh nonce, reused below (no rebinding).
    *   5. fetch attestation via shark — throws propagate, cache untouched.
    *   6. correlate att.pubkey == response signer — throws on mismatch.
    *   7. map → bundle, build policy (same nonce).
-   *   8. attestation verify — throw skips step 9 (FLOW-05). NO try/finally.
+   *   8. attestation verify — throw skips step 9. NO try/finally.
    *   9. cache the pubkey STRICTLY after the resolved verify; return.
    */
   async verify(

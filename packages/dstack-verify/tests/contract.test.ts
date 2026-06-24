@@ -1,4 +1,4 @@
-// Frozen-contract surface tests — VPKG-02/VPKG-05.
+// Frozen-contract surface tests.
 //
 // Asserts: the public barrel exports every contract symbol; AttestationError
 // extends the shared abstract VerificationError from @ankr.com/vrpc-core and

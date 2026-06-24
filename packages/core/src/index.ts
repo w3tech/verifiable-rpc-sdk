@@ -2,7 +2,7 @@
 //
 // Implementation lives in:
 //   - ./verifier    — VerifierClient class + options/response types
-//   - ./verify      — transport-agnostic verifyResponse seam (CORE-02)
+//   - ./verify      — transport-agnostic verifyResponse seam
 //   - ./attestation — fetchAttestation helper + Attestation/GetQuoteResponse types
 //   - ./compose     — ComposeSource interface + InfoEndpoint (dev) / Registry
 //                     (future) implementations + computeComposeHash

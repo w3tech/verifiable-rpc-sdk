@@ -40,22 +40,22 @@ export interface VerifierClientOptions {
   fetch?: typeof fetch;
   /**
    * TTL of a verified pubkey in the trust cache, ms; default 3_600_000 (1h).
-   * Surfaced here for the trust-and-verify seam; wired in Phase 35.
+   * Surfaced here for the trust-and-verify seam; wired into the seam.
    */
   pubkeyCacheTtlMs?: number;
   /**
    * Pinned trust anchors used to build the attestation `VerifyPolicy`.
-   * Surfaced here; consumed by the seam in Phase 35.
+   * Surfaced here; consumed by the seam.
    */
   allowlist?: PinnedAllowlist;
   /**
    * DCAP TCB acceptance policy for the attestation `VerifyPolicy`.
-   * Surfaced here; consumed by the seam in Phase 35.
+   * Surfaced here; consumed by the seam.
    */
   tcb?: TcbPolicy;
   /**
    * Operational collateral source for dcap-qvl (NOT a trust dependency).
-   * Surfaced here; consumed by the seam in Phase 35.
+   * Surfaced here; consumed by the seam.
    */
   pccsUrl?: string;
 }

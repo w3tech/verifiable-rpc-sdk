@@ -1,5 +1,5 @@
 // Test helper: inject a synthetic ethers `FetchResponse` into a `FetchRequest`
-// without touching the network. Plan 30-02's `provider.test.ts` feeds the
+// without touching the network. `provider.test.ts` feeds the
 // signed fixtures from `fixtures.ts` through `VrpcProvider._send` via this seam.
 
 import { getPublicKeyAsync } from "@noble/ed25519";
@@ -51,10 +51,10 @@ export interface SigningRequestOptions extends SignFixtureOptions {
 /**
  * Build a `FetchRequest` whose `getUrlFunc` signs the chosen `responseBody` over
  * the EXACT request bytes ethers POSTs (`req.body`), then returns the signed
- * response. This is the request-aware seam Plan 30-02 uses so a real
+ * response. This is the request-aware seam the adapter uses so a real
  * `getBalance` / Contract payload verifies through `VrpcProvider._send` without
  * the test predicting ethers' internal payload bytes (key order, id counter,
- * resolved blockTag). TEST-02 asserts adapter WIRING, not pre-image bytes.
+ * resolved blockTag). This suite asserts adapter WIRING, not pre-image bytes.
  *
  * `tamper` flips a response byte AFTER signing → `BadSignature`. `unsigned`
  * strips the `vRPC-*` triple → `MissingHeader`. `signingChainId` (via

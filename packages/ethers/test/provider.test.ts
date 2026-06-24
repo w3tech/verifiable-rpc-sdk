@@ -1,4 +1,4 @@
-// TEST-02 — VrpcProvider adapter-WIRING suite (Phase 30, Wave 2).
+// VrpcProvider adapter-WIRING suite.
 //
 // These tests assert ADAPTER WIRING ONLY: that `VrpcProvider._send` routes every
 // JSON-RPC call through `vrpc-core` `verifyResponse` over the raw response bytes
@@ -7,7 +7,7 @@
 // re-exported VerificationError family.
 //
 // They do NOT re-test Ed25519 / pre-image / replay-window correctness — that is
-// core's `packages/core/tests/verify.test.ts` (TEST-01). The request-aware
+// core's `packages/core/tests/verify.test.ts`. The request-aware
 // `signingRequest` helper signs over the EXACT bytes ethers POSTs, so a real
 // getBalance / Contract / batch payload verifies without the test predicting
 // ethers' internal payload encoding.
@@ -138,7 +138,7 @@ function jsonResult(id: number, result: unknown): string {
   return JSON.stringify({ jsonrpc: "2.0", id, result });
 }
 
-describe("VrpcProvider._send wiring (TEST-02)", () => {
+describe("VrpcProvider._send wiring", () => {
   test("verified value routes through _send: getBalance returns the decoded balance", async () => {
     // The id ethers assigns to the first call is 1; the request-aware signer
     // signs whatever ethers actually POSTs, so we only need the response shape.
