@@ -2,7 +2,7 @@
   "name": "@ankr.com/dstack-verify",
   "version": "0.1.0",
   "type": "module",
-  "description": "Frozen contract for dstack/TDX attestation verification — v5.0 mock, v6.0 real.",
+  "description": "Frozen contract for dstack/TDX attestation verification — currently a mock gate; real DCAP/RTMR verification is deferred to a future release.",
   "license": "Apache-2.0",
   "author": "Web3 Technologies, Inc.",
   "repository": {

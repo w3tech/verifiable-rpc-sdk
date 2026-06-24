@@ -24,7 +24,7 @@ export type AttestationErrorKind = "Attestation";
 
 /**
  * Thrown when dstack/TDX attestation verification fails (or is mock-denied in
- * v5.0). Carries which `CHK-*` item failed plus a human-readable detail. The
+ * the current release). Carries which `CHK-*` item failed plus a human-readable detail. The
  * fail-closed contract means callers catch this rather than inspect a boolean.
  */
 export class AttestationError extends VerificationError {

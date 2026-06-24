@@ -2,9 +2,10 @@
 //
 // `ChkId` enumerates the complete CHK-A1..G3 checklist (verbatim from
 // phala chain-of-trust.mdx) plus the synthetic `CHK-MOCK` id used by the
-// v5.0 fail-closed mock-deny path. The `CHK` const record carries each item's
-// verbatim meaning and its v6.0 disposition so the checklist is queryable from
-// code and tests. v6.0 fills the verification bodies WITHOUT changing this set.
+// current release's fail-closed mock-deny path. The `CHK` const record carries
+// each item's verbatim meaning and its target disposition so the checklist is
+// queryable from code and tests. A future release fills the verification bodies
+// WITHOUT changing this set.
 
 /** Frozen string-literal union of every chain-of-trust checklist identifier. */
 export type ChkId =
@@ -29,19 +30,19 @@ export type ChkId =
   | "CHK-G1"
   | "CHK-G2"
   | "CHK-G3"
-  | "CHK-MOCK"; // synthetic id for the v5.0 mock-deny path
+  | "CHK-MOCK"; // synthetic id for the current release's mock-deny path
 
-/** v6.0 disposition for each checklist item. */
+/** Target disposition for each checklist item. */
 export type ChkDisposition = "implement" | "mock" | "pinned" | "out" | "mock-deny";
 
-/** One checklist entry: its verbatim meaning + the v6.0 implementation disposition. */
+/** One checklist entry: its verbatim meaning + the target implementation disposition. */
 export interface ChkEntry {
   meaning: string;
   disposition: ChkDisposition;
 }
 
 /**
- * Frozen const record mapping every `ChkId` to its verbatim meaning + v6.0
+ * Frozen const record mapping every `ChkId` to its verbatim meaning + target
  * disposition. Frozen so the audit dictionary is immutable and queryable from
  * code and tests.
  */
@@ -110,7 +111,7 @@ export const CHK = Object.freeze({
     disposition: "pinned",
   },
   "CHK-MOCK": {
-    meaning: "v5.0 mock: real attestation verification not implemented; default-deny",
+    meaning: "current mock: real attestation verification not implemented; default-deny",
     disposition: "mock-deny",
   },
 } as const satisfies Record<ChkId, ChkEntry>);
