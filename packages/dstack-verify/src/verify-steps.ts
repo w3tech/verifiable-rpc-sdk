@@ -1,6 +1,6 @@
-// Frozen v6.0 verify-step signatures. v5.0 bodies are throwing stubs — v6.0 replaces
-// ONLY the body, never the signature. Kept dependency-free (no @noble/hashes) so
-// v5.0 stays a pure contract+mock with a clean A/B boundary.
+// Frozen verify-step signatures; bodies are throwing stubs until implemented.
+// Only the body is replaced, never the signature. Kept dependency-free (no
+// @noble/hashes) so this stays a pure contract+mock with a clean A/B boundary.
 
 import { AttestationError } from "./errors";
 import type { EventLogEntry, KeyProvider, ReportDataBinding } from "./types";
@@ -11,17 +11,17 @@ import type { EventLogEntry, KeyProvider, ReportDataBinding } from "./types";
  */
 export function replayRtmr(events: EventLogEntry[]): string {
   void events;
-  throw new Error("replayRtmr: not implemented in v5.0 (filled in v6.0)");
+  throw new Error("replayRtmr: not implemented yet");
 }
 
 /**
  * CHK-A2: sha256 of the RAW app_compose text, bare lowercase hex —
  * `sha256(utf8(appCompose))`, matching core's computeComposeHash and the sidecar
- * wire (NOT deterministic-JSON re-serialization). v6.0 must hash verbatim bytes.
+ * wire (NOT deterministic-JSON re-serialization). Must hash verbatim bytes.
  */
 export function computeComposeHash(appCompose: string): string {
   void appCompose;
-  throw new Error("computeComposeHash: not implemented in v5.0 (filled in v6.0)");
+  throw new Error("computeComposeHash: not implemented yet");
 }
 
 /**
@@ -48,5 +48,5 @@ export function parseReportData(reportDataHex: string): ReportDataBinding {
 /** CHK-P7: extract the key-provider identity from the RTMR3 event log. */
 export function extractKeyProvider(events: EventLogEntry[]): KeyProvider {
   void events;
-  throw new Error("extractKeyProvider: not implemented in v5.0 (filled in v6.0)");
+  throw new Error("extractKeyProvider: not implemented yet");
 }

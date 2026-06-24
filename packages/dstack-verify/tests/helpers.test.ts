@@ -2,7 +2,7 @@
 //
 // The four helper signatures are frozen; their current bodies are throwing
 // stubs. A future release replaces ONLY the body. Each must throw with a message
-// containing "not implemented in v5.0" so the A/B boundary is explicit and auditable.
+// containing "not implemented" so the boundary is explicit and auditable.
 
 import { describe, expect, test } from "vitest";
 
@@ -14,13 +14,13 @@ import {
   replayRtmr,
 } from "../src/index";
 
-describe("v6.0 helper stubs throw in v5.0", () => {
+describe("helper stubs throw not-implemented", () => {
   test("replayRtmr throws not-implemented", () => {
-    expect(() => replayRtmr([])).toThrow("not implemented in v5.0");
+    expect(() => replayRtmr([])).toThrow("not implemented");
   });
 
   test("computeComposeHash throws not-implemented", () => {
-    expect(() => computeComposeHash("")).toThrow("not implemented in v5.0");
+    expect(() => computeComposeHash("")).toThrow("not implemented");
   });
 
   // parseReportData is implemented (CHK-A1) — it no longer stubs out. Malformed
@@ -37,6 +37,6 @@ describe("v6.0 helper stubs throw in v5.0", () => {
   });
 
   test("extractKeyProvider throws not-implemented", () => {
-    expect(() => extractKeyProvider([])).toThrow("not implemented in v5.0");
+    expect(() => extractKeyProvider([])).toThrow("not implemented");
   });
 });

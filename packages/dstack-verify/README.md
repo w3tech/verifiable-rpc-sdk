@@ -126,7 +126,7 @@ without changing this set.
 ### Helper signatures (throwing stubs)
 
 Frozen now, bodies filled in a future release. Each currently throws
-`Error("... not implemented in v5.0 (filled in v6.0)")`:
+`Error("... not implemented yet")`:
 
 - `replayRtmr(events): string` — CHK-A4/P3 (RTMR replay, SHA-384 chain).
 - `computeComposeHash(appCompose): string` — CHK-A2 (raw-verbatim `sha256`).
@@ -143,4 +143,4 @@ pnpm --filter '@ankr.com/dstack-verify' test
   completeness of `CHK-A1..G3`.
 - `tests/mock.test.ts` — fail-closed mock (throws without the flag, resolves with
   it, warns on every call).
-- `tests/helpers.test.ts` — helper stubs throw "not implemented in v5.0".
+- `tests/helpers.test.ts` — helper stubs throw "not implemented".
