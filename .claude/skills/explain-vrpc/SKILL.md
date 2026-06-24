@@ -271,7 +271,9 @@ SDK automates) is:
 6. **Check chain binding**: the `chain_id` in the pre-image must equal the chain
    you pinned/expected. Mismatch → reject.
 7. **Fetch attestation** with a **fresh random 32-byte nonce**:
-   `GET …/attestation?nonce=<hex>`.
+   `GET …/attestation?nonce=<hex>[&node_id=<id>]`. The `node_id` is optional —
+   include it when the response carried a `vRPC-NodeId` header (it routes the
+   fetch to the right node), omit it otherwise.
 8. **Correlate**: the attestation `pubkey` must equal the response's `vRPC-Pubkey`.
 9. **Bind to hardware (CHK-A1)**: in the quote's `report_data`, assert
    `[0:32] == pubkey` and `[32:64] == your nonce`.
