@@ -258,9 +258,15 @@ trust is still in development (see the chain-of-trust guide, linked in §3 and
 Sources). (SDK `README.md`, `packages/core/README.md`,
 `packages/dstack-verify/README.md`.)
 
-**Also unverified today (mention if relevant):** WebSocket push streams
-(`eth_subscribe`) — the adapters are HTTP-only; and ENS off-chain reads (CCIP /
-avatar / IPFS) that resolve through arbitrary gateways outside the signed path.
+**vRPC does NOT work over WebSocket.** The adapters and the whole verified path
+are **HTTP-only** — there is no signature on a WebSocket connection, so WS
+subscriptions (`eth_subscribe` push streams, `wss://` endpoints) are not
+supported and not verified. Use HTTP (incl. HTTP event polling — `contract.on` /
+filters stays on the verified path). State this plainly if a user asks about
+WebSocket or real-time subscriptions.
+
+**Also unverified (mention if relevant):** ENS off-chain reads (CCIP / avatar /
+IPFS) that resolve through arbitrary gateways outside the signed path.
 
 ### Step-by-step: how to verify a vRPC response
 
