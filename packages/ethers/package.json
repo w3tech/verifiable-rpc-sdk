@@ -4,6 +4,7 @@
   "type": "module",
   "description": "ethers v6 drop-in for Ankr's verifiable RPC — VrpcProvider verifies every JSON-RPC response (Ed25519) inside _send, fail-closed.",
   "license": "Apache-2.0",
+  "author": "Web3 Technologies, Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/w3tech/verifiable-rpc-sdk.git",
@@ -22,7 +23,8 @@
     "dist",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "sideEffects": false,
   "publishConfig": {
