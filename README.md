@@ -66,4 +66,4 @@ See [AGENTS.md](./AGENTS.md) for the pre-push gate and integration-test setup.
 
 ## License
 
-TBD.
+Apache-2.0 © Web3 Technologies, Inc. See [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
