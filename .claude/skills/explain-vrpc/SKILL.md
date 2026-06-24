@@ -236,8 +236,7 @@ resolves on success, throws `AttestationError(chkId, detail)` on failure
   throws even if `allowInsecureMock` is set.
 - **CHK-A2 (real):** `sha256(utf8(app_compose)) == compose_hash` (raw, no
   canonicalization). **Self-consistency only** — both values are self-reported by
-  the same node, so a pass proves internal consistency, *not* authenticity; it is
-  not yet a trust anchor without RTMR3 + DCAP.
+  the same node, so a pass proves internal consistency, *not* authenticity.
 - The `allowInsecureMock` flag gates **only** the not-yet-implemented layers
   (DCAP quote-signature verification, RTMR3 measurement replay), never A1/A2.
   With it absent/false the call throws `CHK-MOCK` after A1+A2 pass (fail-closed).
