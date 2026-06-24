@@ -12,7 +12,7 @@
 # resolution uses the in-repo workspace tree, not the registry).
 #
 # The per-package npmjs.com trusted-publisher config must reference THIS exact, case-sensitive
-# filename: publish.yml (see docs/PUBLISHING.md).
+# filename: publish.yml.
 name: Publish
 
 # Auto-publish on push to main is DISABLED for now: npm Trusted Publishing
