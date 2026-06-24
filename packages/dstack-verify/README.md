@@ -2,18 +2,18 @@
 
 Frozen contract for dstack / Intel TDX attestation verification.
 
-> ## ⚠️ v5.0 ships a MOCK verifier — NO real attestation security until v6.0
+> ## ⚠️ This release ships a MOCK verifier — NO real attestation security yet
 >
-> `verifyDstackAttestation` in v5.0 is a **mock**. Real DCAP/RTMR/compose-hash
-> verification only arrives in v6.0. Setting `allowInsecureMock: true` **bypasses
-> all chain-of-trust checks** — it is a deliberate escape hatch that prints a
-> loud `console.warn` on EVERY call and is removed entirely in v6.0.
-> Never rely on v5.0 for production attestation security.
+> `verifyDstackAttestation` is currently a **mock**. Real DCAP/RTMR/compose-hash
+> verification arrives in a future release. Setting `allowInsecureMock: true` **bypasses
+> all chain-of-trust checks** — it is a deliberate escape hatch that resolves
+> `void` silently (the SDK prints nothing) and is removed once real
+> verification lands. Never rely on the mock for production attestation security.
 
 ## What this is
 
-This package freezes the full, **v6.0-complete** public surface of the
-dstack/TDX attestation verifier. v6.0 (real DCAP verification) fills in the
+This package freezes the full, **complete** public surface of the
+dstack/TDX attestation verifier. A future release (real DCAP verification) fills in the
 function/helper bodies **without changing a single exported type or signature** —
 the entire A/B split lives inside this package.
 
@@ -28,23 +28,23 @@ Fail-closed by contract:
 
 Callers never inspect a boolean — they catch `AttestationError`.
 
-v5.0 mock semantics:
+Mock semantics:
 
 - `policy.allowInsecureMock !== true` (absent or `false`) → **throws**
   `AttestationError("CHK-MOCK", ...)` (default-deny).
-- `policy.allowInsecureMock === true` → resolves void + prints a loud
-  `console.warn` banner stating attestation was NOT verified — on EVERY call
-  (not memoized).
+- `policy.allowInsecureMock === true` → resolves `void` **silently** (the SDK
+  prints nothing). It bypasses the hardware root of trust as an explicit caller
+  opt-in (fail-closed by default).
 
 ### Types
 
-- `AttestationBundle` — full v6.0 field set: `quote` (`QuoteEnvelope`),
+- `AttestationBundle` — full field set: `quote` (`QuoteEnvelope`),
   `tcbInfo` (`TcbInfo` + `EventLogEntry[]`), `pubkey`, `nonce`, mandatory
-  `signature_chain` (unused in v5.0/3a, frozen for the 3b cross-repo ticket),
+  `signature_chain` (currently unused, frozen for the cross-repo ticket),
   optional `appId`/`instanceId`.
 - `VerifyPolicy` — pinned trust anchors (`PinnedAllowlist`), reportData→pubkey
   binding (`ReportDataBinding`), DCAP TCB acceptance (`TcbPolicy`), optional
-  `pccsUrl`, and the v5.0 escape hatch `allowInsecureMock: boolean`.
+  `pccsUrl`, and the escape hatch `allowInsecureMock: boolean`.
 
 ### `AttestationError`
 
@@ -57,25 +57,76 @@ union in core is NOT edited.
 
 This package only verifies attestation — the orchestration (lazy fetch + pubkey
 cache) lives in `@ankr.com/vrpc-core`'s `TrustedVerifier`. After a successful
-(in v5.0 — mock) verification the signing pubkey is cached for a configurable
+(currently mock) verification the signing pubkey is cached for a configurable
 TTL (`pubkeyCacheTtlMs`, default `DEFAULT_PUBKEY_CACHE_TTL_MS` = 1h): a repeat read
 within the TTL skips the attestation fetch; after the TTL the pubkey is
 re-attested (no stale trust). The adapters (`@ankr.com/vrpc-ethers`,
-`@ankr.com/vrpc-viem`) forward `pubkeyCacheTtlMs` into the seam. Remember: in v5.0
-the cached result is from the **mock** check — see the banner above.
+`@ankr.com/vrpc-viem`) forward `pubkeyCacheTtlMs` into the seam. Remember: while
+the verifier is a mock the cached result is from the **mock** check — see the banner above.
+
+### Trust boundary — what verification actually proves
+
+`verifyDstackAttestation` runs two **local, collateral-free** checks before the
+mock gate. They establish **"signed + bound + fresh + self-consistent"** — they
+do **NOT** establish **"attested to genuine Intel TDX hardware"**. A fabricated
+quote can carry arbitrary `report_data` / `compose_hash`, so these checks are
+only meaningful in combination with the **deferred** DCAP signature verification
+(a future release). They raise the bar (swapped-key MITM, replay, config drift) without
+claiming a hardware root of trust.
+
+- **CHK-A1 — report_data → pubkey/nonce binding (HARD).** Shape-gates
+  `report_data` to 64 bytes, then asserts `report_data[0:32] == expectedPubkey`
+  (the Ed25519 key the SDK verifies `vRPC-Signature` against — swapped-key /
+  wrong-node defence) and `report_data[32:64] == expectedNonce` (freshness /
+  anti-replay). A mismatch **always** throws `AttestationError("CHK-A1")` —
+  **regardless of `allowInsecureMock`**.
+
+- **CHK-A2 — compose-hash self-consistency (BEST-EFFORT, dormant by default).**
+  When `tcbInfo.app_compose` is non-empty **and** `tcbInfo.compose_hash` is
+  present + non-empty, asserts `sha256(utf8(app_compose)) == compose_hash` (raw
+  bytes, **no canonicalization**); mismatch throws `AttestationError("CHK-A2")`
+  (it precedes the mock gate, so it throws even under `allowInsecureMock`). When
+  either side is empty/absent (nodes that don't yet serve `app_compose`, or the
+  dstack simulator's empty `compose_hash`) it **skips silently — not an error**.
+
+  > ⚠️ **CHK-A2 is self-consistency ONLY — it is NOT a trust anchor.**
+  > `app_compose` and `compose_hash` both come from the **same node** (its own
+  > `GET /info` + `/attestation`). A pass proves only that the node is internally
+  > consistent. A malicious node simply reports an `app_compose` that hashes to
+  > its own forged `compose_hash` and passes A2 trivially — **A2 is
+  > attacker-forgeable**. Turning A2 into a real trust anchor requires all of:
+  > (a) an **independent** compose source the node cannot forge (a pinned/signed
+  > registry), (b) the `compose_hash` **anchored into RTMR3** via event-log
+  > replay, and (c) a **DCAP-verified** quote. All three are future work.
+
+### `allowInsecureMock` — partial-verification semantics
+
+`allowInsecureMock` gates **only** the not-yet-built layers (DCAP
+quote-signature + RTMR3 replay), **never** CHK-A1 or CHK-A2:
+
+- **absent / `false`** → after A1+A2 pass, throws `AttestationError("CHK-MOCK")`
+  (fail-closed). Only the literal boolean `true` opens the hatch; any other
+  truthy value (`1`, `"true"`, `{}`, …) still throws.
+- **`true`** → after A1+A2 pass, resolves `void` **silently** (the SDK prints
+  nothing). CHK-A1/A2 ran but the hardware root of trust did **not** — proving
+  "signed + bound + fresh", **not** "attested to hardware". Bypassing the
+  hardware root of trust is an explicit caller opt-in (fail-closed by default).
+
+The contract stays `Promise<void>`; there is no separate status surface —
+partial verification carries no signal beyond the silent resolve.
 
 ### `CHK-*` checklist
 
 `CHK` is a frozen const record enumerating the full chain-of-trust checklist
-`CHK-A1..G3` (verbatim meaning + v6.0 disposition: `implement` / `mock` /
-`pinned` / `out`) plus the synthetic `CHK-MOCK` (`mock-deny`) for the v5.0
-fail-closed path. It is a queryable audit dictionary — v6.0 fills in the bodies
+`CHK-A1..G3` (verbatim meaning + disposition: `implement` / `mock` /
+`pinned` / `out`) plus the synthetic `CHK-MOCK` (`mock-deny`) for the
+fail-closed path. It is a queryable audit dictionary — a future release fills in the bodies
 without changing this set.
 
-### v6.0 helper signatures (v5.0 — throwing stubs)
+### Helper signatures (throwing stubs)
 
-Frozen now, bodies filled in v6.0. In v5.0 each throws
-`Error("... not implemented in v5.0 (filled in v6.0)")`:
+Frozen now, bodies filled in a future release. Each currently throws
+`Error("... not implemented yet")`:
 
 - `replayRtmr(events): string` — CHK-A4/P3 (RTMR replay, SHA-384 chain).
 - `computeComposeHash(appCompose): string` — CHK-A2 (raw-verbatim `sha256`).
@@ -90,6 +141,6 @@ pnpm --filter '@ankr.com/dstack-verify' test
 
 - `tests/contract.test.ts` — exports, `AttestationError extends VerificationError`,
   completeness of `CHK-A1..G3`.
-- `tests/mock.test.ts` — fail-closed mock (throws without the flag, resolves with
-  it, warns on every call).
-- `tests/helpers.test.ts` — helper stubs throw "not implemented in v5.0".
+- `tests/mock.test.ts` — fail-closed mock (throws without the flag, resolves
+  silently with it).
+- `tests/helpers.test.ts` — helper stubs throw "not implemented".

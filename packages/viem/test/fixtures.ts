@@ -1,5 +1,4 @@
-// Offline signed-response fixture synthesizer for the vrpc-viem adapter tests
-// (TEST-04, Wave 0 of Phase 31).
+// Offline signed-response fixture synthesizer for the vrpc-viem adapter tests.
 //
 // This module PRODUCES bytes + `vRPC-*` headers that `@ankr.com/vrpc-core`
 // `verifyResponse` accepts — it does NOT re-test core crypto. It mirrors the
@@ -11,7 +10,7 @@
 // the fixed-request `signFixture` variant are DROPPED: viem's body encoding
 // (key order, id counter, resolved blockTag) differs from ethers, so the viem
 // suite signs ONLY over the EXACT request bytes the transport actually POSTs via
-// the request-aware `signResponseBytes`. Plan 31-02's wiring suite consumes this
+// the request-aware `signResponseBytes`. The wiring suite consumes this
 // against a real `createPublicClient` read path with NO live network.
 
 import { buildPreImage } from "@ankr.com/vrpc-core";
@@ -70,11 +69,11 @@ export interface SignFixtureOptions {
 /**
  * Sign an arbitrary `(requestBytes, responseBytes)` pair with `TEST_SEED` and
  * return the matching `vRPC-*` headers. Signs over the EXACT request bytes a
- * transport actually emitted — used by Plan 31-02's request-aware seam so a real
+ * transport actually emitted — used by the request-aware seam so a real
  * viem `readContract`/`getBalance` payload (whose key order, id counter and
  * resolved blockTag are viem-internal) verifies without the fixture having to
  * predict those bytes. The wiring under test is the transport → `verifyResponse`,
- * not pre-image construction (that is core's TEST-01).
+ * not pre-image construction (that is core's verify suite).
  */
 export async function signResponseBytes(
   requestBytes: Uint8Array,

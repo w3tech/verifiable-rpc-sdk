@@ -28,7 +28,7 @@ const U64_MAX = (1n << 64n) - 1n;
  * negatives), which would weaken the pre-image binding from strict equality to
  * "equality mod 2^64" — `u64LE(C)` and `u64LE(C + 2^64)` produce identical
  * bytes. Failing loud keeps the stored chainId/timestamp and the bound bytes in
- * exact agreement (MED-01). Valid u64 inputs encode byte-for-byte unchanged.
+ * exact agreement. Valid u64 inputs encode byte-for-byte unchanged.
  */
 export function u64LE(n: bigint): Uint8Array {
   if (n < 0n || n > U64_MAX) {

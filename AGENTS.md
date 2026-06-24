@@ -114,7 +114,7 @@ with the simulator binary on the runner is tracked separately.
 | File                          | Responsibility                                                                                                                                                                            |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/core/src/index.ts`  | Public barrel re-exporting `VerifierClient`, `verifyResponse`/`isSignedVrpcResponse`, `fetchAttestation`/`verifyAttestationCorrelation`, `anchorTrust`, `TrustedVerifier`, the `ComposeSource` family (`InfoEndpointComposeSource`, `RegistryComposeSource`, `computeComposeHash`), the `VerificationError` family, `buildPreImage`, `parseChainId`, and `deriveVrpcUrls`. |
-| `packages/core/src/compose.ts`| `ComposeSource` abstraction for Layer A: `InfoEndpointComposeSource` (dev-only, `/info` self-report — NOT a trust anchor) + `RegistryComposeSource` (future external/GitHub anchor, DEC-03) + `computeComposeHash`. |
+| `packages/core/src/compose.ts`| `ComposeSource` abstraction for Layer A: `InfoEndpointComposeSource` (dev-only, `/info` self-report — NOT a trust anchor) + `RegistryComposeSource` (future external/GitHub anchor) + `computeComposeHash`. |
 | `tsconfig.base.json`          | Strict TS config (target ESNext, moduleResolution bundler, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`). Root `tsconfig.json` only `extends` it with `include: []`; each package's `tsconfig.json` extends it too.        |
 | `biome.json`                  | Biome lint + formatter config (root).                                                                                                                                                     |
 | `.github/workflows/ci.yml`    | CI workflow — lint + format:check + typecheck + test on push/PR.                                                                                                                          |
@@ -127,6 +127,7 @@ with the simulator binary on the runner is tracked separately.
 | Adjust lint or format rules                   | `biome.json` (Biome 2.x schema)  |
 | Adjust CI pipeline                            | `.github/workflows/ci.yml`       |
 | Change strict-mode TS flags                   | `tsconfig.base.json`             |
+| Explain vRPC / the trust model to a user      | `.claude/skills/explain-vrpc/SKILL.md` |
 
 ## Conventions
 

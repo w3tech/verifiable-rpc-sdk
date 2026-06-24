@@ -1,4 +1,4 @@
-// @ankr.com/vrpc-ethers — ethers v6 verifiable adapter (Phase 30).
+// @ankr.com/vrpc-ethers — ethers v6 verifiable adapter.
 //
 // `VrpcProvider` is a `JsonRpcProvider` subclass whose `_send` override feeds
 // raw request + raw (content-decoded) response bytes into vrpc-core's verify
@@ -8,7 +8,7 @@
 
 // Re-export the shared vrpc-core error family so consumers `instanceof`-check
 // without importing core directly. This is the SAME error type the viem adapter
-// (Phase 31) will reuse — one error family across both adapters (VERIFY-03).
+// reuses — one error family across both adapters.
 export {
   BadSignature,
   MalformedHeader,

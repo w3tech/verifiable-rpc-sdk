@@ -1,4 +1,4 @@
-// anchorTrust — adapter-neutral boot-time attestation-correlation helper (TRUST-01).
+// anchorTrust — adapter-neutral boot-time attestation-correlation helper.
 //
 // OPT-IN: the developer awaits this ONCE at startup, after constructing their
 // provider/client. It does NOT block or alter the (sync) adapter constructors

@@ -1,5 +1,5 @@
 // Test helper: inject a synthetic ethers `FetchResponse` into a `FetchRequest`
-// without touching the network. Plan 30-02's `provider.test.ts` feeds the
+// without touching the network. `provider.test.ts` feeds the
 // signed fixtures from `fixtures.ts` through `VrpcProvider._send` via this seam.
 
 import { getPublicKeyAsync } from "@noble/ed25519";
@@ -51,10 +51,10 @@ export interface SigningRequestOptions extends SignFixtureOptions {
 /**
  * Build a `FetchRequest` whose `getUrlFunc` signs the chosen `responseBody` over
  * the EXACT request bytes ethers POSTs (`req.body`), then returns the signed
- * response. This is the request-aware seam Plan 30-02 uses so a real
+ * response. This is the request-aware seam the adapter uses so a real
  * `getBalance` / Contract payload verifies through `VrpcProvider._send` without
  * the test predicting ethers' internal payload bytes (key order, id counter,
- * resolved blockTag). TEST-02 asserts adapter WIRING, not pre-image bytes.
+ * resolved blockTag). This suite asserts adapter WIRING, not pre-image bytes.
  *
  * `tamper` flips a response byte AFTER signing → `BadSignature`. `unsigned`
  * strips the `vRPC-*` triple → `MissingHeader`. `signingChainId` (via
@@ -112,7 +112,7 @@ export interface AttMockState {
  * Mock ONLY the attestation GET leg (the always-on verify seam fetches it on the
  * FIRST read per pubkey). The returned `pubkey` is derived from the SAME
  * TEST_SEED the RPC responses are signed with, so the seam's pubkey correlation
- * passes; the v5.0 mock verifier (allowInsecureMock) then resolves.
+ * passes; the mock verifier (allowInsecureMock) then resolves.
  *
  * `requireNodeId` mimics a shark route that can only resolve WITH a `node_id`
  * query param: a fetch lacking `node_id` returns 404 → the seam fails closed
@@ -130,8 +130,14 @@ export function installAttestationMock(opts: { requireNodeId?: boolean } = {}): 
         return new Response("not found", { status: 404 });
       }
       const attPubkey = await getPublicKeyAsync(TEST_SEED);
+      // CHK-A1 binds report_data[0:32]==pubkey and [32:64]==the fetch nonce. The
+      // seam sends the nonce as the bare-hex `?nonce=` query param; echo it so
+      // report_data = pubkey(bare) ‖ nonce(bare) passes the 128-hex shape gate +
+      // binding regardless of the (random) nonceSource.
+      const nonceHex = new URL(url).searchParams.get("nonce") ?? "";
+      const reportData = `${toHex(attPubkey)}${nonceHex}`;
       const body = {
-        quote: { quote: "00", event_log: "00", report_data: "00", vm_config: "" },
+        quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
         pubkey: `0x${toHex(attPubkey)}`,
         composeHash: "deadbeef",
       };

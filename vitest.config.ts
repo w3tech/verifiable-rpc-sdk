@@ -21,6 +21,10 @@ export default defineConfig({
         replacement: src("./packages/core/src/errors.ts"),
       },
       {
+        find: "@ankr.com/vrpc-core/compose",
+        replacement: src("./packages/core/src/compose.ts"),
+      },
+      {
         find: "@ankr.com/vrpc-core",
         replacement: src("./packages/core/src/index.ts"),
       },

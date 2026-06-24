@@ -123,7 +123,7 @@ describe("preimage", () => {
   });
 
   /**
-   * MED-01: `u64LE` must FAIL LOUD on out-of-u64 inputs instead of silently
+   * `u64LE` must FAIL LOUD on out-of-u64 inputs instead of silently
    * wrapping mod 2^64. Otherwise the chainId binding would only hold
    * "mod 2^64": `u64LE(C)` and `u64LE(C + 2^64)` would be byte-identical and
    * the stored chainId could diverge from the bytes actually bound.

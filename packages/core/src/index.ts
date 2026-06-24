@@ -2,7 +2,7 @@
 //
 // Implementation lives in:
 //   - ./verifier    — VerifierClient class + options/response types
-//   - ./verify      — transport-agnostic verifyResponse seam (CORE-02)
+//   - ./verify      — transport-agnostic verifyResponse seam
 //   - ./attestation — fetchAttestation helper + Attestation/GetQuoteResponse types
 //   - ./compose     — ComposeSource interface + InfoEndpoint (dev) / Registry
 //                     (future) implementations + computeComposeHash
@@ -40,7 +40,11 @@ export {
 } from "./errors";
 export { buildPreImage } from "./preimage";
 export type { TrustedVerifierOptions } from "./trusted-verifier";
-export { DEFAULT_PUBKEY_CACHE_TTL_MS, TrustedVerifier } from "./trusted-verifier";
+export {
+  DEFAULT_PUBKEY_CACHE_MAX,
+  DEFAULT_PUBKEY_CACHE_TTL_MS,
+  TrustedVerifier,
+} from "./trusted-verifier";
 export { parseChainId } from "./utils";
 export type { VerifiedResponse, VerifierClientOptions } from "./verifier";
 export { VerifierClient } from "./verifier";

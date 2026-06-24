@@ -1,4 +1,4 @@
-// @ankr.com/vrpc-viem — viem verifiable adapter (Phase 31).
+// @ankr.com/vrpc-viem — viem verifiable adapter.
 //
 // `vrpcHttp` is a viem custom transport whose `request` hands raw request + raw
 // (content-decoded) response bytes to vrpc-core's verify seam before any value
@@ -11,7 +11,7 @@
 // importable from `@ankr.com/dstack-verify` directly.)
 // Re-export the shared vrpc-core error family — the EXACT SAME set the ethers
 // adapter re-exports — so a caller cannot tell the two adapters apart by error
-// shape (VIEM-02). `instanceof`-checks work without importing core directly.
+// shape. `instanceof`-checks work without importing core directly.
 export {
   BadSignature,
   MalformedHeader,

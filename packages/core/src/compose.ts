@@ -15,7 +15,7 @@
 //     source (e.g. a GitHub-hosted, pinned/signed compose registry). This is
 //     the real Layer A anchor: comparing the node's attested `compose_hash` to
 //     a hash derived from an independently-sourced compose is meaningful
-//     because the node cannot forge that source. Not yet implemented (DEC-03).
+//     because the node cannot forge that source. Not yet implemented.
 //
 // compose_hash is ALWAYS `sha256(utf8(app_compose))` as bare lowercase hex,
 // matching dstack's rule exactly — the raw file bytes are hashed verbatim,
@@ -63,7 +63,7 @@ export interface InfoEndpointComposeSourceOptions {
  * to its attested `compose_hash`), but it can NEVER prove authenticity — a
  * malicious node returns a compose that matches its own forged quote. Use only
  * for development / sanity checks. Production Layer A trust requires
- * {@link RegistryComposeSource} (DEC-03).
+ * {@link RegistryComposeSource}.
  */
 export class InfoEndpointComposeSource implements ComposeSource {
   private readonly url: string;
@@ -107,8 +107,8 @@ export interface RegistryComposeSourceOptions {
  * compose registry) so the node's attested `compose_hash` can be checked
  * against a hash derived from a source the node cannot forge.
  *
- * Not yet implemented — tracked by DEC-03 (compose-hash registry anchor:
- * append-only signed shape locked, storage open). Both methods reject with
+ * Not yet implemented — tracked by the compose-hash registry anchor work
+ * (append-only signed shape locked, storage open). Both methods reject with
  * {@link ComposeSourceNotImplemented} until the registry lands.
  */
 export class RegistryComposeSource implements ComposeSource {
@@ -116,13 +116,13 @@ export class RegistryComposeSource implements ComposeSource {
 
   async getAppCompose(): Promise<string> {
     throw new ComposeSourceNotImplemented(
-      `RegistryComposeSource(source=${this.opts.source}) is not implemented yet (DEC-03)`,
+      `RegistryComposeSource(source=${this.opts.source}) is not implemented yet`,
     );
   }
 
   async getComposeHash(): Promise<string> {
     throw new ComposeSourceNotImplemented(
-      `RegistryComposeSource(source=${this.opts.source}) is not implemented yet (DEC-03)`,
+      `RegistryComposeSource(source=${this.opts.source}) is not implemented yet`,
     );
   }
 }

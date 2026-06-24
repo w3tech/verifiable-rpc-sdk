@@ -1,11 +1,11 @@
-// TEST-03 (viem half) — E2E always-on attestation suite for vrpcHttp.
+// E2E always-on attestation suite for vrpcHttp (viem half).
 //
 // Proves the viem adapter ALWAYS routes the NORMAL verify through the vrpc-core
-// `TrustedVerifier` end-to-end against the Phase-33 mock verifier
+// `TrustedVerifier` end-to-end against the mock verifier
 // (allowInsecureMock is hard-set true by buildVerifyPolicy):
 //   1. an unknown signing pubkey triggers the attestation GET exactly once, the
 //      mock resolves, the read returns the decoded value, and a second read
-//      within TTL skips the fetch (cache proof — FLOW-04).
+//      within TTL skips the fetch (cache proof).
 //   2. a signed response WITHOUT `vRPC-NodeId` still verifies: the verifier
 //      fetches the attestation WITHOUT a `node_id` query param (the endpoint
 //      decides) and the read succeeds.
@@ -82,8 +82,12 @@ function seamFetch(opts: { withNodeId?: boolean } = {}): SeamFetch {
       state.attGetCount += 1;
       state.lastAttUrl = url;
       const attPubkey = await getPublicKeyAsync(TEST_SEED);
+      // CHK-A1: report_data = pubkey(bare) ‖ nonce(bare); echo the `?nonce=` query.
+      // Regex-extract (not `new URL`) — viem shadows the global URL constructor here.
+      const nonceHex = url.match(/[?&]nonce=([0-9a-fA-F]+)/)?.[1] ?? "";
+      const reportData = `${toHex(attPubkey)}${nonceHex}`;
       const body = {
-        quote: { quote: "00", event_log: "00", report_data: "00", vm_config: "" },
+        quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
         pubkey: `0x${toHex(attPubkey)}`,
         composeHash: "deadbeef",
       };
@@ -105,7 +109,7 @@ function seamFetch(opts: { withNodeId?: boolean } = {}): SeamFetch {
   return state;
 }
 
-describe("vrpcHttp always-on attestation (TEST-03, viem half)", () => {
+describe("vrpcHttp always-on attestation (viem half)", () => {
   test("routesThroughVerifierAndCaches: unknown pubkey attests once, second read within TTL skips the fetch", async () => {
     const seam = seamFetch();
     const c = createPublicClient({

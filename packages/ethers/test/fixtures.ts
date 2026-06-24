@@ -1,5 +1,4 @@
-// Offline signed-response fixture synthesizer for the vrpc-ethers adapter tests
-// (TEST-02, Wave 0 of Phase 30).
+// Offline signed-response fixture synthesizer for the vrpc-ethers adapter tests.
 //
 // This module PRODUCES bytes + `vRPC-*` headers that `@ankr.com/vrpc-core`
 // `verifyResponse` accepts — it does NOT re-test core crypto. It mirrors the
@@ -7,7 +6,7 @@
 // canonical 80-byte pre-image built by `buildPreImage`, signed with a single
 // fixed `TEST_SEED` so the matching pubkey is deterministic across runs.
 //
-// Plan 30-02's `provider.test.ts` consumes these fixtures to exercise
+// `provider.test.ts` consumes these fixtures to exercise
 // `VrpcProvider._send` against synthesized signed bytes with NO live network.
 
 import { buildPreImage } from "@ankr.com/vrpc-core";
@@ -108,11 +107,11 @@ export async function signFixture(
  * Sign an arbitrary `(requestBytes, responseBytes)` pair with `TEST_SEED` and
  * return the matching `vRPC-*` headers. Unlike `signFixture` (which signs a
  * fixed request string), this signs over the EXACT request bytes a transport
- * actually emitted — used by Plan 30-02's request-aware `getUrlFunc` so a real
+ * actually emitted — used by the request-aware `getUrlFunc` so a real
  * ethers `getBalance`/Contract payload (whose key order, id counter and
  * resolved blockTag are ethers-internal) verifies without the fixture having to
  * predict those bytes. The wiring under test is `_send` → `verifyResponse`,
- * not pre-image construction (that is core's TEST-01).
+ * not pre-image construction (that is core's verify suite).
  */
 export async function signResponseBytes(
   requestBytes: Uint8Array,

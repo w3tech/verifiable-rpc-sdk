@@ -1,4 +1,4 @@
-// TEST-03 — vrpcHttp transport WIRING suite (Phase 31, Wave 2).
+// vrpcHttp transport WIRING suite.
 //
 // Asserts ADAPTER WIRING ONLY: that vrpcHttp's `request` routes every viem
 // action through vrpc-core `verifyResponse` over the raw response bytes before
@@ -7,7 +7,7 @@
 // + the re-exported VerificationError family.
 //
 // It does NOT re-test Ed25519 / pre-image / replay-window correctness — that is
-// core's verify.test.ts (TEST-04). The request-aware fetch seam signs over the
+// core's verify.test.ts. The request-aware fetch seam signs over the
 // EXACT bytes the transport POSTs (via signResponseBytes), so a real
 // getBalance / readContract / getBlock payload verifies without the test
 // predicting viem's internal body encoding. No `ethers` import (manifest
@@ -62,10 +62,15 @@ function hex(bytes: Uint8Array): string {
  * TrustedVerifier fetches this once per unknown pubkey; the mock verifier then
  * resolves and the verified read proceeds.
  */
-async function attestationResponse(): Promise<Response> {
+async function attestationResponse(url: string): Promise<Response> {
   const attPubkey = await getPublicKeyAsync(TEST_SEED);
+  // CHK-A1: report_data = pubkey(bare) ‖ nonce(bare); echo the seam's `?nonce=`
+  // query so the binding + 128-hex shape gate pass (nonceSource is random).
+  // Regex-extract (not `new URL`) — viem shadows the global URL constructor here.
+  const nonceHex = url.match(/[?&]nonce=([0-9a-fA-F]+)/)?.[1] ?? "";
+  const reportData = `${hex(attPubkey)}${nonceHex}`;
   const body = {
-    quote: { quote: "00", event_log: "00", report_data: "00", vm_config: "" },
+    quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
     pubkey: `0x${hex(attPubkey)}`,
     composeHash: "deadbeef",
   };
@@ -88,7 +93,7 @@ interface SeamOptions {
   counter?: { n: number };
   /** Capture the raw POST body of each call (batch-default assertion). */
   bodies?: string[];
-  /** Override the HTTP status code (e.g. 502) for the MD-01 status check. */
+  /** Override the HTTP status code (e.g. 502) for the status check. */
   status?: number;
   /** Capture each call's RequestInit (e.g. to assert the timeout signal). */
   inits?: RequestInit[];
@@ -110,7 +115,13 @@ function signingFetch(
     // Attestation GET leg (no body): serve the correlated-pubkey attestation so
     // the verifier resolves the unknown pubkey. Do NOT bump the RPC capture hooks.
     if (url.includes("/attestation")) {
-      return attestationResponse();
+      return attestationResponse(url);
+    }
+    // Best-effort /info side-fetch (CHK-A2 app_compose): not served here →
+    // 404 so the seam's best-effort catch leaves app_compose empty (CHK-A2 skips).
+    // Excluded from the RPC capture hooks, same as /attestation.
+    if (url.includes("/info")) {
+      return new Response("not found", { status: 404 });
     }
     if (seam.counter) {
       seam.counter.n += 1;
@@ -177,7 +188,7 @@ function autoDeriveFetch(
     bootstrapTamper?: boolean;
     // Override the bootstrap body with a raw (possibly malformed) string —
     // bad JSON, missing `result`, or non-hex `result`. Returned UNSIGNED since
-    // the parse/shape guard must reject it BEFORE verifyResponse runs. (LOW-01/02)
+    // the parse/shape guard must reject it BEFORE verifyResponse runs.
     bootstrapRawBody?: string;
     signingChainId?: bigint;
     bootstrapHits?: { n: number };
@@ -188,7 +199,7 @@ function autoDeriveFetch(
     // Attestation GET leg: served for the always-on verifier's lazy attest of the
     // (post-bootstrap) read's unknown signing pubkey.
     if (url.includes("/attestation")) {
-      return attestationResponse();
+      return attestationResponse(url);
     }
     const bodyStr = init.body as string;
     const payload = JSON.parse(bodyStr) as { method?: string };
@@ -268,15 +279,15 @@ function pinnedTransport(fetchFn: (url: string, init: RequestInit) => Promise<Re
   return vrpcHttp(URL, { fetchFn, replayWindowMs: WIDE_WINDOW })(PINNED);
 }
 
-describe("vrpcHttp transport wiring (TEST-03)", () => {
-  // VIEM-01/02 — a verified eth_getBalance routes through the transport request.
+describe("vrpcHttp transport wiring", () => {
+  // a verified eth_getBalance routes through the transport request.
   test("verified value routes through request: getBalance returns the decoded balance", async () => {
     const c = client(signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX)));
     const balance = await c.getBalance({ address: ADDR });
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX)); // 2 ETH in wei
   });
 
-  // VIEM-01/02 — a uint256 view eth_call → ABI-encoded result verifies + decodes.
+  // a uint256 view eth_call → ABI-encoded result verifies + decodes.
   test("verified readContract returns the decoded value", async () => {
     const abi = parseAbi(["function totalSupply() view returns (uint256)"]);
     const value = 123_456_789n;
@@ -290,7 +301,7 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     expect(result).toBe(value);
   });
 
-  // VIEM-02 — tampered response fails closed. buildRequest re-wraps the typed
+  // tampered response fails closed. buildRequest re-wraps the typed
   // error as UnknownRpcError at the client surface; the typed error is `.cause`,
   // recovered via err.walk. (Transport-level type is asserted separately below.)
   test("tampered response → BadSignature, fail-closed (strict default)", async () => {
@@ -306,7 +317,7 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     expect(typed).toBeInstanceOf(BadSignature);
   });
 
-  // VIEM-02 — assert the typed error AT THE TRANSPORT request level (no
+  // assert the typed error AT THE TRANSPORT request level (no
   // buildRequest re-wrap), matching how ethers asserts at the Provider surface.
   test("tampered response → BadSignature at the transport request level", async () => {
     const transport = pinnedTransport(
@@ -317,7 +328,7 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     ).rejects.toBeInstanceOf(BadSignature);
   });
 
-  // VIEM-02 / MD-01 — wrong-chain signature (signed for chain 1, verified
+  // wrong-chain signature (signed for chain 1, verified
   // against arbitrum) → BadSignature.
   test("wrong chainId → BadSignature (signed for one chain, verified against another)", async () => {
     const transport = pinnedTransport(
@@ -328,13 +339,13 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     ).rejects.toBeInstanceOf(BadSignature);
   });
 
-  // MD-01 — a chain id beyond Number.MAX_SAFE_INTEGER round-trips exactly through
+  // a chain id beyond Number.MAX_SAFE_INTEGER round-trips exactly through
   // the auto-derive bootstrap (parseChainId reads the full u64 off the hex; no
   // number coercion). Explicit pinning of such ids is N/A — viem's chain.id is a
   // number — but the verified bootstrap still binds the full u64.
   const LARGE_CHAIN_ID = (1n << 53n) + 12_345n; // 9_007_199_254_753_337n > 2^53−1
 
-  test("MD-01: large chainId > 2^53−1 derives + binds exactly via the verified bootstrap", async () => {
+  test("large chainId > 2^53−1 derives + binds exactly via the verified bootstrap", async () => {
     const c = createPublicClient({
       transport: vrpcHttp(URL, {
         fetchFn: autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), {
@@ -348,7 +359,7 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
   });
 
-  // VIEM-02 — stripped vRPC-* headers (downgrade) → MissingHeader, fail-closed.
+  // stripped vRPC-* headers (downgrade) → MissingHeader, fail-closed.
   test("unsigned response → MissingHeader, fail-closed (strict default)", async () => {
     const transport = pinnedTransport(
       signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { unsigned: true }),
@@ -358,7 +369,7 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     ).rejects.toBeInstanceOf(MissingHeader);
   });
 
-  // VIEM-02 — a signed JSON-RPC {error} body is an ordinary RPC error, NOT a
+  // a signed JSON-RPC {error} body is an ordinary RPC error, NOT a
   // VerificationError (verification passes first; the error surfaces after).
   test("signed JSON-RPC {error} → ordinary viem RpcError, NOT a VerificationError", async () => {
     const transport = pinnedTransport(
@@ -381,7 +392,7 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     expect(err).not.toBeInstanceOf(VerificationError);
   });
 
-  // VIEM-02 — a signed {result:null} returns null (e.g. getBlock of a missing
+  // a signed {result:null} returns null (e.g. getBlock of a missing
   // block). Asserted at the transport level (viem's getBlock would otherwise
   // throw BlockNotFoundError on null, which is its own behavior, not the wiring).
   test("signed {result:null} returns null (missing block)", async () => {
@@ -393,7 +404,7 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     expect(result).toBeNull();
   });
 
-  // TEST-03 (retry) — a single failing action triggers exactly ONE fetch,
+  // Retry — a single failing action triggers exactly ONE fetch,
   // proving retryCount:0 (a verify failure is not retried 3×).
   test("retryCount:0 — injected fetch is called exactly once per failing action", async () => {
     const counter = { n: 0 };
@@ -406,10 +417,10 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     expect(counter.n).toBe(1);
   });
 
-  // VIEM-03 — batching OFF by default: a single action produces exactly one fetch
+  // batching OFF by default: a single action produces exactly one fetch
   // with a single (non-array) JSON body. Batched-as-one-unit is the deferred
-  // opt-in (consistent with ETHERS-05).
-  test("VIEM-03: per-request default — one action is one non-batched fetch", async () => {
+  // opt-in (consistent with the ethers adapter).
+  test("per-request default — one action is one non-batched fetch", async () => {
     const bodies: string[] = [];
     const c = client(signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { bodies }));
     await c.getBalance({ address: ADDR });
@@ -419,7 +430,7 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     expect(parsed.method).toBe("eth_getBalance");
   });
 
-  // CROSS-ADAPTER PARITY (VIEM-02) — the unsigned-response error from
+  // CROSS-ADAPTER PARITY — the unsigned-response error from
   // @ankr.com/vrpc-viem is an instance of the SAME VerificationError family the
   // ethers adapter re-exports (class identity from @ankr.com/vrpc-core). A caller
   // cannot tell the two adapters apart by error shape.
@@ -442,11 +453,11 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     expect(err).toBeInstanceOf(CoreVerificationError);
   });
 
-  // MD-01 — an UNSIGNED non-2xx response (gateway 502 / timeout error page)
+  // an UNSIGNED non-2xx response (gateway 502 / timeout error page)
   // surfaces as a transport-level HttpRequestError BEFORE verify, NOT as a
   // MissingHeader that looks like a verify attack. Parity with the ethers
   // adapter's `response.assertOk()` → SERVER_ERROR (not a VerificationError).
-  test("MD-01: unsigned non-2xx → HttpRequestError (not MissingHeader), NOT a VerificationError", async () => {
+  test("unsigned non-2xx → HttpRequestError (not MissingHeader), NOT a VerificationError", async () => {
     const transport = pinnedTransport(
       signingFetch("upstream unavailable", { unsigned: true, status: 502 }),
     );
@@ -462,11 +473,11 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     expect(err).not.toBeInstanceOf(VerificationError);
   });
 
-  // MD-01 — fail-closed is NOT weakened by the status check: a SIGNED non-2xx
+  // fail-closed is NOT weakened by the status check: a SIGNED non-2xx
   // body still flows into verifyResponse, and its signed JSON-RPC {error}
   // surfaces as an ordinary RpcError (NOT an HttpRequestError, NOT a
   // VerificationError) — the sidecar attested the error response.
-  test("MD-01: signed non-2xx with {error} body still verifies, surfaces as ordinary RpcError", async () => {
+  test("signed non-2xx with {error} body still verifies, surfaces as ordinary RpcError", async () => {
     const transport = pinnedTransport(
       signingFetch(
         JSON.stringify({
@@ -489,10 +500,10 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     expect(err).not.toBeInstanceOf(VerificationError);
   });
 
-  // LO-03 — the transport `timeout` is applied to the actual fetch as an
+  // the transport `timeout` is applied to the actual fetch as an
   // AbortSignal (parity with viem `http()`). createPublicClient injects a
   // default timeout, so the own-fetch init carries a signal.
-  test("LO-03: transport timeout is applied to the fetch as an AbortSignal", async () => {
+  test("transport timeout is applied to the fetch as an AbortSignal", async () => {
     const inits: RequestInit[] = [];
     const c = client(signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { inits }));
     await c.getBalance({ address: ADDR });
@@ -570,10 +581,10 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     ).rejects.toBeInstanceOf(MissingHeader);
   });
 
-  test("auto-derive FAIL-FAST: a malformed bootstrap body → typed MalformedHeader (not raw SyntaxError/TypeError) AT BOOTSTRAP (LOW-01/02)", async () => {
+  test("auto-derive FAIL-FAST: a malformed bootstrap body → typed MalformedHeader (not raw SyntaxError/TypeError) AT BOOTSTRAP", async () => {
     // Invalid JSON → would throw a raw SyntaxError before verify; coerced to a
     // typed VerificationError so the malformed bootstrap reads as a verify
-    // failure (LOW-02).
+    // failure.
     const badJson = vrpcHttp(URL, {
       fetchFn: autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), {
         bootstrapRawBody: "{not valid json",
@@ -585,7 +596,7 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     ).rejects.toBeInstanceOf(MalformedHeader);
 
     // Missing `result` → would throw a raw TypeError from BigInt(undefined);
-    // coerced to MalformedHeader (LOW-01).
+    // coerced to MalformedHeader.
     const missingResult = vrpcHttp(URL, {
       fetchFn: autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), {
         bootstrapRawBody: JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32000 } }),
@@ -597,7 +608,7 @@ describe("vrpcHttp transport wiring (TEST-03)", () => {
     ).rejects.toBeInstanceOf(MalformedHeader);
 
     // Non-hex `result` → would throw a raw SyntaxError from BigInt("0xZZ");
-    // coerced to MalformedHeader (LOW-01).
+    // coerced to MalformedHeader.
     const nonHex = vrpcHttp(URL, {
       fetchFn: autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), {
         bootstrapRawBody: JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0xZZ" }),

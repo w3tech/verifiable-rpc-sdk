@@ -22,6 +22,11 @@
       "types": "./src/errors.ts",
       "import": "./dist/errors.js",
       "default": "./dist/errors.js"
+    },
+    "./compose": {
+      "types": "./src/compose.ts",
+      "import": "./dist/compose.js",
+      "default": "./dist/compose.js"
     }
   },
   "files": [
@@ -46,6 +51,11 @@
         "types": "./dist/errors.d.ts",
         "import": "./dist/errors.js",
         "default": "./dist/errors.js"
+      },
+      "./compose": {
+        "types": "./dist/compose.d.ts",
+        "import": "./dist/compose.js",
+        "default": "./dist/compose.js"
       }
     }
   },
@@ -60,7 +70,8 @@
   "dependencies": {
     "@ankr.com/dstack-verify": "workspace:*",
     "@noble/ed25519": "^3.1.0",
-    "@noble/hashes": "^2.2.0"
+    "@noble/hashes": "^2.2.0",
+    "lru-cache": "^11.5.1"
   },
   "devDependencies": {
     "@types/node": "*"

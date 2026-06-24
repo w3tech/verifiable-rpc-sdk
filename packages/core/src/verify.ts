@@ -1,8 +1,8 @@
-// Transport-agnostic verify seam (CORE-02).
+// Transport-agnostic verify seam.
 //
 // `verifyResponse` is the verify half (steps 4-9) of `VerifierClient.call()`,
-// lifted into a free function so both the ethers `_send` override (Phase 30) and
-// the viem `custom` transport (Phase 31) can feed raw request bytes + raw
+// lifted into a free function so both the ethers `_send` override and
+// the viem `custom` transport can feed raw request bytes + raw
 // (content-decoded) response bytes + response headers through ONE verify path
 // without any client-lib knowledge. `VerifierClient.call()` is itself refactored
 // to delegate here — there is exactly one verify implementation.

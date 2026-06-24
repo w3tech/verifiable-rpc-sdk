@@ -115,8 +115,9 @@ export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleT
 > [!WARNING]
 > **v5.0 ships a MOCK attestation verifier — NO real attestation security until v6.0.**
 > The v5.0 attestation check is a mock with `allowInsecureMock` **hard-set true**:
-> it **bypasses all chain-of-trust checks** and prints a loud `console.warn` on
-> every attestation. In the contract's own words: *"v5.0 provides NO real
+> it **bypasses all chain-of-trust checks** and resolves `void` **silently**
+> (the SDK prints nothing) — an explicit opt-in past the hardware root of
+> trust. In the contract's own words: *"v5.0 provides NO real
 > attestation security (real verification lands in v6.0)."* Real
 > DCAP/RTMR/compose-hash verification arrives in v6.0; never rely on v5.0
 > attestation for production trust.
@@ -192,7 +193,7 @@ This is narrower than full TDX remote attestation, and the gap is intentional:
 - **Full TDX quote attestation is NOT performed** here — the signature proves
   *a key you correlated* produced *exactly these bytes*, not *which enclave
   image* holds that key (Intel PCK quote verification + composeHash registry
-  are deferred to the next milestone).
+  are deferred).
 - **WebSocket push (`eth_subscribe`) is unverified** — the sidecar signs HTTP
   responses only; WS bypasses the signing chokepoint. Use HTTP for anything you
   need a signature on.
