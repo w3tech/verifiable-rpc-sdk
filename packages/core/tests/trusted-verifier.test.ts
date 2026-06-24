@@ -264,7 +264,7 @@ describe("TrustedVerifier / trust seam", () => {
     // TTL clock (see `sleep` note). Companion `expiryTestIsClockDependent` proves
     // that WITHOUT the wait the same 2nd verify is a hit (red without advancing).
     const mock = installAttestationMock();
-    const ttlMs = 20;
+    const ttlMs = 100;
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, pubkeyCacheTtlMs: ttlMs }));
 
     const initial = await signedPair();
@@ -283,7 +283,7 @@ describe("TrustedVerifier / trust seam", () => {
     // waiting, the 2nd verify is a cache hit (no extra fetch). So the expiry test
     // genuinely depends on the elapsed clock — it would be red without the wait.
     const mock = installAttestationMock();
-    const ttlMs = 20;
+    const ttlMs = 100;
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, pubkeyCacheTtlMs: ttlMs }));
 
     const pair = await signedPair();
