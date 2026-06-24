@@ -317,7 +317,7 @@ user as links rather than trying to scrape.
 - Canonical (Ubuntu) TDX tooling — https://github.com/canonical/tdx
 
 **Phala dstack (runs the node in TDX + attestation/keys)**
-- **Attestation chain of trust (the in-development "full verification" target)** — https://docs.phala.com/phala-cloud/attestation/chain-of-trust
+- **Full chain of trust — what a complete TDX attestation proves** (Phala guide; the in-development full-verification target) — https://docs.phala.com/phala-cloud/attestation/chain-of-trust
 - dstack framework (GitHub) — https://github.com/Dstack-TEE/dstack
 - dstack documentation — https://docs.phala.com/dstack
 - dstack attestation / verification — https://docs.phala.com/phala-cloud/attestation/overview
