@@ -40,7 +40,11 @@ export {
 } from "./errors";
 export { buildPreImage } from "./preimage";
 export type { TrustedVerifierOptions } from "./trusted-verifier";
-export { DEFAULT_PUBKEY_CACHE_TTL_MS, TrustedVerifier } from "./trusted-verifier";
+export {
+  DEFAULT_PUBKEY_CACHE_MAX,
+  DEFAULT_PUBKEY_CACHE_TTL_MS,
+  TrustedVerifier,
+} from "./trusted-verifier";
 export { parseChainId } from "./utils";
 export type { VerifiedResponse, VerifierClientOptions } from "./verifier";
 export { VerifierClient } from "./verifier";

@@ -20,6 +20,7 @@ import {
   verifyDstackAttestation,
 } from "@ankr.com/dstack-verify";
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { LRUCache } from "lru-cache";
 
 import { type Attestation, fetchAttestation, verifyAttestationCorrelation } from "./attestation";
 import { InfoEndpointComposeSource } from "./compose";
@@ -29,12 +30,15 @@ import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verif
 /** Default pubkey-cache TTL: 1 hour in ms (FLOW-02 default). */
 export const DEFAULT_PUBKEY_CACHE_TTL_MS = 3_600_000;
 
+/** Default max distinct verified pubkeys held in the cache before LRU eviction. */
+export const DEFAULT_PUBKEY_CACHE_MAX = 1024;
+
 /**
  * Construction options for {@link TrustedVerifier}. The transport inputs
  * (`attestationUrl`/`headers`) target the attestation fetch; the test injectables
- * (`now`/`nonceSource`/`verifyAttestation`) keep TTL + fail-closed tests
- * deterministic and offline. (The policy inputs `allowlist`/`tcb`/`pccsUrl`
- * were removed — the mock verifier ignores them; a future release reintroduces them.)
+ * (`nonceSource`/`verifyAttestation`) keep fail-closed tests deterministic and
+ * offline. (The policy inputs `allowlist`/`tcb`/`pccsUrl` were removed — the mock
+ * verifier ignores them; a future release reintroduces them.)
  */
 export interface TrustedVerifierOptions {
   /**
@@ -53,12 +57,12 @@ export interface TrustedVerifierOptions {
   fetch?: typeof fetch;
   /** Verified-pubkey cache TTL in ms; default {@link DEFAULT_PUBKEY_CACHE_TTL_MS}. */
   pubkeyCacheTtlMs?: number;
+  /** Max distinct verified pubkeys cached before LRU eviction; default {@link DEFAULT_PUBKEY_CACHE_MAX}. */
+  pubkeyCacheMax?: number;
   // NOTE: the policy inputs `allowlist`/`tcb`/`pccsUrl` were removed — the
   // mock verifier ignores them, so exposing them on the published surface is
   // misleading. A future release re-introduces them (consumer-pinned anchors) when
   // the real verifier needs them; re-adding optional fields is non-breaking.
-  /** Injected wall clock (epoch ms); default `() => Date.now()`. Test-only. */
-  now?: () => number;
   /** Fresh 32-byte nonce source; default `crypto.getRandomValues`. Test-only. */
   nonceSource?: () => Uint8Array;
   /** Attestation verifier; default `verifyDstackAttestation`. Test-only stub. */
@@ -145,16 +149,25 @@ export function buildVerifyPolicy(pubkeyHex: string, nonce: Uint8Array): VerifyP
 }
 
 /**
- * The verify-and-trust seam (INTEG-01). Holds a long-lived pubkey cache (keyed by
- * `pubkeyHex` → expiry epoch-ms) across `verify()` calls. On a cache hit within
- * TTL it returns the verified pair before any attestation fetch (FLOW-04); on a
- * miss/expiry it lazily fetches + correlates + verifies the attestation, caching
- * the pubkey ONLY after a resolved attestation verify (FLOW-05).
+ * The verify-and-trust seam (INTEG-01). Holds a long-lived, bounded pubkey cache
+ * (`pubkeyHex` keys, fixed TTL, LRU-evicted) across `verify()` calls. On a cache
+ * hit within TTL it returns the verified pair before any attestation fetch
+ * (FLOW-04); on a miss/expiry it lazily fetches + correlates + verifies the
+ * attestation, caching the pubkey ONLY after a resolved attestation verify
+ * (FLOW-05).
  */
 export class TrustedVerifier {
-  private readonly pubkeyExpiryCache = new Map<string, number>(); // pubkeyHex -> expiry epoch-ms
+  // Bounded, auto-evicting cache of verified pubkeys. TTL is a FIXED expiry from
+  // verify-time (updateAgeOnGet/Has = false → reads never extend it), matching the
+  // old `now + ttlMs` semantics; `.set()` re-applies the TTL on re-verify.
+  private readonly cache: LRUCache<string, true>;
   private readonly ttlMs: number;
-  private readonly now: () => number;
+  private readonly maxEntries: number;
+  // When ttlMs <= 0, caching is disabled so every call re-attests — preserving
+  // the old `now + 0` semantics (an entry was never fresh). lru-cache instead
+  // treats ttl: 0 as "no expiry" (cache forever) and rejects negative ttls, so
+  // we must not hand a non-positive ttl to it.
+  private readonly cachingDisabled: boolean;
   private readonly nonceSource: () => Uint8Array;
   private readonly verifyAttestationImpl: (b: AttestationBundle, p: VerifyPolicy) => Promise<void>;
   private readonly chainId: bigint;
@@ -165,7 +178,16 @@ export class TrustedVerifier {
 
   constructor(opts: TrustedVerifierOptions) {
     this.ttlMs = opts.pubkeyCacheTtlMs ?? DEFAULT_PUBKEY_CACHE_TTL_MS;
-    this.now = opts.now ?? (() => Date.now());
+    this.maxEntries = opts.pubkeyCacheMax ?? DEFAULT_PUBKEY_CACHE_MAX;
+    this.cachingDisabled = this.ttlMs <= 0;
+    // A positive ttl is required when caching is enabled; the disabled branch
+    // passes a dummy positive ttl that is never exercised (set/has are skipped).
+    this.cache = new LRUCache<string, true>({
+      max: this.maxEntries,
+      ttl: this.cachingDisabled ? 1 : this.ttlMs,
+      updateAgeOnGet: false,
+      updateAgeOnHas: false,
+    });
     this.nonceSource = opts.nonceSource ?? (() => crypto.getRandomValues(new Uint8Array(32)));
     this.verifyAttestationImpl = opts.verifyAttestation ?? verifyDstackAttestation;
     this.chainId = opts.chainId;
@@ -177,13 +199,15 @@ export class TrustedVerifier {
 
   /** True when `pubkeyHex` is cached and the entry has not expired. */
   private isFresh(pubkeyHex: string): boolean {
-    const expiry = this.pubkeyExpiryCache.get(pubkeyHex);
-    return expiry !== undefined && this.now() < expiry;
+    return !this.cachingDisabled && this.cache.has(pubkeyHex);
   }
 
   /** Cache `pubkeyHex` with a fresh TTL window. Called ONLY on a resolved verify. */
   private cacheVerifiedPubkey(pubkeyHex: string): void {
-    this.pubkeyExpiryCache.set(pubkeyHex, this.now() + this.ttlMs);
+    if (this.cachingDisabled) {
+      return;
+    }
+    this.cache.set(pubkeyHex, true);
   }
 
   /**

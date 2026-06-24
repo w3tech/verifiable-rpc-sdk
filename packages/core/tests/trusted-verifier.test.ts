@@ -16,7 +16,6 @@ const CHAIN = "arbitrum";
 const CHAIN_ID = 42161n;
 const TEST_SEED = new Uint8Array(32).fill(0x42);
 const NONCE = new Uint8Array(32).fill(0x07);
-const NOW = 1_000_000;
 
 function toHex(bytes: Uint8Array): string {
   let out = "";
@@ -27,12 +26,23 @@ function toHex(bytes: Uint8Array): string {
 }
 
 /**
+ * Real-clock sleep. The TTL tests use a small real ttl + a real wait rather than
+ * vitest fake timers: lru-cache reads its TTL clock from `performance.now()` and
+ * debounces it (ttlResolution), and vitest's faked `performance.now` does NOT
+ * actually drive lru-cache's expiry (verified — a faked-advance entry stays
+ * `has() === true`). A short real wait is the only deterministic way to expire it.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Build a real Ed25519-signed (requestBytes, responseBytes, headers) triple that
  * `verifyResponse` accepts. `verify()` consumes the triple directly — only the
  * attestation GET hits `fetch`, so the signed-POST leg of anchor.test.ts is
  * unnecessary here.
  */
-async function signedPair(): Promise<{
+async function signedPair(seed: Uint8Array = TEST_SEED): Promise<{
   requestBytes: Uint8Array;
   responseBytes: Uint8Array;
   headers: ResponseHeaders;
@@ -43,12 +53,14 @@ async function signedPair(): Promise<{
   const responseBytes = new TextEncoder().encode(
     JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x12345" }),
   );
-  // Sign with a wall-clock timestamp so verifyResponse's replay window (which
-  // uses Date.now(), not the seam's injected cache clock) accepts it.
+  // Sign with the current `Date.now()` so verifyResponse's replay window accepts
+  // it. Under vitest fake timers `Date` is faked, so re-signing right before a
+  // verify keeps the timestamp in-window even after the clock has been advanced
+  // past the cache TTL.
   const ts = BigInt(Date.now());
   const preImage = buildPreImage(CHAIN_ID, requestBytes, responseBytes, ts);
-  const signature = await signAsync(preImage, TEST_SEED);
-  const pubkey = await getPublicKeyAsync(TEST_SEED);
+  const signature = await signAsync(preImage, seed);
+  const pubkey = await getPublicKeyAsync(seed);
   const headers: Record<string, string> = {
     "vRPC-Signature": `0x${toHex(signature)}`,
     "vRPC-Timestamp": ts.toString(),
@@ -78,6 +90,8 @@ interface AttMockState {
   fetch: typeof fetch;
   attGetCount: number;
   lastUrl: string | undefined;
+  /** Seed whose pubkey the mock echoes — set per request so correlation passes. */
+  activeSeed: Uint8Array;
 }
 
 /** Mock only the attestation GET leg; count how many times it is hit. */
@@ -86,13 +100,14 @@ function installAttestationMock(): AttMockState {
     fetch: (() => {}) as unknown as typeof fetch,
     attGetCount: 0,
     lastUrl: undefined,
+    activeSeed: TEST_SEED,
   };
   const impl = async (input: string | URL | Request): Promise<Response> => {
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/attestation")) {
       state.attGetCount += 1;
       state.lastUrl = url;
-      const attPubkey = await getPublicKeyAsync(TEST_SEED);
+      const attPubkey = await getPublicKeyAsync(state.activeSeed);
       // report_data is the 64-byte CHK-A1 pre-image pubkey(bare) ‖ nonce(bare):
       // the seam binds report_data[0:32]==pubkey and [32:64]==the fetch nonce
       // (baseOpts hard-sets nonceSource -> NONCE = 0x07*32). A bare "00" stub
@@ -119,7 +134,6 @@ function baseOpts(overrides: Partial<TrustedVerifierOptions> = {}): TrustedVerif
     chainId: CHAIN_ID,
     replayWindowMs: 60_000,
     attestationUrl: `${SHARK_BASE}/${CHAIN}_vrpc/attestation`,
-    now: () => NOW,
     nonceSource: () => NONCE,
     ...overrides,
   };
@@ -245,47 +259,88 @@ describe("TrustedVerifier / trust seam", () => {
   });
 
   test("expiredReVerifies", async () => {
-    // FLOW-02: advancing the injected clock past TTL forces a re-verify — a
-    // cached pubkey is NOT trusted forever (no stale-trust). No real sleep.
+    // FLOW-02: a cached pubkey is NOT trusted forever (no stale-trust). Uses a
+    // small REAL ttl + a real wait — vitest fake timers do not drive lru-cache's
+    // TTL clock (see `sleep` note). Companion `expiryTestIsClockDependent` proves
+    // that WITHOUT the wait the same 2nd verify is a hit (red without advancing).
     const mock = installAttestationMock();
-    const pair = await signedPair();
-    const ttlMs = 5_000;
-    let fakeT = NOW;
-    const tv = new TrustedVerifier(
-      baseOpts({ fetch: mock.fetch, pubkeyCacheTtlMs: ttlMs, now: () => fakeT }),
-    );
+    const ttlMs = 20;
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, pubkeyCacheTtlMs: ttlMs }));
 
-    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    const initial = await signedPair();
+    await tv.verify(initial.requestBytes, initial.responseBytes, initial.headers);
     expect(mock.attGetCount).toBe(1); // initial verify warms the cache
 
-    // Still within TTL → cache hit, no fetch.
-    fakeT += ttlMs - 1;
-    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(mock.attGetCount).toBe(1);
-
-    // Past TTL → entry expired → re-verify (counter increments again).
-    fakeT += 2;
-    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    // Wait past the TTL → entry expired → re-verify (counter increments again).
+    await sleep(ttlMs * 3);
+    const after = await signedPair();
+    await tv.verify(after.requestBytes, after.responseBytes, after.headers);
     expect(mock.attGetCount).toBe(2);
   });
 
-  test("ttlDefaultIsOneHour", async () => {
-    // No pubkeyCacheTtlMs → DEFAULT_PUBKEY_CACHE_TTL_MS (1h): a < 1h shift is a
-    // hit, a > 1h shift re-verifies.
+  test("expiryTestIsClockDependent", async () => {
+    // Proves expiredReVerifies is meaningful: with the SAME small ttl but WITHOUT
+    // waiting, the 2nd verify is a cache hit (no extra fetch). So the expiry test
+    // genuinely depends on the elapsed clock — it would be red without the wait.
     const mock = installAttestationMock();
+    const ttlMs = 20;
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, pubkeyCacheTtlMs: ttlMs }));
+
     const pair = await signedPair();
-    let fakeT = NOW;
-    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, now: () => fakeT }));
-
     await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
     expect(mock.attGetCount).toBe(1);
 
-    fakeT += DEFAULT_PUBKEY_CACHE_TTL_MS - 1; // < 1h → still fresh
+    // No wait → still fresh → cache hit, NO second fetch.
     await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
     expect(mock.attGetCount).toBe(1);
+  });
 
-    fakeT += 2; // now > 1h since cache → expired
-    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(mock.attGetCount).toBe(2);
+  test("ttlDefaultIsOneHour", async () => {
+    // Default TTL constant is 1h. With no override, a short real wait stays well
+    // within it → cache hit (no re-attest). The 1h boundary itself is asserted on
+    // the constant; we don't sleep an hour. The short-ttl `expiredReVerifies`
+    // test above proves the expiry branch.
+    expect(DEFAULT_PUBKEY_CACHE_TTL_MS).toBe(3_600_000);
+
+    const mock = installAttestationMock();
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
+
+    const first = await signedPair();
+    await tv.verify(first.requestBytes, first.responseBytes, first.headers);
+    expect(mock.attGetCount).toBe(1);
+
+    await sleep(40); // ≪ 1h → still fresh
+    const within = await signedPair();
+    await tv.verify(within.requestBytes, within.responseBytes, within.headers);
+    expect(mock.attGetCount).toBe(1);
+  });
+
+  test("evictsOldestPastMax", async () => {
+    // Bounded cache: with pubkeyCacheMax=2, verifying 3 distinct pubkeys evicts
+    // the least-recently-used (the first) → re-accessing it re-attests.
+    const mock = installAttestationMock();
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, pubkeyCacheMax: 2 }));
+
+    const seedA = new Uint8Array(32).fill(0x01);
+    const seedB = new Uint8Array(32).fill(0x02);
+    const seedC = new Uint8Array(32).fill(0x03);
+
+    const verifyWith = async (seed: Uint8Array): Promise<void> => {
+      mock.activeSeed = seed;
+      const p = await signedPair(seed);
+      await tv.verify(p.requestBytes, p.responseBytes, p.headers);
+    };
+
+    await verifyWith(seedA); // miss
+    await verifyWith(seedB); // miss
+    await verifyWith(seedC); // miss → evicts A (LRU, max=2)
+    expect(mock.attGetCount).toBe(3);
+
+    // A was evicted → re-attested; B and C are still resident → cache hits.
+    await verifyWith(seedA);
+    expect(mock.attGetCount).toBe(4);
+    await verifyWith(seedC);
+    await verifyWith(seedB);
+    expect(mock.attGetCount).toBe(5); // B evicted when A re-entered; C still warm
   });
 });
