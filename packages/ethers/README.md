@@ -194,7 +194,7 @@ failure** (fail-closed).
 import { anchorTrust } from "@ankr.com/vrpc-core";
 
 const anchor = await anchorTrust({
-  sharkBase: "https://rpc.ankr.com",
+  rpcBaseUrl: "https://rpc.ankr.com",
   chain: "arbitrum",
   chainId: 42161n,
   headers: { "x-api-key": process.env.ANKR_API_KEY },

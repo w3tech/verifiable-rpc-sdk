@@ -26,8 +26,8 @@ import { VerifierClient } from "./verifier";
 
 /** Input to {@link anchorTrust}. Secrets (headers) are caller-supplied. */
 export interface AnchorTrustOptions {
-  /** Shark proxy base URL (no trailing slash), e.g. `https://rpc.ankr.com`. */
-  sharkBase: string;
+  /** RPC gateway base URL (no trailing slash), e.g. `https://rpc.ankr.com`. */
+  rpcBaseUrl: string;
   /** Chain slug used to build the `<chain>_vrpc` route, e.g. `arbitrum`. */
   chain: string;
   /**
@@ -69,7 +69,7 @@ function defaultNonce(): Uint8Array {
  * `VrpcProvider` (ethers) or a `vrpcHttp` client (viem).
  */
 export async function anchorTrust(opts: AnchorTrustOptions): Promise<AnchorTrustResult> {
-  const vrpcUrl = `${opts.sharkBase}/${opts.chain}_vrpc`;
+  const vrpcUrl = `${opts.rpcBaseUrl}/${opts.chain}_vrpc`;
 
   // 1. One signed read through shark. A successful return IS the Ed25519
   //    verification (VerifierClient throws BadSignature otherwise) — no copied

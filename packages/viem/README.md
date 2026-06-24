@@ -281,7 +281,7 @@ and the ethers adapter calls the identical helper.
 import { anchorTrust } from "@ankr.com/vrpc-core";
 
 const anchor = await anchorTrust({
-  sharkBase: "https://your-shark", // no trailing slash
+  rpcBaseUrl: "https://rpc.ankr.com", // no trailing slash
   chain: "arbitrum",               // builds the <chain>_vrpc route
   chainId: 42161,
   headers: { "x-api-key": process.env.SHARK_API_KEY! },

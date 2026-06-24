@@ -122,7 +122,7 @@ describe("anchorTrust", () => {
   test("resolvesOnPubkeyMatch", async () => {
     const mock = installSharkMock({ nodeIdHeader: "node-abc" });
     const summary = await anchorTrust({
-      sharkBase: SHARK_BASE,
+      rpcBaseUrl: SHARK_BASE,
       chain: CHAIN,
       chainId: CHAIN_ID,
       fetch: mock.fetch,
@@ -142,7 +142,7 @@ describe("anchorTrust", () => {
     let caught: unknown;
     try {
       await anchorTrust({
-        sharkBase: SHARK_BASE,
+        rpcBaseUrl: SHARK_BASE,
         chain: CHAIN,
         chainId: CHAIN_ID,
         fetch: mock.fetch,
@@ -159,7 +159,7 @@ describe("anchorTrust", () => {
     let caught: unknown;
     try {
       await anchorTrust({
-        sharkBase: SHARK_BASE,
+        rpcBaseUrl: SHARK_BASE,
         chain: CHAIN,
         chainId: CHAIN_ID,
         fetch: mock.fetch,
@@ -180,7 +180,7 @@ describe("anchorTrust", () => {
     let caught: unknown;
     try {
       await anchorTrust({
-        sharkBase: SHARK_BASE,
+        rpcBaseUrl: SHARK_BASE,
         chain: CHAIN,
         chainId: CHAIN_ID,
         fetch: mock.fetch,
@@ -200,7 +200,7 @@ describe("anchorTrust", () => {
     const mock = installSharkMock({ nodeIdHeader: "node-abc" });
     let nonceCalls = 0;
     await anchorTrust({
-      sharkBase: SHARK_BASE,
+      rpcBaseUrl: SHARK_BASE,
       chain: CHAIN,
       chainId: CHAIN_ID,
       fetch: mock.fetch,
@@ -222,7 +222,7 @@ describe("anchorTrust", () => {
     // lossy number for the verify pre-image.
     const mock = installSharkMock({ nodeIdHeader: "node-abc" });
     const summary = await anchorTrust({
-      sharkBase: SHARK_BASE,
+      rpcBaseUrl: SHARK_BASE,
       chain: CHAIN,
       chainId: 42161,
       fetch: mock.fetch,

@@ -237,7 +237,7 @@ member on any failure — `MissingHeader("vRPC-NodeId")` when the proxy omits th
 node id, `AttestationNodeNotFoundError` on a stale id,
 `AttestationCorrelationError` on pubkey mismatch.
 
-**`AnchorTrustOptions`**: `sharkBase`, `chain`, `chainId` (`number | bigint`,
+**`AnchorTrustOptions`**: `rpcBaseUrl`, `chain`, `chainId` (`number | bigint`,
 coerced via `BigInt()` without a `number` round-trip), `headers?`,
 `fetch?`, `nonceSource?` (defaults to `crypto.getRandomValues`). Returns
 **`AnchorTrustResult`** = `{ nodeId, pubkey }`.
