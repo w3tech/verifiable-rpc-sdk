@@ -6,7 +6,7 @@ import { deriveVrpcUrls } from "../src/vrpc-url";
 const KEY = "DEADBEEF";
 
 describe("deriveVrpcUrls", () => {
-  test("ankr keyed form: _vrpc on the chain segment, key preserved (SHARK-3283)", () => {
+  test("ankr keyed form: _vrpc on the chain segment, key preserved", () => {
     expect(deriveVrpcUrls(`https://rpc.ankr.com/arbitrum/${KEY}`)).toEqual({
       rpcUrl: `https://rpc.ankr.com/arbitrum_vrpc/${KEY}`,
       attestationUrl: `https://rpc.ankr.com/arbitrum_vrpc/${KEY}/attestation`,

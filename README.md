@@ -16,7 +16,7 @@ const client = createPublicClient({ transport: vrpcHttp(url, { chainId }) });
 
 Everything downstream — `getBalance`, `eth_call`, contract reads, `getLogs`, `getBlock`, `estimateGas`, … — works exactly as before, now verified.
 
-You pass **one** plain URL (e.g. `https://rpc.ankr.com/arbitrum`). The SDK owns the `_vrpc` route convention: it appends `_vrpc` for the RPC leg and `/attestation` for the attestation leg (dup-guarded — a URL that already ends with `_vrpc` is not doubled). There is **no** separate `attestationBaseUrl` / `chainSlug` to configure, and attestation correlation is **always-on**: the verifier is always used. The serving node id (`vRPC-NodeId`) is **optional** — it is included in the attestation fetch when the response carries it and omitted when absent (a shark route that needs a `node_id` but receives none fails to route — fail-closed, never a silent pass).
+You pass **one** plain URL (e.g. `https://rpc.ankr.com/arbitrum`). The SDK owns the `_vrpc` route convention: it appends `_vrpc` for the RPC leg and `/attestation` for the attestation leg (dup-guarded — a URL that already ends with `_vrpc` is not doubled). There is **no** separate `attestationBaseUrl` / `chainSlug` to configure, and attestation correlation is **always-on**: the verifier is always used. The serving node id (`vRPC-NodeId`) is **optional** — it is included in the attestation fetch when the response carries it and omitted when absent (a gateway route that needs a `node_id` but receives none fails to route — fail-closed, never a silent pass).
 
 > `chainId` is **optional** — omit it (`new VrpcProvider(url)` / `vrpcHttp(url)`) and the SDK derives it from a **signed** `eth_chainId` response on first use and **verifies that signature** self-consistently: the response's own `result` IS the chainId, so it only verifies if the node really signed for that chain — the derived chainId is cryptographically attested by the node. A tampered/forged/unsigned `eth_chainId` **fails fast** with a `VerificationError` (no unverified fallback). Passing `chainId` explicitly is still **strongly recommended**: it pins to **your expected chain**, catching a wrong-node / wrong-URL misconfig where you'd otherwise verify genuine data from the *wrong* chain (auto-derive trusts the node's self-reported chain), and it skips the bootstrap round-trip. See the [ethers](./packages/ethers/README.md) and [viem](./packages/viem/README.md) package docs.
 
@@ -66,4 +66,4 @@ See [AGENTS.md](./AGENTS.md) for the pre-push gate and integration-test setup.
 
 ## License
 
-TBD.
+Apache-2.0 © Web3 Technologies, Inc. See [LICENSE](./LICENSE) and [NOTICE](./NOTICE).

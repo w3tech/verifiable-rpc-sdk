@@ -1,11 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // Public barrel — re-exports the @ankr.com/dstack-verify public surface only.
 //
 // Implementation lives in:
 //   - ./types     — AttestationBundle / VerifyPolicy + sub-types (frozen contract)
 //   - ./errors    — AttestationError extends VerificationError
 //   - ./checklist — ChkId union (CHK-A1..G3 + CHK-MOCK) + frozen CHK record
-//   - ./verify-steps — v6.0 verify-step signatures (v5.0 throwing stubs)
-//   - ./verify    — verifyDstackAttestation entrypoint (v5.0 mock body; v6.0 fills it in place)
+//   - ./verify-steps — frozen verify-step signatures (currently throwing stubs)
+//   - ./verify    — verifyDstackAttestation entrypoint (current mock body; a future release fills it in place)
 //
 // verbatimModuleSyntax + isolatedModules require `export type { ... }` to be
 // a separate statement from `export { ... }`.
@@ -27,9 +29,4 @@ export type {
 } from "./types";
 export { EMPTY_ALLOWLIST } from "./types";
 export { verifyDstackAttestation } from "./verify";
-export {
-  computeComposeHash,
-  extractKeyProvider,
-  parseReportData,
-  replayRtmr,
-} from "./verify-steps";
+export { parseReportData } from "./verify-steps";

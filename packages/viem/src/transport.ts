@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // vrpcHttp — verifiable drop-in for viem's `http(url)` transport. A custom
 // transport whose `request` owns its fetch, captures the RAW content-decoded
 // response bytes BEFORE `JSON.parse`, and verifies them through vrpc-core's seam

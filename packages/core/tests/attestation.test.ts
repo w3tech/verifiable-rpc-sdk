@@ -231,12 +231,12 @@ describe("fetchAttestation", () => {
     });
   });
 
-  // ── Shark-routed attestation: the old `fetchAttestationViaShark` describe,
-  // merged in. The helper's `{ sharkBase, chain, nodeId, nonce, ... }` args are
-  // now expressed as `{ attestationUrl: sharkBase + "/" + chain + "_vrpc/attestation",
+  // ── Gateway-routed attestation: the former via-gateway helper's describe,
+  // merged in. The helper's `{ rpcBaseUrl, chain, nodeId, nonce, ... }` args are
+  // now expressed as `{ attestationUrl: rpcBaseUrl + "/" + chain + "_vrpc/attestation",
   // nodeId, nonce, ... }` — the SAME final URL the mock matches. ──────────────
-  describe("via shark routing", () => {
-    const sharkAttestationUrl = `${SHARK_BASE}/eth_vrpc/attestation`;
+  describe("via gateway routing", () => {
+    const gatewayAttestationUrl = `${RPC_BASE}/eth_vrpc/attestation`;
 
     test("nonceMustBe32Bytes", async () => {
       globalThis.fetch = ((): Response => {
@@ -245,7 +245,7 @@ describe("fetchAttestation", () => {
       let caught: unknown;
       try {
         await fetchAttestation({
-          attestationUrl: sharkAttestationUrl,
+          attestationUrl: gatewayAttestationUrl,
           nodeId: "node-1",
           nonce: new Uint8Array(31),
         });
@@ -256,22 +256,22 @@ describe("fetchAttestation", () => {
     });
 
     test("buildsExactContractUrl", async () => {
-      const state = installSharkMockFetch(GOLDEN_FIXTURE);
+      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
       const nonce = new Uint8Array(32);
       await fetchAttestation({
-        attestationUrl: sharkAttestationUrl,
+        attestationUrl: gatewayAttestationUrl,
         nodeId: "node-1",
         nonce,
       });
       const expectedHex = bytesToHex(nonce);
       expect(state.urls[0]).toBe(
-        `${SHARK_BASE}/eth_vrpc/attestation?nonce=${expectedHex}&node_id=node-1`,
+        `${RPC_BASE}/eth_vrpc/attestation?nonce=${expectedHex}&node_id=node-1`,
       );
       expect(state.urls[0]).not.toContain("nonce=0x");
     });
 
     test("nonceHexRoundTripsByteIntact", async () => {
-      const state = installSharkMockFetch(GOLDEN_FIXTURE);
+      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
       const nonce = new Uint8Array(32);
       nonce[0] = 0xde;
       nonce[1] = 0xad;
@@ -279,7 +279,7 @@ describe("fetchAttestation", () => {
       nonce[3] = 0xef;
       nonce[31] = 0xff;
       await fetchAttestation({
-        attestationUrl: sharkAttestationUrl,
+        attestationUrl: gatewayAttestationUrl,
         nodeId: "node-1",
         nonce,
       });
@@ -289,9 +289,9 @@ describe("fetchAttestation", () => {
     });
 
     test("nodeIdIsUrlEncoded", async () => {
-      const state = installSharkMockFetch(GOLDEN_FIXTURE);
+      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
       await fetchAttestation({
-        attestationUrl: sharkAttestationUrl,
+        attestationUrl: gatewayAttestationUrl,
         nodeId: "region/node 7",
         nonce: new Uint8Array(32),
       });
@@ -300,9 +300,9 @@ describe("fetchAttestation", () => {
     });
 
     test("nodeIdAbsentOmitsNodeIdParam", async () => {
-      const state = installSharkMockFetch(GOLDEN_FIXTURE);
+      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
       await fetchAttestation({
-        attestationUrl: sharkAttestationUrl,
+        attestationUrl: gatewayAttestationUrl,
         nonce: new Uint8Array(32),
       });
       expect(state.urls[0]).toContain("?nonce=");
@@ -310,11 +310,11 @@ describe("fetchAttestation", () => {
     });
 
     test("status404ThrowsNodeNotFoundWithNoRetry", async () => {
-      const state = installSharkMockFetch({}, 404);
+      const state = installGatewayMockFetch({}, 404);
       let caught: unknown;
       try {
         await fetchAttestation({
-          attestationUrl: sharkAttestationUrl,
+          attestationUrl: gatewayAttestationUrl,
           nodeId: "stale-node",
           nonce: new Uint8Array(32),
         });
@@ -330,9 +330,9 @@ describe("fetchAttestation", () => {
     });
 
     test("headersSetXApiKeyOnAttestationLeg", async () => {
-      const state = installSharkMockFetch(GOLDEN_FIXTURE);
+      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
       await fetchAttestation({
-        attestationUrl: sharkAttestationUrl,
+        attestationUrl: gatewayAttestationUrl,
         nodeId: "node-1",
         nonce: new Uint8Array(32),
         headers: { "x-api-key": "from-headers" },
@@ -341,11 +341,11 @@ describe("fetchAttestation", () => {
     });
 
     test("reusesNarrowAttestationOnMalformedBody", async () => {
-      installSharkMockFetch({ quote: "abcdef", pubkey: "0x00", composeHash: "feed" });
+      installGatewayMockFetch({ quote: "abcdef", pubkey: "0x00", composeHash: "feed" });
       let caught: unknown;
       try {
         await fetchAttestation({
-          attestationUrl: sharkAttestationUrl,
+          attestationUrl: gatewayAttestationUrl,
           nodeId: "node-1",
           nonce: new Uint8Array(32),
         });
@@ -357,16 +357,16 @@ describe("fetchAttestation", () => {
   });
 });
 
-const SHARK_BASE = "https://rpc.ankr.com";
+const RPC_BASE = "https://rpc.ankr.com";
 
-interface SharkMockState {
+interface GatewayMockState {
   urls: string[];
   headers: Array<Record<string, string> | undefined>;
   calls: number;
 }
 
-function installSharkMockFetch(body: unknown, status = 200): SharkMockState {
-  const state: SharkMockState = { urls: [], headers: [], calls: 0 };
+function installGatewayMockFetch(body: unknown, status = 200): GatewayMockState {
+  const state: GatewayMockState = { urls: [], headers: [], calls: 0 };
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     state.calls += 1;
     state.urls.push(typeof input === "string" ? input : input.toString());

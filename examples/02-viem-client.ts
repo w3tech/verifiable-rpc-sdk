@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // Drop-in verified viem transport. Pass `vrpcHttp` to `createPublicClient` and
 // use the client like any viem public client — every response is verified
 // (Ed25519 + TDX attestation) inside the transport before viem decodes it.

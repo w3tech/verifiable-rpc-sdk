@@ -55,7 +55,7 @@ Every viem action (`getBalance`, `readContract` / `call`, `getLogs`, `getBlock`,
 `estimateGas`, `getTransactionReceipt`, `sendRawTransaction`, …) funnels through
 its single verifying `request`.
 
-> Auth / shark routing: pass headers the normal way. For ethers, attach an
+> Auth / gateway routing: pass headers the normal way. For ethers, attach an
 > `x-api-key` header via a `FetchRequest` and pass that as the URL argument
 > (`VrpcOptions` extends `JsonRpcApiProviderOptions`, so it passes straight
 > through). For viem, pass `headers: { "x-api-key": "…" }` in the `vrpcHttp`
@@ -79,14 +79,14 @@ hand-build the `_vrpc` suffix yourself, and there is **no** separate
 Attestation correlation is **always-on**: the verifier is always used (there is
 no permissive / opt-out mode — verification is fail-closed). The serving node id
 (`vRPC-NodeId`) is **optional**: it is included in the attestation fetch when the
-response carries it and omitted when absent. A shark route that requires a
+response carries it and omitted when absent. A gateway route that requires a
 `node_id` but receives none fails to route — the fetch errors and propagates
 (fail-closed), never a silent pass.
 
 The standalone attestation fetch is a **single** `fetchAttestation(opts)` —
 `fetchAttestation({ attestationUrl, nonce, nodeId?, headers? })`. There
-is no `fetchAttestationViaShark`; the same helper covers the via-shark path (pass
-the shark-derived `attestationUrl` and the captured `nodeId`).
+is no former via-gateway helper; the same helper covers the via-gateway path (pass
+the gateway-derived `attestationUrl` and the captured `nodeId`).
 
 ---
 
@@ -249,7 +249,7 @@ try {
 
 ## Runnable examples
 
-Two end-to-end scripts do a **real verified read** through a stage shark
+Two end-to-end scripts do a **real verified read** through a staging Ankr RPC gateway
 `arbitrum_vrpc` route and then call the adapter-neutral boot-time trust anchor
 (`anchorTrust`):
 
@@ -262,10 +262,10 @@ are referenced **by name only** — never hard-code or print the values:
 
 | Env var                    | Purpose                              |
 | -------------------------- | ------------------------------------ |
-| `SHARK_STAGE_URL`          | Stage shark-proxy base URL           |
-| `SHARK_STAGE_TDX_TEST_KEY` | `x-api-key` value for the vrpc route |
+| `ANKR_STAGE_URL`          | Staging RPC gateway base URL          |
+| `ANKR_STAGE_TDX_TEST_KEY` | `x-api-key` value for the vrpc route  |
 
 ```sh
-SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… pnpm example:08-vrpc-ethers-verified-read
-SHARK_STAGE_URL=… SHARK_STAGE_TDX_TEST_KEY=… pnpm example:09-vrpc-viem-verified-read
+ANKR_STAGE_URL=… ANKR_STAGE_TDX_TEST_KEY=… pnpm example:08-vrpc-ethers-verified-read
+ANKR_STAGE_URL=… ANKR_STAGE_TDX_TEST_KEY=… pnpm example:09-vrpc-viem-verified-read
 ```

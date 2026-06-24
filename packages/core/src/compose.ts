@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // ComposeSource — pluggable provider of a deployment's `app_compose` text and
 // its compose-hash, for Layer A verification.
 //

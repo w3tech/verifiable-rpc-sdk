@@ -6,13 +6,13 @@
 
 import { describe, expect, test } from "vitest";
 
+import { AttestationError } from "../src/index";
 import {
-  AttestationError,
   computeComposeHash,
   extractKeyProvider,
   parseReportData,
   replayRtmr,
-} from "../src/index";
+} from "../src/verify-steps";
 
 describe("helper stubs throw not-implemented", () => {
   test("replayRtmr throws not-implemented", () => {

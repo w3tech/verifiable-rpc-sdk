@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // Single-URL derivation for the vRPC transport convention.
 //
 // The user passes ONE endpoint URL. The SDK owns the `_vrpc` route suffix and

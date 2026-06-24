@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // Drop-in verified ethers provider. Use it exactly like a normal ethers v6
 // provider — every JSON-RPC response is cryptographically verified (Ed25519 +
 // TDX attestation) before ethers returns it; a tampered response throws.

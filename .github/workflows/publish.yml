@@ -15,10 +15,14 @@
 # filename: publish.yml (see docs/PUBLISHING.md).
 name: Publish
 
+# Auto-publish on push to main is DISABLED for now: npm Trusted Publishing
+# (the per-package trusted-publisher config on npmjs.com) is not yet registered
+# and the repo is still private. Re-enable by restoring the
+# `push: { branches: [main] }` trigger below once trusted-publishing is configured
+# and the repo is public. workflow_dispatch keeps it manual-only so it cannot fire
+# on a push.
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 # Serialize releases so two pushes to main cannot publish concurrently.
 concurrency:

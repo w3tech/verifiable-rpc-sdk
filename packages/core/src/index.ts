@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // Public barrel — re-exports the SDK's public surface.
 //
 // Implementation lives in:

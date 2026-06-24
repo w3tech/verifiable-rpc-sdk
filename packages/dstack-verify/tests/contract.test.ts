@@ -8,25 +8,21 @@
 import { VerificationError } from "@ankr.com/vrpc-core";
 import { describe, expect, test } from "vitest";
 
-import {
-  AttestationError,
-  CHK,
-  computeComposeHash,
-  extractKeyProvider,
-  parseReportData,
-  replayRtmr,
-  verifyDstackAttestation,
-} from "../src/index";
+import * as barrel from "../src/index";
+import { AttestationError, CHK, parseReportData, verifyDstackAttestation } from "../src/index";
 
 describe("public contract surface", () => {
   test("exports all required symbols", () => {
     expect(typeof AttestationError).toBe("function");
     expect(typeof verifyDstackAttestation).toBe("function");
     expect(typeof CHK).toBe("object");
-    expect(typeof replayRtmr).toBe("function");
-    expect(typeof computeComposeHash).toBe("function");
     expect(typeof parseReportData).toBe("function");
-    expect(typeof extractKeyProvider).toBe("function");
+  });
+
+  test("does not export the unimplemented stub helpers", () => {
+    expect("replayRtmr" in barrel).toBe(false);
+    expect("computeComposeHash" in barrel).toBe(false);
+    expect("extractKeyProvider" in barrel).toBe(false);
   });
 });
 

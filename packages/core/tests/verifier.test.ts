@@ -94,7 +94,7 @@ function makeSignedJsonRpcBody(id: number, result: unknown): Uint8Array {
 
 describe("VerifierClient", () => {
   test("pins accept-encoding: identity so it hashes the exact signed wire bytes", async () => {
-    // Regression (SHARK-3283 / phase 24): a compressing upstream/proxy
+    // Regression: a compressing upstream/proxy
     // (content-encoding: gzip) makes fetch transparently decode the body
     // before we read arrayBuffer(), breaking the response-hash leg and
     // surfacing as a spurious BadSignature. The client must request identity.

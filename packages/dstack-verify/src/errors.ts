@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // The single error type this package throws. Mirrors the abstract
 // `VerificationError` base in @ankr.com/vrpc-core: `name` is auto-set by the
 // base from `this.constructor.name`, and `kind` is a readonly string-literal.
@@ -24,7 +26,7 @@ export type AttestationErrorKind = "Attestation";
 
 /**
  * Thrown when dstack/TDX attestation verification fails (or is mock-denied in
- * v5.0). Carries which `CHK-*` item failed plus a human-readable detail. The
+ * the current release). Carries which `CHK-*` item failed plus a human-readable detail. The
  * fail-closed contract means callers catch this rather than inspect a boolean.
  */
 export class AttestationError extends VerificationError {

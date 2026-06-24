@@ -1,9 +1,11 @@
-// Frozen, v6.0-complete contract types for dstack/TDX attestation verification.
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
+// Frozen, complete contract types for dstack/TDX attestation verification.
 //
 // Field sets derived from the sidecar /attestation + /info wire shape and the
 // phala dstack reference (TcbInfo/EventLog/report_data layout, signature_chain).
-// These types are FROZEN now: v6.0 (real DCAP verification) fills helper/verifier
-// bodies WITHOUT changing any exported type. Optional fields use `field?: T`
+// These types are FROZEN now: a future release (real DCAP verification) fills
+// helper/verifier bodies WITHOUT changing any exported type. Optional fields use `field?: T`
 // (NOT `| undefined`) to stay compatible with exactOptionalPropertyTypes.
 
 /** One TDX event-log entry (RTMR replay input). Matches dstack TcbInfo.event_log. */
@@ -65,8 +67,9 @@ export interface AttestationBundle {
   nonce: string;
   /**
    * KMS signature chain from dstack get_key (guest-agent: [link0_sig, k256_signature]).
-   * Bare-hex array. UNUSED by the v5.0 mock and by v6.0 3a (kept for the 3b cross-repo
-   * ticket). MANDATORY now so 3b never has to change the frozen contract. → CHK-P7/P8 (3b)
+   * Bare-hex array. UNUSED by the current mock and by the initial real-verify path
+   * (kept for the cross-repo follow-up). MANDATORY now so the follow-up never has to
+   * change the frozen contract. → CHK-P7/P8
    */
   signature_chain: string[];
   /** Optional structured app/instance ids if surfaced by /info. */
@@ -101,11 +104,11 @@ export interface PinnedAllowlist {
 }
 
 /**
- * Canonical empty allowlist — pins NOTHING. v5.0's mock verifier ignores the
+ * Canonical empty allowlist — pins NOTHING. The current mock verifier ignores the
  * allowlist, so callers (the adapters / core seam) use this as the default when
  * no pins are supplied. The shape lives here because `PinnedAllowlist` is a
  * dstack-verify domain type — consumers MUST NOT hand-roll their own.
- * ⚠️ In v6.0 an empty allowlist trusts no anchors and real verification would
+ * ⚠️ Once real verification lands, an empty allowlist trusts no anchors and would
  * reject — production deployments MUST supply real pins. Treat as immutable
  * (shared reference; do not mutate its arrays).
  */
@@ -144,8 +147,8 @@ export interface VerifyPolicy {
   /** Operational collateral source for dcap-qvl (NOT a trust dependency). Default Intel PCS. */
   pccsUrl?: string;
   /**
-   * v5.0 ESCAPE HATCH. When true, the mock verifier resolves (with a loud warning).
-   * Removed in v6.0 once the real body lands. Default/absent = fail-closed.
+   * ESCAPE HATCH. When true, the mock verifier resolves (with a loud warning).
+   * To be removed in a future release once the real body lands. Default/absent = fail-closed.
    */
   allowInsecureMock?: boolean;
 }

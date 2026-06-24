@@ -131,7 +131,6 @@ with the simulator binary on the runner is tracked separately.
 
 ## Conventions
 
-- **Commit prefix:** `SHARK-XXXX: ...` using the relevant Jira key.
 - **Branch/PR:** work on `main` + short-lived feature branches; one PR per
   logical change. Never push to `main` directly, never self-merge.
 - **Atomic commits:** one logical chunk per commit.

@@ -2,9 +2,20 @@
   "name": "@ankr.com/dstack-verify",
   "version": "0.1.0",
   "type": "module",
-  "description": "Frozen contract for dstack/TDX attestation verification — v5.0 mock, v6.0 real.",
+  "description": "Frozen contract for dstack/TDX attestation verification — currently a mock gate; real DCAP/RTMR verification is deferred to a future release.",
   "license": "Apache-2.0",
   "author": "Web3 Technologies, Inc.",
+  "homepage": "https://github.com/w3tech/verifiable-rpc-sdk#readme",
+  "bugs": "https://github.com/w3tech/verifiable-rpc-sdk/issues",
+  "keywords": [
+    "ethereum",
+    "rpc",
+    "verifiable",
+    "attestation",
+    "tdx",
+    "dstack",
+    "ed25519"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/w3tech/verifiable-rpc-sdk.git",

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // Typed verification errors thrown by `VerifierClient.call`.
 //
 // Discriminated union via the `kind` field plus a class hierarchy:
@@ -157,7 +159,7 @@ export class MalformedInfoResponse extends VerificationError {
 }
 
 /**
- * The shark proxy could not route attestation to the requested `node_id` (HTTP
+ * The RPC proxy could not route attestation to the requested `node_id` (HTTP
  * 404). The node id is stale or unknown; the SDK does NOT retry or fall back to
  * another node — a targeted attestation request that misses is terminal.
  */

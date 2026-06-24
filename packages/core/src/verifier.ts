@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // VerifierClient — the public entry point. Wraps `fetch` with:
 //   1. JSON-RPC 2.0 envelope construction (auto-increment id per instance)
 //   2. Canonical 80-byte pre-image reconstruction
@@ -64,7 +66,7 @@ export interface VerifiedResponse<T = unknown> {
   result: T;
   /**
    * The serving node's id from the `vRPC-NodeId` response header, used to fetch
-   * that node's attestation via shark. Absent when the proxy is older and does
+   * that node's attestation via the gateway. Absent when the proxy is older and does
    * not emit the header.
    */
   nodeId?: string;

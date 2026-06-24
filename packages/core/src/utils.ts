@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // Parse the chainId from a raw `eth_chainId` response body — the conversion the
 // auto-derive bootstrap (both the ethers and viem adapters) runs before the
 // self-consistent verify. A malformed body (invalid JSON, or a missing / non-0x-hex
