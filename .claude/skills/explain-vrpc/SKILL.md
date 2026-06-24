@@ -239,10 +239,17 @@ resolves on success, throws `AttestationError(chkId, detail)` on failure
 - **CHK-A2 (real):** verifies the node's claimed `app_compose` against its
   `compose_hash` (`sha256(utf8(app_compose)) == compose_hash`).
 
-Verification of the **full attestation chain of trust** is still in development.
-See Phala's
+Verification of the **full attestation chain of trust** inside this SDK is still
+in development. See Phala's
 [chain-of-trust guide](https://docs.phala.com/phala-cloud/attestation/chain-of-trust)
 for the complete set of links a TDX deployment can prove.
+
+This is not a data gap — the sidecar already returns the raw TDX quote (plus the
+event log), so the full chain **can be verified today** with an independent tool.
+Phala ships a standalone **dstack-verifier** (an HTTP service + CLI that does DCAP
+quote verification, event-log / RTMR replay, OS-image and compose-hash checks);
+run it against the sidecar's quote rather than waiting on this SDK's verifier:
+<https://github.com/Dstack-TEE/dstack/tree/master/verifier>.
 
 **Maturity (state plainly only if asked, don't dwell):** the signing/verification
 path (Ed25519 signature, freshness, chain binding, key correlation, CHK-A1, CHK-A2)
@@ -315,7 +322,7 @@ user as links rather than trying to scrape.
 - dstack documentation — https://docs.phala.com/dstack
 - dstack attestation / verification — https://docs.phala.com/phala-cloud/attestation/overview
 - dstack design & hardening (boot, OS layer) — https://github.com/Dstack-TEE/dstack/blob/master/docs/design-and-hardening-decisions.md
-- dstack-verifier service (quote + compose-hash verification) — https://github.com/Dstack-TEE/dstack/tree/master/verifier
+- **dstack-verifier — standalone verifier you can run yourself** (HTTP service + CLI: DCAP quote verify, event-log/RTMR replay, compose-hash check) — https://github.com/Dstack-TEE/dstack/tree/master/verifier
 - meta-dstack (reproducible guest-OS build) — https://github.com/Dstack-TEE/meta-dstack
 - Phala Network docs — https://docs.phala.network
 - Phala Trust Center (attestation explorer) — https://trust.phala.com
