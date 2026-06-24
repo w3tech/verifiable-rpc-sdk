@@ -13,9 +13,9 @@ version bump on the others, except that dependents of a changed internal package
 an automatic bump (see `updateInternalDependencies` below).
 
 > Scope note: the actual CI publish workflow (OIDC `id-token: write`, provenance,
-> trusted-publisher config, bootstrap) is delivered in **Phase 38**, and the first real
-> publish (human-gated) in **Phase 39**. This document establishes the authoring flow and
-> the dist-tag policy that those phases wire into CI.
+> trusted-publisher config, bootstrap) is delivered by the publish CI workflow, and the
+> first real publish is human-gated. This document establishes the authoring flow and
+> the dist-tag policy that those stages wire into CI.
 
 ## 1. Authoring a changeset (every PR that changes a package)
 
@@ -42,7 +42,7 @@ You can preview what the pending changesets will bump at any time:
 pnpm changeset status
 ```
 
-## 2. Versioning (the "Version Packages" PR — Phase 38 CI)
+## 2. Versioning (the "Version Packages" PR — publish CI workflow)
 
 When changesets accumulate on `main`, CI opens (or updates) a **"Version Packages"** PR.
 Merging that PR runs:
@@ -60,31 +60,32 @@ This consumes the pending changeset files and, for each affected package:
 ### `updateInternalDependencies: patch`
 
 When an internal package is bumped, every package that depends on it receives at least a
-**patch** bump and its dependency range is updated to the new version. Example proven in
-Phase 37: a `patch` to `@ankr.com/vrpc-core` cascades a patch bump to `@ankr.com/dstack-verify`,
-`@ankr.com/vrpc-ethers`, and `@ankr.com/vrpc-viem`.
+**patch** bump and its dependency range is updated to the new version. Example proven by
+the versioning/Changesets step: a `patch` to `@ankr.com/vrpc-core` cascades a patch bump to
+`@ankr.com/dstack-verify`, `@ankr.com/vrpc-ethers`, and `@ankr.com/vrpc-viem`.
 
 > The `workspace:*` protocol stays in the in-repo manifests; it is rewritten to a concrete
 > version range only in the **published tarball** at `pnpm pack` / `changeset publish` time
-> (verified in Phase 37-01: `@ankr.com/vrpc-ethers` → `@ankr.com/vrpc-core@0.1.0`,
+> (verified during the versioning/Changesets step: `@ankr.com/vrpc-ethers` → `@ankr.com/vrpc-core@0.1.0`,
 > `@ankr.com/dstack-verify@0.1.0`).
 
-## 3. Publishing (Phase 38 CI, OIDC)
+## 3. Publishing (publish CI workflow, OIDC)
 
 After the "Version Packages" PR merges to `main`, CI runs:
 
 ```bash
-pnpm changeset publish   # Phase 38 — DO NOT run manually
+pnpm changeset publish   # publish CI workflow — DO NOT run manually
 ```
 
 `changeset publish` publishes each newly-versioned package to npm in dependency order
 (`vrpc-core` → `dstack-verify` → `vrpc-ethers` / `vrpc-viem`). `access: public` in
 `.changeset/config.json` makes the scoped packages publicly installable.
 
-> No real publish happens in Phases 36–37. Verification there uses `pnpm pack` /
-> `pnpm publish --dry-run` / `changeset status` / `changeset version` (reverted) only.
+> No real publish happens before the first real publish handoff. Verification until then
+> uses `pnpm pack` / `pnpm publish --dry-run` / `changeset status` / `changeset version`
+> (reverted) only.
 
-## 4. dist-tag policy (REL-02)
+## 4. dist-tag policy
 
 | Channel | dist-tag | Where | How |
 | ------- | -------- | ----- | --- |
@@ -105,7 +106,7 @@ For an ad-hoc RC from a PR branch, use a snapshot version (timestamped, never pr
 
 ```bash
 pnpm changeset version --snapshot rc      # writes e.g. 0.1.0-rc-20260623120000
-pnpm changeset publish --tag rc           # Phase 38 CI — publishes under dist-tag "rc"
+pnpm changeset publish --tag rc           # publish CI workflow — publishes under dist-tag "rc"
 ```
 
 Snapshot versions are disposable and are never merged back into `main`.

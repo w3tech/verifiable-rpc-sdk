@@ -14,7 +14,7 @@ import { defineConfig } from "tsup";
 // `compose.ts` is a third leaf entry for the same cycle-avoidance reason:
 // dstack-verify imports `computeComposeHash` from `@ankr.com/vrpc-core/compose`
 // (CHK-A2) instead of the full barrel — the barrel re-exports trusted-verifier.ts
-// which imports `@ankr.com/dstack-verify` (the CYCLE-01 ESM init cycle).
+// which imports `@ankr.com/dstack-verify` (the core<->dstack-verify ESM init cycle).
 // compose.ts only depends on @noble/hashes + the leaf ./errors + ./preimage, so
 // it is cycle-free.
 export default defineConfig({

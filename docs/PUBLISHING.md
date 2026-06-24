@@ -3,13 +3,13 @@
 This is a **human/admin runbook**. The SDK repository does **not** perform any of the steps
 below — they are npmjs.com registry-side actions, some of them admin-only and irreversible
 (they can create real package names). This repo only **authors** the release workflow and
-keeps a **green publish dry-run** (see Phase 38 Plan 01 and [`RELEASE.md`](./RELEASE.md));
+keeps a **green publish dry-run** (see the publish CI workflow and [`RELEASE.md`](./RELEASE.md));
 the steps here are what a human/admin must do once, by hand, to enable tokenless OIDC
 publishing for the four `@ankr.com/*` packages.
 
-> **Phase boundary.** PUB-03 (per-package trusted-publisher registration) and PUB-04
-> (first-publish bootstrap) are deliberately **not executed** by this phase. They are
-> `human_needed` (Phase 39 / org-admin handoff), **not** gaps. Perform them using this runbook.
+> **Boundary.** Per-package trusted-publisher registration and the first-publish bootstrap
+> are deliberately **not executed** by this repo. They are `human_needed` (the first real
+> publish / org-admin handoff), **not** gaps. Perform them using this runbook.
 
 ---
 
@@ -43,7 +43,7 @@ Both must be true before trusted publishing works:
    This is **required for provenance.** npm attaches provenance attestations only when
    **both** the source repo **and** the package are public. A private repo still gets
    tokenless OIDC publish, but **without** a provenance attestation. Making the repo public
-   is a **GitHub admin step** (deferred — Phase 39 handoff). The package's `repository.url`
+   is a **GitHub admin step** (deferred — the first real publish handoff). The package's `repository.url`
    must also match the GitHub repo exactly (already set in the manifests).
 
 ---
@@ -134,11 +134,11 @@ mechanics, see [`RELEASE.md`](./RELEASE.md) — that policy is **not duplicated 
 
 | Item | Status | Owner |
 |------|--------|-------|
-| `.github/workflows/publish.yml` authored (tokenless OIDC, provenance, dependency order, dry-run gate) | ✅ Done (Phase 38 Plan 01) | SDK repo |
-| Root `release` / `publish:dry-run` scripts | ✅ Done (Phase 38 Plan 01) | SDK repo |
-| Green publish dry-run proven locally (4× Skip, dependency order) | ✅ Done (Phase 38 Plan 01) | SDK repo |
-| Make GitHub repo `w3tech/verifiable-rpc-sdk` **public** (required for provenance) | ⏳ Pending | GitHub admin (Phase 39) |
+| `.github/workflows/publish.yml` authored (tokenless OIDC, provenance, dependency order, dry-run gate) | ✅ Done | SDK repo |
+| Root `release` / `publish:dry-run` scripts | ✅ Done | SDK repo |
+| Green publish dry-run proven locally (4× Skip, dependency order) | ✅ Done | SDK repo |
+| Make GitHub repo `w3tech/verifiable-rpc-sdk` **public** (required for provenance) | ⏳ Pending | GitHub admin |
 | Ensure publishing identity is an `@ankr.com` org member with publish rights | ⏳ Pending | npm org admin |
 | **First-publish bootstrap** of each `0.1.0` name (token/website, `--access public`) | ⏳ Pending | npm org member (irreversible) |
 | **Per-package trusted-publisher registration** ×4 (org `w3tech`, repo `verifiable-rpc-sdk`, `publish.yml`) | ⏳ Pending | npm org admin |
-| First real OIDC publish + provenance verification (`npm audit signatures`) | ⏳ Pending | Phase 39 / VAL-01 |
+| First real OIDC publish + provenance verification (`npm audit signatures`) | ⏳ Pending | the first real publish handoff |
