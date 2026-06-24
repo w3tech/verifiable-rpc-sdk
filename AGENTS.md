@@ -131,7 +131,6 @@ with the simulator binary on the runner is tracked separately.
 
 ## Conventions
 
-- **Commit message:** use Conventional Commits (`type(scope): ...`); an optional `SHARK-XXXX:` Jira ref may prefix internal commits but is not required.
 - **Branch/PR:** work on `main` + short-lived feature branches; one PR per
   logical change. Never push to `main` directly, never self-merge.
 - **Atomic commits:** one logical chunk per commit.
