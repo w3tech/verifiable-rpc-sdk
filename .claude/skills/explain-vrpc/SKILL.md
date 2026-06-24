@@ -234,11 +234,10 @@ resolves on success, throws `AttestationError(chkId, detail)` on failure
   the signing key — defeats swapped-key / wrong-node) **and**
   `report_data[32:64] == expectedNonce` (freshness / anti-replay). Runs first;
   throws even if `allowInsecureMock` is set.
-- **CHK-A2 (real, best-effort):** `sha256(utf8(app_compose)) == compose_hash`
-  (raw, no canonicalization). Skips silently when `app_compose`/`compose_hash`
-  are absent (nodes not yet updated). **Self-consistency only** — both values are
-  self-reported by the same node, so a pass proves internal consistency, *not*
-  authenticity; it is not yet a trust anchor without RTMR3 + DCAP.
+- **CHK-A2 (real):** `sha256(utf8(app_compose)) == compose_hash` (raw, no
+  canonicalization). **Self-consistency only** — both values are self-reported by
+  the same node, so a pass proves internal consistency, *not* authenticity; it is
+  not yet a trust anchor without RTMR3 + DCAP.
 - The `allowInsecureMock` flag gates **only** the not-yet-implemented layers
   (DCAP quote-signature verification, RTMR3 measurement replay), never A1/A2.
   With it absent/false the call throws `CHK-MOCK` after A1+A2 pass (fail-closed).
@@ -277,7 +276,7 @@ SDK automates) is:
 8. **Correlate**: the attestation `pubkey` must equal the response's `vRPC-Pubkey`.
 9. **Bind to hardware (CHK-A1)**: in the quote's `report_data`, assert
    `[0:32] == pubkey` and `[32:64] == your nonce`.
-10. **Compose self-consistency (CHK-A2, when available)**:
+10. **Compose self-consistency (CHK-A2)**:
     `sha256(utf8(app_compose)) == composeHash`.
 11. *(Future / full attestation)* DCAP-verify the quote against Intel's root and
     replay RTMR measurements; check the compose hash against an approved registry.
