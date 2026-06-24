@@ -48,6 +48,10 @@ New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line
 
 See [packages/core/README.md](./packages/core/README.md) for the verification details and the `verifyResponse` / `anchorTrust` API if you want to verify responses yourself.
 
+## Explaining vRPC (for AI assistants)
+
+This repo ships a Claude Code skill at [`.claude/skills/explain-vrpc/`](./.claude/skills/explain-vrpc/SKILL.md) — an agent-readable knowledge doc that teaches an AI assistant to answer questions about vRPC: what it is, Intel TDX + Phala dstack, the attestation sidecar (`/attestation` + `/info`), the trust model (why a client need not trust Ankr), and how a response is verified. Every claim is grounded in this code or a cited official source. Point your agent at it.
+
 ## Development
 
 This is a [pnpm](https://pnpm.io) workspace monorepo.

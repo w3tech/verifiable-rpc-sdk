@@ -127,6 +127,7 @@ with the simulator binary on the runner is tracked separately.
 | Adjust lint or format rules                   | `biome.json` (Biome 2.x schema)  |
 | Adjust CI pipeline                            | `.github/workflows/ci.yml`       |
 | Change strict-mode TS flags                   | `tsconfig.base.json`             |
+| Explain vRPC / the trust model to a user      | `.claude/skills/explain-vrpc/SKILL.md` |
 
 ## Conventions
 
