@@ -215,7 +215,9 @@ the RPC leg (`_vrpc`) and attestation leg (`_vrpc/attestation`) itself via
 1. `verifyResponse()` (the Ed25519 check above).
 2. If the signer pubkey is already in the verified cache and still fresh → return
    (skip re-attestation).
-3. Read optional `nodeId` from the response.
+3. Read the `nodeId` from the response (`vRPC-NodeId`) — present and required to
+   route the fetch when reached via Ankr's multi-node proxy; absent for a single
+   direct node.
 4. Generate a fresh random 32-byte nonce.
 5. `fetchAttestation()` → `GET /attestation?nonce=<bare-hex>[&node_id=<id>]`.
 6. **Correlation:** assert the attestation's `pubkey` equals the response signer's
@@ -271,9 +273,11 @@ SDK automates) is:
 6. **Check chain binding**: the `chain_id` in the pre-image must equal the chain
    you pinned/expected. Mismatch → reject.
 7. **Fetch attestation** with a **fresh random 32-byte nonce**:
-   `GET …/attestation?nonce=<hex>[&node_id=<id>]`. The `node_id` is optional —
-   include it when the response carried a `vRPC-NodeId` header (it routes the
-   fetch to the right node), omit it otherwise.
+   `GET …/attestation?nonce=<hex>[&node_id=<id>]`. `node_id` comes from the
+   response's `vRPC-NodeId` header. It is optional against a single direct node,
+   but **required when going through Ankr** — Ankr proxies across many nodes, so
+   without `node_id` the attestation fetch can't be routed to the node that
+   signed and fails closed.
 8. **Correlate**: the attestation `pubkey` must equal the response's `vRPC-Pubkey`.
 9. **Bind to hardware (CHK-A1)**: in the quote's `report_data`, assert
    `[0:32] == pubkey` and `[32:64] == your nonce`.
