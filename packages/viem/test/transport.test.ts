@@ -35,6 +35,7 @@ import {
 import { describe, expect, test } from "vitest";
 
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
+import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const URL = "http://test.invalid";
 const ADDR = "0x1111111111111111111111111111111111111111" as const;
@@ -268,15 +269,19 @@ const TEST_CHAIN = defineChain({
 // createPublicClient does under the hood for `client()`).
 const PINNED = { chain: TEST_CHAIN } as never;
 
+// Hardware verification is mandatory + defaults to a network cloud POST; inject
+// the no-network mock so transport-wiring tests verify offline.
+const MOCK_HV = mockHardwareVerifier();
+
 function client(fetchFn: (url: string, init: RequestInit) => Promise<Response>) {
   return createPublicClient({
     chain: TEST_CHAIN,
-    transport: vrpcHttp(URL, { fetchFn, replayWindowMs: WIDE_WINDOW }),
+    transport: vrpcHttp(URL, { fetchFn, replayWindowMs: WIDE_WINDOW, hardwareVerifier: MOCK_HV }),
   });
 }
 
 function pinnedTransport(fetchFn: (url: string, init: RequestInit) => Promise<Response>) {
-  return vrpcHttp(URL, { fetchFn, replayWindowMs: WIDE_WINDOW })(PINNED);
+  return vrpcHttp(URL, { fetchFn, replayWindowMs: WIDE_WINDOW, hardwareVerifier: MOCK_HV })(PINNED);
 }
 
 describe("vrpcHttp transport wiring", () => {
@@ -353,6 +358,7 @@ describe("vrpcHttp transport wiring", () => {
           signingChainId: LARGE_CHAIN_ID,
         }),
         replayWindowMs: WIDE_WINDOW,
+        hardwareVerifier: MOCK_HV,
       }),
     });
     const balance = await c.getBalance({ address: ADDR });
@@ -521,6 +527,7 @@ describe("vrpcHttp transport wiring", () => {
       transport: vrpcHttp(URL, {
         fetchFn: autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX)),
         replayWindowMs: WIDE_WINDOW,
+        hardwareVerifier: MOCK_HV,
       }),
     });
     const balance = await c.getBalance({ address: ADDR });
@@ -532,6 +539,7 @@ describe("vrpcHttp transport wiring", () => {
     const transport = vrpcHttp(URL, {
       fetchFn: autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
       replayWindowMs: WIDE_WINDOW,
+      hardwareVerifier: MOCK_HV,
     })({} as never);
     await Promise.all([
       transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),

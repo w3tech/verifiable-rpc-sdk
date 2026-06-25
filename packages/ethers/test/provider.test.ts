@@ -21,9 +21,9 @@ import {
 } from "@ankr.com/vrpc-ethers";
 import { Contract, FetchRequest, Interface, toBeHex } from "ethers";
 import { describe, expect, test } from "vitest";
-
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
 import { installAttestationMock, signingRequest } from "./helpers";
+import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 // Always-on verify seam: the FIRST verified read per pubkey lazily fetches the
 // node attestation. These adapter-WIRING tests are offline — the RPC POST leg is
@@ -132,7 +132,13 @@ const ADDR = "0x1111111111111111111111111111111111111111";
 // Wide window neutralizes the static FIXTURE_TIMESTAMP_MS staleness; production
 // keeps the vrpc-core default (60s). `fetch: ATT.fetch` serves the always-on
 // attestation leg offline (every provider below threads it).
-const WIDE_WINDOW = { replayWindowMs: Number.MAX_SAFE_INTEGER, fetch: ATT.fetch } as const;
+// Hardware verification is mandatory + defaults to a network cloud POST; inject
+// the no-network mock so every provider built with WIDE_WINDOW verifies offline.
+const WIDE_WINDOW = {
+  replayWindowMs: Number.MAX_SAFE_INTEGER,
+  fetch: ATT.fetch,
+  hardwareVerifier: mockHardwareVerifier(),
+} as const;
 
 function jsonResult(id: number, result: unknown): string {
   return JSON.stringify({ jsonrpc: "2.0", id, result });

@@ -10,6 +10,7 @@ import {
   type TrustedVerifierOptions,
 } from "../src/trusted-verifier";
 import type { ResponseHeaders } from "../src/verify";
+import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const RPC_BASE = "https://rpc.ankr.com";
 const CHAIN = "arbitrum";
@@ -135,6 +136,9 @@ function baseOpts(overrides: Partial<TrustedVerifierOptions> = {}): TrustedVerif
     replayWindowMs: 60_000,
     attestationUrl: `${RPC_BASE}/${CHAIN}_vrpc/attestation`,
     nonceSource: () => NONCE,
+    // Hardware verification is mandatory + defaults to a network cloud POST;
+    // inject the no-network mock so the seam tests never touch the network.
+    hardwareVerifier: mockHardwareVerifier(),
     ...overrides,
   };
 }
@@ -153,7 +157,8 @@ describe("TrustedVerifier / trust seam", () => {
   test("buildsPolicy", async () => {
     const pubkeyHex = `0x${toHex(await getPublicKeyAsync(TEST_SEED))}`;
     const policy = buildVerifyPolicy(pubkeyHex, NONCE);
-    expect(policy.allowInsecureMock).toBe(true);
+    expect(policy.hardwareVerifier).toBeDefined();
+    expect(policy.allowInsecureMock).toBeUndefined();
     expect(policy.binding.expectedPubkey).toBe(pubkeyHex);
     expect(policy.binding.expectedNonce).toBe(toHex(NONCE));
     expect(policy.allowlist).toBe(EMPTY_ALLOWLIST);

@@ -17,7 +17,9 @@
 
 import {
   type AttestationBundle,
+  createCloudVerifier,
   EMPTY_ALLOWLIST,
+  type HardwareVerifier,
   type VerifyPolicy,
   verifyDstackAttestation,
 } from "@ankr.com/dstack-verify";
@@ -69,6 +71,13 @@ export interface TrustedVerifierOptions {
   nonceSource?: () => Uint8Array;
   /** Attestation verifier; default `verifyDstackAttestation`. Test-only stub. */
   verifyAttestation?: (b: AttestationBundle, p: VerifyPolicy) => Promise<void>;
+  /**
+   * Hardware-signature verifier wired into the policy and run (mandatorily) by
+   * `verifyDstackAttestation`. Defaults to the Phala {@link createCloudVerifier}
+   * — i.e. hardware verification is ALWAYS on. Override to point at a self-hosted
+   * endpoint, a future local-DCAP verifier, or (in tests) a no-network mock.
+   */
+  hardwareVerifier?: HardwareVerifier;
 }
 
 /**
@@ -129,16 +138,21 @@ export function mapAttestationToBundle(
 }
 
 /**
- * Build a {@link VerifyPolicy} from the verified pubkey + the SDK-generated nonce
+ * Build a {@link VerifyPolicy} from the verified pubkey + the SDK-generated nonce.
  * `binding` carries the reportData binding (`report_data[0:32]==pubkey`,
- * `[32:64]==nonce`); `allowInsecureMock` is HARD-SET `true` for the mock path.
+ * `[32:64]==nonce`). `hardwareVerifier` is ALWAYS set — `verifyDstackAttestation`
+ * runs it as the mandatory hardware root of trust; it defaults to the Phala
+ * {@link createCloudVerifier} and is overridable (self-hosted endpoint, a future
+ * local-DCAP verifier, or a no-network test mock).
  *
- * `allowlist`/`tcb`/`pccsUrl` are defaulted internally — the mock verifier
- * ignores them, so they were removed from the public options. A future release
- * reintroduces those options (consumer-pinned anchors) and threads them here when
- * the real verifier flips `allowInsecureMock` off.
+ * `allowlist`/`tcb` are defaulted internally. A future release reintroduces
+ * consumer-pinned anchors (`allowlist`/`tcb`/`pccsUrl`) and threads them here.
  */
-export function buildVerifyPolicy(pubkeyHex: string, nonce: Uint8Array): VerifyPolicy {
+export function buildVerifyPolicy(
+  pubkeyHex: string,
+  nonce: Uint8Array,
+  hardwareVerifier: HardwareVerifier = createCloudVerifier(),
+): VerifyPolicy {
   return {
     binding: {
       expectedPubkey: pubkeyHex,
@@ -146,7 +160,7 @@ export function buildVerifyPolicy(pubkeyHex: string, nonce: Uint8Array): VerifyP
     },
     allowlist: EMPTY_ALLOWLIST,
     tcb: { allowedStatuses: [], rejectDebug: true },
-    allowInsecureMock: true,
+    hardwareVerifier,
   };
 }
 
@@ -166,6 +180,7 @@ export class TrustedVerifier {
   private readonly attestationUrl: string;
   private readonly headers: Record<string, string> | undefined;
   private readonly fetchImpl: typeof fetch | undefined;
+  private readonly hardwareVerifier: HardwareVerifier;
 
   constructor(opts: TrustedVerifierOptions) {
     const ttlMs = opts.pubkeyCacheTtlMs ?? DEFAULT_PUBKEY_CACHE_TTL_MS;
@@ -185,6 +200,11 @@ export class TrustedVerifier {
     this.attestationUrl = opts.attestationUrl;
     this.headers = opts.headers;
     this.fetchImpl = opts.fetch;
+    // Hardware verification is ALWAYS on. Default to the Phala CloudVerifier
+    // (threaded the same fetch override so a custom transport applies); callers
+    // override for a self-hosted endpoint, local DCAP, or a no-network test mock.
+    this.hardwareVerifier =
+      opts.hardwareVerifier ?? createCloudVerifier(opts.fetch ? { fetch: opts.fetch } : {});
   }
 
   /** True when `pubkeyHex` is cached and the entry has not expired. */
@@ -271,7 +291,7 @@ export class TrustedVerifier {
     const appCompose = await this.fetchAppComposeBestEffort();
 
     const bundle = mapAttestationToBundle(att, pubkeyHex, nonce, appCompose);
-    const policy = buildVerifyPolicy(pubkeyHex, nonce);
+    const policy = buildVerifyPolicy(pubkeyHex, nonce, this.hardwareVerifier);
 
     await this.verifyAttestationImpl(bundle, policy);
 

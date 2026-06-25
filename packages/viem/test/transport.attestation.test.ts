@@ -24,6 +24,7 @@ import { createPublicClient, defineChain } from "viem";
 import { describe, expect, test } from "vitest";
 
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
+import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 // Path-ful URL (chain slug): deriveVrpcUrls inserts `_vrpc` on the chain segment,
 // so `${URL}_vrpc` == the derived rpc route (and `${URL}_vrpc/attestation`).
@@ -117,6 +118,7 @@ describe("vrpcHttp always-on attestation (viem half)", () => {
       transport: vrpcHttp(URL, {
         fetchFn: seam.fetchFn,
         replayWindowMs: WIDE_WINDOW,
+        hardwareVerifier: mockHardwareVerifier(),
       }),
     });
 
@@ -136,6 +138,7 @@ describe("vrpcHttp always-on attestation (viem half)", () => {
     const transport = vrpcHttp(URL, {
       fetchFn: seam.fetchFn,
       replayWindowMs: WIDE_WINDOW,
+      hardwareVerifier: mockHardwareVerifier(),
     })({ chain: TEST_CHAIN } as never);
     const result = await transport.config.request({
       method: "eth_getBalance",
@@ -154,6 +157,7 @@ describe("vrpcHttp always-on attestation (viem half)", () => {
       transport: vrpcHttp(URL, {
         fetchFn: seam.fetchFn,
         replayWindowMs: WIDE_WINDOW,
+        hardwareVerifier: mockHardwareVerifier(),
       }),
     });
     await c.getBalance({ address: ADDR });

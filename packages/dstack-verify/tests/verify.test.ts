@@ -1,11 +1,14 @@
-// verifyDstackAttestation behavior — CHK-A1 binding + the mock gate
-// that still covers the unimplemented DCAP/RTMR3 layers.
+// verifyDstackAttestation behavior — CHK-A1 binding + the MANDATORY hardware
+// verifier step (→ CHK-P1) that supersedes the old mock gate.
 //
 // CHK-A1 runs FIRST and is UNCONDITIONAL: it shape-gates report_data, then binds
 // report_data[0:32]==expectedPubkey and report_data[32:64]==expectedNonce. A
-// mismatch throws AttestationError("CHK-A1") regardless of allowInsecureMock. After
-// A1 passes, the mock gate throws CHK-MOCK (default) or resolves silently
-// (allowInsecureMock===true). Fixture: tests/fixtures/attestation-sample.json.
+// mismatch throws AttestationError("CHK-A1") regardless of any other policy
+// field. After A1 (and CHK-A2) pass, the hardware verifier step is MANDATORY:
+//   - no policy.hardwareVerifier → throws CHK-P1 ("required").
+//   - with a (no-network) hardware verifier → resolves.
+//   - a failing hardware verifier → its error propagates.
+// Fixture: tests/fixtures/attestation-sample.json.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -15,9 +18,10 @@ import { fileURLToPath } from "node:url";
 // uses (raw sha256, no canonicalization).
 import { computeComposeHash } from "@ankr.com/vrpc-core/compose";
 import { describe, expect, test } from "vitest";
-
+import type { HardwareVerifier } from "../src/hardware-verifier";
 import { AttestationError, parseReportData, verifyDstackAttestation } from "../src/index";
 import type { AttestationBundle, TcbInfo, VerifyPolicy } from "../src/types";
+import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const fixture = JSON.parse(
   readFileSync(
@@ -37,14 +41,22 @@ function makeBundle(reportData: string, tcbInfo?: Partial<TcbInfo>): Attestation
     ...(tcbInfo === undefined ? {} : { tcbInfo }),
   } as unknown as AttestationBundle;
 }
+// The hardware verifier is now MANDATORY. By default makePolicy injects a
+// no-network passing mock so CHK-A1/A2 happy paths resolve; pass `noVerifier`
+// to omit it (exercise the CHK-P1 "required" throw) or `hardwareVerifier` to
+// supply a specific (e.g. failing) mock. `allowInsecureMock` is accepted but
+// INERT (legacy field; it no longer gates anything).
 function makePolicy(p: {
   expectedPubkey: string;
   expectedNonce: string;
   allowInsecureMock?: boolean;
+  hardwareVerifier?: HardwareVerifier;
+  noVerifier?: boolean;
 }): VerifyPolicy {
+  const hv = p.noVerifier ? undefined : (p.hardwareVerifier ?? mockHardwareVerifier());
   return {
     binding: { expectedPubkey: p.expectedPubkey, expectedNonce: p.expectedNonce },
-    allowInsecureMock: p.allowInsecureMock,
+    ...(hv === undefined ? {} : { hardwareVerifier: hv }),
   } as unknown as VerifyPolicy;
 }
 
@@ -81,22 +93,19 @@ describe("parseReportData (CHK-A1 split)", () => {
 });
 
 describe("verifyDstackAttestation CHK-A1 binding", () => {
-  test("happy path: A1 passes, mock gate resolves with allowInsecureMock=true", async () => {
+  test("happy path: A1 passes, mandatory verifier resolves", async () => {
     await expect(
-      verifyDstackAttestation(
-        validBundle,
-        makePolicy({ ...validBinding, allowInsecureMock: true }),
-      ),
+      verifyDstackAttestation(validBundle, makePolicy({ ...validBinding })),
     ).resolves.toBeUndefined();
   });
 
-  test("A1 passes then fail-closed CHK-MOCK when allowInsecureMock absent", async () => {
+  test("A1 passes then fail-closed CHK-P1 when no hardwareVerifier", async () => {
     try {
-      await verifyDstackAttestation(validBundle, makePolicy(validBinding));
+      await verifyDstackAttestation(validBundle, makePolicy({ ...validBinding, noVerifier: true }));
       throw new Error("expected throw");
     } catch (e) {
       expect(e).toBeInstanceOf(AttestationError);
-      expect((e as AttestationError).chkId).toBe("CHK-MOCK");
+      expect((e as AttestationError).chkId).toBe("CHK-P1");
     }
   });
 
@@ -161,54 +170,56 @@ describe("verifyDstackAttestation CHK-A1 binding", () => {
   });
 });
 
-describe("verifyDstackAttestation mock gate (post-A1)", () => {
-  test("throws CHK-MOCK when allowInsecureMock is false (A1 passed)", async () => {
+describe("verifyDstackAttestation hardware verifier (post-A2) — MANDATORY", () => {
+  test("throws CHK-P1 when no hardwareVerifier is configured (A1+A2 passed)", async () => {
+    try {
+      await verifyDstackAttestation(validBundle, makePolicy({ ...validBinding, noVerifier: true }));
+      throw new Error("expected throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AttestationError);
+      expect((e as AttestationError).chkId).toBe("CHK-P1");
+    }
+  });
+
+  test("runs the configured verifier and resolves on success", async () => {
+    await expect(
+      verifyDstackAttestation(validBundle, makePolicy({ ...validBinding })),
+    ).resolves.toBeUndefined();
+  });
+
+  test("propagates the verifier's failure (fail-closed)", async () => {
+    const boom = new AttestationError("CHK-P1", "hardware verify failed");
     try {
       await verifyDstackAttestation(
         validBundle,
-        makePolicy({ ...validBinding, allowInsecureMock: false }),
+        makePolicy({ ...validBinding, hardwareVerifier: mockHardwareVerifier({ fail: boom }) }),
       );
       throw new Error("expected throw");
     } catch (e) {
-      expect(e).toBeInstanceOf(AttestationError);
-      expect((e as AttestationError).chkId).toBe("CHK-MOCK");
+      expect(e).toBe(boom);
     }
   });
 
-  // Security boundary: only the literal boolean `true` resolves. Every
-  // truthy-but-not-true / falsy value still throws CHK-MOCK once A1 passes — a
-  // regression to `==`/`Boolean(...)` would fail loudly.
-  test.each([
-    1,
-    "true",
-    {},
-    undefined,
-    null,
-  ])("throws CHK-MOCK for truthy-but-not-true / absent allowInsecureMock=%p", async (v) => {
-    try {
-      await verifyDstackAttestation(validBundle, {
-        binding: validBinding,
-        allowInsecureMock: v,
-      } as unknown as VerifyPolicy);
-      throw new Error("expected throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(AttestationError);
-      expect((e as AttestationError).chkId).toBe("CHK-MOCK");
-    }
+  test("invokes the verifier with the bundle under test", async () => {
+    let seenBundle: unknown;
+    const recording: HardwareVerifier = {
+      async verifyHardware(b) {
+        seenBundle = b;
+      },
+    };
+    await verifyDstackAttestation(
+      validBundle,
+      makePolicy({ ...validBinding, hardwareVerifier: recording }),
+    );
+    expect(seenBundle).toBe(validBundle);
   });
 
-  test("resolves on every call with allowInsecureMock=true", async () => {
+  test("resolves on every call with a configured verifier", async () => {
     await expect(
-      verifyDstackAttestation(
-        validBundle,
-        makePolicy({ ...validBinding, allowInsecureMock: true }),
-      ),
+      verifyDstackAttestation(validBundle, makePolicy({ ...validBinding })),
     ).resolves.toBeUndefined();
     await expect(
-      verifyDstackAttestation(
-        validBundle,
-        makePolicy({ ...validBinding, allowInsecureMock: true }),
-      ),
+      verifyDstackAttestation(validBundle, makePolicy({ ...validBinding })),
     ).resolves.toBeUndefined();
   });
 });

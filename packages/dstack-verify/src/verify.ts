@@ -29,17 +29,13 @@
 // anchored into RTMR3 via event-log replay, and (c) a DCAP-verified quote — all
 // deferred to a future release.
 //
-// After A2 — and BEFORE the mock gate — an OPT-IN step-4 hardware verifier runs
-// when policy.hardwareVerifier is configured: it IS the hardware root of trust
-// for the call, so on success the function resolves and the CHK-MOCK gate is
-// BYPASSED entirely; any failure throws AttestationError (fail-closed). When NO
-// hardware verifier is configured, the mock gate governs UNCHANGED.
-//
-// The mock gate still governs the NOT-yet-built DCAP quote-signature +
-// RTMR3-replay layers for the UNCONFIGURED path: default (allowInsecureMock
-// absent/false) throws AttestationError("CHK-MOCK"); allowInsecureMock === true
-// resolves void silently (the SDK never prints; bypassing the hardware root of
-// trust is the caller's explicit opt-in).
+// After A2, step-4 hardware-signature verification runs and is MANDATORY:
+// policy.hardwareVerifier IS the hardware root of trust for the call. If no
+// verifier is configured the function throws AttestationError (fail-closed — an
+// unattested response must never pass). On success it resolves; any verifier
+// failure throws. In the live SDK path core's buildVerifyPolicy always wires the
+// Phala CloudVerifier here. (`allowInsecureMock` / `CHK-MOCK` are a separate,
+// now-unused legacy gate — the mandatory verifier supersedes them.)
 
 // computeComposeHash is imported from core's `./compose` LEAF subpath (not the
 // main barrel): the barrel re-exports trusted-verifier.ts which imports
@@ -103,22 +99,17 @@ export async function verifyDstackAttestation(
     }
   }
 
-  // --- Step-4: pluggable hardware-signature verifier (→ CHK-P1), opt-in ---
-  // When configured, this verifier IS the hardware root of trust for the call:
-  // on success the function resolves and the CHK-MOCK gate below is BYPASSED;
-  // any failure throws AttestationError (fail-closed). When unset, fall through
-  // to the existing mock gate UNCHANGED (v6.2 back-compat).
-  if (policy.hardwareVerifier) {
-    await policy.hardwareVerifier.verifyHardware(bundle, policy);
-    return;
+  // --- Step-4: hardware-signature verifier (→ CHK-P1) — MANDATORY ---
+  // policy.hardwareVerifier IS the hardware root of trust for this call. It is
+  // REQUIRED: a policy without one cannot establish hardware trust, so fail
+  // closed rather than return an unattested "pass". On success the function
+  // resolves; any verifier failure throws AttestationError. The live SDK path
+  // (core buildVerifyPolicy) always wires the Phala CloudVerifier.
+  if (!policy.hardwareVerifier) {
+    throw new AttestationError(
+      "CHK-P1",
+      "no hardware verifier configured: policy.hardwareVerifier is required (hardware-signature verification cannot be skipped)",
+    );
   }
-
-  // --- Mock gate: covers the unimplemented DCAP/RTMR3 layers only ---
-  if (policy.allowInsecureMock === true) {
-    return;
-  }
-  throw new AttestationError(
-    "CHK-MOCK",
-    "DCAP quote-signature / RTMR3 verification is not implemented; set allowInsecureMock=true to bypass the hardware root of trust (INSECURE)",
-  );
+  await policy.hardwareVerifier.verifyHardware(bundle, policy);
 }
