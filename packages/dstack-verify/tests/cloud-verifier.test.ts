@@ -116,7 +116,9 @@ describe("createCloudVerifier — negatives (all fail closed with CHK-P1)", () =
   test("verified:false → throws", async () => {
     const body = loadFixture();
     body.quote.verified = false;
-    const verifier = createCloudVerifier({ fetch: (async () => okResponse(body)) as unknown as typeof globalThis.fetch });
+    const verifier = createCloudVerifier({
+      fetch: (async () => okResponse(body)) as unknown as typeof globalThis.fetch,
+    });
     await expectChkP1(verifier.verifyHardware(makeBundle(), makePolicy()));
   });
 
@@ -155,7 +157,11 @@ describe("createCloudVerifier — negatives (all fail closed with CHK-P1)", () =
   test("non-2xx (400) → throws", async () => {
     const verifier = createCloudVerifier({
       fetch: (async () =>
-        ({ ok: false, status: 400, json: async () => ({}) }) as unknown as Response) as unknown as typeof globalThis.fetch,
+        ({
+          ok: false,
+          status: 400,
+          json: async () => ({}),
+        }) as unknown as Response) as unknown as typeof globalThis.fetch,
     });
     await expectChkP1(verifier.verifyHardware(makeBundle(), makePolicy()));
   });
@@ -163,7 +169,11 @@ describe("createCloudVerifier — negatives (all fail closed with CHK-P1)", () =
   test("non-2xx (500) → throws", async () => {
     const verifier = createCloudVerifier({
       fetch: (async () =>
-        ({ ok: false, status: 500, json: async () => ({}) }) as unknown as Response) as unknown as typeof globalThis.fetch,
+        ({
+          ok: false,
+          status: 500,
+          json: async () => ({}),
+        }) as unknown as Response) as unknown as typeof globalThis.fetch,
     });
     await expectChkP1(verifier.verifyHardware(makeBundle(), makePolicy()));
   });

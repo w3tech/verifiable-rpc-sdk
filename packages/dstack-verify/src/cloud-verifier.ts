@@ -98,10 +98,7 @@ export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareV
 
       // 2. Non-2xx → fail closed.
       if (!res.ok) {
-        throw new AttestationError(
-          "CHK-P1",
-          `cloud verify endpoint returned HTTP ${res.status}`,
-        );
+        throw new AttestationError("CHK-P1", `cloud verify endpoint returned HTTP ${res.status}`);
       }
 
       // 3. Parse + shape-gate the response.

@@ -14,8 +14,11 @@
 
 export type { ChkDisposition, ChkEntry, ChkId } from "./checklist";
 export { CHK } from "./checklist";
+export type { CloudVerifierConfig } from "./cloud-verifier";
+export { createCloudVerifier, DEFAULT_PHALA_VERIFY_ENDPOINT } from "./cloud-verifier";
 export type { AttestationErrorKind } from "./errors";
 export { AttestationError } from "./errors";
+export type { HardwareVerifier } from "./hardware-verifier";
 export type {
   AttestationBundle,
   EventLogEntry,
@@ -28,8 +31,5 @@ export type {
   VerifyPolicy,
 } from "./types";
 export { EMPTY_ALLOWLIST } from "./types";
-export type { HardwareVerifier } from "./hardware-verifier";
-export type { CloudVerifierConfig } from "./cloud-verifier";
-export { createCloudVerifier, DEFAULT_PHALA_VERIFY_ENDPOINT } from "./cloud-verifier";
 export { verifyDstackAttestation } from "./verify";
 export { parseReportData } from "./verify-steps";
