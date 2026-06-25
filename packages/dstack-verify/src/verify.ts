@@ -99,6 +99,18 @@ export async function verifyDstackAttestation(
     }
   }
 
+  // Narrate the field-check outcomes (point 9). Built only when a logger is
+  // injected (policy.logger is undefined on the silent path). chkA2 reports
+  // dormant-skip when EITHER side of the compose pair was empty — the same
+  // condition the CHK-A2 block above gated on.
+  if (policy.logger) {
+    const chkA2 = appCompose !== "" && reportedComposeHash !== "" ? "ok" : "dormant-skip";
+    policy.logger.debug("attestation.fieldChecks", {
+      chkA1: "reportData-binding ok",
+      chkA2,
+    });
+  }
+
   // --- Step-4: hardware-signature verifier (→ CHK-P1) — MANDATORY ---
   // policy.hardwareVerifier IS the hardware root of trust for this call. It is
   // REQUIRED: a policy without one cannot establish hardware trust, so fail
@@ -110,6 +122,12 @@ export async function verifyDstackAttestation(
       "CHK-P1",
       "no hardware verifier configured: policy.hardwareVerifier is required (hardware-signature verification cannot be skipped)",
     );
+  }
+  // Pre-call narration (point 10): the hardware verifier is about to run. The
+  // verifier itself (e.g. CloudVerifier) emits its own hardware.verify with the
+  // verdict + binds; this records the invocation regardless of verifier kind.
+  if (policy.logger) {
+    policy.logger.debug("hardware.verify", { verifier: "hardware-verifier", invoking: true });
   }
   await policy.hardwareVerifier.verifyHardware(bundle, policy);
 }

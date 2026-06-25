@@ -1,7 +1,8 @@
 import { AttestationError, EMPTY_ALLOWLIST } from "@ankr.com/dstack-verify";
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import type { Logger } from "../src/logger";
 import { buildPreImage } from "../src/preimage";
 import {
   buildVerifyPolicy,
@@ -10,6 +11,7 @@ import {
   type TrustedVerifierOptions,
 } from "../src/trusted-verifier";
 import type { ResponseHeaders } from "../src/verify";
+import { collectingLogger } from "./support/collecting-logger";
 import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const RPC_BASE = "https://rpc.ankr.com";
@@ -352,5 +354,146 @@ describe("TrustedVerifier / trust seam", () => {
   test("nonPositiveTtlThrows", () => {
     // A non-positive TTL is a config error — the ctor fails fast.
     expect(() => new TrustedVerifier(baseOpts({ pubkeyCacheTtlMs: 0 }))).toThrow(RangeError);
+  });
+});
+
+// ── Opt-in logger narration (Plan 02): all 11 events fire on a full MISS,
+// redaction holds, the default path is silent, and a throwing logger never
+// breaks verification. Uses the real verifyDstackAttestation (no override) +
+// the no-network mockHardwareVerifier so the dstack field-check / hardware
+// events fire offline. ───────────────────────────────────────────────────────
+describe("TrustedVerifier / opt-in logger narration", () => {
+  let savedFetch: typeof fetch;
+
+  beforeEach(() => {
+    savedFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = savedFetch;
+    vi.restoreAllMocks();
+  });
+
+  /** All 11 dotted event names a full MISS verify is expected to emit. */
+  const ALL_EVENTS = [
+    "verify.start",
+    "preimage.computed",
+    "signature.checked",
+    "timestamp.checked",
+    "cache.lookup",
+    "attestation.fetch",
+    "attestation.received",
+    "attestation.correlation",
+    "attestation.fieldChecks",
+    "hardware.verify",
+    "cache.store",
+  ];
+
+  test("fullMissEmitsAllElevenEvents", async () => {
+    const mock = installAttestationMock();
+    const pair = await signedPair();
+    const log = collectingLogger();
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, logger: log }));
+
+    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+
+    const names = log.calls.map((c) => c[0]);
+    for (const event of ALL_EVENTS) {
+      expect(names, `missing event: ${event}`).toContain(event);
+    }
+  });
+
+  test("verifyStartRedactsHeadersAndTruncatesReqRes", async () => {
+    const mock = installAttestationMock();
+    const pair = await signedPair();
+    // Add credential headers to the response so redaction is observable.
+    const headers = {
+      ...(pair.headers as Record<string, string>),
+      authorization: "Bearer super-secret-token",
+      "x-api-key": "key-abc123",
+    };
+    const log = collectingLogger();
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, logger: log }));
+
+    await tv.verify(pair.requestBytes, pair.responseBytes, headers);
+
+    const start = log.calls.find((c) => c[0] === "verify.start")?.[1] as Record<string, unknown>;
+    expect(start).toBeDefined();
+    const loggedHeaders = start.headers as Record<string, string>;
+    // The secret VALUES must never appear — allowlist redaction replaces them.
+    expect(loggedHeaders.authorization).toBe("[redacted]");
+    expect(loggedHeaders["x-api-key"]).toBe("[redacted]");
+    expect(JSON.stringify(loggedHeaders)).not.toContain("super-secret-token");
+    expect(JSON.stringify(loggedHeaders)).not.toContain("key-abc123");
+    // req/res are truncated (truncateHex appends the ellipsis marker).
+    expect(start.req as string).toContain("…");
+    expect(start.res as string).toContain("…");
+  });
+
+  test("noSecretValueEverCollected", async () => {
+    const mock = installAttestationMock();
+    const pair = await signedPair();
+    const headers = {
+      ...(pair.headers as Record<string, string>),
+      authorization: "Bearer super-secret-token",
+      "x-api-key": "key-abc123",
+    };
+    const log = collectingLogger();
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, logger: log }));
+
+    await tv.verify(pair.requestBytes, pair.responseBytes, headers);
+
+    // Scan EVERY collected event's data for the secret values.
+    const dump = JSON.stringify(log.calls);
+    expect(dump).not.toContain("super-secret-token");
+    expect(dump).not.toContain("key-abc123");
+  });
+
+  test("hitPathEmitsCacheLookupHitAndSkipsAttestationFetch", async () => {
+    const mock = installAttestationMock();
+    const pair = await signedPair();
+    const log = collectingLogger();
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, logger: log }));
+
+    // First verify warms the cache (MISS).
+    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    log.calls.length = 0; // reset; observe only the HIT verify
+
+    const second = await signedPair();
+    await tv.verify(second.requestBytes, second.responseBytes, second.headers);
+
+    const lookup = log.calls.find((c) => c[0] === "cache.lookup")?.[1] as Record<string, unknown>;
+    expect(lookup).toBeDefined();
+    expect(lookup.hit).toBe(true);
+    expect(lookup.note).toBe("cached → skip attestation");
+    // No attestation fetch on a HIT.
+    expect(log.calls.map((c) => c[0])).not.toContain("attestation.fetch");
+  });
+
+  test("silentPathNeverCallsConsoleDebug", async () => {
+    const spy = vi.spyOn(console, "debug").mockImplementation(() => {});
+    const mock = installAttestationMock();
+    const pair = await signedPair();
+    // NO logger injected.
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
+
+    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  test("throwingLoggerDoesNotBreakVerify", async () => {
+    const mock = installAttestationMock();
+    const pair = await signedPair();
+    const throwing: Logger = {
+      debug() {
+        throw new Error("boom");
+      },
+    };
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, logger: throwing }));
+
+    // Verify must still resolve despite the throwing logger (safeLogger wrap).
+    const verified = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    expect(verified.verification.pubkeyHex).toBe(`0x${toHex(await getPublicKeyAsync(TEST_SEED))}`);
   });
 });
