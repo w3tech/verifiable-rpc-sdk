@@ -8,6 +8,11 @@
 // helper/verifier bodies WITHOUT changing any exported type. Optional fields use `field?: T`
 // (NOT `| undefined`) to stay compatible with exactOptionalPropertyTypes.
 
+// Logger is imported TYPE-ONLY: `import type` is erased at compile time, so it
+// never participates in the ESM init cycle (CYCLE-01) the value imports work
+// around. A value import here would re-open that cycle.
+import type { Logger } from "@ankr.com/vrpc-core";
+
 import type { HardwareVerifier } from "./hardware-verifier";
 
 /** One TDX event-log entry (RTMR replay input). Matches dstack TcbInfo.event_log. */
@@ -161,4 +166,11 @@ export interface VerifyPolicy {
    * governs as before. A future LocalDcapVerifier drops into this same field.
    */
   hardwareVerifier?: HardwareVerifier;
+  /**
+   * OPT-IN debug logger threaded in by core's `buildVerifyPolicy` (the verifier's
+   * `this.logger`). Present only when the caller injected a logger; absent ==
+   * silent. Carries narration into the verify steps without changing the frozen
+   * `(bundle, policy)` seam.
+   */
+  logger?: Logger;
 }

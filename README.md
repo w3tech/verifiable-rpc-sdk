@@ -50,6 +50,22 @@ New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line
 
 See [packages/core/README.md](./packages/core/README.md) for the verification details and the `verifyResponse` / `anchorTrust` API if you want to verify responses yourself.
 
+## Watch it work — opt-in debug logging
+
+The SDK is **silent by default**. The easiest way to *see how vRPC verifies a response* is to inject a logger — at debug level it prints one line per verification step. Pass `logger: createConsoleLogger()` (from `@ankr.com/vrpc-core`) through either adapter:
+
+```ts
+import { createConsoleLogger } from "@ankr.com/vrpc-core";
+import { VrpcProvider } from "@ankr.com/vrpc-ethers";
+
+const provider = new VrpcProvider("https://rpc.ankr.com/eth", 1, {
+  logger: createConsoleLogger(),
+});
+// viem: vrpcHttp(url, { headers, logger: createConsoleLogger() })
+```
+
+You'll see the flow in order: `verify.start` → `preimage.computed` → `signature.checked` → `timestamp.checked` → `cache.lookup` → `attestation.fetch` → `attestation.correlation` → `attestation.received` → `attestation.fieldChecks` → `hardware.verify` → `cache.store` (first request runs the full attestation + hardware verify; later requests hit the pubkey cache). It is **observability only** — never throws-through, logs only `vrpc-*` headers (byte fields truncated), and never part of the verify decision. Full event table in [packages/core/README.md](./packages/core/README.md#debug-logging-opt-in--watch-vrpc-verify-a-response).
+
 ## Explaining vRPC (for AI assistants)
 
 This repo ships a Claude Code skill at [`.claude/skills/explain-vrpc/`](./.claude/skills/explain-vrpc/SKILL.md) — an agent-readable knowledge doc that teaches an AI assistant to answer questions about vRPC: what it is, Intel TDX + Phala dstack, the attestation sidecar (`/attestation` + `/info`), the trust model (why a client need not trust Ankr), and how a response is verified. Every claim is grounded in this code or a cited official source. Point your agent at it.

@@ -311,6 +311,32 @@ The simplest answer for most users: **"Use the `@ankr.com/vrpc-ethers` or
 `@ankr.com/vrpc-viem` drop-in — it does every step above on every call and throws
 if anything fails."**
 
+### See it happen — inject a logger
+
+If a user wants to *watch* vRPC verify a response (great for learning or
+debugging), tell them to inject an opt-in logger. The SDK is **silent by
+default**; pass `logger: createConsoleLogger()` (from `@ankr.com/vrpc-core`)
+through the adapter and it prints one `[vrpc]` debug line per step — the same
+sequence as the procedure above:
+
+```ts
+import { createConsoleLogger } from "@ankr.com/vrpc-core";
+import { VrpcProvider } from "@ankr.com/vrpc-ethers";
+
+const provider = new VrpcProvider("https://rpc.ankr.com/eth", 1, {
+  logger: createConsoleLogger(),
+});
+// viem: vrpcHttp(url, { headers, logger: createConsoleLogger() })
+```
+
+Events, in order: `verify.start` → `preimage.computed` → `signature.checked` →
+`timestamp.checked` → `cache.lookup` → `attestation.fetch` →
+`attestation.correlation` → `attestation.received` → `attestation.fieldChecks`
+(CHK-A1/A2) → `hardware.verify` (TDX quote checked by the cloud/hardware
+verifier) → `cache.store`. The first request to a node runs the full attestation
++ hardware verify; later requests hit the pubkey cache and skip to per-response
+signature verification.
+
 ---
 
 ## Sources (fetch these for depth — verified reachable)

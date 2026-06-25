@@ -153,6 +153,18 @@ export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareV
       if (mrConfigId.slice(2, 66) !== composeHash) {
         throw new AttestationError("CHK-P1", "composeHash not measured into mr_config_id");
       }
+
+      // Point 10: success-path narration AFTER the verdict + both B+ binds pass.
+      // Emitted ONLY via policy.logger (never console.*) so the "Never prints"
+      // contract holds — silent unless a logger was injected.
+      if (policy.logger) {
+        policy.logger.debug("hardware.verify", {
+          verifier: "CloudVerifier",
+          quoteVerified: true,
+          reportdataBind: true,
+          composeHashBind: true,
+        });
+      }
     },
   };
 }

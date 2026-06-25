@@ -12,6 +12,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import type { Logger } from "@ankr.com/vrpc-core";
 // computeComposeHash from core's leaf subpath — the local dstack-verify
 // re-export (verify-steps.ts) is still a throwing stub, so the test
 // synthesizes self-consistent compose pairs with the SAME hashing the verifier
@@ -52,12 +53,27 @@ function makePolicy(p: {
   allowInsecureMock?: boolean;
   hardwareVerifier?: HardwareVerifier;
   noVerifier?: boolean;
+  logger?: Logger;
 }): VerifyPolicy {
   const hv = p.noVerifier ? undefined : (p.hardwareVerifier ?? mockHardwareVerifier());
   return {
     binding: { expectedPubkey: p.expectedPubkey, expectedNonce: p.expectedNonce },
     ...(hv === undefined ? {} : { hardwareVerifier: hv }),
+    ...(p.logger === undefined ? {} : { logger: p.logger }),
   } as unknown as VerifyPolicy;
+}
+
+/** Inline collecting Logger — records each debug(event, data) call. */
+function collectingLogger(): Logger & {
+  calls: Array<[string, Record<string, unknown> | undefined]>;
+} {
+  const calls: Array<[string, Record<string, unknown> | undefined]> = [];
+  return {
+    calls,
+    debug(event, data) {
+      calls.push([event, data]);
+    },
+  };
 }
 
 const validBundle = makeBundle(fixture.report_data);
@@ -347,5 +363,65 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
       expect(e).toBeInstanceOf(AttestationError);
       expect((e as AttestationError).chkId).toBe("CHK-A1");
     }
+  });
+});
+
+// Opt-in logger narration (Plan 02): verifyDstackAttestation emits points 9-10
+// ONLY when policy.logger is injected. Field-check + hardware-verify events
+// fire; chkA2 reports dormant-skip when the compose pair is incomplete.
+describe("verifyDstackAttestation logger narration (points 9-10)", () => {
+  const appCompose = JSON.stringify({
+    manifest_version: 2,
+    name: "vrpc-arbitrum",
+    runner: "docker-compose",
+    docker_compose_file:
+      "services:\n  rpc:\n    image: ankrnetwork/ankr-snapshot@sha256:deadbeef\n",
+  });
+  const selfConsistentHash = computeComposeHash(appCompose);
+
+  test("emits attestation.fieldChecks and hardware.verify on the happy path", async () => {
+    const log = collectingLogger();
+    await verifyDstackAttestation(validBundle, makePolicy({ ...validBinding, logger: log }));
+
+    const names = log.calls.map((c) => c[0]);
+    expect(names).toContain("attestation.fieldChecks");
+    expect(names).toContain("hardware.verify");
+  });
+
+  test("fieldChecks reports chkA2 ok when the compose pair is self-consistent", async () => {
+    const bundle = makeBundle(fixture.report_data, {
+      app_compose: appCompose,
+      compose_hash: selfConsistentHash,
+    });
+    const log = collectingLogger();
+    await verifyDstackAttestation(bundle, makePolicy({ ...validBinding, logger: log }));
+
+    const fc = log.calls.find((c) => c[0] === "attestation.fieldChecks")?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(fc).toBeDefined();
+    expect(fc.chkA1).toBe("reportData-binding ok");
+    expect(fc.chkA2).toBe("ok");
+  });
+
+  test("fieldChecks reports chkA2 dormant-skip when compose is incomplete", async () => {
+    // validBundle has no tcbInfo → app_compose/compose_hash empty → A2 dormant.
+    const log = collectingLogger();
+    await verifyDstackAttestation(validBundle, makePolicy({ ...validBinding, logger: log }));
+
+    const fc = log.calls.find((c) => c[0] === "attestation.fieldChecks")?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(fc).toBeDefined();
+    expect(fc.chkA2).toBe("dormant-skip");
+  });
+
+  test("emits nothing when no logger is injected", async () => {
+    const log = collectingLogger();
+    // Policy WITHOUT a logger — the collecting logger is never wired in.
+    await verifyDstackAttestation(validBundle, makePolicy({ ...validBinding }));
+    expect(log.calls).toHaveLength(0);
   });
 });

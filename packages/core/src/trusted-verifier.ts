@@ -28,6 +28,8 @@ import { LRUCache } from "lru-cache";
 
 import { type Attestation, fetchAttestation, verifyAttestationCorrelation } from "./attestation";
 import { InfoEndpointComposeSource } from "./compose";
+import { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
+import { defaultLogger, type Logger, safeLogger } from "./logger";
 import type { VerifiedResponse } from "./verifier";
 import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
 
@@ -78,6 +80,12 @@ export interface TrustedVerifierOptions {
    * endpoint, a future local-DCAP verifier, or (in tests) a no-network mock.
    */
   hardwareVerifier?: HardwareVerifier;
+  /**
+   * OPT-IN debug logger. Inject to narrate the verify flow; omit (the default)
+   * and the SDK stays silent. Wrapped in {@link safeLogger} at construction so a
+   * throwing `debug()` can never break verification.
+   */
+  logger?: Logger;
 }
 
 /**
@@ -152,6 +160,7 @@ export function buildVerifyPolicy(
   pubkeyHex: string,
   nonce: Uint8Array,
   hardwareVerifier: HardwareVerifier = createCloudVerifier(),
+  logger?: Logger,
 ): VerifyPolicy {
   return {
     binding: {
@@ -161,6 +170,11 @@ export function buildVerifyPolicy(
     allowlist: EMPTY_ALLOWLIST,
     tcb: { allowedStatuses: [], rejectDebug: true },
     hardwareVerifier,
+    // Carry the verifier's logger into dstack-verify via VerifyPolicy.logger,
+    // but ONLY when a real logger is present. The no-op `defaultLogger` is
+    // treated as "no logger" so the silent path leaves `policy.logger` undefined
+    // — dstack-verify's `if (policy.logger)` guard then stays allocation-free.
+    ...(logger === undefined || logger === defaultLogger ? {} : { logger }),
   };
 }
 
@@ -181,12 +195,16 @@ export class TrustedVerifier {
   private readonly headers: Record<string, string> | undefined;
   private readonly fetchImpl: typeof fetch | undefined;
   private readonly hardwareVerifier: HardwareVerifier;
+  private readonly logger: Logger;
+  /** Resolved pubkey-cache TTL (ms); narrated in the `cache.store` event. */
+  private readonly ttlMs: number;
 
   constructor(opts: TrustedVerifierOptions) {
     const ttlMs = opts.pubkeyCacheTtlMs ?? DEFAULT_PUBKEY_CACHE_TTL_MS;
     if (ttlMs <= 0) {
       throw new RangeError("pubkeyCacheTtlMs must be a positive number of milliseconds");
     }
+    this.ttlMs = ttlMs;
     this.cache = new LRUCache<string, true>({
       max: opts.pubkeyCacheMax ?? DEFAULT_PUBKEY_CACHE_MAX,
       ttl: ttlMs,
@@ -205,6 +223,9 @@ export class TrustedVerifier {
     // override for a self-hosted endpoint, local DCAP, or a no-network test mock.
     this.hardwareVerifier =
       opts.hardwareVerifier ?? createCloudVerifier(opts.fetch ? { fetch: opts.fetch } : {});
+    // Wrap the injected logger ONCE so a throwing debug() can never break verify;
+    // default to the no-op singleton so the !== defaultLogger silent-path guard holds.
+    this.logger = opts.logger ? safeLogger(opts.logger) : defaultLogger;
   }
 
   /** True when `pubkeyHex` is cached and the entry has not expired. */
@@ -257,13 +278,37 @@ export class TrustedVerifier {
     responseBytes: Uint8Array,
     headers: ResponseHeaders,
   ): Promise<VerifiedPair> {
+    if (this.logger !== defaultLogger) {
+      // Headers are flattened to a plain Record then narrowed to vrpc-* only — the
+      // raw authorization/x-api-key headers are never even emitted to `data`.
+      const headerRecord: Record<string, string> =
+        headers instanceof Headers ? Object.fromEntries(headers.entries()) : { ...headers };
+      this.logger.debug("verify.start", {
+        req: truncateHex(bytesToHex(requestBytes)),
+        res: truncateHex(bytesToHex(responseBytes)),
+        headers: pickVrpcHeaders(headerRecord),
+      });
+    }
+
     const pair = await verifyResponse(requestBytes, responseBytes, headers, {
       chainId: this.chainId,
       ...(this.replayWindowMs === undefined ? {} : { replayWindowMs: this.replayWindowMs }),
+      // Thread the verifier's safe-wrapped logger so the preimage/signature/
+      // timestamp steps (points 2-4) narrate from within verifyResponse. On the
+      // silent path this is the no-op defaultLogger (verifyResponse guards on it).
+      ...(this.logger === defaultLogger ? {} : { logger: this.logger }),
     });
 
     const pubkeyHex = pair.verification.pubkeyHex;
-    if (this.isFresh(pubkeyHex)) {
+    const fresh = this.isFresh(pubkeyHex);
+    if (this.logger !== defaultLogger) {
+      this.logger.debug("cache.lookup", {
+        pubkeyHex,
+        hit: fresh,
+        ...(fresh ? { note: "cached → skip attestation" } : {}),
+      });
+    }
+    if (fresh) {
       return pair;
     }
 
@@ -272,6 +317,14 @@ export class TrustedVerifier {
     // nodeId is OPTIONAL: included when the response carried vRPC-NodeId, omitted
     // otherwise. Absent + behind the gateway → the gateway can't route → the fetch errors and
     // propagates (fail-closed); absent + direct node → the fetch works. No pre-throw.
+    if (this.logger !== defaultLogger) {
+      this.logger.debug("attestation.fetch", {
+        attestationUrl: this.attestationUrl,
+        ...(pair.nodeId === undefined ? {} : { nodeId: pair.nodeId }),
+        nonce: bytesToHex(nonce),
+      });
+    }
+
     const att = await fetchAttestation({
       attestationUrl: this.attestationUrl,
       ...(pair.nodeId === undefined ? {} : { nodeId: pair.nodeId }),
@@ -280,7 +333,13 @@ export class TrustedVerifier {
       ...(this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl }),
     });
 
-    verifyAttestationCorrelation(att, { verification: { pubkeyHex } } as VerifiedResponse);
+    // Pass the logger so the correlation step (point 8) is observable before
+    // a mismatch throws. On the silent path defaultLogger is a no-op.
+    verifyAttestationCorrelation(
+      att,
+      { verification: { pubkeyHex } } as VerifiedResponse,
+      this.logger,
+    );
 
     // Best-effort fetch of the node's raw `app_compose` from GET /info so
     // the SDK can run CHK-A2 (compose-hash self-consistency). NON-FATAL: older
@@ -290,12 +349,26 @@ export class TrustedVerifier {
     // (InfoEndpointComposeSource appends `/info`).
     const appCompose = await this.fetchAppComposeBestEffort();
 
+    if (this.logger !== defaultLogger) {
+      this.logger.debug("attestation.received", {
+        reportData: att.quote.report_data,
+        composeHash: att.composeHash,
+        pubkeyHex,
+        quote: truncateHex(att.quote.quote),
+        eventLog: byteLen(att.quote.event_log),
+        appCompose: byteLen(appCompose),
+      });
+    }
+
     const bundle = mapAttestationToBundle(att, pubkeyHex, nonce, appCompose);
-    const policy = buildVerifyPolicy(pubkeyHex, nonce, this.hardwareVerifier);
+    const policy = buildVerifyPolicy(pubkeyHex, nonce, this.hardwareVerifier, this.logger);
 
     await this.verifyAttestationImpl(bundle, policy);
 
     this.cacheVerifiedPubkey(pubkeyHex);
+    if (this.logger !== defaultLogger) {
+      this.logger.debug("cache.store", { pubkeyHex, ttlMs: this.ttlMs });
+    }
     return pair;
   }
 }

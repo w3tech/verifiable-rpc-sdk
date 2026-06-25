@@ -44,7 +44,10 @@ Mock semantics:
   optional `appId`/`instanceId`.
 - `VerifyPolicy` — pinned trust anchors (`PinnedAllowlist`), reportData→pubkey
   binding (`ReportDataBinding`), DCAP TCB acceptance (`TcbPolicy`), optional
-  `pccsUrl`, and the escape hatch `allowInsecureMock: boolean`.
+  `pccsUrl`, and the escape hatch `allowInsecureMock: boolean`. An optional
+  opt-in `logger` reaches `verifyDstackAttestation` here — core threads the
+  verifier's injected logger in via the policy (see vrpc-core's
+  "Debug logging (opt-in)"); absent → silent.
 
 ### `AttestationError`
 

@@ -46,6 +46,9 @@ export {
   StaleTimestamp,
   VerificationError,
 } from "./errors";
+export { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
+export type { Logger } from "./logger";
+export { createConsoleLogger, defaultLogger, safeLogger } from "./logger";
 export { buildPreImage } from "./preimage";
 export type { TrustedVerifierOptions } from "./trusted-verifier";
 export {

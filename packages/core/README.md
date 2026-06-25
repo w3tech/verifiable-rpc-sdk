@@ -118,6 +118,52 @@ const { result, verification, nodeId } = await client.call<string>("eth_blockNum
 
 ---
 
+## Debug logging (opt-in) — watch vRPC verify a response
+
+The SDK is **silent by default** — nothing is emitted unless you inject a
+`Logger`. Injecting one is the easiest way to **see exactly how vRPC works**: at
+debug level it narrates every step the verifier takes on each response. Pass a
+logger through the adapter `logger` option (the primary drop-in surface) or
+directly into `TrustedVerifier`. `createConsoleLogger()` is a ready-made
+`console.debug` sink prefixed with `[vrpc]`. The logger never throws-through (it
+is safe-wrapped in core) and logs only `vrpc-*` headers (every other header is
+dropped) plus truncated byte fields — so it is observability only and never part
+of the verify decision.
+
+```ts
+import { createConsoleLogger } from "@ankr.com/vrpc-core";
+import { VrpcProvider } from "@ankr.com/vrpc-ethers";
+
+// Inject through the ethers adapter (drop-in); omit `logger` to stay silent.
+const provider = new VrpcProvider("https://rpc.ankr.com/eth", 1, {
+  logger: createConsoleLogger(),
+});
+// works the same on the viem transport: vrpcHttp(url, { logger: createConsoleLogger() })
+```
+
+You'll see one debug line per step, in order (events fire only on the verifying
+provider — a plain ethers/viem provider stays silent):
+
+| Event | What it shows |
+| --- | --- |
+| `verify.start` | truncated request/response bytes + the `vrpc-*` headers |
+| `preimage.computed` | chainId, timestamp, the 80-byte pre-image hash |
+| `signature.checked` | Ed25519 result, the signature + signing pubkey |
+| `timestamp.checked` | clock skew vs the replay window |
+| `cache.lookup` | is this pubkey already trusted? (hit → skip attestation) |
+| `attestation.fetch` | attestation URL + fresh nonce (only on a cache miss) |
+| `attestation.correlation` | the signing pubkey matches the attested pubkey |
+| `attestation.received` | compose hash, pubkey, a few quote bytes |
+| `attestation.fieldChecks` | CHK-A1 (reportData binding) + CHK-A2 (compose hash) |
+| `hardware.verify` | the TDX quote is checked by the hardware/cloud verifier |
+| `cache.store` | the verified pubkey is cached with its TTL |
+
+The first request on a new node runs the full attestation + hardware verify;
+later requests hit the pubkey cache and skip straight to per-response signature
+verification.
+
+---
+
 ## Public API
 
 ### `verifyResponse(requestBytes, rawResponseBytes, responseHeaders, opts)`

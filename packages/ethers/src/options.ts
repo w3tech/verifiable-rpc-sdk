@@ -6,7 +6,7 @@
 // stock JsonRpcProvider knob (batching, polling, etc.) is preserved and passed
 // through to `super(...)`, plus the vRPC-specific knobs.
 
-import type { HardwareVerifier } from "@ankr.com/vrpc-core";
+import type { HardwareVerifier, Logger } from "@ankr.com/vrpc-core";
 import type { JsonRpcApiProviderOptions } from "ethers";
 
 /**
@@ -40,6 +40,15 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
    * this just keeps the cloud default.
    */
   hardwareVerifier?: HardwareVerifier;
+  /**
+   * Internal / advanced. Opt-in debug logger forwarded to verification to
+   * narrate the verify flow at debug level. Omitted → the SDK stays silent
+   * (no-op logger). Use `createConsoleLogger()` from `@ankr.com/vrpc-core` for
+   * a ready-made `console.debug` sink. The logger never throws-through
+   * (safe-wrapped in core) and never logs secrets (headers redacted, bytes
+   * truncated) — it is observability only, never part of the verify decision.
+   */
+  logger?: Logger;
 }
 
 // NOTE (v6.0): `allowlist`/`tcb`/`pccsUrl` were removed — the mock verifier
