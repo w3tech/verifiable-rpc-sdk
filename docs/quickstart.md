@@ -69,15 +69,15 @@ The full attestation is four steps. Each proves one property and closes one clas
 
 ## What the SDK verifies
 
-The SDK is in **alpha**. The design is the full four-step chain above; here is what runs on every call today and what is still landing. The sidecar already returns the full raw TDX quote and event log, so anything not yet automated in the SDK can be verified now with an external tool.
+The SDK is in **alpha**. The design is the full four-step chain above; here is what runs on every call today and what is still landing. Everything below is fail-closed - if a check fails, the call throws.
 
 - ✅ **Ed25519 response signature** over the 80-byte pre-image
 - ✅ **Freshness + chain binding** - replay window (default 60s) and the chain you pinned
 - ✅ **Pubkey correlation** - the attestation's pubkey equals the response signer
-- ✅ **Nonce + pubkey hardware binding** (Step 4) - `report_data` carries your nonce and the signing key, checked first
-- ✅ **App-compose integrity** (part of Step 3) - `sha256(app_compose) == compose_hash`
-- 🚧 **Image / code comparison** (Step 3) - compare the attested compose hash and image digests to the open-source signed release. This works today and is a few lines (hash, compare); an automated registry that pulls and tracks releases is in progress.
-- 🚧 **Platform verification** (Step 2) - the DCAP / Intel-root quote check. Run Phala's [dstack-verifier](https://github.com/Dstack-TEE/dstack/tree/master/verifier) against the sidecar's quote today; folding it into the SDK is in progress.
+- ✅ **Nonce + pubkey hardware binding** (Step 4) - the quote's `report_data` carries your nonce and the signing key, checked first and unconditionally
+- ✅ **Hardware-signature verification** (Step 2) - **mandatory**. The quote is verified by Phala's cloud verifier by default (overridable / self-hostable); with no verifier configured the call fails closed.
+- ⚠️ **Compose-hash check** (part of Step 3) - `sha256(app_compose) == compose_hash` is enforced when the node reports both, but today it is **self-consistency only**: both values come from the same node, so it catches drift, not a malicious node. A real anchor needs an independent compose source plus RTMR3 replay.
+- 🚧 **Still landing:** local DCAP / Intel-root quote verification (so you don't have to trust the cloud verifier), RTMR3 event-log replay, and an independent compose/image **registry** for Step 3. You can run Phala's [dstack-verifier](https://github.com/Dstack-TEE/dstack/tree/master/verifier) yourself for the full local chain today.
 
 **Out of scope for now:** WebSocket subscriptions (`eth_subscribe` - the signed path is HTTP-only), ENS off-chain reads (CCIP, avatar, IPFS), historical snapshot integrity.
 
@@ -126,7 +126,7 @@ The packages aren't published to npm yet (final names will be `@ankr.com/vrpc-*`
 
 ### Inspect mode
 
-Beyond the automatic per-call verification, the SDK can dump everything it received so you - or an AI agent - can read the proof rather than just trust that it passed: the signing pubkey, the compose hash, the raw app-compose, and the image digests. `fetchAttestation()` already returns that raw bundle.
+Beyond the automatic per-call verification, the SDK exposes the proof: `anchorTrust()` returns the node's verified pubkey and node id, and `fetchAttestation()` returns the raw quote, signing pubkey, and compose hash. (Behind a load balancer the attestation fetch needs the node id from a prior response - the verified path supplies it automatically.)
 
 ---
 
@@ -150,8 +150,8 @@ Beyond the automatic per-call verification, the SDK can dump everything it recei
 | Replay of an old response or quote | Fresh nonce + timestamp window | ✅ Enforced |
 | Swapped or wrong-node signing key | Pubkey correlation + `report_data` binding | ✅ Enforced |
 | Wrong chain | `chain_id` bound into the signed pre-image | ✅ Enforced |
-| Code or image substitution | app-compose hash check + compare to the open-source signed release | ✅ Works (manual today) · automated registry 🚧 |
-| Fake or emulated TEE, firmware/OS tamper | DCAP / platform verification (dstack-verifier) | 🚧 via dstack-verifier today · in-SDK next |
+| Code or image substitution | compose-hash check (self-consistency) + compare to the open-source signed release | ⚠️ self-consistency + manual compare today · independent registry 🚧 |
+| Fake or emulated TEE, firmware/OS tamper | hardware-signature verification (Phala cloud verifier, mandatory) | ✅ today · local DCAP 🚧 |
 
 ---
 
