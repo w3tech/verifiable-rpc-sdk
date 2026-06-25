@@ -8,6 +8,8 @@
 // helper/verifier bodies WITHOUT changing any exported type. Optional fields use `field?: T`
 // (NOT `| undefined`) to stay compatible with exactOptionalPropertyTypes.
 
+import type { HardwareVerifier } from "./hardware-verifier";
+
 /** One TDX event-log entry (RTMR replay input). Matches dstack TcbInfo.event_log. */
 export interface EventLogEntry {
   /** 0..3 — which RTMR this event measures into. */
@@ -151,4 +153,12 @@ export interface VerifyPolicy {
    * To be removed in a future release once the real body lands. Default/absent = fail-closed.
    */
   allowInsecureMock?: boolean;
+  /**
+   * OPT-IN pluggable step-4 hardware-signature verifier (→ CHK-P1). When set,
+   * `verifyDstackAttestation` runs it after CHK-A2 and, on success, bypasses the
+   * CHK-MOCK gate (the verifier IS the hardware root of trust for that call).
+   * When ABSENT, behavior is unchanged — the CHK-MOCK gate / `allowInsecureMock`
+   * governs as before. A future LocalDcapVerifier drops into this same field.
+   */
+  hardwareVerifier?: HardwareVerifier;
 }

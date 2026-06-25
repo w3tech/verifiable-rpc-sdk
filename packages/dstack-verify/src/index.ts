@@ -28,5 +28,8 @@ export type {
   VerifyPolicy,
 } from "./types";
 export { EMPTY_ALLOWLIST } from "./types";
+export type { HardwareVerifier } from "./hardware-verifier";
+export type { CloudVerifierConfig } from "./cloud-verifier";
+export { createCloudVerifier, DEFAULT_PHALA_VERIFY_ENDPOINT } from "./cloud-verifier";
 export { verifyDstackAttestation } from "./verify";
 export { parseReportData } from "./verify-steps";
