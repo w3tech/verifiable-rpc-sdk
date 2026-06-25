@@ -33,11 +33,11 @@ You pass **one** plain URL (e.g. `https://rpc.ankr.com/arbitrum`). The SDK owns 
 Install only what you use — the adapters declare `ethers` / `viem` as **peer dependencies**, so installing one never pulls the other:
 
 ```bash
-bun add @ankr.com/vrpc-ethers ethers      # ethers users
-bun add @ankr.com/vrpc-viem viem          # viem users
+pnpm add @ankr.com/vrpc-ethers ethers     # ethers users
+pnpm add @ankr.com/vrpc-viem viem         # viem users
 ```
 
-New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line swap, the optional (but strongly recommended) `chainId`, and the caveats for both adapters. Runnable examples live in [`examples/`](./examples/) (`08-vrpc-ethers-verified-read.ts`, `09-vrpc-viem-verified-read.ts`).
+New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line swap, the optional (but strongly recommended) `chainId`, and the caveats for both adapters. Runnable examples live in [`examples/`](./examples/): `01-ethers-client.ts`, `02-viem-client.ts`, `03-vrpc-core-walkthrough.ts`. Run them with `pnpm example:01-ethers-client` (and `:02-viem-client`, `:03-vrpc-core-walkthrough`).
 
 ## What is verified — and what is not
 
