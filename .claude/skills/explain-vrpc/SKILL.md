@@ -253,10 +253,15 @@ run it against the sidecar's quote rather than waiting on this SDK's verifier:
 
 **Maturity (state plainly only if asked, don't dwell):** the signing/verification
 path (Ed25519 signature, freshness, chain binding, key correlation, CHK-A1, CHK-A2)
-is implemented and fail-closed today. Verification of the full attestation chain of
-trust is still in development (see the chain-of-trust guide, linked in §3 and
-Sources). (SDK `README.md`, `packages/core/README.md`,
-`packages/dstack-verify/README.md`.)
+is implemented and fail-closed today. Together with the opt-in cloud hardware-signature
+check (a `HardwareVerifier` that delegates the quote verdict to Phala's hosted endpoint
+and binds it to the signer + compose hash), this implements the **minimal end-to-end
+verification** flow of Phala's
+[verification guide](https://docs.phala.com/phala-cloud/attestation/verification-guide).
+Verification of the **full attestation chain of trust** is still in development — the SDK
+is working toward it (local DCAP quote verification, RTMR replay, TCB-status policy; see
+the chain-of-trust guide, linked in §3 and Sources). (SDK `README.md`,
+`packages/core/README.md`, `packages/dstack-verify/README.md`.)
 
 **vRPC does NOT work over WebSocket.** The adapters and the whole verified path
 are **HTTP-only** — there is no signature on a WebSocket connection, so WS
@@ -323,6 +328,7 @@ user as links rather than trying to scrape.
 - Canonical (Ubuntu) TDX tooling — https://github.com/canonical/tdx
 
 **Phala dstack (runs the node in TDX + attestation/keys)**
+- **Minimal end-to-end verification — the flow the SDK implements today** (Phala guide) — https://docs.phala.com/phala-cloud/attestation/verification-guide
 - **Full chain of trust — what a complete TDX attestation proves** (Phala guide; the in-development full-verification target) — https://docs.phala.com/phala-cloud/attestation/chain-of-trust
 - dstack framework (GitHub) — https://github.com/Dstack-TEE/dstack
 - dstack documentation — https://docs.phala.com/dstack

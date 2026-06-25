@@ -41,6 +41,8 @@ New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line
 
 **Verified:** a response is **signed + untampered + fresh + correctly bound** to the chain you asked for, against a pinned signer key, replay-checked. If any of that fails, the call throws — verification is always fail-closed; no unverified data is ever returned.
 
+> **Where this sits on Phala's attestation path:** the SDK implements the **minimal end-to-end verification** flow — nonce-bound quote fetch, the hardware-signature verdict (opt-in cloud verifier), and binding it to the response signer + compose hash — described in Phala's [verification guide](https://docs.phala.com/phala-cloud/attestation/verification-guide). It is evolving toward the **full [chain of trust](https://docs.phala.com/phala-cloud/attestation/chain-of-trust)** — local DCAP quote verification, RTMR replay, and TCB-status policy.
+
 **Not verified — know the boundary:**
 - This is **not** full TDX remote attestation. The SDK does not yet verify an Intel PCK-rooted quote or check the compose hash against a registry — a forged quote would pass at this boundary. Full attestation + a compose-hash registry are deferred. Boot-time attestation **correlation** (`anchorTrust`) is available and confirms the node's attestation pubkey matches the response signer, but it is not a substitute for quote verification.
 - **WebSocket push streams** (`eth_subscribe`) are unverified — the adapters are HTTP-only. HTTP event polling (`contract.on` / filters) stays on the verified path.
