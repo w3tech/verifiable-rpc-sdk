@@ -64,6 +64,7 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
           // `fetch` for the attestation GET leg.
           fetch: opts.fetchFn as typeof fetch | undefined,
           hardwareVerifier: opts.hardwareVerifier,
+          logger: opts.logger,
         }),
       );
     }

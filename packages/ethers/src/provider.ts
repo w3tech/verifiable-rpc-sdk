@@ -58,6 +58,7 @@ export class VrpcProvider extends JsonRpcProvider {
       pubkeyCacheTtlMs,
       fetch: attestationFetch,
       hardwareVerifier,
+      logger,
       ...ethersOpts
     } = options;
 
@@ -99,6 +100,7 @@ export class VrpcProvider extends JsonRpcProvider {
           fetch: attestationFetch,
           replayWindowMs,
           hardwareVerifier,
+          logger,
         }),
       );
     // Build the verifier now if possible; auto-derive defers to the first _send.
