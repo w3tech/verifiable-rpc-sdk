@@ -147,6 +147,31 @@ describe("createCloudVerifier — negatives (all fail closed with CHK-P1)", () =
     await expectChkP1(verifier.verifyHardware(makeBundle("00".repeat(32)), makePolicy()));
   });
 
+  test("composeHash present at WRONG offset in mr_config_id → throws (positional bind, not substring)", async () => {
+    // mr_config_id carries composeHash but shifted to offset 4 (layout offset is
+    // 2: 0x01 prefix byte). A loose substring match would ACCEPT this; the
+    // positional hex[2:66] bind MUST reject it. Guards against re-weakening the
+    // composeHash check back to String.includes().
+    const body = loadFixture();
+    const shifted = `0000${composeHash}`.padEnd(96, "0");
+    expect(shifted).toHaveLength(96);
+    expect(shifted.includes(composeHash)).toBe(true); // a substring match WOULD pass
+    body.quote.body.mr_config_id = `0x${shifted}`;
+    const verifier = createCloudVerifier({
+      fetch: (async () => okResponse(body)) as unknown as typeof globalThis.fetch,
+    });
+    await expectChkP1(verifier.verifyHardware(makeBundle(), makePolicy()));
+  });
+
+  test("malformed mr_config_id (wrong length) → throws", async () => {
+    const body = loadFixture();
+    body.quote.body.mr_config_id = `0x01${composeHash}`; // 66 hex, not 96
+    const verifier = createCloudVerifier({
+      fetch: (async () => okResponse(body)) as unknown as typeof globalThis.fetch,
+    });
+    await expectChkP1(verifier.verifyHardware(makeBundle(), makePolicy()));
+  });
+
   test("composeHash absent → throws (no silent skip)", async () => {
     const verifier = createCloudVerifier({
       fetch: (async () => okResponse(loadFixture())) as unknown as typeof globalThis.fetch,

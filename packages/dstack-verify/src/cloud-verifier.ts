@@ -10,9 +10,9 @@
 // verified===true. So this verifier ALSO performs B+ binding against OUR values:
 //
 //   - reportdata bind: result.quote.body.reportdata == expectedPubkey ‖ expectedNonce
-//   - composeHash bind: result.quote.body.mr_config_id CONTAINS composeHash
-//     (Phala layout = 0x01 + composeHash(32B) + zero-pad; substring after
-//     stripping 0x is robust to the prefix/pad).
+//   - composeHash bind: composeHash sits at a fixed offset inside
+//     result.quote.body.mr_config_id (dstack layout = 0x01 prefix byte +
+//     composeHash(32B) + zero-pad), so we positionally compare hex[2:66].
 //
 // ⚠️ The default Phala endpoint is UNAUTHENTICATED, best-effort / no-SLA, and
 // PUBLISHES the submitted quote to a public registry (readable by checksum). It
@@ -131,7 +131,11 @@ export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareV
         );
       }
 
-      // 6. B+ composeHash bind: composeHash MUST be measured into mr_config_id.
+      // 6. B+ composeHash bind: composeHash MUST be measured into mr_config_id
+      //    at its fixed offset. dstack layout: mr_config_id (48B = 96 hex) =
+      //    0x01 prefix byte + composeHash(32B) + zero-pad. Positionally compare
+      //    hex[2:66] — a loose substring match would accept composeHash at any
+      //    offset (or spanning the pad), weakening the bind.
       const composeHash = normHex(bundle.tcbInfo?.compose_hash ?? "");
       if (!/^[0-9a-f]{64}$/.test(composeHash)) {
         throw new AttestationError(
@@ -140,7 +144,13 @@ export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareV
         );
       }
       const mrConfigId = normHex(quote.body.mr_config_id ?? "");
-      if (!mrConfigId.includes(composeHash)) {
+      if (!/^[0-9a-f]{96}$/.test(mrConfigId)) {
+        throw new AttestationError(
+          "CHK-P1",
+          "mr_config_id absent or malformed (expected 48-byte hex)",
+        );
+      }
+      if (mrConfigId.slice(2, 66) !== composeHash) {
         throw new AttestationError("CHK-P1", "composeHash not measured into mr_config_id");
       }
     },
