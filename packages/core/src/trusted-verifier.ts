@@ -28,6 +28,7 @@ import { LRUCache } from "lru-cache";
 
 import { type Attestation, fetchAttestation, verifyAttestationCorrelation } from "./attestation";
 import { InfoEndpointComposeSource } from "./compose";
+import { defaultLogger, type Logger, safeLogger } from "./logger";
 import type { VerifiedResponse } from "./verifier";
 import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
 
@@ -78,6 +79,12 @@ export interface TrustedVerifierOptions {
    * endpoint, a future local-DCAP verifier, or (in tests) a no-network mock.
    */
   hardwareVerifier?: HardwareVerifier;
+  /**
+   * OPT-IN debug logger. Inject to narrate the verify flow; omit (the default)
+   * and the SDK stays silent. Wrapped in {@link safeLogger} at construction so a
+   * throwing `debug()` can never break verification.
+   */
+  logger?: Logger;
 }
 
 /**
@@ -152,6 +159,7 @@ export function buildVerifyPolicy(
   pubkeyHex: string,
   nonce: Uint8Array,
   hardwareVerifier: HardwareVerifier = createCloudVerifier(),
+  logger?: Logger,
 ): VerifyPolicy {
   return {
     binding: {
@@ -161,6 +169,9 @@ export function buildVerifyPolicy(
     allowlist: EMPTY_ALLOWLIST,
     tcb: { allowedStatuses: [], rejectDebug: true },
     hardwareVerifier,
+    // Spread-when-defined to respect exactOptionalPropertyTypes (the policy
+    // carries the verifier's logger into dstack-verify via VerifyPolicy.logger).
+    ...(logger === undefined ? {} : { logger }),
   };
 }
 
@@ -181,6 +192,7 @@ export class TrustedVerifier {
   private readonly headers: Record<string, string> | undefined;
   private readonly fetchImpl: typeof fetch | undefined;
   private readonly hardwareVerifier: HardwareVerifier;
+  private readonly logger: Logger;
 
   constructor(opts: TrustedVerifierOptions) {
     const ttlMs = opts.pubkeyCacheTtlMs ?? DEFAULT_PUBKEY_CACHE_TTL_MS;
@@ -205,6 +217,9 @@ export class TrustedVerifier {
     // override for a self-hosted endpoint, local DCAP, or a no-network test mock.
     this.hardwareVerifier =
       opts.hardwareVerifier ?? createCloudVerifier(opts.fetch ? { fetch: opts.fetch } : {});
+    // Wrap the injected logger ONCE so a throwing debug() can never break verify;
+    // default to the no-op singleton so the !== defaultLogger silent-path guard holds.
+    this.logger = opts.logger ? safeLogger(opts.logger) : defaultLogger;
   }
 
   /** True when `pubkeyHex` is cached and the entry has not expired. */
@@ -291,7 +306,7 @@ export class TrustedVerifier {
     const appCompose = await this.fetchAppComposeBestEffort();
 
     const bundle = mapAttestationToBundle(att, pubkeyHex, nonce, appCompose);
-    const policy = buildVerifyPolicy(pubkeyHex, nonce, this.hardwareVerifier);
+    const policy = buildVerifyPolicy(pubkeyHex, nonce, this.hardwareVerifier, this.logger);
 
     await this.verifyAttestationImpl(bundle, policy);
 
