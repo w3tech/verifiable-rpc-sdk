@@ -126,10 +126,9 @@ debug level it narrates every step the verifier takes on each response. Pass a
 logger through the adapter `logger` option (the primary drop-in surface) or
 directly into `TrustedVerifier`. `createConsoleLogger()` is a ready-made
 `console.debug` sink prefixed with `[vrpc]`. The logger never throws-through (it
-is safe-wrapped in core) and never logs secrets — only `vrpc-*` headers are
-logged (every other header, including `authorization` / `x-api-key`, is dropped)
-and byte fields are truncated — so it is observability only and never part of the
-verify decision.
+is safe-wrapped in core) and logs only `vrpc-*` headers (every other header is
+dropped) plus truncated byte fields — so it is observability only and never part
+of the verify decision.
 
 ```ts
 import { createConsoleLogger } from "@ankr.com/vrpc-core";

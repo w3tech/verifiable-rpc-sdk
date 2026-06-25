@@ -64,7 +64,7 @@ const provider = new VrpcProvider("https://rpc.ankr.com/eth", 1, {
 // viem: vrpcHttp(url, { headers, logger: createConsoleLogger() })
 ```
 
-You'll see the flow in order: `verify.start` → `preimage.computed` → `signature.checked` → `timestamp.checked` → `cache.lookup` → `attestation.fetch` → `attestation.correlation` → `attestation.received` → `attestation.fieldChecks` → `hardware.verify` → `cache.store` (first request runs the full attestation + hardware verify; later requests hit the pubkey cache). It is **observability only** — never throws-through, never logs secrets (only `vrpc-*` headers, byte fields truncated), and never part of the verify decision. Full event table in [packages/core/README.md](./packages/core/README.md#debug-logging-opt-in--watch-vrpc-verify-a-response).
+You'll see the flow in order: `verify.start` → `preimage.computed` → `signature.checked` → `timestamp.checked` → `cache.lookup` → `attestation.fetch` → `attestation.correlation` → `attestation.received` → `attestation.fieldChecks` → `hardware.verify` → `cache.store` (first request runs the full attestation + hardware verify; later requests hit the pubkey cache). It is **observability only** — never throws-through, logs only `vrpc-*` headers (byte fields truncated), and never part of the verify decision. Full event table in [packages/core/README.md](./packages/core/README.md#debug-logging-opt-in--watch-vrpc-verify-a-response).
 
 ## Explaining vRPC (for AI assistants)
 
