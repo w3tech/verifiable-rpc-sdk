@@ -21,9 +21,9 @@
 import { VrpcProvider } from "@ankr.com/vrpc-ethers";
 import { getPublicKeyAsync } from "@noble/ed25519";
 import { describe, expect, test } from "vitest";
-
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, TEST_SEED } from "./fixtures";
 import { type AttMockState, installAttestationMock, signingRequest } from "./helpers";
+import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const CHAIN_ID_NUMBER = Number(CHAIN_ID); // 42161 (arbitrum)
 const ADDR = "0x1111111111111111111111111111111111111111";
@@ -43,6 +43,7 @@ function vrpcProviderWith(mock: AttMockState, signOpts: { nodeId?: string }): Vr
     {
       fetch: mock.fetch,
       replayWindowMs: WIDE,
+      hardwareVerifier: mockHardwareVerifier(),
     },
   );
 }
@@ -115,6 +116,7 @@ describe("VrpcProvider always-on attestation E2E", () => {
     const provider = new VrpcProvider(req, CHAIN_ID_NUMBER, {
       fetch: capturingFetch,
       replayWindowMs: WIDE,
+      hardwareVerifier: mockHardwareVerifier(),
     });
 
     await provider.getBalance(ADDR);

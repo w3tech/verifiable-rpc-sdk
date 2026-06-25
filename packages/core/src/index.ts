@@ -12,6 +12,12 @@
 //   - ./preimage    — canonical 80-byte pre-image builder (exported for
 //                     advanced consumers and test infrastructure)
 
+// Hardware-verifier surface re-exported from @ankr.com/dstack-verify so adapters
+// and consumers can configure or override the (mandatory, always-on) verifier —
+// e.g. point it at a self-hosted endpoint, a future local-DCAP verifier, or a
+// test mock. The default is the Phala cloud verifier wired by buildVerifyPolicy.
+export type { CloudVerifierConfig, HardwareVerifier } from "@ankr.com/dstack-verify";
+export { createCloudVerifier, DEFAULT_PHALA_VERIFY_ENDPOINT } from "@ankr.com/dstack-verify";
 export type { AnchorTrustOptions, AnchorTrustResult } from "./anchor";
 export { anchorTrust } from "./anchor";
 export type {

@@ -4,6 +4,8 @@
 // viem-specific passthroughs: `headers` (x-api-key / gateway route) and an
 // injectable `fetchFn` seam. All verification lives in vrpc-core; these only feed it.
 
+import type { HardwareVerifier } from "@ankr.com/vrpc-core";
+
 /**
  * Options for `vrpcHttp(url, opts?)`. All optional with safe defaults. Always
  * fail-closed (see `transport.ts`). The chain id bound into the signed pre-image
@@ -44,6 +46,14 @@ export interface VrpcHttpOptions {
   timeout?: number;
   /** Verified-pubkey cache TTL (ms) forwarded to the verifier; default 1h. */
   pubkeyCacheTtlMs?: number;
+  /**
+   * Internal / advanced. Override the mandatory hardware-signature verifier
+   * (default: the Phala cloud verifier wired by vrpc-core). Point it at a
+   * self-hosted endpoint, a future local-DCAP verifier, or a no-network test
+   * mock. Hardware verification is always-on and cannot be disabled — omitting
+   * this just keeps the cloud default.
+   */
+  hardwareVerifier?: HardwareVerifier;
 }
 
 // NOTE (v6.0): `allowlist`/`tcb`/`pccsUrl` were removed — the mock verifier

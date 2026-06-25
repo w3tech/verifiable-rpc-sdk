@@ -63,6 +63,7 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
           // fetchFn's (url, init) => Promise<Response> aligns with the verifier's
           // `fetch` for the attestation GET leg.
           fetch: opts.fetchFn as typeof fetch | undefined,
+          hardwareVerifier: opts.hardwareVerifier,
         }),
       );
     }

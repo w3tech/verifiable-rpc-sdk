@@ -53,7 +53,13 @@ export class VrpcProvider extends JsonRpcProvider {
   #trustedVerifier: TrustedVerifier | undefined;
 
   constructor(url: string | FetchRequest, chainIdArg?: number | bigint, options: VrpcOptions = {}) {
-    const { replayWindowMs, pubkeyCacheTtlMs, fetch: attestationFetch, ...ethersOpts } = options;
+    const {
+      replayWindowMs,
+      pubkeyCacheTtlMs,
+      fetch: attestationFetch,
+      hardwareVerifier,
+      ...ethersOpts
+    } = options;
 
     // Derive the `_vrpc` route + `/attestation` from the single URL; for a
     // FetchRequest, clone it so the consumer's auth/headers ride along.
@@ -92,6 +98,7 @@ export class VrpcProvider extends JsonRpcProvider {
           headers: attestationHeaders,
           fetch: attestationFetch,
           replayWindowMs,
+          hardwareVerifier,
         }),
       );
     // Build the verifier now if possible; auto-derive defers to the first _send.

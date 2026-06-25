@@ -115,6 +115,45 @@ quote-signature + RTMR3 replay), **never** CHK-A1 or CHK-A2:
 The contract stays `Promise<void>`; there is no separate status surface —
 partial verification carries no signal beyond the silent resolve.
 
+### Pluggable hardware verifier — `HardwareVerifier` + `createCloudVerifier`
+
+A pluggable **step-4 hardware-signature** seam (→ CHK-P1) runs **after CHK-A2**
+and, when configured, **bypasses the CHK-MOCK gate** on success. It is **opt-in**:
+
+```ts
+import { createCloudVerifier, verifyDstackAttestation } from "@ankr.com/dstack-verify";
+
+await verifyDstackAttestation(bundle, {
+  binding: { expectedPubkey, expectedNonce },
+  allowlist,
+  tcb,
+  hardwareVerifier: createCloudVerifier(), // ← opt-in
+});
+```
+
+- **Opt-in.** When `policy.hardwareVerifier` is **unset**, behavior is
+  **unchanged** — the CHK-MOCK gate / `allowInsecureMock` governs exactly as
+  before. Setting it makes the verifier the hardware root of trust for the call.
+- **Configurable.** `createCloudVerifier({ endpoint?, timeoutMs?, fetch? })` —
+  the `endpoint` defaults to the Phala URL, `timeoutMs` bounds the request
+  (`AbortController`), and `fetch` is injectable (tests; default
+  `globalThis.fetch` — no new runtime dependency).
+- ⚠️ **Unauthenticated, best-effort / no-SLA.** The default Phala cloud endpoint
+  is a public, **unauthenticated** service provided **"AS IS"** with no SLA.
+- ⚠️ **Publishes the quote to a PUBLIC registry.** Every quote POSTed to the
+  cloud endpoint is stored permanently and is **publicly** readable by checksum
+  (`/attestations/view/{checksum}`). This is a privacy / data-egress caveat;
+  callers opting in accept it. Point `endpoint` at a self-hosted verifier to
+  avoid the egress.
+- **Trust shifts to Phala's hosted verifier** (vs the local-DCAP, no-egress path
+  planned for a later release).
+- **B+ binding — `verified` alone is not trusted.** Because the node is
+  untrusted, the SDK does not accept `result.quote.verified === true` on its own:
+  it also binds the cloud-extracted `reportdata` to the **expected
+  pubkey ‖ nonce** and requires the `composeHash` to be measured into
+  `mr_config_id`. A real-but-foreign quote (genuine, but for a different
+  key/node) therefore **fails closed**.
+
 ### `CHK-*` checklist
 
 `CHK` is a frozen const record enumerating the full chain-of-trust checklist

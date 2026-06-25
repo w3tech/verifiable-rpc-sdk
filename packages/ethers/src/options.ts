@@ -6,6 +6,7 @@
 // stock JsonRpcProvider knob (batching, polling, etc.) is preserved and passed
 // through to `super(...)`, plus the vRPC-specific knobs.
 
+import type { HardwareVerifier } from "@ankr.com/vrpc-core";
 import type { JsonRpcApiProviderOptions } from "ethers";
 
 /**
@@ -31,6 +32,14 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
   pubkeyCacheTtlMs?: number;
   /** `fetch` override for the attestation leg — test injectable. Internal. */
   fetch?: typeof fetch;
+  /**
+   * Internal / advanced. Override the mandatory hardware-signature verifier
+   * (default: the Phala cloud verifier wired by vrpc-core). Point it at a
+   * self-hosted endpoint, a future local-DCAP verifier, or a no-network test
+   * mock. Hardware verification is always-on and cannot be disabled — omitting
+   * this just keeps the cloud default.
+   */
+  hardwareVerifier?: HardwareVerifier;
 }
 
 // NOTE (v6.0): `allowlist`/`tcb`/`pccsUrl` were removed — the mock verifier

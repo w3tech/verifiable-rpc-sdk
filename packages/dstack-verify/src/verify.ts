@@ -29,11 +29,13 @@
 // anchored into RTMR3 via event-log replay, and (c) a DCAP-verified quote — all
 // deferred to a future release.
 //
-// After A2, the mock gate still governs the NOT-yet-built DCAP quote-signature +
-// RTMR3-replay layers: default (allowInsecureMock absent/false) throws
-// AttestationError("CHK-MOCK"); allowInsecureMock === true resolves void
-// silently (the SDK never prints; bypassing the hardware root of trust is the
-// caller's explicit opt-in).
+// After A2, step-4 hardware-signature verification runs and is MANDATORY:
+// policy.hardwareVerifier IS the hardware root of trust for the call. If no
+// verifier is configured the function throws AttestationError (fail-closed — an
+// unattested response must never pass). On success it resolves; any verifier
+// failure throws. In the live SDK path core's buildVerifyPolicy always wires the
+// Phala CloudVerifier here. (`allowInsecureMock` / `CHK-MOCK` are a separate,
+// now-unused legacy gate — the mandatory verifier supersedes them.)
 
 // computeComposeHash is imported from core's `./compose` LEAF subpath (not the
 // main barrel): the barrel re-exports trusted-verifier.ts which imports
@@ -97,12 +99,17 @@ export async function verifyDstackAttestation(
     }
   }
 
-  // --- Mock gate: covers the unimplemented DCAP/RTMR3 layers only ---
-  if (policy.allowInsecureMock === true) {
-    return;
+  // --- Step-4: hardware-signature verifier (→ CHK-P1) — MANDATORY ---
+  // policy.hardwareVerifier IS the hardware root of trust for this call. It is
+  // REQUIRED: a policy without one cannot establish hardware trust, so fail
+  // closed rather than return an unattested "pass". On success the function
+  // resolves; any verifier failure throws AttestationError. The live SDK path
+  // (core buildVerifyPolicy) always wires the Phala CloudVerifier.
+  if (!policy.hardwareVerifier) {
+    throw new AttestationError(
+      "CHK-P1",
+      "no hardware verifier configured: policy.hardwareVerifier is required (hardware-signature verification cannot be skipped)",
+    );
   }
-  throw new AttestationError(
-    "CHK-MOCK",
-    "DCAP quote-signature / RTMR3 verification is not implemented; set allowInsecureMock=true to bypass the hardware root of trust (INSECURE)",
-  );
+  await policy.hardwareVerifier.verifyHardware(bundle, policy);
 }
