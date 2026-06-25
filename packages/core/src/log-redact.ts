@@ -4,8 +4,9 @@
 //
 // These functions are the SINGLE point where logged field values are shortened
 // or sanitized, so the leak surface is auditable in one place. They are pure,
-// dependency-free, and shared by core + dstack-verify. Header sanitization uses an
-// ALLOWLIST (not a denylist) so a future header can never leak by omission.
+// dependency-free, and shared by core + dstack-verify. Header logging keeps ONLY
+// vrpc-* headers (public protocol data) and drops everything else, so a credential
+// header (authorization / x-api-key) can never leak by omission.
 
 /**
  * Keep the first `keepBytes` of a hex blob and append `…(NB)` (byte count) when
@@ -33,30 +34,20 @@ export function byteLen(value: string | Uint8Array): string {
 }
 
 /**
- * Lowercased allowlist of header keys that are safe to log verbatim. Everything
- * NOT in this set (authorization, x-api-key, vrpc-signature, any unknown key) is
- * redacted by {@link redactHeaders}.
+ * Keep ONLY `vrpc-*` headers (case-insensitive) with their values verbatim, and
+ * drop every other header entirely. The vRPC headers (`vrpc-pubkey`,
+ * `vrpc-timestamp`, `vrpc-nodeid`, `vrpc-signature`) are public wire data — part
+ * of the signed/verified protocol, never credentials — so no value returned here
+ * can be a secret. Stricter than allowlist-redaction: non-vrpc headers (including
+ * any future credential header like `authorization` / `x-api-key`) are not even
+ * emitted, so a secret cannot leak by omission and the log stays uncluttered.
  */
-export const SAFE_HEADER_KEYS: ReadonlySet<string> = new Set([
-  "content-type",
-  "content-length",
-  "content-encoding",
-  "vrpc-pubkey",
-  "vrpc-timestamp",
-]);
-
-/** Redaction marker substituted for every non-allowlisted header value. */
-const REDACTION_MARKER = "[redacted]";
-
-/**
- * ALLOWLIST header redaction: keep only {@link SAFE_HEADER_KEYS} (case-insensitive)
- * verbatim; replace every other value with `[redacted]`. Allowlisting means a
- * future header key never leaks by accident — only explicitly-known-safe keys pass.
- */
-export function redactHeaders(headers: Record<string, string>): Record<string, string> {
+export function pickVrpcHeaders(headers: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(headers)) {
-    out[k] = SAFE_HEADER_KEYS.has(k.toLowerCase()) ? v : REDACTION_MARKER;
+    if (k.toLowerCase().startsWith("vrpc-")) {
+      out[k] = v;
+    }
   }
   return out;
 }

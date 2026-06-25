@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { byteLen, redactHeaders, SAFE_HEADER_KEYS, truncateHex } from "../src/log-redact";
+import { byteLen, pickVrpcHeaders, truncateHex } from "../src/log-redact";
 import { defaultLogger, safeLogger } from "../src/logger";
 import { collectingLogger } from "./support/collecting-logger";
 
@@ -49,48 +49,46 @@ describe("byteLen", () => {
   });
 });
 
-describe("redactHeaders", () => {
-  it("passes known-safe keys through verbatim (case-insensitive)", () => {
-    const out = redactHeaders({
-      "content-type": "application/json",
-      "Content-Length": "123",
-      "content-encoding": "gzip",
+describe("pickVrpcHeaders", () => {
+  it("keeps vrpc-* headers verbatim (case-insensitive)", () => {
+    const out = pickVrpcHeaders({
       "vrpc-pubkey": "0xdead",
       "VRPC-Timestamp": "1700000000000",
+      "vrpc-nodeid": "node-1",
+      "vrpc-signature": "0xfeedface",
     });
-    expect(out["content-type"]).toBe("application/json");
-    expect(out["Content-Length"]).toBe("123");
-    expect(out["content-encoding"]).toBe("gzip");
     expect(out["vrpc-pubkey"]).toBe("0xdead");
     expect(out["VRPC-Timestamp"]).toBe("1700000000000");
+    expect(out["vrpc-nodeid"]).toBe("node-1");
+    expect(out["vrpc-signature"]).toBe("0xfeedface");
   });
 
-  it("redacts every other key to the literal [redacted]", () => {
-    const out = redactHeaders({
+  it("drops every non-vrpc header entirely (not even a redaction marker)", () => {
+    const out = pickVrpcHeaders({
       authorization: "Bearer secret-token",
       "x-api-key": "sk-live-deadbeef",
-      "vrpc-signature": "0xfeedface",
+      "content-type": "application/json",
+      date: "Wed, 01 Jan 2026 00:00:00 GMT",
       "x-custom": "whatever",
+      "vrpc-pubkey": "0xdead",
     });
-    expect(out.authorization).toBe("[redacted]");
-    expect(out["x-api-key"]).toBe("[redacted]");
-    expect(out["vrpc-signature"]).toBe("[redacted]");
-    expect(out["x-custom"]).toBe("[redacted]");
+    expect(out.authorization).toBeUndefined();
+    expect(out["x-api-key"]).toBeUndefined();
+    expect(out["content-type"]).toBeUndefined();
+    expect(out.date).toBeUndefined();
+    expect(out["x-custom"]).toBeUndefined();
+    expect(Object.keys(out)).toEqual(["vrpc-pubkey"]);
   });
 
-  it("never returns the original authorization / x-api-key value", () => {
-    const out = redactHeaders({
+  it("never leaks a credential value anywhere in the output", () => {
+    const out = pickVrpcHeaders({
       authorization: "Bearer secret-token",
       "x-api-key": "sk-live-deadbeef",
+      "vrpc-pubkey": "0xdead",
     });
-    expect(out.authorization).not.toContain("secret-token");
-    expect(out["x-api-key"]).not.toContain("sk-live-deadbeef");
-  });
-
-  it("does not list a credential key in the allowlist", () => {
-    expect(SAFE_HEADER_KEYS.has("authorization")).toBe(false);
-    expect(SAFE_HEADER_KEYS.has("x-api-key")).toBe(false);
-    expect(SAFE_HEADER_KEYS.has("vrpc-signature")).toBe(false);
+    const dump = JSON.stringify(out);
+    expect(dump).not.toContain("secret-token");
+    expect(dump).not.toContain("sk-live-deadbeef");
   });
 });
 

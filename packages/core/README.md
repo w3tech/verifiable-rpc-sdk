@@ -125,8 +125,9 @@ The SDK is **silent by default** — nothing is emitted unless you inject a
 surface) or directly into `TrustedVerifier` to narrate the verify flow at debug
 level. `createConsoleLogger()` is a ready-made `console.debug` sink prefixed with
 `[vrpc]`. The logger never throws-through (it is safe-wrapped in core) and never
-logs secrets — headers are redacted and byte fields truncated — so it is
-observability only and never part of the verify decision.
+logs secrets — only `vrpc-*` headers are logged (every other header, including
+`authorization` / `x-api-key`, is dropped) and byte fields are truncated — so it
+is observability only and never part of the verify decision.
 
 ```ts
 import { createConsoleLogger } from "@ankr.com/vrpc-core";

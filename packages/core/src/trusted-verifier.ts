@@ -28,7 +28,7 @@ import { LRUCache } from "lru-cache";
 
 import { type Attestation, fetchAttestation, verifyAttestationCorrelation } from "./attestation";
 import { InfoEndpointComposeSource } from "./compose";
-import { byteLen, redactHeaders, truncateHex } from "./log-redact";
+import { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
 import type { VerifiedResponse } from "./verifier";
 import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
@@ -279,14 +279,14 @@ export class TrustedVerifier {
     headers: ResponseHeaders,
   ): Promise<VerifiedPair> {
     if (this.logger !== defaultLogger) {
-      // Headers are flattened to a plain Record then allowlist-redacted — the
-      // raw authorization/x-api-key values never reach the logged `data`.
+      // Headers are flattened to a plain Record then narrowed to vrpc-* only — the
+      // raw authorization/x-api-key headers are never even emitted to `data`.
       const headerRecord: Record<string, string> =
         headers instanceof Headers ? Object.fromEntries(headers.entries()) : { ...headers };
       this.logger.debug("verify.start", {
         req: truncateHex(bytesToHex(requestBytes)),
         res: truncateHex(bytesToHex(responseBytes)),
-        headers: redactHeaders(headerRecord),
+        headers: pickVrpcHeaders(headerRecord),
       });
     }
 

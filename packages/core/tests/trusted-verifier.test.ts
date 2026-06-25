@@ -403,14 +403,15 @@ describe("TrustedVerifier / opt-in logger narration", () => {
     }
   });
 
-  test("verifyStartRedactsHeadersAndTruncatesReqRes", async () => {
+  test("verifyStartLogsOnlyVrpcHeadersAndTruncatesReqRes", async () => {
     const mock = installAttestationMock();
     const pair = await signedPair();
-    // Add credential headers to the response so redaction is observable.
+    // Add credential + noise headers to the response so the vrpc-only filter is observable.
     const headers = {
       ...(pair.headers as Record<string, string>),
       authorization: "Bearer super-secret-token",
       "x-api-key": "key-abc123",
+      "content-type": "application/json",
     };
     const log = collectingLogger();
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, logger: log }));
@@ -420,9 +421,11 @@ describe("TrustedVerifier / opt-in logger narration", () => {
     const start = log.calls.find((c) => c[0] === "verify.start")?.[1] as Record<string, unknown>;
     expect(start).toBeDefined();
     const loggedHeaders = start.headers as Record<string, string>;
-    // The secret VALUES must never appear — allowlist redaction replaces them.
-    expect(loggedHeaders.authorization).toBe("[redacted]");
-    expect(loggedHeaders["x-api-key"]).toBe("[redacted]");
+    // Only vrpc-* headers are emitted; credential + non-vrpc headers are absent entirely.
+    expect(loggedHeaders.authorization).toBeUndefined();
+    expect(loggedHeaders["x-api-key"]).toBeUndefined();
+    expect(loggedHeaders["content-type"]).toBeUndefined();
+    expect(Object.keys(loggedHeaders).every((k) => k.toLowerCase().startsWith("vrpc-"))).toBe(true);
     expect(JSON.stringify(loggedHeaders)).not.toContain("super-secret-token");
     expect(JSON.stringify(loggedHeaders)).not.toContain("key-abc123");
     // req/res are truncated (truncateHex appends the ellipsis marker).
