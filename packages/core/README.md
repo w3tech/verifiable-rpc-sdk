@@ -118,6 +118,28 @@ const { result, verification, nodeId } = await client.call<string>("eth_blockNum
 
 ---
 
+## Debug logging (opt-in)
+
+The SDK is **silent by default** — nothing is emitted unless you inject a
+`Logger`. Pass one through the adapter `logger` option (the primary drop-in
+surface) or directly into `TrustedVerifier` to narrate the verify flow at debug
+level. `createConsoleLogger()` is a ready-made `console.debug` sink prefixed with
+`[vrpc]`. The logger never throws-through (it is safe-wrapped in core) and never
+logs secrets — headers are redacted and byte fields truncated — so it is
+observability only and never part of the verify decision.
+
+```ts
+import { createConsoleLogger } from "@ankr.com/vrpc-core";
+import { VrpcProvider } from "@ankr.com/vrpc-ethers";
+
+// Inject through the ethers adapter (drop-in); omit `logger` to stay silent.
+const provider = new VrpcProvider("https://rpc.ankr.com/eth", 1, {
+  logger: createConsoleLogger(),
+});
+```
+
+---
+
 ## Public API
 
 ### `verifyResponse(requestBytes, rawResponseBytes, responseHeaders, opts)`
