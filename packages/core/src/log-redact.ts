@@ -17,7 +17,9 @@
 export function truncateHex(hex: string, keepBytes = 4): string {
   const body = hex.replace(/^0x/i, "");
   const keep = keepBytes * 2;
-  return body.length <= keep ? `0x${body}` : `0x${body.slice(0, keep)}…(${body.length / 2}B)`;
+  return body.length <= keep
+    ? `0x${body}`
+    : `0x${body.slice(0, keep)}…(${Math.floor(body.length / 2)}B)`;
 }
 
 /**
@@ -25,7 +27,8 @@ export function truncateHex(hex: string, keepBytes = 4): string {
  * vm_config) where the contents add noise but the size is useful narration.
  */
 export function byteLen(value: string | Uint8Array): string {
-  const n = typeof value === "string" ? value.replace(/^0x/i, "").length / 2 : value.length;
+  const n =
+    typeof value === "string" ? Math.floor(value.replace(/^0x/i, "").length / 2) : value.length;
   return `${n}B`;
 }
 
