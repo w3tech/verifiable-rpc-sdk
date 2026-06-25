@@ -18,6 +18,7 @@ import {
   InvalidNonce,
   MalformedAttestationResponse,
 } from "./errors";
+import type { Logger } from "./logger";
 import type { VerifiedResponse } from "./verifier";
 
 /**
@@ -117,12 +118,25 @@ export async function fetchAttestation(opts: FetchAttestationOptions): Promise<A
  * response: the attestation `pubkey` must equal the response `vRPC-Pubkey`
  * (`verification.pubkeyHex`, already normalized to lowercase `0x`-hex). On
  * mismatch throws {@link AttestationCorrelationError}; on match returns.
+ *
+ * `logger` is an OPTIONAL opt-in narration sink (already safe-wrapped by the
+ * caller). When present, the `attestation.correlation` event is emitted BEFORE
+ * the throw-on-mismatch so a mismatch is observable before it raises. Omitted
+ * (the default) keeps the silent path allocation-free.
  */
 export function verifyAttestationCorrelation(
   attestation: Attestation,
   verifiedResponse: VerifiedResponse,
+  logger?: Logger,
 ): void {
   const expected = verifiedResponse.verification.pubkeyHex;
+  if (logger) {
+    logger.debug("attestation.correlation", {
+      expectedPubkey: expected,
+      actualPubkey: attestation.pubkey,
+      match: attestation.pubkey === expected,
+    });
+  }
   if (attestation.pubkey !== expected) {
     throw new AttestationCorrelationError(expected, attestation.pubkey);
   }

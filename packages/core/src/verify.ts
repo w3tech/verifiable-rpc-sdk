@@ -23,8 +23,10 @@
 // parsing — those stay in the transport layer.
 
 import { verifyAsync } from "@noble/ed25519";
+import { bytesToHex } from "@noble/hashes/utils.js";
 
 import { BadSignature, MalformedHeader, MissingHeader, StaleTimestamp } from "./errors";
+import type { Logger } from "./logger";
 import { buildPreImage, sha256 } from "./preimage";
 
 export const DEFAULT_REPLAY_WINDOW_MS = 60_000;
@@ -64,6 +66,13 @@ export interface VerifyResponseOptions {
    * `BigInt(Date.now())`. Injectable for deterministic tests.
    */
   nowMs?: bigint;
+  /**
+   * INTERNAL opt-in narration sink, threaded in by `TrustedVerifier.verify`
+   * (the verifier's safe-wrapped `this.logger`). NOT a public adapter option:
+   * it exists so the preimage/signature/timestamp steps can narrate from within
+   * `verifyResponse`. Omitted (the default) keeps this path silent.
+   */
+  logger?: Logger;
 }
 
 export interface VerifiedPair {
@@ -178,6 +187,16 @@ export async function verifyResponse(
   // 6. Pre-image reconstruct.
   const preImage = buildPreImage(opts.chainId, requestBytes, rawResponseBytes, timestampMs);
 
+  if (opts.logger) {
+    opts.logger.debug("preimage.computed", {
+      chainId: opts.chainId.toString(),
+      timestampMs: timestampMs.toString(),
+      preImageSha256: bytesToHex(sha256(preImage)),
+      reqLen: requestBytes.length,
+      resLen: rawResponseBytes.length,
+    });
+  }
+
   // 7. Hex -> bytes (cheap, no dep).
   const sigBytes = hexToBytes(sigHex);
   const pubkeyBytes = hexToBytes(pubkeyHex);
@@ -192,6 +211,12 @@ export async function verifyResponse(
     });
   }
 
+  if (opts.logger) {
+    // sigHex/pubkeyHex are public (full): the signature and signing key are
+    // already on the wire — no truncation needed.
+    opts.logger.debug("signature.checked", { ok: true, sigHex, pubkeyHex });
+  }
+
   // 9. Replay-window check — outside the window -> StaleTimestamp.
   //    Done AFTER signature verify: a tampered timestamp would have failed
   //    step 8. We only reach here on a valid signature.
@@ -204,6 +229,16 @@ export async function verifyResponse(
       nowMs,
       skewMs,
       allowedWindowMs: replayWindowMs,
+    });
+  }
+
+  if (opts.logger) {
+    opts.logger.debug("timestamp.checked", {
+      timestampMs: timestampMs.toString(),
+      nowMs: nowMs.toString(),
+      skewMs: skewMs.toString(),
+      replayWindowMs,
+      withinWindow: true,
     });
   }
 
