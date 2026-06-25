@@ -337,11 +337,6 @@ verifier) → `cache.store`. The first request to a node runs the full attestati
 + hardware verify; later requests hit the pubkey cache and skip to per-response
 signature verification.
 
-Safety: the logger **never throws-through** (safe-wrapped in core), logs only
-`vrpc-*` headers (every other header is dropped, byte fields truncated), and is
-**observability only** — it never influences the verify decision. Tell users it
-is purely a window into the flow, not part of the trust boundary.
-
 ---
 
 ## Sources (fetch these for depth — verified reachable)
