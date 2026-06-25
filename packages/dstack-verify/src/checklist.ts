@@ -67,8 +67,13 @@ export const CHK = Object.freeze({
     meaning: "compose-hash whitelisted in DstackApp contract",
     disposition: "pinned",
   },
+  // CHK-P1 is the hardware-signature verdict. It is now reachable via a
+  // configured HardwareVerifier (see ./hardware-verifier): the CloudVerifier
+  // path asserts the cloud verdict AND binds the cloud-extracted reportdata /
+  // composeHash to our values (B+). A future LocalDcapVerifier verifies the
+  // quote locally against Intel root certs under this same id. No new ChkId.
   "CHK-P1": {
-    meaning: "TDX quote signature valid (Intel root certs)",
+    meaning: "TDX quote signature valid (Intel root certs / hosted verifier verdict)",
     disposition: "implement",
   },
   "CHK-P2": { meaning: "tee_tcb_svn matches latest patches", disposition: "implement" },
