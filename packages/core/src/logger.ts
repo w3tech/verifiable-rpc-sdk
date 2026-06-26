@@ -26,18 +26,106 @@ export interface Logger {
  */
 export const defaultLogger: Logger = Object.freeze({ debug: () => {} });
 
+const OK = "✅";
+const FAIL = "❌";
+const WAIT = "⏳";
+const SKIP = "⏭️";
+const HEADER = `${"─".repeat(8)} Response vRPC verify ${"─".repeat(8)}`;
+const FOOTER = "─".repeat(HEADER.length);
+
 /**
- * Convenience console logger — prefixes `[vrpc]` and writes to `console.debug`.
- * NEVER wired by default: callers opt in by passing it as `logger`. `data` is
- * omitted from the console call when undefined so single-arg events stay clean.
+ * Convenience console logger — a pretty, verify-flow-aware `console.debug` sink.
+ * NEVER wired by default: callers opt in by passing it as `logger`.
+ *
+ * It renders each response verification as a bordered block with logical sections
+ * (inputs → response checks → pubkey/attestation → cache) and ✅/❌/⏳ markers.
+ * Output is STREAMED (one line per event, never buffered), so a verify that throws
+ * mid-flow (bad signature / stale timestamp) still shows its partial block — the
+ * failing check prints its ❌ line and the closing border before the throw.
+ * The only cross-event state is the compose hash (stashed from `attestation.received`
+ * for the field-check line) and is reset on every `verify.start`. Intended for
+ * sequential demo/dev narration; parallel verifies may interleave. Unknown events
+ * fall back to a raw `[vrpc] <event>` line.
  */
 export function createConsoleLogger(): Logger {
+  let composeHash: string | undefined;
+  const out = (line = ""): void => {
+    console.debug(line);
+  };
   return {
     debug(event, data) {
-      if (data === undefined) {
-        console.debug(`[vrpc] ${event}`);
-      } else {
-        console.debug(`[vrpc] ${event}`, data);
+      const d = (data ?? {}) as Record<string, unknown>;
+      switch (event) {
+        case "verify.start": {
+          composeHash = undefined;
+          out();
+          out(HEADER);
+          out(" Inputs");
+          out(`   req bytes:  ${d.req}`);
+          out(`   res bytes:  ${d.res}`);
+          out("   vRPC headers:");
+          for (const [k, v] of Object.entries((d.headers as Record<string, string>) ?? {})) {
+            out(`     ${k}  ${v}`);
+          }
+          break;
+        }
+        case "preimage.computed":
+          out(`   pre-image:  ${d.preImageSha256}`);
+          break;
+        case "signature.checked":
+          out("");
+          out(" Response checks");
+          out(`   ${d.ok ? OK : FAIL} Signature`);
+          if (d.ok === false) out(FOOTER);
+          break;
+        case "timestamp.checked":
+          out(
+            `   ${d.withinWindow ? OK : FAIL} Timestamp (skew ${d.skewMs}ms, window ${d.replayWindowMs}ms)`,
+          );
+          if (d.withinWindow === false) out(FOOTER);
+          break;
+        case "cache.lookup":
+          out("");
+          if (d.hit) {
+            out(` ${OK} Pubkey known — using cache, skip attestation`);
+            out(FOOTER);
+          } else {
+            out(` ${WAIT} Pubkey unknown — fetching attestation`);
+            out("");
+            out(" Attestation checks");
+          }
+          break;
+        case "attestation.fetch":
+          // silent: the "fetching attestation" line already printed at cache.lookup (miss)
+          break;
+        case "attestation.correlation":
+          out(`   ${d.match ? OK : FAIL} Pubkeys match`);
+          break;
+        case "attestation.received":
+          composeHash = d.composeHash as string | undefined;
+          break;
+        case "attestation.fieldChecks":
+          out(`   ${OK} reportData binding`);
+          if (d.chkA2 === "ok") {
+            out(
+              `   ${OK} App compose match${composeHash ? ` (${composeHash.slice(0, 12)}…)` : ""}`,
+            );
+          } else {
+            out(`   ${SKIP} App compose (${d.chkA2})`);
+          }
+          break;
+        case "hardware.verify":
+          if (d.quoteVerified) {
+            out(`   ${OK} Hardware quote verified (${d.verifier})`);
+          }
+          break;
+        case "cache.store":
+          out("");
+          out(` ${OK} Pubkey saved to cache (ttl ${d.ttlMs}ms)`);
+          out(FOOTER);
+          break;
+        default:
+          out(`[vrpc] ${event}${Object.keys(d).length > 0 ? ` ${JSON.stringify(d)}` : ""}`);
       }
     },
   };
