@@ -21,7 +21,8 @@ export type VerificationErrorKind =
   | "InvalidNonce"
   | "MalformedAttestationResponse"
   | "AttestationNodeNotFound"
-  | "AttestationCorrelation";
+  | "AttestationCorrelation"
+  | "Attestation";
 
 /**
  * Abstract base for all verification errors. The `kind` discriminator is set
@@ -176,5 +177,29 @@ export class AttestationCorrelationError extends VerificationError {
       `Attestation pubkey mismatch: expected ${expectedPubkey} (RPC response), ` +
         `got ${actualPubkey} (attestation)`,
     );
+  }
+}
+
+/**
+ * dstack/TDX attestation verification failed. This is core's wrapper around the
+ * leaf `@ankr.com/dstack-verify` `AttestationError`: that package is a standalone
+ * leaf (its error does NOT extend `VerificationError`), so the trust seam catches
+ * it at the `verifyDstackAttestation` boundary and re-throws it as this member of
+ * the `VerificationError` family — keeping the SDK's public error contract
+ * (callers catch `VerificationError`) intact. The original leaf error is attached
+ * as `cause`; `chkId` records which `CHK-*` item failed.
+ */
+export class AttestationFailed extends VerificationError {
+  readonly kind = "Attestation" as const;
+
+  constructor(
+    public readonly chkId: string,
+    public readonly detail: string,
+    options?: { cause?: unknown },
+  ) {
+    super(`Attestation verification failed [${chkId}]: ${detail}`);
+    if (options?.cause !== undefined) {
+      (this as { cause?: unknown }).cause = options.cause;
+    }
   }
 }

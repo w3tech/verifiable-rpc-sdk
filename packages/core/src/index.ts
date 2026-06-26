@@ -27,6 +27,7 @@ export { fetchAttestation, verifyAttestationCorrelation } from "./attestation";
 export type { BadSignatureContext, StaleTimestampContext, VerificationErrorKind } from "./errors";
 export {
   AttestationCorrelationError,
+  AttestationFailed,
   AttestationNodeNotFoundError,
   BadSignature,
   InvalidNonce,
