@@ -318,8 +318,11 @@ export class TrustedVerifier {
     // otherwise. Absent + behind the gateway → the gateway can't route → the fetch errors and
     // propagates (fail-closed); absent + direct node → the fetch works. No pre-throw.
     if (this.logger !== defaultLogger) {
+      // The attestation URL is intentionally NOT logged: on the public
+      // `rpc.ankr.com/<chain>/<key>` form the API key lives in the URL path, so
+      // logging it would leak the credential. nodeId + nonce are safe (routing id
+      // + fresh random) and identify the fetch.
       this.logger.debug("attestation.fetch", {
-        attestationUrl: this.attestationUrl,
         ...(pair.nodeId === undefined ? {} : { nodeId: pair.nodeId }),
         nonce: bytesToHex(nonce),
       });
