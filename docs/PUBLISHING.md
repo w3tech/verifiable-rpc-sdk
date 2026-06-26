@@ -1,0 +1,81 @@
+# Publishing
+
+Releasing the four `@w3tech.io/*` packages (`vrpc-core`, `vrpc-ethers`, `vrpc-viem`,
+`dstack-verify`) is **tag-driven**: to release, push a `vX.Y.Z` git tag (or run the
+`publish.yml` workflow manually with a `tag` input). The workflow does **not** create
+tags — the tag is the single trigger **and** the version source.
+
+## How a release happens
+
+1. **Push a tag.** Create and push a SemVer tag, e.g.:
+
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+   Or trigger `Publish` manually from the Actions tab with a `tag` input (e.g. `v0.2.0`).
+
+2. **Trigger.** The push of a `v*.*.*` tag triggers `.github/workflows/publish.yml`.
+
+3. **Version derive + guard.** The version is derived from the tag
+   (`VERSION=${GITHUB_REF_NAME#v}`) and guarded:
+   - it must be a strict SemVer `vX.Y.Z` tag, and
+   - it must not regress vs the currently-published version
+     (`npm view @w3tech.io/vrpc-core version`). If the package is not yet published
+     (bootstrap / `E404`), that is treated as a pass, not a regression.
+
+4. **Lockstep version stamp.** `pnpm version "$VERSION" --no-git-tag-version -r` stamps the
+   derived version into all four `package.json` files and resolves `workspace:*` to concrete
+   versions at publish time. This runs in the runner only — `--no-git-tag-version` means **no
+   git commit/tag is created and the bump is not committed back to `main`**.
+
+5. **Publish (tokenless OIDC + provenance).** `pnpm run release` runs
+   `build && publish:dry-run && pnpm -r publish --provenance --no-git-checks`.
+   `--no-git-checks` is required because publish runs from a detached `HEAD` at the tag.
+
+6. **GitHub Release.** `softprops/action-gh-release` creates a GitHub Release with
+   auto-generated, PR-label-categorized notes driven by `.github/release.yml`.
+
+## Changelog
+
+The changelog is **GitHub-native**: release notes are auto-generated from the titles of the
+PRs merged since the previous tag, grouped by PR **label** per `.github/release.yml`. There
+are no Changesets `.md` files and no conventional-commit discipline.
+
+- PR labels (`breaking`, `feature`/`enhancement`, `bug`/`fix`) feed the categories.
+- Unlabeled PRs fall into the `*` catch-all (**Other Changes**), so notes are always
+  produced even before the labels exist in the repo.
+- `dependabot` and the release bot are excluded; PRs labeled `ignore-for-release` are dropped.
+
+## Bootstrap-then-tokenless authentication (Phase 52)
+
+The release job references `environment: prod` and sets `NODE_AUTH_TOKEN` from the temporary
+`NPMJS_TOKEN` secret. npm tries OIDC (Trusted Publishing) first — because the job has
+`id-token: write` — and falls back to the token only when no per-package trusted-publisher is
+registered yet. This lets the **same** workflow bootstrap the first publish (token) and then
+run fully tokenless (OIDC) afterwards.
+
+After the first publish, for each of the four packages register a per-package
+trusted-publisher on npmjs.com:
+
+- Provider: **GitHub Actions**
+- Repository: **`w3tech/verifiable-rpc-sdk`**
+- Workflow filename: **`publish.yml`** (this filename must stay exactly `publish.yml` — the
+  npmjs.com trusted-publisher config references it case-sensitively; never rename it)
+
+Then remove the `NODE_AUTH_TOKEN` line from `publish.yml` → fully tokenless OIDC + provenance.
+
+> Provenance attestations attach only when **both** the source repo and the package are
+> public. Until then, provenance does not attach — this is expected, not an error.
+
+## Migration from Changesets
+
+This repo previously used Changesets. The pending changes that were tracked in `.changeset/`
+will surface in the first release's notes via their PR titles:
+
+- **`deriveVrpcUrls` path-key URL support** — supports `rpc.ankr.com/<chain>/<key>` (inserts
+  `_vrpc` on the chain segment while preserving the key).
+- **Removal of the `apiKey` option** across the options types — authentication is header-only.
+- **Trimming of `allowlist` / `tcb` / `pccsUrl`** and the redundant `headers` field from the
+  options types.

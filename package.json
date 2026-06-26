@@ -12,8 +12,6 @@
   },
   "packageManager": "pnpm@11.8.0",
   "scripts": {
-    "changeset": "changeset",
-    "version": "changeset version",
     "publish:dry-run": "pnpm -r publish --dry-run --no-git-checks",
     "release": "pnpm run build && pnpm run publish:dry-run && pnpm -r publish --provenance --no-git-checks",
     "test": "pnpm -r test",
@@ -34,7 +32,6 @@
     "@w3tech.io/vrpc-ethers": "workspace:*",
     "@w3tech.io/vrpc-viem": "workspace:*",
     "@biomejs/biome": "^2.0.0",
-    "@changesets/cli": "^2.31.0",
     "@noble/ed25519": "^3.1.0",
     "@types/node": "*",
     "ethers": "^6.16.0",
