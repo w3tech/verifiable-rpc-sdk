@@ -6,9 +6,9 @@ Releasing the four `@w3tech.io/*` packages (`vrpc-core`, `vrpc-ethers`, `vrpc-vi
 input). The workflow does **not** create tags — the tag is the single trigger **and**
 the version source.
 
-> **No `latest` (pre-GA).** Releases are **never** published to the `latest` dist-tag for
-> now. The dist-tag is derived from the version (see step 5). Promotion to `latest` is a
-> deliberate manual `npm dist-tag add @w3tech.io/<pkg>@<version> latest` later.
+> **dist-tag.** A plain `vX.Y.Z` publishes to `latest` (the default `npm install` channel).
+> A prerelease (`vX.Y.Z-<suffix>`) publishes to its own channel and is **never** `latest`
+> (see step 3).
 
 ## How a release happens
 
@@ -30,10 +30,10 @@ the version source.
    - **No** comparison against the published version — multiple major lines may each get
      their own minors/patches, so an "older" number is a legitimate release.
 
-   The **dist-tag** is derived (never `latest`):
+   The **dist-tag** is derived from the version:
+   - plain `vX.Y.Z` (no suffix) → `latest`.
    - prerelease (`-<suffix>`) → the leading alphabetic id of the suffix (`rc`, `beta`,
-     `alpha`, …); a numeric-only suffix → `pre`.
-   - plain `vX.Y.Z` (no suffix) → `next`.
+     `alpha`, …); a numeric-only suffix → `pre`. Never `latest`.
 
 4. **Lockstep version stamp.** `pnpm version "$VERSION" --no-git-tag-version -r` stamps the
    derived version into all four `package.json` files and resolves `workspace:*` to concrete
@@ -42,7 +42,7 @@ the version source.
 
 5. **Publish (tokenless OIDC + provenance).** A `--dry-run` gate then the real publish, both
    `pnpm -r publish --provenance --no-git-checks --tag "$DIST_TAG"` — pinned to the derived
-   non-`latest` dist-tag. `--no-git-checks` is required because publish runs from a detached
+   dist-tag. `--no-git-checks` is required because publish runs from a detached
    `HEAD` at the tag.
 
 6. **GitHub Release.** `softprops/action-gh-release` creates a GitHub Release with

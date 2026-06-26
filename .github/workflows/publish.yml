@@ -81,10 +81,9 @@ jobs:
       # version: multiple major lines may receive their own minors/patches, so an "older"
       # number is a legitimate release, not a regression.
       #
-      # dist-tag: NEVER `latest` (pre-GA — nothing is blessed as the default `npm install`
-      # channel yet). Prerelease → the leading alpha id of the suffix (rc/beta/alpha/...),
-      # numeric-only suffix → `pre`. A plain vX.Y.Z (no suffix) → `next`. Promotion to `latest`
-      # is a deliberate manual `npm dist-tag add` later.
+      # dist-tag: a plain vX.Y.Z (no suffix) → `latest` (the default `npm install` channel).
+      # A prerelease (`-<suffix>`) is NEVER `latest` → the leading alpha id of the suffix
+      # (rc/beta/alpha/...), a numeric-only suffix → `pre`.
       - name: Derive version + dist-tag from tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -107,7 +106,7 @@ jobs:
               [ -n "$DIST_TAG" ] || DIST_TAG="pre"
               ;;
             *)
-              DIST_TAG="next"
+              DIST_TAG="latest"
               ;;
           esac
           echo "Releasing version: $VERSION  (dist-tag: $DIST_TAG)"
@@ -122,14 +121,14 @@ jobs:
       - name: Stamp version across all packages (lockstep)
         run: pnpm version "$VERSION" --no-git-tag-version -r
 
-      # Publish all four packages under the derived NON-`latest` dist-tag. Build already ran
-      # above; here we gate with a --dry-run then do the real publish, both pinned to
-      # $DIST_TAG so a release never auto-promotes to the default `npm install` channel.
-      # --no-git-checks is REQUIRED — publish runs from a detached HEAD at the tag. npm tries
-      # OIDC first (id-token: write) and falls back to NODE_AUTH_TOKEN when no per-package
-      # trusted-publisher is registered yet, so this same workflow bootstraps (token) then
-      # later runs tokenless (OIDC).
-      - name: Publish (never `latest`; dist-tag $DIST_TAG; OIDC + provenance, token fallback)
+      # Publish all four packages under the derived dist-tag ($DIST_TAG: `latest` for a plain
+      # vX.Y.Z, the prerelease channel otherwise). Build already ran above; here we gate with a
+      # --dry-run then do the real publish, both pinned to $DIST_TAG so prereleases never land
+      # on `latest`. --no-git-checks is REQUIRED — publish runs from a detached HEAD at the
+      # tag. npm tries OIDC first (id-token: write) and falls back to NODE_AUTH_TOKEN when no
+      # per-package trusted-publisher is registered yet, so this same workflow bootstraps
+      # (token) then later runs tokenless (OIDC).
+      - name: Publish (dist-tag $DIST_TAG; OIDC + provenance, token fallback)
         run: |
           pnpm -r publish --provenance --no-git-checks --tag "$DIST_TAG" --dry-run
           pnpm -r publish --provenance --no-git-checks --tag "$DIST_TAG"
