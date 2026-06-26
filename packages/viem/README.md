@@ -27,7 +27,7 @@ apart by error shape.
 `viem` is a **peer dependency** (consumer-supplied, single instance):
 
 ```bash
-bun add @w3tech.io/vrpc-viem viem
+pnpm add @w3tech.io/vrpc-viem viem
 ```
 
 > The `@w3tech.io/vrpc-*` packages are currently `private` / unpublished while

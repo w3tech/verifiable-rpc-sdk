@@ -46,7 +46,7 @@ Packages are private/unpublished today — consume via the workspace
 (`workspace:*`). The intended public install once published:
 
 ```sh
-bun add @w3tech.io/vrpc-ethers ethers
+pnpm add @w3tech.io/vrpc-ethers ethers
 ```
 
 `ethers` is a **peerDependency** (`^6.16.0`) — supply a single instance from your
