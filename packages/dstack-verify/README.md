@@ -1,4 +1,4 @@
-# @ankr.com/dstack-verify
+# @w3tech.io/dstack-verify
 
 Frozen contract for dstack / Intel TDX attestation verification.
 
@@ -54,7 +54,7 @@ Mock semantics:
 A standalone `Error` — it deliberately does NOT extend core's `VerificationError`,
 keeping this package a dependency-free leaf. Carries `chkId: ChkId` (which `CHK-*`
 failed) + `detail: string`. Discriminant `kind === "Attestation"`. Narrow via
-`instanceof AttestationError`. `@ankr.com/vrpc-core` catches it at the
+`instanceof AttestationError`. `@w3tech.io/vrpc-core` catches it at the
 `verifyDstackAttestation` boundary and re-wraps it into its `VerificationError`
 family (kind `"Attestation"`, original kept as `cause`), so SDK callers still
 catch a single `VerificationError`.
@@ -62,12 +62,12 @@ catch a single `VerificationError`.
 ### Verified-pubkey cache TTL (configurable)
 
 This package only verifies attestation — the orchestration (lazy fetch + pubkey
-cache) lives in `@ankr.com/vrpc-core`'s `TrustedVerifier`. After a successful
+cache) lives in `@w3tech.io/vrpc-core`'s `TrustedVerifier`. After a successful
 (currently mock) verification the signing pubkey is cached for a configurable
 TTL (`pubkeyCacheTtlMs`, default `DEFAULT_PUBKEY_CACHE_TTL_MS` = 1h): a repeat read
 within the TTL skips the attestation fetch; after the TTL the pubkey is
-re-attested (no stale trust). The adapters (`@ankr.com/vrpc-ethers`,
-`@ankr.com/vrpc-viem`) forward `pubkeyCacheTtlMs` into the seam. Remember: while
+re-attested (no stale trust). The adapters (`@w3tech.io/vrpc-ethers`,
+`@w3tech.io/vrpc-viem`) forward `pubkeyCacheTtlMs` into the seam. Remember: while
 the verifier is a mock the cached result is from the **mock** check — see the banner above.
 
 ### Trust boundary — what verification actually proves
@@ -127,7 +127,7 @@ A pluggable **step-4 hardware-signature** seam (→ CHK-P1) runs **after CHK-A2*
 and, when configured, **bypasses the CHK-MOCK gate** on success. It is **opt-in**:
 
 ```ts
-import { createCloudVerifier, verifyDstackAttestation } from "@ankr.com/dstack-verify";
+import { createCloudVerifier, verifyDstackAttestation } from "@w3tech.io/dstack-verify";
 
 await verifyDstackAttestation(bundle, {
   binding: { expectedPubkey, expectedNonce },
@@ -181,7 +181,7 @@ Frozen now, bodies filled in a future release. Each currently throws
 ## Tests
 
 ```bash
-pnpm --filter '@ankr.com/dstack-verify' test
+pnpm --filter '@w3tech.io/dstack-verify' test
 ```
 
 - `tests/contract.test.ts` — exports, `AttestationError` is a standalone `Error`

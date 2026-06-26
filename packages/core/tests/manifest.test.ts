@@ -21,8 +21,8 @@ const ethers = ethersManifest as Manifest;
 const viem = viemManifest as Manifest;
 
 describe("vrpc-core dependency isolation", () => {
-  test("core is @ankr.com/vrpc-core", () => {
-    expect(core.name).toBe("@ankr.com/vrpc-core");
+  test("core is @w3tech.io/vrpc-core", () => {
+    expect(core.name).toBe("@w3tech.io/vrpc-core");
   });
 
   test("core declares neither ethers nor viem in dependencies", () => {
@@ -42,8 +42,8 @@ describe("vrpc-core dependency isolation", () => {
 });
 
 describe("vrpc-ethers dependency isolation", () => {
-  test("ethers is @ankr.com/vrpc-ethers", () => {
-    expect(ethers.name).toBe("@ankr.com/vrpc-ethers");
+  test("ethers is @w3tech.io/vrpc-ethers", () => {
+    expect(ethers.name).toBe("@w3tech.io/vrpc-ethers");
   });
 
   test("lists ethers ONLY under peerDependencies (not dependencies)", () => {
@@ -57,14 +57,14 @@ describe("vrpc-ethers dependency isolation", () => {
     expect(ethers.devDependencies?.viem).toBeUndefined();
   });
 
-  test("depends on @ankr.com/vrpc-core as workspace:*", () => {
-    expect(ethers.dependencies?.["@ankr.com/vrpc-core"]).toBe("workspace:*");
+  test("depends on @w3tech.io/vrpc-core as workspace:*", () => {
+    expect(ethers.dependencies?.["@w3tech.io/vrpc-core"]).toBe("workspace:*");
   });
 });
 
 describe("vrpc-viem dependency isolation", () => {
-  test("viem is @ankr.com/vrpc-viem", () => {
-    expect(viem.name).toBe("@ankr.com/vrpc-viem");
+  test("viem is @w3tech.io/vrpc-viem", () => {
+    expect(viem.name).toBe("@w3tech.io/vrpc-viem");
   });
 
   test("lists viem ONLY under peerDependencies (not dependencies)", () => {
@@ -78,7 +78,7 @@ describe("vrpc-viem dependency isolation", () => {
     expect(viem.devDependencies?.ethers).toBeUndefined();
   });
 
-  test("depends on @ankr.com/vrpc-core as workspace:*", () => {
-    expect(viem.dependencies?.["@ankr.com/vrpc-core"]).toBe("workspace:*");
+  test("depends on @w3tech.io/vrpc-core as workspace:*", () => {
+    expect(viem.dependencies?.["@w3tech.io/vrpc-core"]).toBe("workspace:*");
   });
 });

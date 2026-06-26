@@ -15,6 +15,7 @@
 // `verifyAttestationCorrelation` (attestation.ts). `mapAttestationToBundle` and
 // `buildVerifyPolicy` are pure mappers with no crypto.
 
+import { bytesToHex } from "@noble/hashes/utils.js";
 import {
   type AttestationBundle,
   AttestationError,
@@ -23,8 +24,7 @@ import {
   type HardwareVerifier,
   type VerifyPolicy,
   verifyDstackAttestation,
-} from "@ankr.com/dstack-verify";
-import { bytesToHex } from "@noble/hashes/utils.js";
+} from "@w3tech.io/dstack-verify";
 import { LRUCache } from "lru-cache";
 
 import { type Attestation, fetchAttestation, verifyAttestationCorrelation } from "./attestation";

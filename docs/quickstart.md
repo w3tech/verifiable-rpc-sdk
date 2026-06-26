@@ -94,11 +94,11 @@ Repos:
 
 ```ts
 // ethers v6 - was:  new ethers.JsonRpcProvider(url)
-import { VrpcProvider } from "@ankr.com/vrpc-ethers";
+import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
 const provider = new VrpcProvider(url, chainId);
 
 // viem - was:  http(url)
-import { vrpcHttp } from "@ankr.com/vrpc-viem";
+import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 const client = createPublicClient({ chain, transport: vrpcHttp(url) });
 ```
 
@@ -122,7 +122,7 @@ pnpm example:02-viem-client            # viem transport
 pnpm example:03-vrpc-core-walkthrough  # the core primitives, step by step
 ```
 
-The packages aren't published to npm yet (final names will be `@ankr.com/vrpc-*`), so you run from the repo. See the per-adapter [package READMEs](../packages) and [MIGRATION.md](../MIGRATION.md) for pointing the examples at a live vRPC endpoint and key.
+The packages aren't published to npm yet (final names will be `@w3tech.io/vrpc-*`), so you run from the repo. See the per-adapter [package READMEs](../packages) and [MIGRATION.md](../MIGRATION.md) for pointing the examples at a live vRPC endpoint and key.
 
 ### Inspect mode
 

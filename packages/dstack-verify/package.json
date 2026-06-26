@@ -1,5 +1,5 @@
 {
-  "name": "@ankr.com/dstack-verify",
+  "name": "@w3tech.io/dstack-verify",
   "version": "0.1.0",
   "type": "module",
   "description": "Frozen contract for dstack/TDX attestation verification — currently a mock gate; real DCAP/RTMR verification is deferred to a future release.",

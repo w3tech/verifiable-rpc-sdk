@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Public barrel — re-exports the @ankr.com/dstack-verify public surface only.
+// Public barrel — re-exports the @w3tech.io/dstack-verify public surface only.
 //
 // Implementation lives in:
 //   - ./types     — AttestationBundle / VerifyPolicy + sub-types (frozen contract)

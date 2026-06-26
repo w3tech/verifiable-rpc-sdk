@@ -11,7 +11,7 @@ import {
   VerifierClient,
   verifyAttestationCorrelation,
   verifyResponse,
-} from "@ankr.com/vrpc-core";
+} from "@w3tech.io/vrpc-core";
 
 const URL = "https://rpc.ankr.com/arbitrum_vrpc/123456";
 const CHAIN_ID = 42161n;

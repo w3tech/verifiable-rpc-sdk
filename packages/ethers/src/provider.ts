@@ -11,7 +11,7 @@ import {
   parseChainId,
   TrustedVerifier,
   type TrustedVerifierOptions,
-} from "@ankr.com/vrpc-core";
+} from "@w3tech.io/vrpc-core";
 import {
   type FetchRequest,
   type JsonRpcPayload,

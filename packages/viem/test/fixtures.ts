@@ -1,6 +1,6 @@
 // Offline signed-response fixture synthesizer for the vrpc-viem adapter tests.
 //
-// This module PRODUCES bytes + `vRPC-*` headers that `@ankr.com/vrpc-core`
+// This module PRODUCES bytes + `vRPC-*` headers that `@w3tech.io/vrpc-core`
 // `verifyResponse` accepts — it does NOT re-test core crypto. It mirrors the
 // request-aware `signResponseBytes` helper in `packages/ethers/test/fixtures.ts`:
 // Ed25519 over the canonical 80-byte pre-image built by `buildPreImage`, signed
@@ -13,8 +13,8 @@
 // the request-aware `signResponseBytes`. The wiring suite consumes this
 // against a real `createPublicClient` read path with NO live network.
 
-import { buildPreImage } from "@ankr.com/vrpc-core";
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
+import { buildPreImage } from "@w3tech.io/vrpc-core";
 
 /**
  * Fixed 32-byte Ed25519 seed — the literal seed used in core's `verify.test.ts`

@@ -3,7 +3,7 @@
 // Drop-in verified viem transport. Pass `vrpcHttp` to `createPublicClient` and
 // use the client like any viem public client — every response is verified
 // (Ed25519 + TDX attestation) inside the transport before viem decodes it.
-import { vrpcHttp } from "@ankr.com/vrpc-viem";
+import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 import { createPublicClient } from "viem";
 import { arbitrum } from "viem/chains";
 

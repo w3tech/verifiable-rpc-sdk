@@ -1,4 +1,4 @@
-# Release pipeline for the four @ankr.com/* packages.
+# Release pipeline for the four @w3tech.io/* packages.
 #
 # Publishing is TOKENLESS: it uses npm Trusted Publishing (OIDC). The runner mints a
 # short-lived OIDC id-token (id-token: write) which the npm CLI exchanges under the hood
@@ -7,7 +7,7 @@
 #
 # Provenance is emitted for all four packages (NPM_CONFIG_PROVENANCE + --provenance). Note
 # that npm only attaches provenance attestations when BOTH the source repo AND the package
-# are public; installing the private @ankr.com/* deps from the registry would require a
+# are public; installing the private @w3tech.io/* deps from the registry would require a
 # read token until the repo + packages are public (moot once public — local frozen-lockfile
 # resolution uses the in-repo workspace tree, not the registry).
 #
@@ -15,16 +15,19 @@
 # filename: publish.yml.
 name: Publish
 
-# Auto-publish on push to main is DISABLED for now: npm Trusted Publishing
-# (the per-package trusted-publisher config on npmjs.com) is not yet registered
-# and the repo is still private. Re-enable by restoring the
-# `push: { branches: [main] }` trigger below once trusted-publishing is configured
-# and the repo is public. workflow_dispatch keeps it manual-only so it cannot fire
-# on a push.
+# Releases are tag-driven: pushing a `vX.Y.Z` git tag is the single trigger AND the version
+# source. The workflow NEVER creates tags — it only reacts to one. workflow_dispatch offers a
+# manual escape hatch that takes the same `vX.Y.Z` tag as an input (e.g. to re-run a release).
 on:
+  push:
+    tags: ['v*.*.*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.2.0)'
+        required: true
 
-# Serialize releases so two pushes to main cannot publish concurrently.
+# Serialize releases so two tags cannot publish concurrently.
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
@@ -36,12 +39,18 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment: prod # holds the temporary NPMJS_TOKEN used to bootstrap the first publish
     permissions:
       id-token: write # OIDC token exchange for tokenless Trusted Publishing (critical)
-      contents: read # checkout the source
-      pull-requests: write # open/update the changesets "Version Packages" PR
+      contents: write # action-gh-release creates the GitHub Release
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Full history so action-gh-release can diff release notes to the previous tag.
+          fetch-depth: 0
+          # On workflow_dispatch, check out the named tag; on push:tags this input is empty
+          # and checkout defaults to the pushed tag ref (which is correct).
+          ref: ${{ inputs.tag }}
 
       - uses: pnpm/action-setup@v4
 
@@ -63,15 +72,77 @@ jobs:
 
       - run: pnpm -r build
 
-      # Changesets opens/updates the "Version Packages" PR; when that PR merges to main this
-      # same workflow runs `publish: pnpm run release`, which gates on the dry-run then does
-      # the real dependency-ordered (topological) provenance publish via pnpm.
-      - name: Create Release PR or publish (tokenless OIDC + provenance)
-        uses: changesets/action@v1
+      # Derive the release version + dist-tag from the tag. The tag is the single version
+      # source — the workflow never creates tags. This MUST run before the version stamp and
+      # the publish.
+      #
+      # Version shape: vX.Y.Z with an OPTIONAL prerelease suffix after a dash (anything goes —
+      # `-rc.1`, `-beta.2`, `-alpha`, `-foo.3`, ...). We do NOT compare against the published
+      # version: multiple major lines may receive their own minors/patches, so an "older"
+      # number is a legitimate release, not a regression.
+      #
+      # dist-tag: a plain vX.Y.Z (no suffix) → `latest` (the default `npm install` channel).
+      # A prerelease (`-<suffix>`) is NEVER `latest` → the leading alpha id of the suffix
+      # (rc/beta/alpha/...), a numeric-only suffix → `pre`.
+      - name: Derive version + dist-tag from tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW="${{ inputs.tag }}"
+          else
+            RAW="${GITHUB_REF_NAME}"
+          fi
+          # Strip a single leading 'v'.
+          VERSION="${RAW#v}"
+          # SemVer guard: vX.Y.Z + optional `-<anything non-empty>` prerelease suffix.
+          if ! printf '%s' "$RAW" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$'; then
+            echo "::error::Tag '$RAW' is not a vX.Y.Z or vX.Y.Z-<suffix> tag." >&2
+            exit 1
+          fi
+          # Derive a non-`latest` dist-tag.
+          case "$VERSION" in
+            *-*)
+              SUFFIX="${VERSION#*-}"
+              DIST_TAG="$(printf '%s' "$SUFFIX" | grep -oE '^[A-Za-z]+' || true)"
+              [ -n "$DIST_TAG" ] || DIST_TAG="pre"
+              ;;
+            *)
+              DIST_TAG="latest"
+              ;;
+          esac
+          echo "Releasing version: $VERSION  (dist-tag: $DIST_TAG)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "DIST_TAG=$DIST_TAG" >> "$GITHUB_ENV"
+
+      # Lockstep-stamp the tag version into all four package.json files and resolve
+      # workspace:* to concrete versions at publish time. --no-git-tag-version ensures NO git
+      # commit/tag is created and the bump is NOT committed back to main — it lives only in
+      # the runner. Runs AFTER the frozen-lockfile install (the stamp mutates versions, not
+      # the workspace:* lockfile specifiers) and BEFORE the publish.
+      - name: Stamp version across all packages (lockstep)
+        run: pnpm version "$VERSION" --no-git-tag-version -r
+
+      # Publish all four packages under the derived dist-tag ($DIST_TAG: `latest` for a plain
+      # vX.Y.Z, the prerelease channel otherwise). Build already ran above; here we gate with a
+      # --dry-run then do the real publish, both pinned to $DIST_TAG so prereleases never land
+      # on `latest`. --no-git-checks is REQUIRED — publish runs from a detached HEAD at the
+      # tag. npm tries OIDC first (id-token: write) and falls back to NODE_AUTH_TOKEN when no
+      # per-package trusted-publisher is registered yet, so this same workflow bootstraps
+      # (token) then later runs tokenless (OIDC).
+      - name: Publish (dist-tag $DIST_TAG; OIDC + provenance, token fallback)
+        run: |
+          pnpm -r publish --provenance --no-git-checks --tag "$DIST_TAG" --dry-run
+          pnpm -r publish --provenance --no-git-checks --tag "$DIST_TAG"
+        env:
+          NPM_CONFIG_PROVENANCE: 'true'
+          # Phase 52 (BOOT-03) removes this line after the per-package trusted-publisher is
+          # registered on npmjs.com → fully tokenless OIDC + provenance.
+          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+
+      # Create the GitHub Release with auto-generated, PR-label-categorized notes
+      # (.github/release.yml). Pinned to an immutable commit SHA, never a moving tag.
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
-          version: pnpm run version
-          publish: pnpm run release
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Tokenless OIDC: no long-lived publish credential is set here on purpose.
-          NPM_CONFIG_PROVENANCE: 'true'

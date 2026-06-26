@@ -1,4 +1,4 @@
-# @ankr.com/vrpc-ethers
+# @w3tech.io/vrpc-ethers
 
 Verifiable RPC drop-in for **ethers v6**. `VrpcProvider` is a `JsonRpcProvider`
 subclass that Ed25519-verifies **every HTTP JSON-RPC response** — over its raw,
@@ -46,17 +46,17 @@ Packages are private/unpublished today — consume via the workspace
 (`workspace:*`). The intended public install once published:
 
 ```sh
-bun add @ankr.com/vrpc-ethers ethers
+bun add @w3tech.io/vrpc-ethers ethers
 ```
 
 `ethers` is a **peerDependency** (`^6.16.0`) — supply a single instance from your
 app; the adapter never bundles its own. All verification logic is reused from
-`@ankr.com/vrpc-core` (no crypto copied here).
+`@w3tech.io/vrpc-core` (no crypto copied here).
 
 ## Quick usage
 
 ```ts
-import { VrpcProvider, VerificationError } from "@ankr.com/vrpc-ethers";
+import { VrpcProvider, VerificationError } from "@w3tech.io/vrpc-ethers";
 import { FetchRequest } from "ethers";
 
 // Auth (x-api-key) rides on a FetchRequest — the same mechanism ethers uses for
@@ -144,7 +144,7 @@ Spread order is enforced so `staticNetwork` cannot be overridden away.
 > DCAP/RTMR/compose-hash verification arrives in v6.0; never rely on v5.0
 > attestation for production trust.
 
-The normal verify routes through `@ankr.com/vrpc-core`'s `TrustedVerifier`,
+The normal verify routes through `@w3tech.io/vrpc-core`'s `TrustedVerifier`,
 which lazily fetches + correlates the serving node's TDX attestation on an
 **unknown** signing pubkey and **caches** the verified pubkey (configurable TTL,
 default 1h). This is **always-on**: the attestation endpoint is **derived from
@@ -182,7 +182,7 @@ const provider = new VrpcProvider(req, 42161n, {
 await provider.getBalance("0x0000000000000000000000000000000000000000");
 ```
 
-### `anchorTrust(...)` — opt-in boot-time trust anchor (from `@ankr.com/vrpc-core`)
+### `anchorTrust(...)` — opt-in boot-time trust anchor (from `@w3tech.io/vrpc-core`)
 
 After constructing the provider, optionally call `anchorTrust` **once** at
 startup to confirm the serving node's attestation pubkey == the response
@@ -191,7 +191,7 @@ alter the (sync) constructor, and **throws a `VerificationError`-family member o
 failure** (fail-closed).
 
 ```ts
-import { anchorTrust } from "@ankr.com/vrpc-core";
+import { anchorTrust } from "@w3tech.io/vrpc-core";
 
 const anchor = await anchorTrust({
   rpcBaseUrl: "https://rpc.ankr.com",
@@ -235,7 +235,7 @@ Verification is always fail-closed: a `VerificationError` propagates out of
 propagate too.
 
 ```ts
-import { BadSignature, MissingHeader, VerificationError } from "@ankr.com/vrpc-ethers";
+import { BadSignature, MissingHeader, VerificationError } from "@w3tech.io/vrpc-ethers";
 
 try {
   await provider.getLogs({ address, fromBlock });

@@ -1,5 +1,5 @@
 {
-  "name": "@ankr.com/vrpc-viem",
+  "name": "@w3tech.io/vrpc-viem",
   "version": "0.1.0",
   "type": "module",
   "description": "viem drop-in for Ankr's verifiable RPC — vrpcHttp custom transport verifies every JSON-RPC response (Ed25519) before parse, fail-closed.",
@@ -57,8 +57,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ankr.com/dstack-verify": "workspace:*",
-    "@ankr.com/vrpc-core": "workspace:*"
+    "@w3tech.io/dstack-verify": "workspace:*",
+    "@w3tech.io/vrpc-core": "workspace:*"
   },
   "peerDependencies": {
     "viem": "^2.52.2"

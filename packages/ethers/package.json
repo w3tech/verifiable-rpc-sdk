@@ -1,5 +1,5 @@
 {
-  "name": "@ankr.com/vrpc-ethers",
+  "name": "@w3tech.io/vrpc-ethers",
   "version": "0.1.0",
   "type": "module",
   "description": "ethers v6 drop-in for Ankr's verifiable RPC — VrpcProvider verifies every JSON-RPC response (Ed25519) inside _send, fail-closed.",
@@ -57,8 +57,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ankr.com/dstack-verify": "workspace:*",
-    "@ankr.com/vrpc-core": "workspace:*"
+    "@w3tech.io/dstack-verify": "workspace:*",
+    "@w3tech.io/vrpc-core": "workspace:*"
   },
   "peerDependencies": {
     "ethers": "^6.16.0"

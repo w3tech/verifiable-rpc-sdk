@@ -1,4 +1,4 @@
-# @ankr.com/vrpc-viem
+# @w3tech.io/vrpc-viem
 
 A **verifiable drop-in** for viem's `http(url)` transport. Swap one line and
 every read your viem client already makes — `getBalance`, `readContract`,
@@ -10,14 +10,14 @@ change.
 `vrpcHttp` is a viem **custom transport** (built on `createTransport`) whose
 `request` owns its own `fetch`, captures the raw content-decoded response bytes
 **before `JSON.parse`**, and feeds them — with the exact request bytes it
-POSTed — into `@ankr.com/vrpc-core`'s `verifyResponse`. Only after verification
+POSTed — into `@w3tech.io/vrpc-core`'s `verifyResponse`. Only after verification
 passes is the body parsed and the result returned. Verification is
 **fail-closed** by default (`strict`).
 
-All verification logic is reused from `@ankr.com/vrpc-core` — none is copied
+All verification logic is reused from `@w3tech.io/vrpc-core` — none is copied
 here, and there is no `ethers` import (manifest isolation). The error family is
 re-exported from core, so it is the **same type identity** the ethers adapter
-(`@ankr.com/vrpc-ethers`) re-exports: a caller cannot tell the two adapters
+(`@w3tech.io/vrpc-ethers`) re-exports: a caller cannot tell the two adapters
 apart by error shape.
 
 ---
@@ -27,12 +27,12 @@ apart by error shape.
 `viem` is a **peer dependency** (consumer-supplied, single instance):
 
 ```bash
-bun add @ankr.com/vrpc-viem viem
+bun add @w3tech.io/vrpc-viem viem
 ```
 
-> The `@ankr.com/vrpc-*` packages are currently `private` / unpublished while
+> The `@w3tech.io/vrpc-*` packages are currently `private` / unpublished while
 > the API stabilises. Inside this monorepo they resolve via `workspace:*`;
-> the public install name is `@ankr.com/vrpc-viem` (`peerDependency: viem ^2.52.2`).
+> the public install name is `@w3tech.io/vrpc-viem` (`peerDependency: viem ^2.52.2`).
 
 ---
 
@@ -51,7 +51,7 @@ const client = createPublicClient({
 // `chain.id` — declare `chain` to pin YOUR chain and skip the bootstrap:
 import { createPublicClient } from "viem";
 import { arbitrum } from "viem/chains";
-import { vrpcHttp } from "@ankr.com/vrpc-viem";
+import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 
 const client = createPublicClient({
   chain: arbitrum, // chain.id is bound into the signed pre-image (pins it)
@@ -94,7 +94,7 @@ export function vrpcHttp(url: string, opts?: VrpcHttpOptions): Transport<"vrpc-h
 
 export interface VrpcHttpOptions { /* see table below */ }
 
-// Shared vrpc-core error family — re-exported (SAME identity as @ankr.com/vrpc-ethers):
+// Shared vrpc-core error family — re-exported (SAME identity as @w3tech.io/vrpc-ethers):
 export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleTimestamp };
 ```
 
@@ -122,7 +122,7 @@ export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleT
 > DCAP/RTMR/compose-hash verification arrives in v6.0; never rely on v5.0
 > attestation for production trust.
 
-The normal verify routes through `@ankr.com/vrpc-core`'s `TrustedVerifier`,
+The normal verify routes through `@w3tech.io/vrpc-core`'s `TrustedVerifier`,
 which lazily fetches + correlates the serving node's TDX attestation on an
 **unknown** signing pubkey and **caches** the verified pubkey (configurable TTL,
 default 1h). This is **always-on**: the attestation endpoint is **derived from
@@ -218,7 +218,7 @@ This is narrower than full TDX remote attestation, and the gap is intentional:
 > original as `.cause`. Recover it with `err.walk`:
 
 ```ts
-import { VerificationError, BadSignature } from "@ankr.com/vrpc-viem";
+import { VerificationError, BadSignature } from "@w3tech.io/vrpc-viem";
 
 try {
   await client.getBalance({ address: "0x…" });
@@ -248,7 +248,7 @@ try {
 
 `MissingHeader`, `MalformedHeader`, `BadSignature`, and `StaleTimestamp` all
 extend `VerificationError`, which extends `Error`. They are the identical
-classes re-exported by `@ankr.com/vrpc-ethers` (cross-adapter parity).
+classes re-exported by `@w3tech.io/vrpc-ethers` (cross-adapter parity).
 
 ### Fail-closed
 
@@ -270,7 +270,7 @@ the ethers adapter's stance.
 ## Boot-time trust anchor (`anchorTrust`)
 
 `anchorTrust` is an adapter-neutral, **opt-in** helper from
-`@ankr.com/vrpc-core`. Call it **once at startup**, after constructing the
+`@w3tech.io/vrpc-core`. Call it **once at startup**, after constructing the
 client. It does a fresh signed read through the Ankr RPC gateway, fetches the serving node's
 attestation by `vRPC-NodeId`, and correlates that attestation pubkey against
 the response signer — fail-closed (throws a `VerificationError`-family member on
@@ -278,7 +278,7 @@ mismatch / stale node / missing header). It does **not** alter the transport,
 and the ethers adapter calls the identical helper.
 
 ```ts
-import { anchorTrust } from "@ankr.com/vrpc-core";
+import { anchorTrust } from "@w3tech.io/vrpc-core";
 
 const anchor = await anchorTrust({
   rpcBaseUrl: "https://rpc.ankr.com", // no trailing slash
@@ -312,8 +312,8 @@ per-request batching default, cross-adapter parity).
 
 ## Companion
 
-- `@ankr.com/vrpc-core` — verification primitives (`verifyResponse`,
+- `@w3tech.io/vrpc-core` — verification primitives (`verifyResponse`,
   `VerifierClient`, `anchorTrust`, the `VerificationError` family).
-- `@ankr.com/vrpc-ethers` — the same drop-in for ethers v6 (`VrpcProvider`).
+- `@w3tech.io/vrpc-ethers` — the same drop-in for ethers v6 (`VrpcProvider`).
 - [`w3tech/verifiable-rpc-sidecar`](https://github.com/w3tech/verifiable-rpc-sidecar)
   — the Rust sidecar that produces the signed responses (wire contract `v0.2.0`).

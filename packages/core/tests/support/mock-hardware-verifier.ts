@@ -13,7 +13,7 @@
 // (cross-package test import is awkward under this package's tsconfig/vitest
 // resolver). Keep byte-identical with the canonical copy aside from the import.
 
-import type { HardwareVerifier } from "@ankr.com/dstack-verify";
+import type { HardwareVerifier } from "@w3tech.io/dstack-verify";
 
 /**
  * Build a no-network {@link HardwareVerifier} for tests. `verifyHardware`

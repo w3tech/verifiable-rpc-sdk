@@ -12,7 +12,7 @@ import type { HardwareVerifier } from "./hardware-verifier";
 
 /**
  * Minimal opt-in debug logger. Declared locally (NOT imported from
- * @ankr.com/vrpc-core) so this package stays a dependency-free leaf. It is
+ * @w3tech.io/vrpc-core) so this package stays a dependency-free leaf. It is
  * structurally identical to — and assignable from — core's `Logger`, so core
  * threads its own logger straight into {@link VerifyPolicy.logger}.
  */

@@ -18,7 +18,7 @@ import {
   MissingHeader,
   VerificationError,
   VrpcProvider,
-} from "@ankr.com/vrpc-ethers";
+} from "@w3tech.io/vrpc-ethers";
 import { Contract, FetchRequest, Interface, toBeHex } from "ethers";
 import { describe, expect, test } from "vitest";
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";

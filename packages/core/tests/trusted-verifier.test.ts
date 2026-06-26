@@ -1,5 +1,5 @@
-import { AttestationError, EMPTY_ALLOWLIST } from "@ankr.com/dstack-verify";
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
+import { AttestationError, EMPTY_ALLOWLIST } from "@w3tech.io/dstack-verify";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AttestationFailed, VerificationError } from "../src/errors";
