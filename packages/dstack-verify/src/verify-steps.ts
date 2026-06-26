@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Frozen verify-step signatures; bodies are throwing stubs until implemented.
-// Only the body is replaced, never the signature. Kept dependency-free (no
-// @noble/hashes) so this stays a pure contract+mock with a clean A/B boundary.
+// Frozen verify-step signatures. computeComposeHash + parseReportData are
+// implemented (used by the active CHK-A1/CHK-A2 checks); replayRtmr +
+// extractKeyProvider remain throwing stubs until the real DCAP layers land.
+
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 
 import { AttestationError } from "./errors";
 import type { EventLogEntry, KeyProvider, ReportDataBinding } from "./types";
@@ -17,13 +20,13 @@ export function replayRtmr(events: EventLogEntry[]): string {
 }
 
 /**
- * CHK-A2: sha256 of the RAW app_compose text, bare lowercase hex —
- * `sha256(utf8(appCompose))`, matching core's computeComposeHash and the sidecar
- * wire (NOT deterministic-JSON re-serialization). Must hash verbatim bytes.
+ * CHK-A2: the dstack compose-hash of an `app_compose` string —
+ * `sha256(utf8(appCompose))` as bare lowercase hex. No canonicalization: dstack
+ * hashes the raw file bytes verbatim (NOT deterministic-JSON re-serialization),
+ * matching the sidecar wire.
  */
 export function computeComposeHash(appCompose: string): string {
-  void appCompose;
-  throw new Error("computeComposeHash: not implemented yet");
+  return bytesToHex(sha256(new TextEncoder().encode(appCompose)));
 }
 
 /**

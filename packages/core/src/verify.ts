@@ -189,11 +189,7 @@ export async function verifyResponse(
 
   if (opts.logger) {
     opts.logger.debug("preimage.computed", {
-      chainId: opts.chainId.toString(),
-      timestampMs: timestampMs.toString(),
       preImageSha256: bytesToHex(sha256(preImage)),
-      reqLen: requestBytes.length,
-      resLen: rawResponseBytes.length,
     });
   }
 
@@ -203,6 +199,9 @@ export async function verifyResponse(
 
   // 8. Ed25519 verify — bad signature -> BadSignature.
   const ok = await verifyAsync(sigBytes, preImage, pubkeyBytes);
+  if (opts.logger) {
+    opts.logger.debug("signature.checked", { ok });
+  }
   if (!ok) {
     throw new BadSignature({
       signatureHex: sigHex,
@@ -211,26 +210,13 @@ export async function verifyResponse(
     });
   }
 
-  if (opts.logger) {
-    // sigHex/pubkeyHex are public (full): the signature and signing key are
-    // already on the wire — no truncation needed.
-    opts.logger.debug("signature.checked", { ok: true, sigHex, pubkeyHex });
-  }
-
   // 9. Replay-window check — outside the window -> StaleTimestamp.
   //    Done AFTER signature verify: a tampered timestamp would have failed
   //    step 8. We only reach here on a valid signature.
   const replayWindowMs = opts.replayWindowMs ?? DEFAULT_REPLAY_WINDOW_MS;
   const nowMs = opts.nowMs ?? BigInt(Date.now());
   const skewMs = timestampMs - nowMs;
-  if (absBigint(skewMs) > BigInt(replayWindowMs)) {
-    throw new StaleTimestamp({
-      observedMs: timestampMs,
-      nowMs,
-      skewMs,
-      allowedWindowMs: replayWindowMs,
-    });
-  }
+  const isWithinWindow = absBigint(skewMs) <= BigInt(replayWindowMs);
 
   if (opts.logger) {
     opts.logger.debug("timestamp.checked", {
@@ -238,7 +224,16 @@ export async function verifyResponse(
       nowMs: nowMs.toString(),
       skewMs: skewMs.toString(),
       replayWindowMs,
-      withinWindow: true,
+      withinWindow: isWithinWindow,
+    });
+  }
+
+  if (!isWithinWindow) {
+    throw new StaleTimestamp({
+      observedMs: timestampMs,
+      nowMs,
+      skewMs,
+      allowedWindowMs: replayWindowMs,
     });
   }
 

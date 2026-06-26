@@ -16,6 +16,7 @@
 
 // Same family identity the ethers adapter re-exports — proves a caller cannot
 // tell the two adapters apart by error shape (cross-adapter parity).
+import { computeComposeHash } from "@ankr.com/dstack-verify";
 import { VerificationError as CoreVerificationError } from "@ankr.com/vrpc-core";
 import {
   BadSignature,
@@ -70,10 +71,14 @@ async function attestationResponse(url: string): Promise<Response> {
   // Regex-extract (not `new URL`) — viem shadows the global URL constructor here.
   const nonceHex = url.match(/[?&]nonce=([0-9a-fA-F]+)/)?.[1] ?? "";
   const reportData = `${hex(attPubkey)}${nonceHex}`;
+  // Self-consistent app_compose + composeHash (served verbatim in /attestation),
+  // so CHK-A2 ACTIVATES and passes at the viem integration layer.
+  const appCompose = '{"manifest_version":2,"name":"demo"}';
   const body = {
     quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
     pubkey: `0x${hex(attPubkey)}`,
-    composeHash: "deadbeef",
+    composeHash: computeComposeHash(appCompose),
+    app_compose: appCompose,
   };
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -117,12 +122,6 @@ function signingFetch(
     // the verifier resolves the unknown pubkey. Do NOT bump the RPC capture hooks.
     if (url.includes("/attestation")) {
       return attestationResponse(url);
-    }
-    // Best-effort /info side-fetch (CHK-A2 app_compose): not served here →
-    // 404 so the seam's best-effort catch leaves app_compose empty (CHK-A2 skips).
-    // Excluded from the RPC capture hooks, same as /attestation.
-    if (url.includes("/info")) {
-      return new Response("not found", { status: 404 });
     }
     if (seam.counter) {
       seam.counter.n += 1;

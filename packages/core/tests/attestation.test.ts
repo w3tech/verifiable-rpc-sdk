@@ -29,6 +29,7 @@ const GOLDEN_FIXTURE = {
   },
   pubkey: "0x0000000000000000000000000000000000000000000000000000000000000000",
   composeHash: "deadbeef",
+  app_compose: '{"manifest_version":2,"name":"demo"}',
 };
 
 interface MockState {
@@ -124,7 +125,20 @@ describe("fetchAttestation", () => {
       },
       pubkey: "0x0000000000000000000000000000000000000000000000000000000000000000",
       composeHash: "deadbeef",
+      app_compose: '{"manifest_version":2,"name":"demo"}',
     });
+  });
+
+  test("appComposeDefaultsToEmptyWhenAbsent", async () => {
+    // Older sidecars / the simulator omit app_compose; parsing stays lenient
+    // (defaults to "") so CHK-A2 dormant-skips rather than failing the verify.
+    const { app_compose: _omitted, ...withoutAppCompose } = GOLDEN_FIXTURE;
+    installMockFetch(withoutAppCompose);
+    const result = await fetchAttestation({
+      attestationUrl: TEST_ATTESTATION_URL,
+      nonce: new Uint8Array(32),
+    });
+    expect(result.app_compose).toBe("");
   });
 
   test("malformedTopLevelQuoteThrows", async () => {
@@ -228,6 +242,7 @@ describe("fetchAttestation", () => {
       },
       pubkey: "0x0000000000000000000000000000000000000000000000000000000000000000",
       composeHash: "deadbeef",
+      app_compose: '{"manifest_version":2,"name":"demo"}',
     });
   });
 
