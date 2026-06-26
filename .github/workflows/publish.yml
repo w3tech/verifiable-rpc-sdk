@@ -72,10 +72,20 @@ jobs:
 
       - run: pnpm -r build
 
-      # Derive the release version from the tag and guard it: strict SemVer + non-regression
-      # vs the currently-published version. The tag is the single version source — the
-      # workflow never creates tags. This MUST run before the version stamp and the publish.
-      - name: Derive and guard version from tag
+      # Derive the release version + dist-tag from the tag. The tag is the single version
+      # source — the workflow never creates tags. This MUST run before the version stamp and
+      # the publish.
+      #
+      # Version shape: vX.Y.Z with an OPTIONAL prerelease suffix after a dash (anything goes —
+      # `-rc.1`, `-beta.2`, `-alpha`, `-foo.3`, ...). We do NOT compare against the published
+      # version: multiple major lines may receive their own minors/patches, so an "older"
+      # number is a legitimate release, not a regression.
+      #
+      # dist-tag: NEVER `latest` (pre-GA — nothing is blessed as the default `npm install`
+      # channel yet). Prerelease → the leading alpha id of the suffix (rc/beta/alpha/...),
+      # numeric-only suffix → `pre`. A plain vX.Y.Z (no suffix) → `next`. Promotion to `latest`
+      # is a deliberate manual `npm dist-tag add` later.
+      - name: Derive version + dist-tag from tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             RAW="${{ inputs.tag }}"
@@ -84,25 +94,25 @@ jobs:
           fi
           # Strip a single leading 'v'.
           VERSION="${RAW#v}"
-          # Strict SemVer guard (vX.Y.Z form).
-          if ! printf '%s' "$RAW" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::Tag '$RAW' is not a strict SemVer vX.Y.Z tag." >&2
+          # SemVer guard: vX.Y.Z + optional `-<anything non-empty>` prerelease suffix.
+          if ! printf '%s' "$RAW" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$'; then
+            echo "::error::Tag '$RAW' is not a vX.Y.Z or vX.Y.Z-<suffix> tag." >&2
             exit 1
           fi
-          # Non-regression check vs the published version. A missing package (E404) means
-          # nothing is published yet (bootstrap) — that is NOT a regression, treat as pass.
-          PUBLISHED="$(npm view @w3tech.io/vrpc-core version 2>/dev/null || true)"
-          if [ -n "$PUBLISHED" ]; then
-            GREATEST="$(printf '%s\n%s\n' "$PUBLISHED" "$VERSION" | sort -V | tail -n1)"
-            if [ "$VERSION" = "$PUBLISHED" ] || [ "$GREATEST" != "$VERSION" ]; then
-              echo "::error::Version '$VERSION' does not strictly exceed published '$PUBLISHED'." >&2
-              exit 1
-            fi
-          else
-            echo "No published version found for @w3tech.io/vrpc-core — bootstrap publish (not a regression)."
-          fi
-          echo "Releasing version: $VERSION"
+          # Derive a non-`latest` dist-tag.
+          case "$VERSION" in
+            *-*)
+              SUFFIX="${VERSION#*-}"
+              DIST_TAG="$(printf '%s' "$SUFFIX" | grep -oE '^[A-Za-z]+' || true)"
+              [ -n "$DIST_TAG" ] || DIST_TAG="pre"
+              ;;
+            *)
+              DIST_TAG="next"
+              ;;
+          esac
+          echo "Releasing version: $VERSION  (dist-tag: $DIST_TAG)"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "DIST_TAG=$DIST_TAG" >> "$GITHUB_ENV"
 
       # Lockstep-stamp the tag version into all four package.json files and resolve
       # workspace:* to concrete versions at publish time. --no-git-tag-version ensures NO git
@@ -112,13 +122,17 @@ jobs:
       - name: Stamp version across all packages (lockstep)
         run: pnpm version "$VERSION" --no-git-tag-version -r
 
-      # Reuse the existing release body (build && publish:dry-run && pnpm -r publish
-      # --provenance --no-git-checks). --no-git-checks is REQUIRED — publish runs from a
-      # detached HEAD at the tag. npm tries OIDC first (id-token: write) and falls back to
-      # NODE_AUTH_TOKEN when no per-package trusted-publisher is registered yet, so this same
-      # workflow bootstraps (token) then later runs tokenless (OIDC).
-      - name: Publish (tokenless OIDC + provenance, token fallback for bootstrap)
-        run: pnpm run release
+      # Publish all four packages under the derived NON-`latest` dist-tag. Build already ran
+      # above; here we gate with a --dry-run then do the real publish, both pinned to
+      # $DIST_TAG so a release never auto-promotes to the default `npm install` channel.
+      # --no-git-checks is REQUIRED — publish runs from a detached HEAD at the tag. npm tries
+      # OIDC first (id-token: write) and falls back to NODE_AUTH_TOKEN when no per-package
+      # trusted-publisher is registered yet, so this same workflow bootstraps (token) then
+      # later runs tokenless (OIDC).
+      - name: Publish (never `latest`; dist-tag $DIST_TAG; OIDC + provenance, token fallback)
+        run: |
+          pnpm -r publish --provenance --no-git-checks --tag "$DIST_TAG" --dry-run
+          pnpm -r publish --provenance --no-git-checks --tag "$DIST_TAG"
         env:
           NPM_CONFIG_PROVENANCE: 'true'
           # Phase 52 (BOOT-03) removes this line after the per-package trusted-publisher is

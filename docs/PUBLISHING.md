@@ -1,9 +1,14 @@
 # Publishing
 
 Releasing the four `@w3tech.io/*` packages (`vrpc-core`, `vrpc-ethers`, `vrpc-viem`,
-`dstack-verify`) is **tag-driven**: to release, push a `vX.Y.Z` git tag (or run the
-`publish.yml` workflow manually with a `tag` input). The workflow does **not** create
-tags — the tag is the single trigger **and** the version source.
+`dstack-verify`) is **tag-driven**: to release, push a `vX.Y.Z` (or prerelease
+`vX.Y.Z-<suffix>`) git tag (or run the `publish.yml` workflow manually with a `tag`
+input). The workflow does **not** create tags — the tag is the single trigger **and**
+the version source.
+
+> **No `latest` (pre-GA).** Releases are **never** published to the `latest` dist-tag for
+> now. The dist-tag is derived from the version (see step 5). Promotion to `latest` is a
+> deliberate manual `npm dist-tag add @w3tech.io/<pkg>@<version> latest` later.
 
 ## How a release happens
 
@@ -18,21 +23,27 @@ tags — the tag is the single trigger **and** the version source.
 
 2. **Trigger.** The push of a `v*.*.*` tag triggers `.github/workflows/publish.yml`.
 
-3. **Version derive + guard.** The version is derived from the tag
-   (`VERSION=${GITHUB_REF_NAME#v}`) and guarded:
-   - it must be a strict SemVer `vX.Y.Z` tag, and
-   - it must not regress vs the currently-published version
-     (`npm view @w3tech.io/vrpc-core version`). If the package is not yet published
-     (bootstrap / `E404`), that is treated as a pass, not a regression.
+3. **Version + dist-tag derive.** The version is derived from the tag
+   (`VERSION=${GITHUB_REF_NAME#v}`) and validated for shape only:
+   - it must match `vX.Y.Z` with an **optional** prerelease suffix after a dash —
+     `v1.2.3`, `v1.2.3-rc.1`, `v0.2.0-beta.2`, `v2.0.0-alpha`, etc.
+   - **No** comparison against the published version — multiple major lines may each get
+     their own minors/patches, so an "older" number is a legitimate release.
+
+   The **dist-tag** is derived (never `latest`):
+   - prerelease (`-<suffix>`) → the leading alphabetic id of the suffix (`rc`, `beta`,
+     `alpha`, …); a numeric-only suffix → `pre`.
+   - plain `vX.Y.Z` (no suffix) → `next`.
 
 4. **Lockstep version stamp.** `pnpm version "$VERSION" --no-git-tag-version -r` stamps the
    derived version into all four `package.json` files and resolves `workspace:*` to concrete
    versions at publish time. This runs in the runner only — `--no-git-tag-version` means **no
    git commit/tag is created and the bump is not committed back to `main`**.
 
-5. **Publish (tokenless OIDC + provenance).** `pnpm run release` runs
-   `build && publish:dry-run && pnpm -r publish --provenance --no-git-checks`.
-   `--no-git-checks` is required because publish runs from a detached `HEAD` at the tag.
+5. **Publish (tokenless OIDC + provenance).** A `--dry-run` gate then the real publish, both
+   `pnpm -r publish --provenance --no-git-checks --tag "$DIST_TAG"` — pinned to the derived
+   non-`latest` dist-tag. `--no-git-checks` is required because publish runs from a detached
+   `HEAD` at the tag.
 
 6. **GitHub Release.** `softprops/action-gh-release` creates a GitHub Release with
    auto-generated, PR-label-categorized notes driven by `.github/release.yml`.
