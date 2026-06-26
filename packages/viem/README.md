@@ -122,9 +122,7 @@ export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleT
 > failure throws. Verification chain: **CHK-A1** (unconditional pubkey/nonce
 > binding, always throws on mismatch) → **CHK-A2** (best-effort compose-hash
 > self-consistency, dormant when `app_compose`/`compose_hash` are absent) →
-> mandatory hardware-signature step (`CloudVerifier`). The legacy
-> `allowInsecureMock` / `CHK-MOCK` escape hatch is now superseded by the
-> mandatory verifier and is not reachable on the default viem path.
+> mandatory hardware-signature step (`CloudVerifier`).
 >
 > Still deferred (do not treat as trust anchors yet): independent compose
 > sourcing, RTMR3 event-log replay, a local DCAP-verified Intel PCK-rooted

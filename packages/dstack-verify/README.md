@@ -13,10 +13,6 @@ Frozen contract for dstack / Intel TDX attestation verification.
 > `mr_config_id` (B+). It runs after the unconditional CHK-A1 (pubkey/nonce
 > binding) and best-effort CHK-A2 (compose self-consistency) local checks.
 >
-> The legacy `allowInsecureMock` / `CHK-MOCK` escape hatch is **superseded and
-> now unused** — the mandatory verifier replaces it; there is no mock-resolve
-> path in the primary flow.
->
 > **Still deferred to a future release:** local-DCAP (no-egress) quote
 > verification, RTMR3 event-log replay, an independent (non-node-forgeable)
 > compose source, and TCB-status policy. Today the hardware verdict comes from
@@ -47,8 +43,6 @@ Fail-closed gate:
   (an unattested response never passes).
 - A configured verifier **resolves `void`** on success and **throws** on
   failure. The live SDK path always wires the Phala CloudVerifier by default.
-- `policy.allowInsecureMock` / `CHK-MOCK` is a **legacy field that is accepted
-  but ignored** — it no longer gates anything.
 
 ### Types
 
@@ -58,8 +52,7 @@ Fail-closed gate:
   optional `appId`/`instanceId`.
 - `VerifyPolicy` — pinned trust anchors (`PinnedAllowlist`), reportData→pubkey
   binding (`ReportDataBinding`), DCAP TCB acceptance (`TcbPolicy`), optional
-  `pccsUrl`, the mandatory `hardwareVerifier` (hardware root of trust), and the
-  legacy, now-inert `allowInsecureMock: boolean` (accepted but ignored). An optional
+  `pccsUrl`, and the mandatory `hardwareVerifier` (hardware root of trust). An optional
   opt-in `logger` reaches `verifyDstackAttestation` here — core threads the
   verifier's injected logger in via the policy (see vrpc-core's
   "Debug logging (opt-in)"); absent → silent.
@@ -121,18 +114,6 @@ event-log replay remain deferred to a future release.
   > registry), (b) the `compose_hash` **anchored into RTMR3** via event-log
   > replay, and (c) a **DCAP-verified** quote. All three are future work.
 
-### `allowInsecureMock` — legacy, inert
-
-`allowInsecureMock` (and its `CHK-MOCK` gate) is a **superseded, now-unused**
-legacy `VerifyPolicy` field — the mandatory step-4 hardware verifier replaces
-it. `verify.ts` never reads it and never throws `CHK-MOCK`; whether the call
-resolves or throws depends solely on `policy.hardwareVerifier` (absent → throws
-`CHK-P1`; present + ok → resolves; present + fails → throws). The field is
-accepted for backward compatibility but has no effect on control flow.
-
-The contract stays `Promise<void>`; success resolves silently, failure throws
-`AttestationError`.
-
 ### Pluggable hardware verifier — `HardwareVerifier` + `createCloudVerifier`
 
 A pluggable **step-4 hardware-signature** seam (→ CHK-P1) runs **after CHK-A2**
@@ -152,8 +133,7 @@ await verifyDstackAttestation(bundle, {
 - **Required (fail-closed).** A hardware verifier is mandatory. When
   `policy.hardwareVerifier` is **unset**, `verifyDstackAttestation` throws
   `AttestationError("CHK-P1", …)` after CHK-A1/A2 — an unattested response never
-  passes. The legacy CHK-MOCK gate / `allowInsecureMock` is superseded and no
-  longer governs. In the live SDK path, core's `buildVerifyPolicy` /
+  passes. In the live SDK path, core's `buildVerifyPolicy` /
   `TrustedVerifier` always wires the Phala `CloudVerifier` by default, so the
   verifier is the hardware root of trust for every call; only its
   endpoint/implementation is overridable.
@@ -181,8 +161,7 @@ await verifyDstackAttestation(bundle, {
 
 `CHK` is a frozen const record enumerating the full chain-of-trust checklist
 `CHK-A1..G3` (verbatim meaning + disposition: `implement` / `mock` /
-`pinned` / `out`) plus the synthetic `CHK-MOCK` (`mock-deny`) for the
-fail-closed path. It is a queryable audit dictionary — a future release fills in the bodies
+`pinned` / `out`). It is a queryable audit dictionary — a future release fills in the bodies
 without changing this set.
 
 ### Helper signatures
