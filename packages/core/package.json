@@ -2,7 +2,7 @@
   "name": "@ankr.com/vrpc-core",
   "version": "0.1.0",
   "type": "module",
-  "description": "Transport-agnostic Ed25519 verification primitives for Ankr's verifiable RPC — pre-image, signature verify, attestation, compose.",
+  "description": "Transport-agnostic Ed25519 verification primitives for Ankr's verifiable RPC — pre-image, signature verify, attestation.",
   "license": "Apache-2.0",
   "author": "Web3 Technologies, Inc.",
   "homepage": "https://github.com/w3tech/verifiable-rpc-sdk#readme",
@@ -33,11 +33,6 @@
       "types": "./src/errors.ts",
       "import": "./dist/errors.js",
       "default": "./dist/errors.js"
-    },
-    "./compose": {
-      "types": "./src/compose.ts",
-      "import": "./dist/compose.js",
-      "default": "./dist/compose.js"
     }
   },
   "files": [
@@ -62,11 +57,6 @@
         "types": "./dist/errors.d.ts",
         "import": "./dist/errors.js",
         "default": "./dist/errors.js"
-      },
-      "./compose": {
-        "types": "./dist/compose.d.ts",
-        "import": "./dist/compose.js",
-        "default": "./dist/compose.js"
       }
     }
   },

@@ -13,15 +13,14 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Logger } from "@ankr.com/vrpc-core";
-// computeComposeHash from core's leaf subpath — the local dstack-verify
-// re-export (verify-steps.ts) is still a throwing stub, so the test
-// synthesizes self-consistent compose pairs with the SAME hashing the verifier
-// uses (raw sha256, no canonicalization).
-import { computeComposeHash } from "@ankr.com/vrpc-core/compose";
 import { describe, expect, test } from "vitest";
 import type { HardwareVerifier } from "../src/hardware-verifier";
 import { AttestationError, parseReportData, verifyDstackAttestation } from "../src/index";
 import type { AttestationBundle, TcbInfo, VerifyPolicy } from "../src/types";
+// computeComposeHash (verify-steps.ts) — the SAME hashing the verifier uses
+// (raw sha256, no canonicalization), so the test can synthesize self-consistent
+// app_compose/compose_hash pairs.
+import { computeComposeHash } from "../src/verify-steps";
 import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const fixture = JSON.parse(

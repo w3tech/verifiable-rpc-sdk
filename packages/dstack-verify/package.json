@@ -57,7 +57,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ankr.com/vrpc-core": "workspace:*"
+    "@ankr.com/vrpc-core": "workspace:*",
+    "@noble/hashes": "^2.2.0"
   },
   "devDependencies": {
     "@types/node": "*"

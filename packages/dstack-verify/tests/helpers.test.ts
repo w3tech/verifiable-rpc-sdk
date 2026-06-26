@@ -7,22 +7,14 @@
 import { describe, expect, test } from "vitest";
 
 import { AttestationError } from "../src/index";
-import {
-  computeComposeHash,
-  extractKeyProvider,
-  parseReportData,
-  replayRtmr,
-} from "../src/verify-steps";
+import { extractKeyProvider, parseReportData, replayRtmr } from "../src/verify-steps";
 
 describe("helper stubs throw not-implemented", () => {
   test("replayRtmr throws not-implemented", () => {
     expect(() => replayRtmr([])).toThrow("not implemented");
   });
 
-  test("computeComposeHash throws not-implemented", () => {
-    expect(() => computeComposeHash("")).toThrow("not implemented");
-  });
-
+  // computeComposeHash is implemented (CHK-A2) — covered in compose-hash.test.ts.
   // parseReportData is implemented (CHK-A1) — it no longer stubs out. Malformed
   // input throws AttestationError("CHK-A1"); the happy-path split is covered in
   // verify.test.ts.

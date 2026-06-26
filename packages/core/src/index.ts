@@ -6,7 +6,6 @@
 //   - ./verifier    — VerifierClient class + options/response types
 //   - ./verify      — transport-agnostic verifyResponse seam
 //   - ./attestation — fetchAttestation helper + Attestation/GetQuoteResponse types
-//   - ./compose     — computeComposeHash (dstack compose-hash helper)
 //   - ./errors      — VerificationError abstract base + typed subclasses
 //   - ./preimage    — canonical 80-byte pre-image builder (exported for
 //                     advanced consumers and test infrastructure)
@@ -25,7 +24,6 @@ export type {
   GetQuoteResponse,
 } from "./attestation";
 export { fetchAttestation, verifyAttestationCorrelation } from "./attestation";
-export { computeComposeHash } from "./compose";
 export type { BadSignatureContext, StaleTimestampContext, VerificationErrorKind } from "./errors";
 export {
   AttestationCorrelationError,

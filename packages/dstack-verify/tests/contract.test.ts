@@ -19,9 +19,12 @@ describe("public contract surface", () => {
     expect(typeof parseReportData).toBe("function");
   });
 
+  test("exports the implemented compose-hash helper", () => {
+    expect(typeof (barrel as Record<string, unknown>).computeComposeHash).toBe("function");
+  });
+
   test("does not export the unimplemented stub helpers", () => {
     expect("replayRtmr" in barrel).toBe(false);
-    expect("computeComposeHash" in barrel).toBe(false);
     expect("extractKeyProvider" in barrel).toBe(false);
   });
 });

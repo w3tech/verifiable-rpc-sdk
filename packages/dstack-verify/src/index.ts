@@ -32,4 +32,4 @@ export type {
 } from "./types";
 export { EMPTY_ALLOWLIST } from "./types";
 export { verifyDstackAttestation } from "./verify";
-export { parseReportData } from "./verify-steps";
+export { computeComposeHash, parseReportData } from "./verify-steps";

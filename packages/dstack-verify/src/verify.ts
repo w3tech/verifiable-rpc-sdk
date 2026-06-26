@@ -37,16 +37,11 @@
 // Phala CloudVerifier here. (`allowInsecureMock` / `CHK-MOCK` are a separate,
 // now-unused legacy gate — the mandatory verifier supersedes them.)
 
-// computeComposeHash is imported from core's `./compose` LEAF subpath (not the
-// main barrel): the barrel re-exports trusted-verifier.ts which imports
-// @ankr.com/dstack-verify, re-opening the ESM init cycle. compose.ts is
-// cycle-free. (The local verify-steps.ts `computeComposeHash` is still a
-// throwing stub — do NOT use it.) This keeps @noble/hashes out of dstack-verify.
-import { computeComposeHash } from "@ankr.com/vrpc-core/compose";
-
 import { AttestationError } from "./errors";
 import type { AttestationBundle, VerifyPolicy } from "./types";
-import { parseReportData } from "./verify-steps";
+// computeComposeHash lives in this package (verify-steps.ts) — compose-hash is a
+// dstack/TDX concept used only by CHK-A2, so it has no reason to live in core.
+import { computeComposeHash, parseReportData } from "./verify-steps";
 
 /** Bare lowercase hex for comparison (strip optional `0x`, lowercase). */
 function normHex(s: string): string {

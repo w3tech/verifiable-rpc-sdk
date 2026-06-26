@@ -1,8 +1,8 @@
+import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, test } from "vitest";
 
-import { computeComposeHash } from "../src/compose";
-import { sha256 } from "../src/preimage";
+import { computeComposeHash } from "../src/verify-steps";
 
 describe("computeComposeHash", () => {
   test("equals sha256(utf8) as bare lowercase hex", () => {

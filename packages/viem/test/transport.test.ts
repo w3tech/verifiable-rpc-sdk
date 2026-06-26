@@ -16,10 +16,8 @@
 
 // Same family identity the ethers adapter re-exports — proves a caller cannot
 // tell the two adapters apart by error shape (cross-adapter parity).
-import {
-  VerificationError as CoreVerificationError,
-  computeComposeHash,
-} from "@ankr.com/vrpc-core";
+import { computeComposeHash } from "@ankr.com/dstack-verify";
+import { VerificationError as CoreVerificationError } from "@ankr.com/vrpc-core";
 import {
   BadSignature,
   MalformedHeader,
