@@ -7,7 +7,7 @@ your code. In the default `strict` mode a verification failure is thrown, never
 silently passed through.
 
 Before you rely on the signature, read the README's
-[What is verified / What is NOT verified](./README.md#what-is-verified--what-is-not-verified)
+[What is verified / What is NOT verified](./README.md#what-is-verified--and-what-is-not)
 section — the trust boundary is **signed + untampered + fresh + correctly bound**,
 NOT full TDX quote attestation.
 
@@ -249,23 +249,15 @@ try {
 
 ## Runnable examples
 
-Two end-to-end scripts do a **real verified read** through a staging Ankr RPC gateway
-`arbitrum_vrpc` route and then call the adapter-neutral boot-time trust anchor
-(`anchorTrust`):
+Three runnable scripts live in `examples/`. All target Ankr's public Arbitrum
+vRPC endpoint and need no API key (every response is verified before it is
+returned):
 
-- [`examples/08-vrpc-ethers-verified-read.ts`](./examples/08-vrpc-ethers-verified-read.ts) — `VrpcProvider`
-- [`examples/09-vrpc-viem-verified-read.ts`](./examples/09-vrpc-viem-verified-read.ts) — `vrpcHttp` + `createPublicClient`
-
-Live execution is an operator step (it needs the staging URL + `x-api-key`,
-supplied via env at runtime; CI/offline does not run them live). Both env vars
-are referenced **by name only** — never hard-code or print the values:
-
-| Env var                    | Purpose                              |
-| -------------------------- | ------------------------------------ |
-| `ANKR_STAGE_URL`          | Staging RPC gateway base URL          |
-| `ANKR_STAGE_TDX_TEST_KEY` | `x-api-key` value for the vrpc route  |
+- [`examples/01-ethers-client.ts`](./examples/01-ethers-client.ts) — drop-in ethers `VrpcProvider`
+- [`examples/02-viem-client.ts`](./examples/02-viem-client.ts) — viem `vrpcHttp` transport + `createPublicClient`
+- [`examples/03-vrpc-core-walkthrough.ts`](./examples/03-vrpc-core-walkthrough.ts) — `@w3tech.io/vrpc-core` walkthrough (signed wire → `verifyResponse` → tamper→`BadSignature` → `fetchAttestation` + `VerifierClient`)
 
 ```sh
-ANKR_STAGE_URL=… ANKR_STAGE_TDX_TEST_KEY=… pnpm example:08-vrpc-ethers-verified-read
-ANKR_STAGE_URL=… ANKR_STAGE_TDX_TEST_KEY=… pnpm example:09-vrpc-viem-verified-read
+pnpm install
+pnpm example:all   # or: pnpm example:01-ethers-client / example:02-viem-client / example:03-vrpc-core-walkthrough
 ```

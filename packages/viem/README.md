@@ -112,15 +112,30 @@ export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleT
 
 #### Lazy-attestation seam options (always-on)
 
-> [!WARNING]
-> **v5.0 ships a MOCK attestation verifier — NO real attestation security until v6.0.**
-> The v5.0 attestation check is a mock with `allowInsecureMock` **hard-set true**:
-> it **bypasses all chain-of-trust checks** and resolves `void` **silently**
-> (the SDK prints nothing) — an explicit opt-in past the hardware root of
-> trust. In the contract's own words: *"v5.0 provides NO real
-> attestation security (real verification lands in v6.0)."* Real
-> DCAP/RTMR/compose-hash verification arrives in v6.0; never rely on v5.0
-> attestation for production trust.
+> [!IMPORTANT]
+> **Hardware attestation verification is mandatory and always-on.** The viem
+> transport routes verification through vrpc-core's `TrustedVerifier`, which
+> wires a real hardware-signature verifier by default — the Phala
+> `CloudVerifier` (remote DCAP quote verify + binding of `report_data` against
+> the expected signing pubkey and nonce). It is **fail-closed and cannot be
+> disabled**: a policy without a hardware verifier throws, and any verifier
+> failure throws. Verification chain: **CHK-A1** (unconditional pubkey/nonce
+> binding, always throws on mismatch) → **CHK-A2** (best-effort compose-hash
+> self-consistency, dormant when `app_compose`/`compose_hash` are absent) →
+> mandatory hardware-signature step (`CloudVerifier`). The legacy
+> `allowInsecureMock` / `CHK-MOCK` escape hatch is now superseded by the
+> mandatory verifier and is not reachable on the default viem path.
+>
+> Still deferred (do not treat as trust anchors yet): independent compose
+> sourcing, RTMR3 event-log replay, a local DCAP-verified Intel PCK-rooted
+> quote, and TCB-status policy. Today's hardware verdict comes from the Phala
+> CloudVerifier (a remote verify API), not local DCAP — the full chain of
+> trust is still evolving toward those. CHK-A2 is self-consistency only (both
+> `app_compose` and `compose_hash` are self-reported by the same node), so it
+> guards against config drift, not a forging attacker. The default CloudVerifier
+> endpoint is unauthenticated, best-effort/no-SLA, and publishes submitted
+> quotes to a public registry — point `hardwareVerifier` at a self-hosted
+> endpoint to avoid that egress.
 
 The normal verify routes through `@w3tech.io/vrpc-core`'s `TrustedVerifier`,
 which lazily fetches + correlates the serving node's TDX attestation on an
@@ -141,10 +156,12 @@ errors and propagates (fail-closed).
 | Option           | Type                     | Default          | Notes |
 |------------------|--------------------------|------------------|-------|
 | `pubkeyCacheTtlMs` | `number`               | `3_600_000` (1h) | Verified-pubkey cache TTL (ms). A second read within TTL reuses the cache and skips the attestation fetch; past TTL the pubkey is re-attested (no stale trust). |
+| `hardwareVerifier` | `HardwareVerifier`     | Phala cloud verifier (vrpc-core) | Internal/advanced. Overrides the mandatory hardware-signature verifier. Point it at a self-hosted endpoint, a future local-DCAP verifier, or a no-network test mock. Hardware verification is always-on and cannot be disabled; omitting this keeps the cloud default. |
+| `logger`         | `Logger`                 | no-op (silent)   | Internal/advanced. Opt-in debug logger forwarded to verification to narrate the verify flow at debug level. Use `createConsoleLogger()` from `@w3tech.io/vrpc-core`. Safe-wrapped (never throws-through) and redacts secrets — observability only, never part of the verify decision. |
 
-> v6.0 removed the inert `allowlist`/`tcb`/`pccsUrl` options — the mock verifier
-> ignores them. v7.0 reintroduces them for the real verifier. `headers` (above)
-> stays — it covers both the RPC POST and the attestation fetch.
+> v6.0 removed the inert `allowlist`/`tcb`/`pccsUrl` options. v7.0 reintroduces
+> them as consumer-pinned anchors once the verifier consumes them. `headers`
+> (above) stays — it covers both the RPC POST and the attestation fetch.
 
 `fetchFn` (already documented above) feeds **both** legs — the RPC POST and the
 attestation GET — which is also the offline test/example seam.
@@ -160,7 +177,7 @@ const client = createPublicClient({
   }),
 });
 // Ordinary reads. The first unknown pubkey triggers one attestation fetch +
-// (MOCK) verify + cache; subsequent reads within TTL skip the fetch.
+// hardware verify + cache; subsequent reads within TTL skip the fetch.
 await client.getBalance({ address: "0x0000000000000000000000000000000000000000" });
 ```
 
@@ -293,15 +310,13 @@ const anchor = await anchorTrust({
 
 ## Runnable example
 
-`examples/09-vrpc-viem-verified-read.ts` builds a `createPublicClient` with
-`vrpcHttp`, does a real verified `getBalance` / `getBlockNumber` through a staging
-Ankr RPC gateway `arbitrum_vrpc` route, then calls `anchorTrust`. It is an operator step —
-the staging URL + x-api-key are supplied via env **by name only** (never
-hardcoded or printed):
+`examples/02-viem-client.ts` builds a `createPublicClient` with `vrpcHttp` and
+does a real verified `getBalance` / `getBlockNumber` through an Ankr RPC
+`arbitrum` route — every response is Ed25519- and attestation-verified inside
+the transport before viem decodes it:
 
 ```sh
-ANKR_STAGE_URL=… ANKR_STAGE_TDX_TEST_KEY=… \
-  pnpm example:09-vrpc-viem-verified-read
+pnpm example:02-viem-client
 ```
 
 See `packages/viem/test/transport.test.ts` for the full wiring suite (verified

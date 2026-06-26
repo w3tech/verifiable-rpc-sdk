@@ -76,7 +76,8 @@ Production runs on real Intel TDX hardware via dstack; local development uses th
 
 ## 2. The sidecar — how it works and what it returns
 
-The **sidecar** (`verifiable-rpc-sidecar`, a Rust service, currently v0.4.0) sits
+The **sidecar** (`verifiable-rpc-sidecar`, a Rust service in a separate repo; this
+SDK targets its `v0.2.0` wire contract) sits
 in front of the real blockchain node's HTTP endpoint **inside the TDX confidential
 VM**. It proxies RPC traffic and signs every response with a TDX-attested key.
 It listens on plain HTTP. (`src/config.rs`, `src/server.rs`.)
@@ -179,7 +180,8 @@ over the exact node-signed bytes, before you ever see the data. Packages
 (`@w3tech.io/*`):
 
 - **`vrpc-core`** — transport-agnostic Ed25519 verification engine (no
-  blockchain-client deps; only `@noble/ed25519` + `@noble/hashes`). Owns the
+  blockchain-client deps; lightweight crypto via `@noble/ed25519` + `@noble/hashes`,
+  plus `lru-cache` and the internal `@w3tech.io/dstack-verify` module). Owns the
   pre-image, signature check, replay window, attestation fetch/correlation, and
   the typed error family.
 - **`vrpc-ethers`** — `VrpcProvider`, an ethers v6 `JsonRpcProvider` drop-in that
@@ -253,8 +255,8 @@ run it against the sidecar's quote rather than waiting on this SDK's verifier:
 
 **Maturity (state plainly only if asked, don't dwell):** the signing/verification
 path (Ed25519 signature, freshness, chain binding, key correlation, CHK-A1, CHK-A2)
-is implemented and fail-closed today. Together with the opt-in cloud hardware-signature
-check (a `HardwareVerifier` that delegates the quote verdict to Phala's hosted endpoint
+is implemented and fail-closed today. Together with the mandatory, always-on cloud
+hardware-signature check (a `HardwareVerifier` that delegates the quote verdict to Phala's hosted endpoint
 and binds it to the signer + compose hash), this implements the **minimal end-to-end
 verification** flow of Phala's
 [verification guide](https://docs.phala.com/phala-cloud/attestation/verification-guide).

@@ -134,15 +134,18 @@ Spread order is enforced so `staticNetwork` cannot be overridden away.
 
 #### Lazy-attestation seam options (always-on)
 
-> [!WARNING]
-> **v5.0 ships a MOCK attestation verifier — NO real attestation security until v6.0.**
-> The v5.0 attestation check is a mock with `allowInsecureMock` **hard-set true**:
-> it **bypasses all chain-of-trust checks** and resolves `void` **silently**
-> (the SDK prints nothing) — an explicit opt-in past the hardware root of
-> trust. In the contract's own words: *"v5.0 provides NO real
-> attestation security (real verification lands in v6.0)."* Real
-> DCAP/RTMR/compose-hash verification arrives in v6.0; never rely on v5.0
-> attestation for production trust.
+> [!NOTE]
+> Hardware attestation is **always-on and fail-closed**. By default
+> `TrustedVerifier` wires the real Phala CloudVerifier (`createCloudVerifier()`,
+> via vrpc-core's `buildVerifyPolicy`); it **cannot be disabled**. Override the
+> internal `hardwareVerifier` option only to point at a self-hosted endpoint, a
+> future local-DCAP verifier, or a no-network test mock. The `report_data →
+> pubkey/nonce` binding check (CHK-A1) runs unconditionally; the compose-hash
+> self-consistency check (CHK-A2) runs best-effort when the node returns both
+> `app_compose` and `compose_hash`. Full local DCAP, RTMR3 event-log replay, an
+> independent compose source, and TCB-status policy are still evolving (see root
+> README) — today's hardware verdict comes from the Phala cloud verify API, not
+> local DCAP.
 
 The normal verify routes through `@w3tech.io/vrpc-core`'s `TrustedVerifier`,
 which lazily fetches + correlates the serving node's TDX attestation on an
@@ -165,8 +168,9 @@ errors and propagates (fail-closed).
 > Auth/headers: set them on the `FetchRequest` you pass as the URL
 > (`req.setHeader("x-api-key", …)`) — those cover BOTH the RPC POST and the
 > attestation fetch. (v6.0 removed the inert `allowlist`/`tcb`/`pccsUrl` options —
-> the mock verifier ignores them — and the redundant `headers` option; v7.0
-> reintroduces the trust-anchor options for the real verifier.)
+> they were trust-anchor knobs the verifier does not yet consume — and the
+> redundant `headers` option; v7.0 reintroduces the trust-anchor options for
+> local-DCAP verification.)
 
 ```ts
 // Auth the idiomatic ethers way: set it on the FetchRequest. The SDK reuses
@@ -178,7 +182,7 @@ const provider = new VrpcProvider(req, 42161n, {
   pubkeyCacheTtlMs: 3_600_000, // 1h (default)
 });
 // Ordinary reads. The first unknown pubkey triggers one attestation fetch +
-// (MOCK) verify + cache; subsequent reads within TTL skip the fetch.
+// hardware verify + cache; subsequent reads within TTL skip the fetch.
 await provider.getBalance("0x0000000000000000000000000000000000000000");
 ```
 
@@ -260,14 +264,17 @@ try {
 
 ## Runnable example
 
-[`examples/08-vrpc-ethers-verified-read.ts`](../../examples/08-vrpc-ethers-verified-read.ts)
-does a real verified read + `anchorTrust` correlation through a staging Ankr RPC gateway
-`arbitrum_vrpc` route. It is an operator step (needs live creds via env):
+[`examples/01-ethers-client.ts`](../../examples/01-ethers-client.ts) is the
+drop-in `VrpcProvider` demo — a verified read against the public Arbitrum vRPC
+endpoint (no API key required):
 
 ```sh
-ANKR_STAGE_URL=… ANKR_STAGE_TDX_TEST_KEY=… \
-  pnpm example:08-vrpc-ethers-verified-read
+pnpm example:01-ethers-client
 ```
 
-Both env vars are read **by name** only — their values are never printed or
-logged.
+For the `anchorTrust` / attestation-correlation flow end-to-end, see
+[`examples/03-vrpc-core-walkthrough.ts`](../../examples/03-vrpc-core-walkthrough.ts):
+
+```sh
+pnpm example:03-vrpc-core-walkthrough
+```
