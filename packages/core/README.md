@@ -57,8 +57,8 @@ response is:
 **Not** verified here (honest gap): full TDX remote attestation is **not**
 performed — the engine fetches and *parses* the TDX quote but does not verify it
 against the Intel PCK root, and a forged quote would pass at this boundary
-(deferred). The compose-hash registry anchor (`RegistryComposeSource`) is not
-implemented. WebSocket push and ENS off-chain reads are outside the signed HTTP
+(deferred). An independent compose-hash registry anchor (node-independent source)
+is not implemented. WebSocket push and ENS off-chain reads are outside the signed HTTP
 path and unverified. In short: **verifiable = signed + untampered + fresh +
 bound against a pinned key**, not full quote attestation.
 
@@ -229,19 +229,15 @@ buildPreImage(chainId: bigint, requestBody: Uint8Array, responseBody: Uint8Array
 computeComposeHash(appCompose: string): string; // sha256(utf8(appCompose)) as bare lowercase hex
 ```
 
-**`ComposeSource`** (Layer A — "is the measured code the code I expect?"):
+**`computeComposeHash`** (Layer A — "is the measured code the code I expect?"):
+`sha256(utf8(app_compose))` as bare lowercase hex, matching dstack's rule (raw
+bytes, no canonicalization). The SDK's CHK-A2 self-consistency check uses it to
+confirm a node's self-reported `app_compose` — served verbatim in the
+`/attestation` body next to `composeHash` — hashes to its `composeHash`.
 
-- `InfoEndpointComposeSource(url, { fetch? })` — pulls `app_compose` from the
-  node's own `GET /info` (`tcb_info.app_compose`). **DEV-ONLY, self-reported,
-  NOT a trust anchor** — a malicious node returns a compose matching its forged
-  quote. Constructor throws `TypeError` on a non-`http(s)` URL; malformed `/info`
-  body throws `MalformedInfoResponse`.
-- `RegistryComposeSource({ source, ref?, expectedComposeHash?, fetch? })` — the
-  *intended* real anchor (external, node-independent registry). **Not yet
-  implemented**; both methods reject with `ComposeSourceNotImplemented`.
-
-Both implement `ComposeSource` = `{ getAppCompose(): Promise<string>;
-getComposeHash(): Promise<string> }`.
+**Self-reported, NOT a trust anchor:** `app_compose` and `compose_hash` both come
+from the same node, so a match proves only internal consistency (forgeable). The
+real Layer A anchor (an external, node-independent compose registry) is deferred.
 
 ### Attestation (unsigned route)
 
@@ -315,8 +311,6 @@ Every verification failure throws a subclass of the abstract `VerificationError`
 | `StaleTimestamp`               | `"StaleTimestamp"`              | Valid signature but timestamp outside replay window. `.observedMs/.nowMs/.skewMs/.allowedWindowMs` |
 | `InvalidNonce`                 | `"InvalidNonce"`                | Attestation nonce not exactly 32 bytes. `.reason`                |
 | `MalformedAttestationResponse` | `"MalformedAttestationResponse"`| `/attestation` body off-contract. `.reason`                      |
-| `MalformedInfoResponse`        | `"MalformedInfoResponse"`       | `/info` body off-contract. `.reason`                             |
-| `ComposeSourceNotImplemented`  | `"ComposeSourceNotImplemented"` | `RegistryComposeSource` used before the registry lands. `.reason` |
 | `AttestationNodeNotFoundError` | `"AttestationNodeNotFound"`     | The RPC gateway returned 404 for the targeted `node_id`. `.nodeId` |
 | `AttestationCorrelationError`  | `"AttestationCorrelation"`      | Attestation pubkey ≠ response signer. `.expectedPubkey/.actualPubkey` |
 

@@ -94,7 +94,7 @@ claiming a hardware root of trust.
 
   > ⚠️ **CHK-A2 is self-consistency ONLY — it is NOT a trust anchor.**
   > `app_compose` and `compose_hash` both come from the **same node** (its own
-  > `GET /info` + `/attestation`). A pass proves only that the node is internally
+  > `/attestation` response). A pass proves only that the node is internally
   > consistent. A malicious node simply reports an `app_compose` that hashes to
   > its own forged `compose_hash` and passes A2 trivially — **A2 is
   > attacker-forgeable**. Turning A2 into a real trust anchor requires all of:

@@ -20,8 +20,8 @@
 // even under allowInsecureMock (it precedes the mock gate).
 //
 // ⚠️ TRUST BOUNDARY — CHK-A2 is SELF-CONSISTENCY ONLY, NOT a trust anchor.
-// Both `app_compose` and `compose_hash` come from the SAME node (its own GET
-// /info + /attestation). The check only proves the node is internally
+// Both `app_compose` and `compose_hash` come from the SAME node (its own
+// /attestation response). The check only proves the node is internally
 // consistent: a malicious node simply reports an app_compose that hashes to its
 // own forged compose_hash and passes A2 trivially. It is attacker-forgeable and
 // raises the bar against accidental config drift ONLY. Real compose trust needs

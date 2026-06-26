@@ -27,7 +27,6 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { LRUCache } from "lru-cache";
 
 import { type Attestation, fetchAttestation, verifyAttestationCorrelation } from "./attestation";
-import { InfoEndpointComposeSource } from "./compose";
 import { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
 import type { VerifiedResponse } from "./verifier";
@@ -96,11 +95,10 @@ export interface TrustedVerifierOptions {
  * `signature_chain` are still mock-tolerated stubs — the mock verifier does not
  * inspect them; each records where a future release must source the real data.
  *
- * `tcbInfo.app_compose` is now populated from the node's `GET /info`
- * (`tcb_info.app_compose`, via {@link InfoEndpointComposeSource}). `appCompose`
- * is OPTIONAL and defaults to `""` — when the caller could not fetch `/info`
- * (older nodes / the simulator / a fetch error) the field stays empty and the
- * SDK's CHK-A2 self-consistency check dormant-skips (backward-compatible).
+ * `tcbInfo.app_compose` is taken straight from the `/attestation` body
+ * (`attestation.app_compose`, served verbatim next to `compose_hash`). It is `""`
+ * when the sidecar does not provide it (older nodes / the simulator), in which
+ * case the SDK's CHK-A2 self-consistency check dormant-skips (backward-compatible).
  *
  * NOTE: `app_compose` here comes from the SAME node that produced `compose_hash`
  * (self-reported). The pair only proves the node is internally consistent — it
@@ -111,7 +109,6 @@ export function mapAttestationToBundle(
   attestation: Attestation,
   pubkeyHex: string,
   nonce: Uint8Array,
-  appCompose = "",
 ): AttestationBundle {
   return {
     quote: {
@@ -123,17 +120,17 @@ export function mapAttestationToBundle(
     pubkey: pubkeyHex,
     nonce: bytesToHex(nonce),
     // Future work: structural measurement fields (mrtd/rtmr0-3, event_log)
-    // from GET /info tcb_info for RTMR replay anchoring. The mock does not inspect
-    // them, so a stub is valid until the real DCAP/RTMR layers land.
+    // for RTMR replay anchoring. The mock does not inspect them, so a stub is
+    // valid until the real DCAP/RTMR layers land.
     tcbInfo: {
       mrtd: "",
       rtmr0: "",
       rtmr1: "",
       rtmr2: "",
       rtmr3: "",
-      // Raw app_compose text from GET /info tcb_info (self-reported;
-      // empty when /info was unavailable → CHK-A2 dormant-skips).
-      app_compose: appCompose,
+      // Raw app_compose text from the /attestation body (self-reported;
+      // empty when the sidecar omits it → CHK-A2 dormant-skips).
+      app_compose: attestation.app_compose,
       event_log: [],
       // composeHash is available as a (recompute-only) hint, never a trust anchor.
       compose_hash: attestation.composeHash,
@@ -239,26 +236,6 @@ export class TrustedVerifier {
   }
 
   /**
-   * Best-effort fetch of the node's raw `app_compose` (GET /info →
-   * `tcb_info.app_compose`) for CHK-A2. Returns `""` on ANY failure (no /info
-   * route, malformed body, network error) — CHK-A2 then dormant-skips. Never
-   * throws; the attestation verify must not fail because /info is unavailable.
-   * The base URL is `attestationUrl` with a single trailing `/attestation`
-   * segment removed (InfoEndpointComposeSource re-appends `/info`).
-   */
-  private async fetchAppComposeBestEffort(): Promise<string> {
-    try {
-      const baseUrl = this.attestationUrl.replace(/\/attestation\/?$/i, "");
-      const source = new InfoEndpointComposeSource(baseUrl, {
-        ...(this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl }),
-      });
-      return await source.getAppCompose();
-    } catch {
-      return "";
-    }
-  }
-
-  /**
    * Verify a (requestBytes, responseBytes, headers) triple and, on an
    * unknown/expired signing pubkey, lazily attest it. Fail-closed throughout.
    * Exact ordering:
@@ -344,14 +321,9 @@ export class TrustedVerifier {
       this.logger,
     );
 
-    // Best-effort fetch of the node's raw `app_compose` from GET /info so
-    // the SDK can run CHK-A2 (compose-hash self-consistency). NON-FATAL: older
-    // nodes / the simulator / a transient /info error leave it empty and CHK-A2
-    // dormant-skips — the attestation verify must not fail just because /info is
-    // missing. The base URL is `attestationUrl` minus its trailing `/attestation`
-    // (InfoEndpointComposeSource appends `/info`).
-    const appCompose = await this.fetchAppComposeBestEffort();
-
+    // CHK-A2 (compose-hash self-consistency) reads `att.app_compose`, served
+    // verbatim in the /attestation body next to `composeHash`. Empty on older
+    // nodes / the simulator → CHK-A2 dormant-skips (NON-FATAL).
     if (this.logger !== defaultLogger) {
       this.logger.debug("attestation.received", {
         reportData: att.quote.report_data,
@@ -359,11 +331,12 @@ export class TrustedVerifier {
         pubkeyHex,
         quote: truncateHex(att.quote.quote),
         eventLog: byteLen(att.quote.event_log),
-        appCompose: byteLen(appCompose),
+        // app_compose is raw text (not hex) → count its real UTF-8 byte length.
+        appCompose: byteLen(new TextEncoder().encode(att.app_compose)),
       });
     }
 
-    const bundle = mapAttestationToBundle(att, pubkeyHex, nonce, appCompose);
+    const bundle = mapAttestationToBundle(att, pubkeyHex, nonce);
     const policy = buildVerifyPolicy(pubkeyHex, nonce, this.hardwareVerifier, this.logger);
 
     await this.verifyAttestationImpl(bundle, policy);

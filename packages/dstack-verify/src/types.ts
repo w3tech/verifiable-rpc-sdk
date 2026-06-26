@@ -2,7 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Frozen, complete contract types for dstack/TDX attestation verification.
 //
-// Field sets derived from the sidecar /attestation + /info wire shape and the
+// Field sets derived from the sidecar /attestation wire shape and the
 // phala dstack reference (TcbInfo/EventLog/report_data layout, signature_chain).
 // These types are FROZEN now: a future release (real DCAP verification) fills
 // helper/verifier bodies WITHOUT changing any exported type. Optional fields use `field?: T`
@@ -39,7 +39,7 @@ export interface QuoteEnvelope {
   vm_config: string;
 }
 
-/** TCB / measurement info from /info tcb_info (source for compose-hash + RTMR replay). */
+/** TCB / measurement info (source for compose-hash + RTMR replay). */
 export interface TcbInfo {
   /** → CHK-P3 */
   mrtd: string;
@@ -79,7 +79,7 @@ export interface AttestationBundle {
    * change the frozen contract. → CHK-P7/P8
    */
   signature_chain: string[];
-  /** Optional structured app/instance ids if surfaced by /info. */
+  /** Optional structured app/instance ids if surfaced by the attestation. */
   appId?: string;
   instanceId?: string;
 }

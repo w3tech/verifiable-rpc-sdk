@@ -36,12 +36,21 @@ export interface GetQuoteResponse {
 /**
  * Top-level attestation response. `pubkey` is `0x` + 64 hex chars (32-byte
  * Ed25519 pubkey), `composeHash` is the `app-compose.json` content hash
- * (may be empty under the simulator).
+ * (may be empty under the simulator), and `app_compose` is the raw verbatim
+ * `app-compose.json` text the sidecar returns alongside `composeHash`.
  */
 export interface Attestation {
   quote: GetQuoteResponse;
   pubkey: string;
   composeHash: string;
+  /**
+   * Raw verbatim `app_compose` text, served in the `/attestation` body next to
+   * `composeHash`. Self-reported by the node (NOT a trust anchor) — used only for
+   * CHK-A2 self-consistency (`sha256(utf8(app_compose)) == composeHash`). Defaults
+   * to `""` when the sidecar does not provide it (older nodes / simulator), in
+   * which case CHK-A2 dormant-skips.
+   */
+  app_compose: string;
 }
 
 /** Options for {@link fetchAttestation}. */
@@ -199,5 +208,8 @@ function narrowAttestation(body: unknown): Attestation {
     },
     pubkey: obj.pubkey,
     composeHash: obj.composeHash,
+    // Raw verbatim app_compose, served next to composeHash. Lenient: absent or
+    // non-string (older sidecars / simulator) defaults to "" → CHK-A2 dormant-skips.
+    app_compose: typeof obj.app_compose === "string" ? obj.app_compose : "",
   };
 }

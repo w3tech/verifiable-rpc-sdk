@@ -20,8 +20,6 @@ export type VerificationErrorKind =
   | "StaleTimestamp"
   | "InvalidNonce"
   | "MalformedAttestationResponse"
-  | "MalformedInfoResponse"
-  | "ComposeSourceNotImplemented"
   | "AttestationNodeNotFound"
   | "AttestationCorrelation";
 
@@ -149,15 +147,6 @@ export class MalformedAttestationResponse extends VerificationError {
   }
 }
 
-/** The sidecar `GET /info` body did not match the documented shape (missing/typed `tcb_info.app_compose`). */
-export class MalformedInfoResponse extends VerificationError {
-  readonly kind = "MalformedInfoResponse" as const;
-
-  constructor(public readonly reason: string) {
-    super(`Malformed /info response: ${reason}`);
-  }
-}
-
 /**
  * The RPC proxy could not route attestation to the requested `node_id` (HTTP
  * 404). The node id is stale or unknown; the SDK does NOT retry or fall back to
@@ -187,18 +176,5 @@ export class AttestationCorrelationError extends VerificationError {
       `Attestation pubkey mismatch: expected ${expectedPubkey} (RPC response), ` +
         `got ${actualPubkey} (attestation)`,
     );
-  }
-}
-
-/**
- * A {@link ComposeSource} implementation is not yet available — currently the
- * external `RegistryComposeSource` (the real Layer A trust anchor), pending the
- * compose-hash registry. Use `InfoEndpointComposeSource` for dev.
- */
-export class ComposeSourceNotImplemented extends VerificationError {
-  readonly kind = "ComposeSourceNotImplemented" as const;
-
-  constructor(public readonly reason: string) {
-    super(`ComposeSource not implemented: ${reason}`);
   }
 }
