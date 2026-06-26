@@ -61,6 +61,7 @@ export function createConsoleLogger(): Logger {
           out();
           out(HEADER);
           out(" Inputs");
+          out(`   chain id:   ${d.chainId}`);
           out(`   req bytes:  ${d.req}`);
           out(`   res bytes:  ${d.res}`);
           out("   vRPC headers:");

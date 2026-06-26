@@ -261,6 +261,7 @@ export class TrustedVerifier {
       const headerRecord: Record<string, string> =
         headers instanceof Headers ? Object.fromEntries(headers.entries()) : { ...headers };
       this.logger.debug("verify.start", {
+        chainId: this.chainId.toString(),
         req: truncateHex(bytesToHex(requestBytes)),
         res: truncateHex(bytesToHex(responseBytes)),
         headers: pickVrpcHeaders(headerRecord),
