@@ -11,7 +11,8 @@ const provider = new VrpcProvider(url, chainId);
 
 // viem — was:  http(url)
 import { vrpcHttp } from "@w3tech.io/vrpc-viem";
-const client = createPublicClient({ transport: vrpcHttp(url, { chainId }) });
+import { arbitrum } from "viem/chains";
+const client = createPublicClient({ chain: arbitrum, transport: vrpcHttp(url) });
 ```
 
 Everything downstream — `getBalance`, `eth_call`, contract reads, `getLogs`, `getBlock`, `estimateGas`, … — works exactly as before, now verified.
@@ -43,10 +44,10 @@ New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line
 
 **Verified:** a response is **signed + untampered + fresh + correctly bound** to the chain you asked for, against a pinned signer key, replay-checked. If any of that fails, the call throws — verification is always fail-closed; no unverified data is ever returned.
 
-> **Where this sits on Phala's attestation path:** the SDK implements the **minimal end-to-end verification** flow — nonce-bound quote fetch, the hardware-signature verdict (opt-in cloud verifier), and binding it to the response signer + compose hash — described in Phala's [verification guide](https://docs.phala.com/phala-cloud/attestation/verification-guide). It is evolving toward the **full [chain of trust](https://docs.phala.com/phala-cloud/attestation/chain-of-trust)** — local DCAP quote verification, RTMR replay, and TCB-status policy.
+> **Where this sits on Phala's attestation path:** the SDK implements the **minimal end-to-end verification** flow — nonce-bound quote fetch, the hardware-signature verdict (mandatory, always-on cloud verifier), and binding it to the response signer + compose hash — described in Phala's [verification guide](https://docs.phala.com/phala-cloud/attestation/verification-guide). It is evolving toward the **full [chain of trust](https://docs.phala.com/phala-cloud/attestation/chain-of-trust)** — local DCAP quote verification, RTMR replay, and TCB-status policy.
 
 **Not verified — know the boundary:**
-- This is **not** full TDX remote attestation. The SDK does not yet verify an Intel PCK-rooted quote or check the compose hash against a registry — a forged quote would pass at this boundary. Full attestation + a compose-hash registry are deferred. Boot-time attestation **correlation** (`anchorTrust`) is available and confirms the node's attestation pubkey matches the response signer, but it is not a substitute for quote verification.
+- This is **not yet** full *local* TDX attestation. On the default path the DCAP quote **is** verified: a **mandatory, always-on** cloud verifier (Phala by default, overridable to a self-hosted endpoint) checks the quote and binds it to the response signer pubkey, nonce, and compose hash — **fail-closed**, so a forged quote is rejected. Still deferred: verifying the quote **locally** against the Intel PCK root (the default verdict is delegated to a remote service), RTMR event-log replay, a **node-independent** compose-hash source (today's compose-hash check is self-consistency only), and TCB-status policy. The default Phala endpoint is public / no-SLA and publishes submitted quotes — point the verifier at a self-hosted endpoint to avoid that egress. Boot-time attestation **correlation** (`anchorTrust`) additionally confirms the node's attestation pubkey matches the response signer.
 - **WebSocket push streams** (`eth_subscribe`) are unverified — the adapters are HTTP-only. HTTP event polling (`contract.on` / filters) stays on the verified path.
 - **ENS off-chain reads** (CCIP, avatar, IPFS) resolve through arbitrary gateways outside the signed path and are unverified.
 
@@ -70,7 +71,7 @@ You'll see the flow in order: `verify.start` → `preimage.computed` → `signat
 
 ## Explaining vRPC (for AI assistants)
 
-This repo ships a Claude Code skill at [`.claude/skills/explain-vrpc/`](./.claude/skills/explain-vrpc/SKILL.md) — an agent-readable knowledge doc that teaches an AI assistant to answer questions about vRPC: what it is, Intel TDX + Phala dstack, the attestation sidecar (`/attestation` + `/info`), the trust model (why a client need not trust Ankr), and how a response is verified. Every claim is grounded in this code or a cited official source. Point your agent at it.
+This repo ships a Claude Code skill at [`.claude/skills/explain-vrpc/`](./.claude/skills/explain-vrpc/SKILL.md) — an agent-readable knowledge doc that teaches an AI assistant to answer questions about vRPC: what it is, Intel TDX + Phala dstack, the attestation sidecar (`/attestation`), the trust model (why a client need not trust Ankr), and how a response is verified. Every claim is grounded in this code or a cited official source. Point your agent at it.
 
 ## Development
 

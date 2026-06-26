@@ -25,6 +25,15 @@ sub-route; pass `https://host/<chain>/<key>` and the SDK derives the rest.
 - **Ed25519 response signature** — VERIFIED (every response, fail-closed).
 - **Signing key ↔ TDX enclave correlation** — VERIFIED (attestation pubkey must
   equal the response signer).
-- **TDX quote cryptographic verification (DCAP/RTMR)** — **MOCK in v6.0** (frozen
-  contract); real verification lands in v7.0.
+- **TDX DCAP quote verdict** — VERIFIED by default. The SDK runs an always-on
+  hardware verifier (`createCloudVerifier`, the Phala cloud verifier wired
+  mandatory by `buildVerifyPolicy`), which asserts the DCAP verdict
+  (`quote.verified === true`) and binds the quote to the response signer
+  (`report_data == pubkey‖nonce`). Fail-closed (`CHK-P1`); point it at a
+  self-hosted endpoint to avoid the public Phala egress.
+- **Local DCAP replay, RTMR event-log replay, independent compose source, and
+  TCB-status policy** — NOT yet implemented. The hardware verdict today comes
+  from the remote cloud verifier, not local DCAP; full local quote verification
+  and RTMR3 anchoring are future work (the SDK is evolving toward a full local
+  chain of trust).
 - **Node disk-layer correctness** — NOT verified (the TEE boundary covers RAM).

@@ -2,13 +2,21 @@
 
 Frozen contract for dstack / Intel TDX attestation verification.
 
-> ## ⚠️ This release ships a MOCK verifier — NO real attestation security yet
+> ## Attestation verification: mandatory hardware verifier
 >
-> `verifyDstackAttestation` is currently a **mock**. Real DCAP/RTMR/compose-hash
-> verification arrives in a future release. Setting `allowInsecureMock: true` **bypasses
-> all chain-of-trust checks** — it is a deliberate escape hatch that resolves
-> `void` silently (the SDK prints nothing) and is removed once real
-> verification lands. Never rely on the mock for production attestation security.
+> `verifyDstackAttestation` enforces a **mandatory** step-4 hardware-signature
+> verifier as its root of trust. If `policy.hardwareVerifier` is absent the call
+> fails closed with `AttestationError("CHK-P1")`. The live SDK path (vrpc-core's
+> `buildVerifyPolicy` / `TrustedVerifier`) always wires the **Phala
+> CloudVerifier**, which POSTs the DCAP quote to a hosted verify endpoint,
+> asserts the verdict, and binds report_data → pubkey‖nonce and compose_hash →
+> `mr_config_id` (B+). It runs after the unconditional CHK-A1 (pubkey/nonce
+> binding) and best-effort CHK-A2 (compose self-consistency) local checks.
+>
+> **Still deferred to a future release:** local-DCAP (no-egress) quote
+> verification, RTMR3 event-log replay, an independent (non-node-forgeable)
+> compose source, and TCB-status policy. Today the hardware verdict comes from
+> the Phala CloudVerifier (a remote verify API), not local DCAP.
 
 ## What this is
 
@@ -28,13 +36,13 @@ Fail-closed by contract:
 
 Callers never inspect a boolean — they catch `AttestationError`.
 
-Mock semantics:
+Fail-closed gate:
 
-- `policy.allowInsecureMock !== true` (absent or `false`) → **throws**
-  `AttestationError("CHK-MOCK", ...)` (default-deny).
-- `policy.allowInsecureMock === true` → resolves `void` **silently** (the SDK
-  prints nothing). It bypasses the hardware root of trust as an explicit caller
-  opt-in (fail-closed by default).
+- After CHK-A1/CHK-A2, the **mandatory** step-4 `hardwareVerifier` runs.
+  `policy.hardwareVerifier` absent → **throws** `AttestationError("CHK-P1", ...)`
+  (an unattested response never passes).
+- A configured verifier **resolves `void`** on success and **throws** on
+  failure. The live SDK path always wires the Phala CloudVerifier by default.
 
 ### Types
 
@@ -44,7 +52,7 @@ Mock semantics:
   optional `appId`/`instanceId`.
 - `VerifyPolicy` — pinned trust anchors (`PinnedAllowlist`), reportData→pubkey
   binding (`ReportDataBinding`), DCAP TCB acceptance (`TcbPolicy`), optional
-  `pccsUrl`, and the escape hatch `allowInsecureMock: boolean`. An optional
+  `pccsUrl`, and the mandatory `hardwareVerifier` (hardware root of trust). An optional
   opt-in `logger` reaches `verifyDstackAttestation` here — core threads the
   verifier's injected logger in via the policy (see vrpc-core's
   "Debug logging (opt-in)"); absent → silent.
@@ -63,35 +71,36 @@ catch a single `VerificationError`.
 
 This package only verifies attestation — the orchestration (lazy fetch + pubkey
 cache) lives in `@w3tech.io/vrpc-core`'s `TrustedVerifier`. After a successful
-(currently mock) verification the signing pubkey is cached for a configurable
+verification the signing pubkey is cached for a configurable
 TTL (`pubkeyCacheTtlMs`, default `DEFAULT_PUBKEY_CACHE_TTL_MS` = 1h): a repeat read
 within the TTL skips the attestation fetch; after the TTL the pubkey is
 re-attested (no stale trust). The adapters (`@w3tech.io/vrpc-ethers`,
-`@w3tech.io/vrpc-viem`) forward `pubkeyCacheTtlMs` into the seam. Remember: while
-the verifier is a mock the cached result is from the **mock** check — see the banner above.
+`@w3tech.io/vrpc-viem`) forward `pubkeyCacheTtlMs` into the seam.
 
 ### Trust boundary — what verification actually proves
 
-`verifyDstackAttestation` runs two **local, collateral-free** checks before the
-mock gate. They establish **"signed + bound + fresh + self-consistent"** — they
-do **NOT** establish **"attested to genuine Intel TDX hardware"**. A fabricated
-quote can carry arbitrary `report_data` / `compose_hash`, so these checks are
-only meaningful in combination with the **deferred** DCAP signature verification
-(a future release). They raise the bar (swapped-key MITM, replay, config drift) without
-claiming a hardware root of trust.
+`verifyDstackAttestation` runs two **local, collateral-free** checks (CHK-A1,
+CHK-A2) and then the **mandatory** step-4 hardware verifier. The local checks
+alone establish only **"signed + bound + fresh + self-consistent"** — on their
+own they do **NOT** establish **"attested to genuine Intel TDX hardware"**. The
+hardware root of trust is the step-4 verifier: the live SDK default wires the
+Phala CloudVerifier, which performs a hosted DCAP-quote verification plus B+
+binding. With no verifier configured the call fails closed with
+`AttestationError("CHK-P1")`. Local-DCAP (no-egress) verification and RTMR3
+event-log replay remain deferred to a future release.
 
 - **CHK-A1 — report_data → pubkey/nonce binding (HARD).** Shape-gates
   `report_data` to 64 bytes, then asserts `report_data[0:32] == expectedPubkey`
   (the Ed25519 key the SDK verifies `vRPC-Signature` against — swapped-key /
   wrong-node defence) and `report_data[32:64] == expectedNonce` (freshness /
-  anti-replay). A mismatch **always** throws `AttestationError("CHK-A1")` —
-  **regardless of `allowInsecureMock`**.
+  anti-replay). A mismatch **always** throws `AttestationError("CHK-A1")` — it
+  is unconditional and fail-closed.
 
 - **CHK-A2 — compose-hash self-consistency (BEST-EFFORT, dormant by default).**
   When `tcbInfo.app_compose` is non-empty **and** `tcbInfo.compose_hash` is
   present + non-empty, asserts `sha256(utf8(app_compose)) == compose_hash` (raw
   bytes, **no canonicalization**); mismatch throws `AttestationError("CHK-A2")`
-  (it precedes the mock gate, so it throws even under `allowInsecureMock`). When
+  (it runs before the step-4 hardware verifier). When
   either side is empty/absent (nodes that don't yet serve `app_compose`, or the
   dstack simulator's empty `compose_hash`) it **skips silently — not an error**.
 
@@ -105,26 +114,10 @@ claiming a hardware root of trust.
   > registry), (b) the `compose_hash` **anchored into RTMR3** via event-log
   > replay, and (c) a **DCAP-verified** quote. All three are future work.
 
-### `allowInsecureMock` — partial-verification semantics
-
-`allowInsecureMock` gates **only** the not-yet-built layers (DCAP
-quote-signature + RTMR3 replay), **never** CHK-A1 or CHK-A2:
-
-- **absent / `false`** → after A1+A2 pass, throws `AttestationError("CHK-MOCK")`
-  (fail-closed). Only the literal boolean `true` opens the hatch; any other
-  truthy value (`1`, `"true"`, `{}`, …) still throws.
-- **`true`** → after A1+A2 pass, resolves `void` **silently** (the SDK prints
-  nothing). CHK-A1/A2 ran but the hardware root of trust did **not** — proving
-  "signed + bound + fresh", **not** "attested to hardware". Bypassing the
-  hardware root of trust is an explicit caller opt-in (fail-closed by default).
-
-The contract stays `Promise<void>`; there is no separate status surface —
-partial verification carries no signal beyond the silent resolve.
-
 ### Pluggable hardware verifier — `HardwareVerifier` + `createCloudVerifier`
 
 A pluggable **step-4 hardware-signature** seam (→ CHK-P1) runs **after CHK-A2**
-and, when configured, **bypasses the CHK-MOCK gate** on success. It is **opt-in**:
+and is the **mandatory** hardware root of trust for the call:
 
 ```ts
 import { createCloudVerifier, verifyDstackAttestation } from "@w3tech.io/dstack-verify";
@@ -133,13 +126,17 @@ await verifyDstackAttestation(bundle, {
   binding: { expectedPubkey, expectedNonce },
   allowlist,
   tcb,
-  hardwareVerifier: createCloudVerifier(), // ← opt-in
+  hardwareVerifier: createCloudVerifier(), // hardware root of trust
 });
 ```
 
-- **Opt-in.** When `policy.hardwareVerifier` is **unset**, behavior is
-  **unchanged** — the CHK-MOCK gate / `allowInsecureMock` governs exactly as
-  before. Setting it makes the verifier the hardware root of trust for the call.
+- **Required (fail-closed).** A hardware verifier is mandatory. When
+  `policy.hardwareVerifier` is **unset**, `verifyDstackAttestation` throws
+  `AttestationError("CHK-P1", …)` after CHK-A1/A2 — an unattested response never
+  passes. In the live SDK path, core's `buildVerifyPolicy` /
+  `TrustedVerifier` always wires the Phala `CloudVerifier` by default, so the
+  verifier is the hardware root of trust for every call; only its
+  endpoint/implementation is overridable.
 - **Configurable.** `createCloudVerifier({ endpoint?, timeoutMs?, fetch? })` —
   the `endpoint` defaults to the Phala URL, `timeoutMs` bounds the request
   (`AbortController`), and `fetch` is injectable (tests; default
@@ -164,19 +161,28 @@ await verifyDstackAttestation(bundle, {
 
 `CHK` is a frozen const record enumerating the full chain-of-trust checklist
 `CHK-A1..G3` (verbatim meaning + disposition: `implement` / `mock` /
-`pinned` / `out`) plus the synthetic `CHK-MOCK` (`mock-deny`) for the
-fail-closed path. It is a queryable audit dictionary — a future release fills in the bodies
+`pinned` / `out`). It is a queryable audit dictionary — a future release fills in the bodies
 without changing this set.
 
-### Helper signatures (throwing stubs)
+### Helper signatures
 
-Frozen now, bodies filled in a future release. Each currently throws
-`Error("... not implemented yet")`:
+Exported from the public barrel and **implemented** (back the active CHK-A1 /
+CHK-A2 checks):
+
+- `computeComposeHash(appCompose): string` — CHK-A2 (raw-verbatim
+  `sha256(utf8(appCompose))`, bare lowercase hex, no canonicalization).
+- `parseReportData(reportDataHex): ReportDataBinding` — CHK-A1 (splits 64-byte
+  report_data into pubkey ‖ nonce; throws `AttestationError` on malformed input).
+
+Internal throwing stubs (**NOT** exported from the package barrel; importable
+only from `./verify-steps`; each currently throws
+`Error("... not implemented yet")` until the real DCAP layers land):
 
 - `replayRtmr(events): string` — CHK-A4/P3 (RTMR replay, SHA-384 chain).
-- `computeComposeHash(appCompose): string` — CHK-A2 (raw-verbatim `sha256`).
-- `parseReportData(reportDataHex): ReportDataBinding` — CHK-A1 (pubkey ‖ nonce).
 - `extractKeyProvider(events): KeyProvider` — CHK-P7 (key-provider identity).
+
+The contract test (`tests/contract.test.ts`) explicitly asserts `replayRtmr` and
+`extractKeyProvider` are absent from the public barrel.
 
 ## Tests
 
@@ -186,6 +192,13 @@ pnpm --filter '@w3tech.io/dstack-verify' test
 
 - `tests/contract.test.ts` — exports, `AttestationError` is a standalone `Error`
   (not a core `VerificationError`), completeness of `CHK-A1..G3`.
-- `tests/mock.test.ts` — fail-closed mock (throws without the flag, resolves
-  silently with it).
-- `tests/helpers.test.ts` — helper stubs throw "not implemented".
+- `tests/verify.test.ts` — end-to-end verify flow incl. the fail-closed gate
+  (throws `CHK-P1` without a `hardwareVerifier`, resolves with a configured one;
+  CHK-A1/A2 binding + compose-hash checks).
+- `tests/cloud-verifier.test.ts` — cloud verifier client behavior.
+- `tests/compose-hash.test.ts` — compose-hash computation.
+- `tests/helpers.test.ts` — asserts the remaining throwing stubs (`replayRtmr`,
+  `extractKeyProvider`) throw "not implemented", and that the implemented
+  `parseReportData` throws `AttestationError(CHK-A1)` on malformed input
+  (`computeComposeHash` / `parseReportData` happy paths are covered in
+  `compose-hash.test.ts` / `verify.test.ts`).

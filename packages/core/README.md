@@ -6,7 +6,9 @@ This is the verification **engine** — the layer both the ethers and viem
 adapters build on. It owns the canonical 80-byte pre-image, the Ed25519
 signature check, the replay window, the attestation fetch/correlation helpers,
 and the typed `VerificationError` family. It has **no blockchain-client
-dependency** — the only runtime deps are `@noble/ed25519` and `@noble/hashes`.
+dependency** — its runtime deps are `@noble/ed25519`, `@noble/hashes`,
+`lru-cache` (pubkey cache), and the sibling `@w3tech.io/dstack-verify` (hardware
+verifier).
 Pairs with the `verifiable-rpc-sidecar` `v0.2.0` wire contract.
 
 Use this package directly when you verify responses captured outside a normal
@@ -54,13 +56,17 @@ response is:
   the response header. `verifyAttestationCorrelation` / `anchorTrust`
   additionally correlate that key against the serving node's attestation pubkey.
 
-**Not** verified here (honest gap): full TDX remote attestation is **not**
-performed — the engine fetches and *parses* the TDX quote but does not verify it
-against the Intel PCK root, and a forged quote would pass at this boundary
-(deferred). An independent compose-hash registry anchor (node-independent source)
-is not implemented. WebSocket push and ENS off-chain reads are outside the signed HTTP
-path and unverified. In short: **verifiable = signed + untampered + fresh +
-bound against a pinned key**, not full quote attestation.
+**The boundary (honest gap):** the low-level `verifyResponse` seam is
+signature-only — **signed + untampered + fresh + bound against a pinned key**. The
+default `TrustedVerifier` path goes further: it runs a **mandatory, always-on**
+hardware verifier (the Phala `CloudVerifier` by default, overridable) that verifies
+the DCAP quote and binds it to the response pubkey, nonce, and compose hash,
+**fail-closed** — so a forged quote is rejected, not passed. Still deferred:
+verifying the quote **locally** against the Intel PCK root (the default verdict is
+delegated to a remote service), RTMR event-log replay, a **node-independent**
+compose-hash source (today's compose-hash check is self-consistency only), and
+TCB-status policy. WebSocket push and ENS off-chain reads are outside the signed
+HTTP path and unverified.
 
 ---
 
@@ -195,7 +201,7 @@ plain records. `vRPC-NodeId` is optional (older proxies omit it).
 
 **`VerifiedPair`** → `{ responseBytes, nodeId?, verification }` where
 `verification = { signatureHex, pubkeyHex, timestampMs, preImageSha256 }`.
-`DEFAULT_REPLAY_WINDOW_MS` (`60_000`) is also exported from `./verify`.
+The default `replayWindowMs` is `60_000` (1 minute).
 
 ### `class VerifierClient`
 
@@ -226,14 +232,16 @@ auto-incrementing JSON-RPC `id` is maintained per instance.
 
 ```ts
 buildPreImage(chainId: bigint, requestBody: Uint8Array, responseBody: Uint8Array, timestampMs: bigint): Uint8Array; // 80 bytes
-computeComposeHash(appCompose: string): string; // sha256(utf8(appCompose)) as bare lowercase hex
 ```
 
 **`computeComposeHash`** (Layer A — "is the measured code the code I expect?"):
 `sha256(utf8(app_compose))` as bare lowercase hex, matching dstack's rule (raw
-bytes, no canonicalization). The SDK's CHK-A2 self-consistency check uses it to
-confirm a node's self-reported `app_compose` — served verbatim in the
-`/attestation` body next to `composeHash` — hashes to its `composeHash`.
+bytes, no canonicalization). It is **not** exported by `@w3tech.io/vrpc-core` —
+it lives in the sibling `@w3tech.io/dstack-verify`
+(`import { computeComposeHash } from "@w3tech.io/dstack-verify";`). The SDK's
+CHK-A2 self-consistency check uses it to confirm a node's self-reported
+`app_compose` — served verbatim in the `/attestation` body next to `composeHash`
+— hashes to its `composeHash`.
 
 **Self-reported, NOT a trust anchor:** `app_compose` and `compose_hash` both come
 from the same node, so a match proves only internal consistency (forgeable). The
@@ -260,7 +268,10 @@ it lazily per request as its attestation seam.
 verifiedResponse.verification.pubkeyHex`, throwing `AttestationCorrelationError`
 on mismatch.
 
-`Attestation` = `{ quote: GetQuoteResponse, pubkey, composeHash }`;
+`Attestation` = `{ quote: GetQuoteResponse, pubkey, composeHash, app_compose }`,
+where `app_compose` is a required field carrying the raw verbatim app-compose text
+used for the CHK-A2 self-consistency check (defaults to `""` on older
+sidecars/simulator, in which case CHK-A2 dormant-skips);
 `GetQuoteResponse` = `{ quote, event_log, report_data, vm_config }` (bare-hex
 fields; some empty under the dstack simulator).
 
@@ -293,7 +304,7 @@ coerced via `BigInt()` without a `number` round-trip), `headers?`,
 | `DEFAULT_PUBKEY_CACHE_TTL_MS` | const | Default TTL for the `TrustedVerifier` pubkey cache. |
 | `deriveVrpcUrls(...)` | function | Derives the vRPC endpoint URL set from a base. |
 | `VrpcUrls` | type | Shape returned by `deriveVrpcUrls`. |
-| `parseChainId(...)` | function | Parses/normalizes a chain id input. |
+| `parseChainId(...)` | function | Decodes a `bigint` chainId from the raw bytes of a signed `eth_chainId` response (the auto-derive bootstrap used by the ethers/viem adapters); throws `MalformedHeader` on invalid JSON or a non-0x-hex `result`. |
 | `isSignedVrpcResponse(...)` | function | Predicate: whether a response carries the `vRPC-*` signing headers. |
 
 ---
@@ -355,6 +366,7 @@ from the ethers provider is the same class you catch here.
 
 ## Example
 
-See `examples/04-end-to-end.ts` (full call + verify + attestation) and
-`examples/07-attestation-via-gateway.ts` (the `anchorTrust` flow) at the repo root.
-Run with `pnpm example:04-end-to-end` / `pnpm example:07-attestation-via-gateway`.
+See `examples/03-vrpc-core-walkthrough.ts` at the repo root: signed wire →
+`verifyResponse` → tamper → `BadSignature` → `fetchAttestation` + correlation via
+`verifyAttestationCorrelation` → `VerifierClient`. Run with
+`pnpm example:03-vrpc-core-walkthrough`.

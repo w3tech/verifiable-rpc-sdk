@@ -88,5 +88,6 @@ will surface in the first release's notes via their PR titles:
 - **`deriveVrpcUrls` path-key URL support** — supports `rpc.ankr.com/<chain>/<key>` (inserts
   `_vrpc` on the chain segment while preserving the key).
 - **Removal of the `apiKey` option** across the options types — authentication is header-only.
-- **Trimming of `allowlist` / `tcb` / `pccsUrl`** and the redundant `headers` field from the
-  options types.
+- **Trimming of `allowlist` / `tcb` / `pccsUrl`** from the options types, plus removal of the
+  redundant `headers` field from ethers' `VrpcOptions` (set auth on the `FetchRequest` instead).
+  viem's `VrpcHttpOptions` keeps `headers` as a deliberate passthrough.

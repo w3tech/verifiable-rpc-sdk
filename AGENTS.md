@@ -89,9 +89,12 @@ with the simulator binary on the runner is tracked separately.
   (`@w3tech.io/vrpc-viem`), and `dstack-verify` (`@w3tech.io/dstack-verify`).
 - Public surface re-exported through `packages/core/src/index.ts`; implementation
   lives in `packages/core/src/verifier.ts`, `packages/core/src/verify.ts`,
-  `packages/core/src/attestation.ts`, `packages/core/src/compose.ts`,
+  `packages/core/src/attestation.ts`,
   `packages/core/src/errors.ts`, `packages/core/src/preimage.ts` (plus
-  `anchor.ts`, `trusted-verifier.ts`, `utils.ts`, `vrpc-url.ts`).
+  `anchor.ts`, `trusted-verifier.ts`, `utils.ts`, `vrpc-url.ts`). Compose-hash
+  logic lives outside core: `computeComposeHash` is in
+  `packages/dstack-verify/src/verify-steps.ts` (exported via
+  `@w3tech.io/dstack-verify`).
 - SDK is a thin verifier wrapping `fetch` — no JSON-RPC re-implementation, no
   batching, no method-specific decoders.
 - Pairs with `verifiable-rpc-sidecar` `v0.2.0`. Wire contract = the 80-byte
@@ -99,8 +102,9 @@ with the simulator binary on the runner is tracked separately.
   headers + `/attestation?nonce=<hex>` JSON shape. As of v0.2.0 the signature
   covers the content-DECODED (plaintext) body, so it verifies whether the
   client requested gzip or identity (the `v0.1.0` contract is forward-compatible
-  on the identity path). `examples/05-gzip-transport.ts` proves this on the live
-  gzip path.
+  on the identity path). The `03-vrpc-core-walkthrough.ts` example and
+  `packages/core/README.md` describe the content-decoded-body signing introduced
+  in v0.2.0.
 - **`call()` pins `accept-encoding: identity` as defense-in-depth — no longer a
   correctness requirement.** Since v0.2.0 signs the content-decoded body, a
   standard auto-decoding `fetch` (which gunzips a `content-encoding: gzip`
@@ -115,7 +119,7 @@ with the simulator binary on the runner is tracked separately.
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/core/src/index.ts`  | Public barrel re-exporting `VerifierClient`, `verifyResponse`/`isSignedVrpcResponse`, `fetchAttestation`/`verifyAttestationCorrelation`, `anchorTrust`, `TrustedVerifier`, the `VerificationError` family, `buildPreImage`, `parseChainId`, and `deriveVrpcUrls`. |
 | `packages/dstack-verify/src/verify-steps.ts`| `computeComposeHash` (`sha256(utf8(app_compose))` bare-hex, used by CHK-A2) + `parseReportData` (CHK-A1). Lives here — compose-hash is a dstack/TDX concept. |
-| `tsconfig.base.json`          | Strict TS config (target ESNext, moduleResolution bundler, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`). Root `tsconfig.json` only `extends` it with `include: []`; each package's `tsconfig.json` extends it too.        |
+| `tsconfig.base.json`          | Strict TS config (target ESNext, moduleResolution bundler, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`). Root `tsconfig.json` only `extends` it with `files: []`; each package's `tsconfig.json` extends it too.        |
 | `biome.json`                  | Biome lint + formatter config (root).                                                                                                                                                     |
 | `.github/workflows/ci.yml`    | CI workflow — lint + format:check + typecheck + test on push/PR.                                                                                                                          |
 
