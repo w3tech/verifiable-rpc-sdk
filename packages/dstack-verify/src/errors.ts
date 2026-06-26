@@ -1,38 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// The single error type this package throws. Mirrors the abstract
-// `VerificationError` base in @ankr.com/vrpc-core: `name` is auto-set by the
-// base from `this.constructor.name`, and `kind` is a readonly string-literal.
+// The single error type this package throws.
 //
-// NOTE: core's `VerificationErrorKind` is a CLOSED union that does NOT include
-// "Attestation". The abstract base types `kind: VerificationErrorKind`, so under
-// strict TS an override literal MUST be assignable to that union — a bare
-// `readonly kind = "Attestation" as const` does NOT type-check (TS2416). To keep
-// core's union byte-untouched (T-33-01) while still exposing the "Attestation"
-// discriminant at runtime, we declare the override with the base union type and
-// initialize it via a cast. Consumers narrow via `instanceof AttestationError`
-// (the established idiom) — never via core's union — and `error.kind` reads back
-// as the literal "Attestation" at runtime. Do NOT edit core's union.
-
-// Import the base from the leaf `/errors` subpath (not the full barrel) so we
-// don't pull all of @ankr.com/vrpc-core back in — that closes the
-// core<->dstack-verify ESM init cycle (otherwise VerificationError is undefined
-// at class-extends time under Node's bundled-ESM load order).
-import { VerificationError, type VerificationErrorKind } from "@ankr.com/vrpc-core/errors";
+// AttestationError extends the built-in `Error` directly — it deliberately does
+// NOT extend core's `VerificationError`. That keeps @ankr.com/dstack-verify a
+// dependency-free LEAF (no import of @ankr.com/vrpc-core, in any form), so the
+// package graph is strictly one-way: core → dstack-verify, with no cycle.
+//
+// core catches this at the `verifyDstackAttestation` call boundary and re-wraps
+// it into its own `VerificationError` family (preserving `chkId`/`detail` and
+// attaching the original as `cause`), so the SDK's public error contract —
+// callers catch `VerificationError` — is unchanged.
 import type { ChkId } from "./checklist";
 
-/** The discriminant literal this package's error reports, outside core's closed union. */
+/** The discriminant literal this package's error reports. */
 export type AttestationErrorKind = "Attestation";
 
 /**
  * Thrown when dstack/TDX attestation verification fails (or is mock-denied in
- * the current release). Carries which `CHK-*` item failed plus a human-readable detail. The
- * fail-closed contract means callers catch this rather than inspect a boolean.
+ * the current release). Carries which `CHK-*` item failed plus a human-readable
+ * detail. The fail-closed contract means callers catch this rather than inspect a
+ * boolean. Standalone (not a core `VerificationError`) to keep this package a
+ * leaf; core re-wraps it into its `VerificationError` family at the call boundary.
  */
-export class AttestationError extends VerificationError {
-  // Runtime value is the "Attestation" literal; static type stays the base union
-  // so the abstract `kind` override is assignable without editing core (T-33-01).
-  readonly kind: VerificationErrorKind = "Attestation" as VerificationErrorKind;
+export class AttestationError extends Error {
+  readonly kind: AttestationErrorKind = "Attestation";
 
   constructor(
     public readonly chkId: ChkId,
@@ -40,6 +32,9 @@ export class AttestationError extends VerificationError {
     options?: { cause?: unknown },
   ) {
     super(`Attestation verification failed [${chkId}]: ${detail}`);
+    // The built-in Error base leaves `name` as "Error"; set it from the concrete
+    // constructor so logs / serialisation report "AttestationError".
+    this.name = this.constructor.name;
     if (options?.cause !== undefined) {
       (this as { cause?: unknown }).cause = options.cause;
     }

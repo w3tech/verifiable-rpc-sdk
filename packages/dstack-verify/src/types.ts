@@ -8,12 +8,18 @@
 // helper/verifier bodies WITHOUT changing any exported type. Optional fields use `field?: T`
 // (NOT `| undefined`) to stay compatible with exactOptionalPropertyTypes.
 
-// Logger is imported TYPE-ONLY: `import type` is erased at compile time, so it
-// never participates in the ESM init cycle (CYCLE-01) the value imports work
-// around. A value import here would re-open that cycle.
-import type { Logger } from "@ankr.com/vrpc-core";
-
 import type { HardwareVerifier } from "./hardware-verifier";
+
+/**
+ * Minimal opt-in debug logger. Declared locally (NOT imported from
+ * @ankr.com/vrpc-core) so this package stays a dependency-free leaf. It is
+ * structurally identical to — and assignable from — core's `Logger`, so core
+ * threads its own logger straight into {@link VerifyPolicy.logger}.
+ */
+export interface Logger {
+  /** Debug-level narration. MUST NOT throw; observability only, never control flow. */
+  debug(event: string, data?: Record<string, unknown>): void;
+}
 
 /** One TDX event-log entry (RTMR replay input). Matches dstack TcbInfo.event_log. */
 export interface EventLogEntry {
@@ -168,9 +174,9 @@ export interface VerifyPolicy {
   hardwareVerifier?: HardwareVerifier;
   /**
    * OPT-IN debug logger threaded in by core's `buildVerifyPolicy` (the verifier's
-   * `this.logger`). Present only when the caller injected a logger; absent ==
-   * silent. Carries narration into the verify steps without changing the frozen
-   * `(bundle, policy)` seam.
+   * `this.logger`, structurally compatible with the local {@link Logger}). Present
+   * only when the caller injected a logger; absent == silent. Carries narration
+   * into the verify steps without changing the frozen `(bundle, policy)` seam.
    */
   logger?: Logger;
 }

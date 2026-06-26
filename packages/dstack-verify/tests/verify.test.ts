@@ -12,11 +12,10 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { Logger } from "@ankr.com/vrpc-core";
 import { describe, expect, test } from "vitest";
 import type { HardwareVerifier } from "../src/hardware-verifier";
 import { AttestationError, parseReportData, verifyDstackAttestation } from "../src/index";
-import type { AttestationBundle, TcbInfo, VerifyPolicy } from "../src/types";
+import type { AttestationBundle, Logger, TcbInfo, VerifyPolicy } from "../src/types";
 // computeComposeHash (verify-steps.ts) — the SAME hashing the verifier uses
 // (raw sha256, no canonicalization), so the test can synthesize self-consistent
 // app_compose/compose_hash pairs.

@@ -2,6 +2,7 @@ import { AttestationError, EMPTY_ALLOWLIST } from "@ankr.com/dstack-verify";
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { AttestationFailed, VerificationError } from "../src/errors";
 import type { Logger } from "../src/logger";
 import { buildPreImage } from "../src/preimage";
 import {
@@ -184,7 +185,12 @@ describe("TrustedVerifier / trust seam", () => {
     } catch (err) {
       caught = err;
     }
-    expect(caught).toBeInstanceOf(AttestationError);
+    // core re-wraps the leaf AttestationError into its VerificationError family;
+    // the original leaf error is preserved as `cause`.
+    expect(caught).toBeInstanceOf(AttestationFailed);
+    expect(caught).toBeInstanceOf(VerificationError);
+    expect((caught as AttestationFailed).kind).toBe("Attestation");
+    expect((caught as { cause?: unknown }).cause).toBeInstanceOf(AttestationError);
 
     // pubkey NOT cached → a second verify re-walks the attestation path.
     let caught2: unknown;
@@ -193,7 +199,7 @@ describe("TrustedVerifier / trust seam", () => {
     } catch (err) {
       caught2 = err;
     }
-    expect(caught2).toBeInstanceOf(AttestationError);
+    expect(caught2).toBeInstanceOf(AttestationFailed);
     expect(mock.attGetCount).toBeGreaterThanOrEqual(2);
   });
 

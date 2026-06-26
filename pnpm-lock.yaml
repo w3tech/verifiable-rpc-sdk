@@ -72,9 +72,6 @@ importers:
 
   packages/dstack-verify:
     dependencies:
-      '@ankr.com/vrpc-core':
-        specifier: workspace:*
-        version: link:../core
       '@noble/hashes':
         specifier: ^2.2.0
         version: 2.2.0

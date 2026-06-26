@@ -51,10 +51,13 @@ Mock semantics:
 
 ### `AttestationError`
 
-`extends VerificationError` (the shared abstract base from `@ankr.com/vrpc-core`).
-Carries `chkId: ChkId` (which `CHK-*` failed) + `detail: string`. Discriminant
-`kind === "Attestation"`. Narrow via `instanceof AttestationError`. The base
-union in core is NOT edited.
+A standalone `Error` — it deliberately does NOT extend core's `VerificationError`,
+keeping this package a dependency-free leaf. Carries `chkId: ChkId` (which `CHK-*`
+failed) + `detail: string`. Discriminant `kind === "Attestation"`. Narrow via
+`instanceof AttestationError`. `@ankr.com/vrpc-core` catches it at the
+`verifyDstackAttestation` boundary and re-wraps it into its `VerificationError`
+family (kind `"Attestation"`, original kept as `cause`), so SDK callers still
+catch a single `VerificationError`.
 
 ### Verified-pubkey cache TTL (configurable)
 
@@ -181,8 +184,8 @@ Frozen now, bodies filled in a future release. Each currently throws
 pnpm --filter '@ankr.com/dstack-verify' test
 ```
 
-- `tests/contract.test.ts` — exports, `AttestationError extends VerificationError`,
-  completeness of `CHK-A1..G3`.
+- `tests/contract.test.ts` — exports, `AttestationError` is a standalone `Error`
+  (not a core `VerificationError`), completeness of `CHK-A1..G3`.
 - `tests/mock.test.ts` — fail-closed mock (throws without the flag, resolves
   silently with it).
 - `tests/helpers.test.ts` — helper stubs throw "not implemented".

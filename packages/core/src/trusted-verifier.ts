@@ -17,6 +17,7 @@
 
 import {
   type AttestationBundle,
+  AttestationError,
   createCloudVerifier,
   EMPTY_ALLOWLIST,
   type HardwareVerifier,
@@ -27,6 +28,7 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { LRUCache } from "lru-cache";
 
 import { type Attestation, fetchAttestation, verifyAttestationCorrelation } from "./attestation";
+import { AttestationFailed } from "./errors";
 import { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
 import type { VerifiedResponse } from "./verifier";
@@ -340,7 +342,19 @@ export class TrustedVerifier {
     const bundle = mapAttestationToBundle(att, pubkeyHex, nonce);
     const policy = buildVerifyPolicy(pubkeyHex, nonce, this.hardwareVerifier, this.logger);
 
-    await this.verifyAttestationImpl(bundle, policy);
+    // dstack-verify is a dependency-free leaf: its AttestationError is a standalone
+    // Error, NOT a core VerificationError. Re-wrap it here so attestation failures
+    // surface as the same VerificationError family as every other verify failure
+    // (the SDK's public error contract). The original leaf error is kept as `cause`.
+    // A throw skips caching below — fail-closed, the pubkey is NOT trusted.
+    try {
+      await this.verifyAttestationImpl(bundle, policy);
+    } catch (err) {
+      if (err instanceof AttestationError) {
+        throw new AttestationFailed(err.chkId, err.detail, { cause: err });
+      }
+      throw err;
+    }
 
     this.cacheVerifiedPubkey(pubkeyHex);
     if (this.logger !== defaultLogger) {

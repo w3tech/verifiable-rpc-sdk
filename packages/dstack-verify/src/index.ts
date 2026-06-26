@@ -4,7 +4,7 @@
 //
 // Implementation lives in:
 //   - ./types     — AttestationBundle / VerifyPolicy + sub-types (frozen contract)
-//   - ./errors    — AttestationError extends VerificationError
+//   - ./errors    — AttestationError (standalone Error; core re-wraps it into VerificationError)
 //   - ./checklist — ChkId union (CHK-A1..G3 + CHK-MOCK) + frozen CHK record
 //   - ./verify-steps — frozen verify-step signatures (currently throwing stubs)
 //   - ./verify    — verifyDstackAttestation entrypoint (current mock body; a future release fills it in place)
@@ -23,6 +23,7 @@ export type {
   AttestationBundle,
   EventLogEntry,
   KeyProvider,
+  Logger,
   PinnedAllowlist,
   QuoteEnvelope,
   ReportDataBinding,
