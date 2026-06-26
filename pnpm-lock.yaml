@@ -8,18 +8,6 @@ importers:
 
   .:
     devDependencies:
-      '@ankr.com/dstack-verify':
-        specifier: workspace:*
-        version: link:packages/dstack-verify
-      '@ankr.com/vrpc-core':
-        specifier: workspace:*
-        version: link:packages/core
-      '@ankr.com/vrpc-ethers':
-        specifier: workspace:*
-        version: link:packages/ethers
-      '@ankr.com/vrpc-viem':
-        specifier: workspace:*
-        version: link:packages/viem
       '@biomejs/biome':
         specifier: ^2.0.0
         version: 2.5.0
@@ -32,6 +20,18 @@ importers:
       '@types/node':
         specifier: '*'
         version: 26.0.0
+      '@w3tech.io/dstack-verify':
+        specifier: workspace:*
+        version: link:packages/dstack-verify
+      '@w3tech.io/vrpc-core':
+        specifier: workspace:*
+        version: link:packages/core
+      '@w3tech.io/vrpc-ethers':
+        specifier: workspace:*
+        version: link:packages/ethers
+      '@w3tech.io/vrpc-viem':
+        specifier: workspace:*
+        version: link:packages/viem
       ethers:
         specifier: ^6.16.0
         version: 6.17.0
@@ -53,15 +53,15 @@ importers:
 
   packages/core:
     dependencies:
-      '@ankr.com/dstack-verify':
-        specifier: workspace:*
-        version: link:../dstack-verify
       '@noble/ed25519':
         specifier: ^3.1.0
         version: 3.1.0
       '@noble/hashes':
         specifier: ^2.2.0
         version: 2.2.0
+      '@w3tech.io/dstack-verify':
+        specifier: workspace:*
+        version: link:../dstack-verify
       lru-cache:
         specifier: ^11.5.1
         version: 11.5.1
@@ -82,10 +82,10 @@ importers:
 
   packages/ethers:
     dependencies:
-      '@ankr.com/dstack-verify':
+      '@w3tech.io/dstack-verify':
         specifier: workspace:*
         version: link:../dstack-verify
-      '@ankr.com/vrpc-core':
+      '@w3tech.io/vrpc-core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -101,10 +101,10 @@ importers:
 
   packages/viem:
     dependencies:
-      '@ankr.com/dstack-verify':
+      '@w3tech.io/dstack-verify':
         specifier: workspace:*
         version: link:../dstack-verify
-      '@ankr.com/vrpc-core':
+      '@w3tech.io/vrpc-core':
         specifier: workspace:*
         version: link:../core
     devDependencies:

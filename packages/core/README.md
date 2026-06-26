@@ -1,4 +1,4 @@
-# @ankr.com/vrpc-core
+# @w3tech.io/vrpc-core
 
 Transport-agnostic Ed25519 verification primitives for Ankr's verifiable RPC.
 
@@ -12,7 +12,7 @@ Pairs with the `verifiable-rpc-sidecar` `v0.2.0` wire contract.
 Use this package directly when you verify responses captured outside a normal
 ethers/viem call path (an off-chain pipeline, a log archive, an audit script),
 or when you are building your own adapter. If you just want verified contract
-reads, use `@ankr.com/vrpc-ethers` or `@ankr.com/vrpc-viem` instead — they wrap
+reads, use `@w3tech.io/vrpc-ethers` or `@w3tech.io/vrpc-viem` instead — they wrap
 this engine behind a drop-in provider/transport.
 
 ---
@@ -26,12 +26,12 @@ For now this is a workspace package — depend on it locally:
 // package.json
 {
   "dependencies": {
-    "@ankr.com/vrpc-core": "workspace:*"
+    "@w3tech.io/vrpc-core": "workspace:*"
   }
 }
 ```
 
-Intended public name once published: `@ankr.com/vrpc-core`.
+Intended public name once published: `@w3tech.io/vrpc-core`.
 
 Runtime requires a global `fetch`, `crypto.getRandomValues`, `TextEncoder`,
 and `BigUint64` `DataView` support (Node 18+, Bun, modern browsers).
@@ -74,7 +74,7 @@ and it does header parse → 80-byte pre-image rebuild → Ed25519 verify → re
 check. It knows nothing about `fetch`, JSON-RPC envelopes, or `accept-encoding`.
 
 ```ts
-import { verifyResponse, VerificationError } from "@ankr.com/vrpc-core";
+import { verifyResponse, VerificationError } from "@w3tech.io/vrpc-core";
 
 // You captured these bytes + headers however you like (your own fetch, a log).
 const requestBytes = new TextEncoder().encode(
@@ -105,7 +105,7 @@ the raw body, then delegates the verify half to `verifyResponse` (one verify
 path, shared with the adapters).
 
 ```ts
-import { VerifierClient } from "@ankr.com/vrpc-core";
+import { VerifierClient } from "@w3tech.io/vrpc-core";
 
 const client = new VerifierClient("https://rpc.ankr.com/eth_vrpc", {
   chainId: 1n,
@@ -131,8 +131,8 @@ dropped) plus truncated byte fields — so it is observability only and never pa
 of the verify decision.
 
 ```ts
-import { createConsoleLogger } from "@ankr.com/vrpc-core";
-import { VrpcProvider } from "@ankr.com/vrpc-ethers";
+import { createConsoleLogger } from "@w3tech.io/vrpc-core";
+import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
 
 // Inject through the ethers adapter (drop-in); omit `logger` to stay silent.
 const provider = new VrpcProvider("https://rpc.ankr.com/eth", 1, {
@@ -315,7 +315,7 @@ Every verification failure throws a subclass of the abstract `VerificationError`
 | `AttestationCorrelationError`  | `"AttestationCorrelation"`      | Attestation pubkey ≠ response signer. `.expectedPubkey/.actualPubkey` |
 
 ```ts
-import { VerificationError, BadSignature } from "@ankr.com/vrpc-core";
+import { VerificationError, BadSignature } from "@w3tech.io/vrpc-core";
 
 try {
   await client.call("eth_getBalance", [addr, "latest"]);

@@ -9,7 +9,7 @@
 // All four error branches map to typed `VerificationError` subclasses.
 // `fetchAttestation` is delegated to the standalone helper in `./attestation`.
 
-import type { PinnedAllowlist, TcbPolicy } from "@ankr.com/dstack-verify";
+import type { PinnedAllowlist, TcbPolicy } from "@w3tech.io/dstack-verify";
 
 import { type Attestation, fetchAttestation } from "./attestation";
 import { DEFAULT_REPLAY_WINDOW_MS, verifyResponse } from "./verify";

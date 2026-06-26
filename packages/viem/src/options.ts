@@ -4,7 +4,7 @@
 // viem-specific passthroughs: `headers` (x-api-key / gateway route) and an
 // injectable `fetchFn` seam. All verification lives in vrpc-core; these only feed it.
 
-import type { HardwareVerifier, Logger } from "@ankr.com/vrpc-core";
+import type { HardwareVerifier, Logger } from "@w3tech.io/vrpc-core";
 
 /**
  * Options for `vrpcHttp(url, opts?)`. All optional with safe defaults. Always
@@ -57,7 +57,7 @@ export interface VrpcHttpOptions {
   /**
    * Internal / advanced. Opt-in debug logger forwarded to verification to
    * narrate the verify flow at debug level. Omitted → the SDK stays silent
-   * (no-op logger). Use `createConsoleLogger()` from `@ankr.com/vrpc-core` for
+   * (no-op logger). Use `createConsoleLogger()` from `@w3tech.io/vrpc-core` for
    * a ready-made `console.debug` sink. The logger never throws-through
    * (safe-wrapped in core) and never logs secrets (headers redacted, bytes
    * truncated) — it is observability only, never part of the verify decision.

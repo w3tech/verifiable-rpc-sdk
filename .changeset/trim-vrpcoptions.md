@@ -1,7 +1,7 @@
 ---
-"@ankr.com/vrpc-core": minor
-"@ankr.com/vrpc-ethers": minor
-"@ankr.com/vrpc-viem": minor
+"@w3tech.io/vrpc-core": minor
+"@w3tech.io/vrpc-ethers": minor
+"@w3tech.io/vrpc-viem": minor
 ---
 
 Trim the options surface to only knobs that do something in v6.0.

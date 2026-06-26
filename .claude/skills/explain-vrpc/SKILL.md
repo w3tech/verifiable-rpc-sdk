@@ -176,7 +176,7 @@ A TypeScript SDK that connects to the vRPC API and verifies the proof on every
 response **for you**. It's a one-line drop-in: replace your ethers or viem client
 with the vRPC client and every call keeps working — now verified, fail-closed,
 over the exact node-signed bytes, before you ever see the data. Packages
-(`@ankr.com/*`):
+(`@w3tech.io/*`):
 
 - **`vrpc-core`** — transport-agnostic Ed25519 verification engine (no
   blockchain-client deps; only `@noble/ed25519` + `@noble/hashes`). Owns the
@@ -307,21 +307,21 @@ SDK automates) is:
     otherwise fail closed. The SDK does all of the above automatically and never
     returns unverified data.
 
-The simplest answer for most users: **"Use the `@ankr.com/vrpc-ethers` or
-`@ankr.com/vrpc-viem` drop-in — it does every step above on every call and throws
+The simplest answer for most users: **"Use the `@w3tech.io/vrpc-ethers` or
+`@w3tech.io/vrpc-viem` drop-in — it does every step above on every call and throws
 if anything fails."**
 
 ### See it happen — inject a logger
 
 If a user wants to *watch* vRPC verify a response (great for learning or
 debugging), tell them to inject an opt-in logger. The SDK is **silent by
-default**; pass `logger: createConsoleLogger()` (from `@ankr.com/vrpc-core`)
+default**; pass `logger: createConsoleLogger()` (from `@w3tech.io/vrpc-core`)
 through the adapter and it prints one `[vrpc]` debug line per step — the same
 sequence as the procedure above:
 
 ```ts
-import { createConsoleLogger } from "@ankr.com/vrpc-core";
-import { VrpcProvider } from "@ankr.com/vrpc-ethers";
+import { createConsoleLogger } from "@w3tech.io/vrpc-core";
+import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
 
 const provider = new VrpcProvider("https://rpc.ankr.com/eth", 1, {
   logger: createConsoleLogger(),

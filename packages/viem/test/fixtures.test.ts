@@ -1,11 +1,11 @@
 // Scaffold self-check: proves the mirrored request-aware signer in
-// `fixtures.ts` produces `vRPC-*` headers that `@ankr.com/vrpc-core`
+// `fixtures.ts` produces `vRPC-*` headers that `@w3tech.io/vrpc-core`
 // `verifyResponse` ACCEPTS for the happy path, and that the fail-closed paths
 // (wrong-chain signature, unsigned) reject as expected. This guards the offline
 // test harness itself — NOT core crypto, which `packages/core/tests/verify.test.ts`
 // already covers. The adapter WIRING proper is covered by the transport suite.
 
-import { BadSignature, MissingHeader, verifyResponse } from "@ankr.com/vrpc-core";
+import { BadSignature, MissingHeader, verifyResponse } from "@w3tech.io/vrpc-core";
 import { describe, expect, test } from "vitest";
 
 import { CHAIN_ID, signResponseBytes } from "./fixtures";

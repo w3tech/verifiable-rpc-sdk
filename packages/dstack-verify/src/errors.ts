@@ -3,8 +3,8 @@
 // The single error type this package throws.
 //
 // AttestationError extends the built-in `Error` directly — it deliberately does
-// NOT extend core's `VerificationError`. That keeps @ankr.com/dstack-verify a
-// dependency-free LEAF (no import of @ankr.com/vrpc-core, in any form), so the
+// NOT extend core's `VerificationError`. That keeps @w3tech.io/dstack-verify a
+// dependency-free LEAF (no import of @w3tech.io/vrpc-core, in any form), so the
 // package graph is strictly one-way: core → dstack-verify, with no cycle.
 //
 // core catches this at the `verifyDstackAttestation` call boundary and re-wraps

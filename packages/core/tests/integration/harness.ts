@@ -6,7 +6,7 @@
 // picks up `*.test.ts`, so importers can pull these helpers without the file
 // being treated as a test suite.
 //
-// Required env vars (when running `pnpm --filter '@ankr.com/vrpc-core' test:integration`):
+// Required env vars (when running `pnpm --filter '@w3tech.io/vrpc-core' test:integration`):
 //   DSTACK_SIMULATOR_BIN          — absolute path to the simulator binary
 //   DSTACK_SIMULATOR_FIXTURES_DIR — directory with app-compose.json, appkeys.json, etc.
 //   SIDECAR_BIN                   — absolute path to the rpc-attest-sidecar binary

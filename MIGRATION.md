@@ -23,7 +23,7 @@ import { JsonRpcProvider } from "ethers";
 const provider = new JsonRpcProvider(url);
 
 // After — chainId optional (auto-derived) but strongly recommended:
-import { VrpcProvider } from "@ankr.com/vrpc-ethers";
+import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
 const provider = new VrpcProvider(url, chainId);
 // or bare-url (auto-derives chainId on first use):
 const auto = new VrpcProvider(url);
@@ -44,7 +44,7 @@ const client = createPublicClient({ transport: http(url) });
 // After — set `chain` on the client (chain id comes from `chain.id`); optional
 // but strongly recommended:
 import { createPublicClient } from "viem";
-import { vrpcHttp } from "@ankr.com/vrpc-viem";
+import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 const client = createPublicClient({ chain, transport: vrpcHttp(url) });
 // or omit `chain` (auto-derives chainId on first request):
 const auto = createPublicClient({ transport: vrpcHttp(url) });
@@ -202,7 +202,7 @@ In `strict` mode the `VerificationError` propagates straight out of the call.
 Catch it and test with `instanceof`:
 
 ```ts
-import { VerificationError } from "@ankr.com/vrpc-core";
+import { VerificationError } from "@w3tech.io/vrpc-core";
 
 try {
   const balance = await provider.getBalance(addr);
@@ -225,7 +225,7 @@ error propagates and `buildRequest` preserves it as the error `.cause`, so a
 full-client caller recovers it by walking the cause chain:
 
 ```ts
-import { VerificationError } from "@ankr.com/vrpc-viem"; // re-exported from the family
+import { VerificationError } from "@w3tech.io/vrpc-viem"; // re-exported from the family
 
 try {
   const balance = await client.getBalance({ address: addr });

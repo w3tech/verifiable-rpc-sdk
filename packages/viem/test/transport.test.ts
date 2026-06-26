@@ -14,18 +14,18 @@
 // isolation) — cross-adapter parity is proved against the vrpc-core class
 // identity that BOTH adapters re-export.
 
+import { getPublicKeyAsync } from "@noble/ed25519";
 // Same family identity the ethers adapter re-exports — proves a caller cannot
 // tell the two adapters apart by error shape (cross-adapter parity).
-import { computeComposeHash } from "@ankr.com/dstack-verify";
-import { VerificationError as CoreVerificationError } from "@ankr.com/vrpc-core";
+import { computeComposeHash } from "@w3tech.io/dstack-verify";
+import { VerificationError as CoreVerificationError } from "@w3tech.io/vrpc-core";
 import {
   BadSignature,
   MalformedHeader,
   MissingHeader,
   VerificationError,
   vrpcHttp,
-} from "@ankr.com/vrpc-viem";
-import { getPublicKeyAsync } from "@noble/ed25519";
+} from "@w3tech.io/vrpc-viem";
 import {
   createPublicClient,
   defineChain,
@@ -436,8 +436,8 @@ describe("vrpcHttp transport wiring", () => {
   });
 
   // CROSS-ADAPTER PARITY — the unsigned-response error from
-  // @ankr.com/vrpc-viem is an instance of the SAME VerificationError family the
-  // ethers adapter re-exports (class identity from @ankr.com/vrpc-core). A caller
+  // @w3tech.io/vrpc-viem is an instance of the SAME VerificationError family the
+  // ethers adapter re-exports (class identity from @w3tech.io/vrpc-core). A caller
   // cannot tell the two adapters apart by error shape.
   test("cross-adapter parity: unsigned error is the SAME VerificationError family as ethers", async () => {
     const transport = pinnedTransport(

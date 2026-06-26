@@ -1,5 +1,5 @@
 {
-  "name": "@ankr.com/vrpc-core",
+  "name": "@w3tech.io/vrpc-core",
   "version": "0.1.0",
   "type": "module",
   "description": "Transport-agnostic Ed25519 verification primitives for Ankr's verifiable RPC — pre-image, signature verify, attestation.",
@@ -69,7 +69,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ankr.com/dstack-verify": "workspace:*",
+    "@w3tech.io/dstack-verify": "workspace:*",
     "@noble/ed25519": "^3.1.0",
     "@noble/hashes": "^2.2.0",
     "lru-cache": "^11.5.1"

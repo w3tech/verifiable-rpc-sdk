@@ -3,7 +3,7 @@
 // Drop-in verified ethers provider. Use it exactly like a normal ethers v6
 // provider — every JSON-RPC response is cryptographically verified (Ed25519 +
 // TDX attestation) before ethers returns it; a tampered response throws.
-import { VrpcProvider } from "@ankr.com/vrpc-ethers";
+import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
 
 async function main() {
   const provider = new VrpcProvider("https://rpc.ankr.com/arbitrum/123456", 42161n);

@@ -7,7 +7,7 @@ Arbitrum vRPC endpoint and need no API key.
 | - | ------ | ------------- |
 | 01 | `01-ethers-client.ts` | Drop-in **ethers** provider (`VrpcProvider`) — `getBlock` / `getBalance`, every response verified before ethers returns it. |
 | 02 | `02-viem-client.ts` | Drop-in **viem** transport (`vrpcHttp`) wired into `createPublicClient` — the same calls, verified inside the transport. |
-| 03 | `03-vrpc-core-walkthrough.ts` | Step-by-step **`@ankr.com/vrpc-core`**: signed wire → `verifyResponse` → tamper→`BadSignature` → `fetchAttestation` + correlation → `VerifierClient`. |
+| 03 | `03-vrpc-core-walkthrough.ts` | Step-by-step **`@w3tech.io/vrpc-core`**: signed wire → `verifyResponse` → tamper→`BadSignature` → `fetchAttestation` + correlation → `VerifierClient`. |
 
 ## Run
 

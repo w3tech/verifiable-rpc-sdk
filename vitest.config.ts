@@ -7,37 +7,37 @@ const src = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 // Dev source-resolution (option a — vitest resolve.alias).
 //
 // Under the old bun toolchain the `"bun"` export condition made in-repo imports
-// of `@ankr.com/*` resolve to `./src/*.ts`. That dev-only condition is removed
+// of `@w3tech.io/*` resolve to `./src/*.ts`. That dev-only condition is removed
 // (the published `exports`/`publishConfig` → ./dist are untouched). To keep
 // tests resolving workspace packages to SOURCE (not built dist), we alias the 5
-// `@ankr.com/*` specifiers — including `@ankr.com/vrpc-core/errors` — to their
+// `@w3tech.io/*` specifiers — including `@w3tech.io/vrpc-core/errors` — to their
 // `src` entry. Longest-prefix subpath alias listed first so `/errors` wins over
 // the bare package alias.
 export default defineConfig({
   resolve: {
     alias: [
       {
-        find: "@ankr.com/vrpc-core/errors",
+        find: "@w3tech.io/vrpc-core/errors",
         replacement: src("./packages/core/src/errors.ts"),
       },
       {
-        find: "@ankr.com/vrpc-core/compose",
+        find: "@w3tech.io/vrpc-core/compose",
         replacement: src("./packages/core/src/compose.ts"),
       },
       {
-        find: "@ankr.com/vrpc-core",
+        find: "@w3tech.io/vrpc-core",
         replacement: src("./packages/core/src/index.ts"),
       },
       {
-        find: "@ankr.com/dstack-verify",
+        find: "@w3tech.io/dstack-verify",
         replacement: src("./packages/dstack-verify/src/index.ts"),
       },
       {
-        find: "@ankr.com/vrpc-ethers",
+        find: "@w3tech.io/vrpc-ethers",
         replacement: src("./packages/ethers/src/index.ts"),
       },
       {
-        find: "@ankr.com/vrpc-viem",
+        find: "@w3tech.io/vrpc-viem",
         replacement: src("./packages/viem/src/index.ts"),
       },
     ],
@@ -48,7 +48,7 @@ export default defineConfig({
     // under `pnpm -r test`, or the repo root for a top-level `vitest run`), so
     // we use `**` rather than a `packages/*` prefix. node_modules + dist are
     // excluded by vitest defaults — the injected workspace copies under
-    // `node_modules/@ankr.com/*/tests` are therefore never collected.
+    // `node_modules/@w3tech.io/*/tests` are therefore never collected.
     include: ["**/test/**/*.test.ts", "**/tests/**/*.test.ts"],
   },
 });

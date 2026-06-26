@@ -1,10 +1,10 @@
 // Scaffold self-check: proves the synthesized SINGLE_RESULT fixture is
-// genuinely verifiable under `@ankr.com/vrpc-core` `verifyResponse`, and that
+// genuinely verifiable under `@w3tech.io/vrpc-core` `verifyResponse`, and that
 // `fixtureRequest` yields the fixture body+headers with no network. This
 // validates the offline test scaffold itself — NOT core crypto behaviors,
 // which `packages/core/tests/verify.test.ts` already covers.
 
-import { verifyResponse } from "@ankr.com/vrpc-core";
+import { verifyResponse } from "@w3tech.io/vrpc-core";
 import { describe, expect, test } from "vitest";
 
 import { CHAIN_ID, SINGLE_RESULT } from "./fixtures";

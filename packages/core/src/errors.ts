@@ -182,7 +182,7 @@ export class AttestationCorrelationError extends VerificationError {
 
 /**
  * dstack/TDX attestation verification failed. This is core's wrapper around the
- * leaf `@ankr.com/dstack-verify` `AttestationError`: that package is a standalone
+ * leaf `@w3tech.io/dstack-verify` `AttestationError`: that package is a standalone
  * leaf (its error does NOT extend `VerificationError`), so the trust seam catches
  * it at the `verifyDstackAttestation` boundary and re-throws it as this member of
  * the `VerificationError` family — keeping the SDK's public error contract

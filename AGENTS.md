@@ -13,8 +13,8 @@ chain-agnostic.
 | ---------------- | ---------------------------------------------------------------------------------------------------- |
 | Install          | `pnpm install`                                                                                       |
 | Test (whole workspace) | `pnpm -r test` (from repo root)                                                                |
-| Unit test only   | per-package: `cd packages/core && pnpm run test:unit` (or `pnpm --filter '@ankr.com/vrpc-core' test:unit`) |
-| Integration test | per-package: `cd packages/core && DSTACK_SIMULATOR_BIN=… DSTACK_SIMULATOR_FIXTURES_DIR=… SIDECAR_BIN=… pnpm run test:integration` (or via `pnpm --filter '@ankr.com/vrpc-core' test:integration`) |
+| Unit test only   | per-package: `cd packages/core && pnpm run test:unit` (or `pnpm --filter '@w3tech.io/vrpc-core' test:unit`) |
+| Integration test | per-package: `cd packages/core && DSTACK_SIMULATOR_BIN=… DSTACK_SIMULATOR_FIXTURES_DIR=… SIDECAR_BIN=… pnpm run test:integration` (or via `pnpm --filter '@w3tech.io/vrpc-core' test:integration`) |
 | Lint             | `pnpm run lint`                                                                                      |
 | Format check     | `pnpm run format:check`                                                                              |
 | Format fix       | `pnpm run format`                                                                                    |
@@ -64,7 +64,7 @@ not required.
 DSTACK_SIMULATOR_BIN=/private/tmp/dstack-sim-test/dstack-simulator \
 DSTACK_SIMULATOR_FIXTURES_DIR=/private/tmp/dstack-sim-test \
 SIDECAR_BIN=../verifiable-rpc-sidecar/target/debug/rpc-attest-sidecar \
-  pnpm --filter '@ankr.com/vrpc-core' test:integration
+  pnpm --filter '@w3tech.io/vrpc-core' test:integration
 ```
 
 `pnpm -r test` (no env vars) runs the unit suite only and emits a one-line skip
@@ -84,9 +84,9 @@ with the simulator binary on the runner is tracked separately.
 
 ## Architecture
 
-- Monorepo: pnpm workspaces under `packages/*` — `core` (`@ankr.com/vrpc-core`,
-  the verification primitives), `ethers` (`@ankr.com/vrpc-ethers`), `viem`
-  (`@ankr.com/vrpc-viem`), and `dstack-verify` (`@ankr.com/dstack-verify`).
+- Monorepo: pnpm workspaces under `packages/*` — `core` (`@w3tech.io/vrpc-core`,
+  the verification primitives), `ethers` (`@w3tech.io/vrpc-ethers`), `viem`
+  (`@w3tech.io/vrpc-viem`), and `dstack-verify` (`@w3tech.io/dstack-verify`).
 - Public surface re-exported through `packages/core/src/index.ts`; implementation
   lives in `packages/core/src/verifier.ts`, `packages/core/src/verify.ts`,
   `packages/core/src/attestation.ts`, `packages/core/src/compose.ts`,

@@ -6,11 +6,11 @@ Embedding it is a one-line change: replace your ethers or viem client with the v
 
 ```ts
 // ethers — was:  new ethers.JsonRpcProvider(url)
-import { VrpcProvider } from "@ankr.com/vrpc-ethers";
+import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
 const provider = new VrpcProvider(url, chainId);
 
 // viem — was:  http(url)
-import { vrpcHttp } from "@ankr.com/vrpc-viem";
+import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 const client = createPublicClient({ transport: vrpcHttp(url, { chainId }) });
 ```
 
@@ -26,15 +26,15 @@ You pass **one** plain URL (e.g. `https://rpc.ankr.com/arbitrum`). The SDK owns 
 
 | Package | What it is | Docs |
 |---------|-----------|------|
-| **`@ankr.com/vrpc-ethers`** | ethers v6 drop-in `JsonRpcProvider` that verifies every HTTP response in `_send`, fail-closed. | [packages/ethers/README.md](./packages/ethers/README.md) |
-| **`@ankr.com/vrpc-viem`** | Verifiable drop-in for viem's `http()` transport — verifies every response before parse. | [packages/viem/README.md](./packages/viem/README.md) |
-| **`@ankr.com/vrpc-core`** | Transport-agnostic Ed25519 verification engine both adapters build on (zero client-lib deps). | [packages/core/README.md](./packages/core/README.md) |
+| **`@w3tech.io/vrpc-ethers`** | ethers v6 drop-in `JsonRpcProvider` that verifies every HTTP response in `_send`, fail-closed. | [packages/ethers/README.md](./packages/ethers/README.md) |
+| **`@w3tech.io/vrpc-viem`** | Verifiable drop-in for viem's `http()` transport — verifies every response before parse. | [packages/viem/README.md](./packages/viem/README.md) |
+| **`@w3tech.io/vrpc-core`** | Transport-agnostic Ed25519 verification engine both adapters build on (zero client-lib deps). | [packages/core/README.md](./packages/core/README.md) |
 
 Install only what you use — the adapters declare `ethers` / `viem` as **peer dependencies**, so installing one never pulls the other:
 
 ```bash
-pnpm add @ankr.com/vrpc-ethers ethers     # ethers users
-pnpm add @ankr.com/vrpc-viem viem         # viem users
+pnpm add @w3tech.io/vrpc-ethers ethers     # ethers users
+pnpm add @w3tech.io/vrpc-viem viem         # viem users
 ```
 
 New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line swap, the optional (but strongly recommended) `chainId`, and the caveats for both adapters. Runnable examples live in [`examples/`](./examples/): `01-ethers-client.ts`, `02-viem-client.ts`, `03-vrpc-core-walkthrough.ts`. Run them with `pnpm example:01-ethers-client` (and `:02-viem-client`, `:03-vrpc-core-walkthrough`).
@@ -54,11 +54,11 @@ See [packages/core/README.md](./packages/core/README.md) for the verification de
 
 ## Watch it work — opt-in debug logging
 
-The SDK is **silent by default**. The easiest way to *see how vRPC verifies a response* is to inject a logger — at debug level it prints one line per verification step. Pass `logger: createConsoleLogger()` (from `@ankr.com/vrpc-core`) through either adapter:
+The SDK is **silent by default**. The easiest way to *see how vRPC verifies a response* is to inject a logger — at debug level it prints one line per verification step. Pass `logger: createConsoleLogger()` (from `@w3tech.io/vrpc-core`) through either adapter:
 
 ```ts
-import { createConsoleLogger } from "@ankr.com/vrpc-core";
-import { VrpcProvider } from "@ankr.com/vrpc-ethers";
+import { createConsoleLogger } from "@w3tech.io/vrpc-core";
+import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
 
 const provider = new VrpcProvider("https://rpc.ankr.com/eth", 1, {
   logger: createConsoleLogger(),

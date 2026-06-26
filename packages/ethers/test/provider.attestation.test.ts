@@ -18,8 +18,8 @@
 // fetch-mock; the `/attestation` GET leg by the injected `fetch` option
 // (`installAttestationMock`). No live network.
 
-import { VrpcProvider } from "@ankr.com/vrpc-ethers";
 import { getPublicKeyAsync } from "@noble/ed25519";
+import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
 import { describe, expect, test } from "vitest";
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, TEST_SEED } from "./fixtures";
 import { type AttMockState, installAttestationMock, signingRequest } from "./helpers";

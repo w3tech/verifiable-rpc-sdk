@@ -1,4 +1,4 @@
-# Release pipeline for the four @ankr.com/* packages.
+# Release pipeline for the four @w3tech.io/* packages.
 #
 # Publishing is TOKENLESS: it uses npm Trusted Publishing (OIDC). The runner mints a
 # short-lived OIDC id-token (id-token: write) which the npm CLI exchanges under the hood
@@ -7,7 +7,7 @@
 #
 # Provenance is emitted for all four packages (NPM_CONFIG_PROVENANCE + --provenance). Note
 # that npm only attaches provenance attestations when BOTH the source repo AND the package
-# are public; installing the private @ankr.com/* deps from the registry would require a
+# are public; installing the private @w3tech.io/* deps from the registry would require a
 # read token until the repo + packages are public (moot once public — local frozen-lockfile
 # resolution uses the in-repo workspace tree, not the registry).
 #
