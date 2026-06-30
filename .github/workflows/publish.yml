@@ -39,7 +39,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    environment: prod # holds the temporary NPMJS_TOKEN used to bootstrap the first publish
+    environment: prod # release gate (tag-deployment policy v*); the bootstrap NPMJS_TOKEN it once held is gone (publishing is now tokenless OIDC)
     permissions:
       id-token: write # OIDC token exchange for tokenless Trusted Publishing (critical)
       contents: write # action-gh-release creates the GitHub Release
@@ -125,18 +125,15 @@ jobs:
       # vX.Y.Z, the prerelease channel otherwise). Build already ran above; here we gate with a
       # --dry-run then do the real publish, both pinned to $DIST_TAG so prereleases never land
       # on `latest`. --no-git-checks is REQUIRED — publish runs from a detached HEAD at the
-      # tag. npm tries OIDC first (id-token: write) and falls back to NODE_AUTH_TOKEN when no
-      # per-package trusted-publisher is registered yet, so this same workflow bootstraps
-      # (token) then later runs tokenless (OIDC).
-      - name: Publish (dist-tag $DIST_TAG; OIDC + provenance, token fallback)
+      # tag. Publishing is fully tokenless: npm exchanges the OIDC id-token (id-token: write)
+      # for a short-lived publish credential against the per-package trusted-publisher
+      # registered on npmjs.com. There is no NODE_AUTH_TOKEN fallback any more (bootstrap done).
+      - name: Publish (dist-tag $DIST_TAG; tokenless OIDC + provenance)
         run: |
           pnpm -r publish --provenance --no-git-checks --tag "$DIST_TAG" --dry-run
           pnpm -r publish --provenance --no-git-checks --tag "$DIST_TAG"
         env:
           NPM_CONFIG_PROVENANCE: 'true'
-          # Phase 52 (BOOT-03) removes this line after the per-package trusted-publisher is
-          # registered on npmjs.com → fully tokenless OIDC + provenance.
-          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
 
       # Create the GitHub Release with auto-generated, PR-label-categorized notes
       # (.github/release.yml). Pinned to an immutable commit SHA, never a moving tag.
