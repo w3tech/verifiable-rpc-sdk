@@ -182,9 +182,9 @@ describe("preimage", () => {
       0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
     ]);
     // out-of-range timestamp propagates through the pre-image builder too.
-    expect(() =>
-      buildPreImage("1", new Uint8Array([1]), new Uint8Array([2]), 1n << 64n),
-    ).toThrow(RangeError);
+    expect(() => buildPreImage("1", new Uint8Array([1]), new Uint8Array([2]), 1n << 64n)).toThrow(
+      RangeError,
+    );
   });
 
   test("buildPreImageFromHashesRejectsNon32ByteHashes", () => {
