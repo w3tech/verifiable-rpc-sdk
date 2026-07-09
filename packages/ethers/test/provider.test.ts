@@ -551,10 +551,11 @@ describe("VrpcProvider._send wiring", () => {
     }
   });
 
-  test("CAIP-2 style string chainId is accepted at construction (non-EVM, no network pin)", () => {
+  test("non-EVM string chainId is accepted at construction (no network pin)", () => {
     // No network assertions and no requests fired — ethers cannot represent a
     // non-EVM network; the verifier would bind the exact string on first use.
-    expect(() => new VrpcProvider("http://test.invalid", "tvm:-239", WIDE_WINDOW)).not.toThrow();
+    // "-239" is TON's global id (non-decimal → no staticNetwork pin).
+    expect(() => new VrpcProvider("http://test.invalid", "-239", WIDE_WINDOW)).not.toThrow();
   });
 
   test("invalid string chainId throws InvalidChainId at construction", () => {

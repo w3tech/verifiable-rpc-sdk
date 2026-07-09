@@ -100,7 +100,7 @@ new VrpcProvider(url: string | FetchRequest, chainId?: number | bigint | string,
   no `number` round-trip, so ids beyond `Number.MAX_SAFE_INTEGER` bind exactly).
   A string arg is validated (`InvalidChainId` at construction on empty /
   whitespace / >64 bytes / non-printable-ASCII) and bound verbatim — non-EVM
-  chains pass the exact configured string (e.g. a CAIP-2 style `"tvm:-239"`).
+  chains pass the exact configured string (e.g. TON's global id `"-239"`).
   The chain-id string is hashed into the 104-byte pre-image; version gate: SDK
   `>=0.3.0` requires sidecar `>=0.5.0` (older sidecars sign the legacy
   pre-image and verification fails closed).

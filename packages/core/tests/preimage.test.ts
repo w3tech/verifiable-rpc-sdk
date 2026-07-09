@@ -86,8 +86,8 @@ describe("preimage", () => {
    * hashed as strings too, never parsed.
    */
   test("chainIdHashMatchesKnownAnswer", () => {
-    expect(toHex(sha256(utf8("tvm:-239")))).toBe(
-      "4c4033c233f0d4354a729a4c42ae6af64f6af48ab2d6604ffcb55376b18c65fe",
+    expect(toHex(sha256(utf8("-239")))).toBe(
+      "7d1a0b60d68a1efc2e01df13132034d669b2ce5b05c8bf6d4ae6322e810c5659",
     );
     expect(toHex(sha256(utf8("stellar:pubnet")))).toBe(
       "012618588378e37b4cf24801913bf48560a860f5b5ff01a0b62ecd05dddb13d2",
@@ -206,7 +206,7 @@ describe("preimage", () => {
   test("validateChainIdAcceptsValidIds", () => {
     expect(validateChainId("42161")).toBe("42161");
     expect(validateChainId("0x89")).toBe("0x89");
-    expect(validateChainId("tvm:-239")).toBe("tvm:-239");
+    expect(validateChainId("-239")).toBe("-239");
     expect(validateChainId("stellar:pubnet")).toBe("stellar:pubnet");
     // Surrounding whitespace is trimmed, not rejected.
     expect(validateChainId(" 137 ")).toBe("137");

@@ -118,8 +118,8 @@ Both adapters normalize `number`/`bigint` args to the decimal string immediately
 (`42161` → `"42161"`, via `BigInt().toString(10)` — no `number` round-trip, so
 chain ids above `Number.MAX_SAFE_INTEGER` (2^53−1) bind exactly and do not
 produce false `BadSignature` rejections). Non-EVM chains pass the exact
-configured string (e.g. a CAIP-2 style `"tvm:-239"`) — an invalid string throws
-`InvalidChainId` at construction.
+configured string (e.g. TON's global id `"-239"`, or a CAIP-2 style id like
+`"stellar:pubnet"`) — an invalid string throws `InvalidChainId` at construction.
 
 **Why set it explicitly (recommended).** When the chain id is omitted (no
 positional `chainId` for ethers, no `chain` on the viem client), each adapter
@@ -278,8 +278,8 @@ attestation policies or allowlists pinning the old hash must be updated in the
 same rollout step.
 
 **Non-EVM nodes (ton, stellar, …).** These currently run older sidecars with
-the placeholder numeric chain id. Their move to real string ids (e.g.
-CAIP-2-style `"tvm:-239"`) requires a sidecar ≥ 0.5.0 redeploy per node and is
+the placeholder numeric chain id. Their move to real string ids (e.g. TON `"-239"`,
+stellar `"stellar:pubnet"`) requires a sidecar ≥ 0.5.0 redeploy per node and is
 tracked under a separate ops ticket — not part of this SDK release.
 
 ---

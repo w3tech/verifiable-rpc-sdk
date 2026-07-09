@@ -66,9 +66,9 @@ export function sha256(data: Uint8Array): Uint8Array {
  * space (codepoints 0x21–0x7E — Rust `is_ascii_graphic`), which covers internal
  * whitespace, non-ASCII, and control characters. Returns the TRIMMED string.
  *
- * Chain ids are opaque strings — CAIP-2 style ids like `"tvm:-239"` and
- * `"stellar:pubnet"` as well as numeric-looking ids like `"42161"` or `"0x89"`
- * are all just strings, never parsed numerically.
+ * Chain ids are opaque strings — a non-EVM id like TON's global id `"-239"`,
+ * a CAIP-2 style id like `"stellar:pubnet"`, and numeric-looking ids like
+ * `"42161"` or `"0x89"` are all just strings, never parsed numerically.
  *
  * Throws the typed `InvalidChainId` (a `VerificationError` subclass) naming the
  * failed constraint, mirroring the sidecar's boot-time fail-fast.
