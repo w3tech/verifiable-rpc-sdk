@@ -88,7 +88,7 @@ export interface BadSignatureContext {
   signatureHex: string;
   /** `0x` + 64 lowercase hex chars (32-byte Ed25519 pubkey). */
   pubkeyHex: string;
-  /** sha256 of the 80-byte canonical pre-image, for diagnostics. */
+  /** sha256 of the 104-byte canonical pre-image, for diagnostics. */
   preImageSha256: Uint8Array;
 }
 
