@@ -1,6 +1,6 @@
 {
   "name": "@w3tech.io/vrpc-core",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Transport-agnostic Ed25519 verification primitives for Ankr's verifiable RPC — pre-image, signature verify, attestation.",
   "license": "Apache-2.0",

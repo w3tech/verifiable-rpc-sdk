@@ -189,9 +189,9 @@ bound** against the chain id you pinned and the signing key that produced the
 signature:
 
 - **Signed** — a valid Ed25519 `vRPC-Signature`.
-- **Untampered** — it verifies over the canonical 80-byte pre-image
-  `chain_id ‖ sha256(request_body) ‖ sha256(response_body) ‖ timestamp_ms`; any
-  mutation of request or response body fails as `BadSignature`.
+- **Untampered** — it verifies over the canonical 104-byte pre-image
+  `sha256(utf8(chain_id)) ‖ sha256(request_body) ‖ sha256(response_body) ‖ timestamp_ms`;
+  any mutation of request or response body fails as `BadSignature`.
 - **Fresh** — `vRPC-Timestamp` inside the replay window (default 60s); a replayed
   old response is rejected as `StaleTimestamp`.
 - **Correctly bound** — wrong/substituted chain id → different pre-image →
@@ -329,4 +329,6 @@ per-request batching default, cross-adapter parity).
   `VerifierClient`, `anchorTrust`, the `VerificationError` family).
 - `@w3tech.io/vrpc-ethers` — the same drop-in for ethers v6 (`VrpcProvider`).
 - [`w3tech/verifiable-rpc-sidecar`](https://github.com/w3tech/verifiable-rpc-sidecar)
-  — the Rust sidecar that produces the signed responses (wire contract `v0.2.0`).
+  — the Rust sidecar that produces the signed responses (wire contract `v0.5.0`;
+  SDK `>=0.3.0` requires sidecar `>=0.5.0` — older sidecars sign the legacy
+  pre-image and verification fails closed).

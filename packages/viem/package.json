@@ -1,6 +1,6 @@
 {
   "name": "@w3tech.io/vrpc-viem",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "viem drop-in for Ankr's verifiable RPC — vrpcHttp custom transport verifies every JSON-RPC response (Ed25519) before parse, fail-closed.",
   "license": "Apache-2.0",

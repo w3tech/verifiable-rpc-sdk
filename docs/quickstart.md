@@ -42,10 +42,10 @@ A vRPC node runs inside an Intel TDX confidential VM (a "CVM"), built on [Phala 
 
 The signing key is an Ed25519 key the enclave's KMS generates *inside* the CVM. It exists only there. Its public half is bound into the TDX attestation quote, so anyone can confirm the key signing your responses really belongs to that enclave.
 
-Each response carries three headers - `vRPC-Pubkey`, `vRPC-Timestamp`, `vRPC-Signature`. The signature covers an 80-byte pre-image:
+Each response carries three headers - `vRPC-Pubkey`, `vRPC-Timestamp`, `vRPC-Signature`. The signature covers a 104-byte pre-image of four segments:
 
 ```
-chain_id (8B LE) ‖ sha256(request_body) ‖ sha256(response_body) ‖ timestamp_ms (8B LE)
+sha256(utf8(chain_id)) (32B) ‖ sha256(request_body) (32B) ‖ sha256(response_body) (32B) ‖ timestamp_ms (8B LE)
 ```
 
 The client rebuilds that pre-image from the bytes it sent and received, then verifies the signature. That check runs locally on data you already have, so it adds **no network latency to a call**. The attestation itself is fetched once per node and cached for a configurable TTL (default one hour), so it stays off the hot path.
@@ -71,7 +71,7 @@ The full attestation is four steps. Each proves one property and closes one clas
 
 The SDK is in **alpha**. The design is the full four-step chain above; here is what runs on every call today and what is still landing. Everything below is fail-closed - if a check fails, the call throws.
 
-- ✅ **Ed25519 response signature** over the 80-byte pre-image
+- ✅ **Ed25519 response signature** over the 104-byte pre-image
 - ✅ **Freshness + chain binding** - replay window (default 60s) and the chain you pinned
 - ✅ **Pubkey correlation** - the attestation's pubkey equals the response signer
 - ✅ **Nonce + pubkey hardware binding** (Step 4) - the quote's `report_data` carries your nonce and the signing key, checked first and unconditionally
