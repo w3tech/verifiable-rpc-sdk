@@ -31,12 +31,13 @@ export interface AnchorTrustOptions {
   /** Chain slug used to build the `<chain>_vrpc` route, e.g. `arbitrum`. */
   chain: string;
   /**
-   * EVM-style chain id bound into the canonical pre-image. Coerced to `bigint`
-   * via `BigInt()` WITHOUT a number round-trip — chain ids may exceed
-   * `Number.MAX_SAFE_INTEGER` and widening through `number` would lose precision
-   * and reject intact responses (false `BadSignature`).
+   * Opaque chain id string bound via `sha256(utf8(chainId))` into the canonical
+   * pre-image. MUST match the chain id string the sidecar was configured with —
+   * mismatch produces a `BadSignature` even on intact responses. Passed through
+   * verbatim; `VerifierClient`'s constructor validates it (`InvalidChainId` on
+   * failure).
    */
-  chainId: number | bigint;
+  chainId: string;
   /** Extra request headers sent on both legs (e.g. `x-api-key`). */
   headers?: Record<string, string>;
   /** `fetch` override — defaults to `globalThis.fetch` (used by both legs). */
@@ -75,7 +76,7 @@ export async function anchorTrust(opts: AnchorTrustOptions): Promise<AnchorTrust
   //    verification (VerifierClient throws BadSignature otherwise) — no copied
   //    crypto. eth_blockNumber is cheap and side-effect-free.
   const client = new VerifierClient(vrpcUrl, {
-    chainId: BigInt(opts.chainId),
+    chainId: opts.chainId,
     ...(opts.headers === undefined ? {} : { headers: opts.headers }),
     ...(opts.fetch === undefined ? {} : { fetch: opts.fetch }),
   });

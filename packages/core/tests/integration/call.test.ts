@@ -39,7 +39,7 @@ d("integration: call", () => {
     simulator = await spawnSimulator();
     upstream = await spawnMockUpstream();
     sidecar = await spawnSidecar(simulator.socketPath, upstream.url, 1);
-    client = new VerifierClient(sidecar.url, { chainId: 1n });
+    client = new VerifierClient(sidecar.url, { chainId: "1" });
   });
 
   afterAll(async () => {

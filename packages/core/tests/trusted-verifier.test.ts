@@ -2,7 +2,7 @@ import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 import { AttestationError, EMPTY_ALLOWLIST } from "@w3tech.io/dstack-verify";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { AttestationFailed, VerificationError } from "../src/errors";
+import { AttestationFailed, InvalidChainId, VerificationError } from "../src/errors";
 import type { Logger } from "../src/logger";
 import { buildPreImage } from "../src/preimage";
 import {
@@ -17,7 +17,7 @@ import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const RPC_BASE = "https://rpc.ankr.com";
 const CHAIN = "arbitrum";
-const CHAIN_ID = 42161n;
+const CHAIN_ID = "42161";
 const TEST_SEED = new Uint8Array(32).fill(0x42);
 const NONCE = new Uint8Array(32).fill(0x07);
 
@@ -147,6 +147,12 @@ function baseOpts(overrides: Partial<TrustedVerifierOptions> = {}): TrustedVerif
 }
 
 describe("TrustedVerifier / trust seam", () => {
+  test("constructorRejectsInvalidChainId", () => {
+    // Synchronous fail-fast, mirroring the sidecar's boot validation.
+    expect(() => new TrustedVerifier(baseOpts({ chainId: "" }))).toThrow(InvalidChainId);
+    expect(() => new TrustedVerifier(baseOpts({ chainId: "c\u00e9pas" }))).toThrow(InvalidChainId);
+  });
+
   let savedFetch: typeof fetch;
 
   beforeEach(() => {

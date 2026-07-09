@@ -1,7 +1,13 @@
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 import { describe, expect, test } from "vitest";
 
-import { BadSignature, MalformedHeader, MissingHeader, StaleTimestamp } from "../src/errors";
+import {
+  BadSignature,
+  InvalidChainId,
+  MalformedHeader,
+  MissingHeader,
+  StaleTimestamp,
+} from "../src/errors";
 import { buildPreImage } from "../src/preimage";
 import { VerifierClient } from "../src/verifier";
 
@@ -26,7 +32,7 @@ interface MockOverrides {
   /** Replace a single header value. */
   headerOverrides?: Partial<Record<"vRPC-Signature" | "vRPC-Timestamp" | "vRPC-Pubkey", string>>;
   /** Override the chainId baked into the signature. Defaults to opts.chainId. */
-  signingChainIdOverride?: bigint;
+  signingChainIdOverride?: string;
   /** Set the `vRPC-NodeId` response header (omitted entirely when undefined). */
   nodeIdHeader?: string;
 }
@@ -38,7 +44,7 @@ interface MockOverrides {
  */
 function makeMockFetch(
   signedBody: Uint8Array,
-  chainId: bigint,
+  chainId: string,
   timestampMs: bigint,
   overrides: MockOverrides = {},
 ): { fetch: typeof fetch; requestsSeen: Uint8Array[] } {
@@ -101,12 +107,12 @@ describe("VerifierClient", () => {
     let capturedHeaders: Record<string, string> | undefined;
     const signedBody = makeSignedJsonRpcBody(1, "0x1");
     const ts = BigInt(Date.now());
-    const { fetch } = makeMockFetch(signedBody, 1n, ts);
+    const { fetch } = makeMockFetch(signedBody, "1", ts);
     const wrapped = (async (input: string | URL, init?: RequestInit) => {
       capturedHeaders = init?.headers as Record<string, string>;
       return fetch(input as string, init);
     }) as typeof fetch;
-    const client = new VerifierClient(TEST_URL, { chainId: 1n, fetch: wrapped });
+    const client = new VerifierClient(TEST_URL, { chainId: "1", fetch: wrapped });
     await client.call("eth_blockNumber", []);
     expect(capturedHeaders?.["accept-encoding"]).toBe("identity");
   });
@@ -116,13 +122,13 @@ describe("VerifierClient", () => {
     let capturedHeaders: Record<string, string> | undefined;
     const signedBody = makeSignedJsonRpcBody(1, "0x1");
     const ts = BigInt(Date.now());
-    const { fetch } = makeMockFetch(signedBody, 1n, ts);
+    const { fetch } = makeMockFetch(signedBody, "1", ts);
     const wrapped = (async (input: string | URL, init?: RequestInit) => {
       capturedHeaders = init?.headers as Record<string, string>;
       return fetch(input as string, init);
     }) as typeof fetch;
     const client = new VerifierClient(TEST_URL, {
-      chainId: 1n,
+      chainId: "1",
       headers: { "x-api-key": "abc" },
       fetch: wrapped,
     });
@@ -137,13 +143,13 @@ describe("VerifierClient", () => {
     let capturedHeaders: Record<string, string> | undefined;
     const signedBody = makeSignedJsonRpcBody(1, "0x1");
     const ts = BigInt(Date.now());
-    const { fetch } = makeMockFetch(signedBody, 1n, ts);
+    const { fetch } = makeMockFetch(signedBody, "1", ts);
     const wrapped = (async (input: string | URL, init?: RequestInit) => {
       capturedHeaders = init?.headers as Record<string, string>;
       return fetch(input as string, init);
     }) as typeof fetch;
     const client = new VerifierClient(TEST_URL, {
-      chainId: 1n,
+      chainId: "1",
       headers: {
         "content-type": "text/plain",
         "accept-encoding": "gzip",
@@ -158,7 +164,7 @@ describe("VerifierClient", () => {
   });
 
   test("happyPathReturnsVerifiedResponse", async () => {
-    const chainId = 1n;
+    const chainId = "1";
     const nowMs = BigInt(Date.now());
     const responseBody = makeSignedJsonRpcBody(1, "0x12345");
     const { fetch: mockFetch } = makeMockFetch(responseBody, chainId, nowMs);
@@ -178,7 +184,7 @@ describe("VerifierClient", () => {
   });
 
   test("tamperedResponseBodyThrowsBadSignature", async () => {
-    const chainId = 1n;
+    const chainId = "1";
     const nowMs = BigInt(Date.now());
     const signedBody = makeSignedJsonRpcBody(1, "0x12345");
     // Same shape, different value — body A signed, body B served.
@@ -204,7 +210,7 @@ describe("VerifierClient", () => {
   });
 
   test("missingSignatureHeaderThrowsMissingHeader", async () => {
-    const chainId = 1n;
+    const chainId = "1";
     const nowMs = BigInt(Date.now());
     const body = makeSignedJsonRpcBody(1, "ok");
     const { fetch: mockFetch } = makeMockFetch(body, chainId, nowMs, {
@@ -225,7 +231,7 @@ describe("VerifierClient", () => {
   });
 
   test("missingTimestampHeaderThrowsMissingHeader", async () => {
-    const chainId = 1n;
+    const chainId = "1";
     const nowMs = BigInt(Date.now());
     const body = makeSignedJsonRpcBody(1, "ok");
     const { fetch: mockFetch } = makeMockFetch(body, chainId, nowMs, {
@@ -246,7 +252,7 @@ describe("VerifierClient", () => {
   });
 
   test("missingPubkeyHeaderThrowsMissingHeader", async () => {
-    const chainId = 1n;
+    const chainId = "1";
     const nowMs = BigInt(Date.now());
     const body = makeSignedJsonRpcBody(1, "ok");
     const { fetch: mockFetch } = makeMockFetch(body, chainId, nowMs, {
@@ -267,7 +273,7 @@ describe("VerifierClient", () => {
   });
 
   test("malformedSignatureHexThrowsMalformed", async () => {
-    const chainId = 1n;
+    const chainId = "1";
     const nowMs = BigInt(Date.now());
     const body = makeSignedJsonRpcBody(1, "ok");
     const { fetch: mockFetch } = makeMockFetch(body, chainId, nowMs, {
@@ -288,7 +294,7 @@ describe("VerifierClient", () => {
   });
 
   test("malformedPubkeyHexThrowsMalformed", async () => {
-    const chainId = 1n;
+    const chainId = "1";
     const nowMs = BigInt(Date.now());
     const body = makeSignedJsonRpcBody(1, "ok");
     const { fetch: mockFetch } = makeMockFetch(body, chainId, nowMs, {
@@ -309,7 +315,7 @@ describe("VerifierClient", () => {
   });
 
   test("malformedTimestampNotNumericThrowsMalformed", async () => {
-    const chainId = 1n;
+    const chainId = "1";
     const nowMs = BigInt(Date.now());
     const body = makeSignedJsonRpcBody(1, "ok");
     const { fetch: mockFetch } = makeMockFetch(body, chainId, nowMs, {
@@ -330,7 +336,7 @@ describe("VerifierClient", () => {
   });
 
   test("staleTimestampPastThrowsStaleTimestamp", async () => {
-    const chainId = 1n;
+    const chainId = "1";
     const staleMs = BigInt(Date.now()) - 120_000n;
     const body = makeSignedJsonRpcBody(1, "ok");
     const { fetch: mockFetch } = makeMockFetch(body, chainId, staleMs);
@@ -352,7 +358,7 @@ describe("VerifierClient", () => {
   });
 
   test("staleTimestampFutureThrowsStaleTimestamp", async () => {
-    const chainId = 1n;
+    const chainId = "1";
     const futureMs = BigInt(Date.now()) + 120_000n;
     const body = makeSignedJsonRpcBody(1, "ok");
     const { fetch: mockFetch } = makeMockFetch(body, chainId, futureMs);
@@ -373,7 +379,7 @@ describe("VerifierClient", () => {
   });
 
   test("replayWindowZeroRejectsAnythingButExactMatch", async () => {
-    const chainId = 1n;
+    const chainId = "1";
     const slightlyOldMs = BigInt(Date.now()) - 1n;
     const body = makeSignedJsonRpcBody(1, "ok");
     const { fetch: mockFetch } = makeMockFetch(body, chainId, slightlyOldMs);
@@ -396,7 +402,7 @@ describe("VerifierClient", () => {
   });
 
   test("jsonRpcIdAutoIncrements", async () => {
-    const chainId = 1n;
+    const chainId = "1";
     const nowMs = BigInt(Date.now());
     const body = makeSignedJsonRpcBody(1, "ok");
     const { fetch: mockFetch, requestsSeen } = makeMockFetch(body, chainId, nowMs);
@@ -419,9 +425,9 @@ describe("VerifierClient", () => {
     }
   });
 
-  test("verifierClientOptionsAcceptsChainIdBigint", async () => {
-    // chainId 137n must flow through to the signed pre-image.
-    const chainId = 137n;
+  test("verifierClientOptionsAcceptsChainIdString", async () => {
+    // chainId "137" must flow through to the signed pre-image.
+    const chainId = "137";
     const nowMs = BigInt(Date.now());
     const body = makeSignedJsonRpcBody(1, "0xabc");
     const { fetch: mockFetch } = makeMockFetch(body, chainId, nowMs);
@@ -430,12 +436,12 @@ describe("VerifierClient", () => {
     const verified = await client.call<string>("eth_chainId", []);
     expect(verified.result).toBe("0xabc");
 
-    // Cross-check: if the mock signs with chainId 137n but the client expects 1n,
+    // Cross-check: if the mock signs with chainId "137" but the client expects "1",
     // the signature verify must fail.
-    const { fetch: wrongChainFetch } = makeMockFetch(body, 137n, nowMs, {
-      signingChainIdOverride: 137n,
+    const { fetch: wrongChainFetch } = makeMockFetch(body, "137", nowMs, {
+      signingChainIdOverride: "137",
     });
-    const wrongClient = new VerifierClient(TEST_URL, { chainId: 1n, fetch: wrongChainFetch });
+    const wrongClient = new VerifierClient(TEST_URL, { chainId: "1", fetch: wrongChainFetch });
     let caught: unknown;
     try {
       await wrongClient.call("eth_chainId", []);
@@ -445,16 +451,24 @@ describe("VerifierClient", () => {
     expect(caught).toBeInstanceOf(BadSignature);
   });
 
+  test("constructorRejectsInvalidChainId", () => {
+    // Synchronous fail-fast, mirroring the sidecar's boot validation.
+    expect(() => new VerifierClient(TEST_URL, { chainId: "" })).toThrow(InvalidChainId);
+    expect(() => new VerifierClient(TEST_URL, { chainId: "a b" })).toThrow(InvalidChainId);
+    // Surrounding whitespace is trimmed, not rejected.
+    expect(() => new VerifierClient(TEST_URL, { chainId: " 137 " })).not.toThrow();
+  });
+
   test("constructorRejectsNonHttpUrl", () => {
-    expect(() => new VerifierClient("file:///etc/passwd", { chainId: 1n })).toThrow(TypeError);
-    expect(() => new VerifierClient("ftp://example.com/", { chainId: 1n })).toThrow(TypeError);
+    expect(() => new VerifierClient("file:///etc/passwd", { chainId: "1" })).toThrow(TypeError);
+    expect(() => new VerifierClient("ftp://example.com/", { chainId: "1" })).toThrow(TypeError);
     // http and https both accepted.
-    expect(() => new VerifierClient("http://example.com/", { chainId: 1n })).not.toThrow();
-    expect(() => new VerifierClient("https://example.com/", { chainId: 1n })).not.toThrow();
+    expect(() => new VerifierClient("http://example.com/", { chainId: "1" })).not.toThrow();
+    expect(() => new VerifierClient("https://example.com/", { chainId: "1" })).not.toThrow();
   });
 
   test("nodeIdCapturedWhenHeaderPresent", async () => {
-    const chainId = 1n;
+    const chainId = "1";
     const nowMs = BigInt(Date.now());
     const body = makeSignedJsonRpcBody(1, "0x1");
     const { fetch: mockFetch } = makeMockFetch(body, chainId, nowMs, {
@@ -467,7 +481,7 @@ describe("VerifierClient", () => {
   });
 
   test("nodeIdUndefinedAndNoThrowWhenHeaderAbsent", async () => {
-    const chainId = 1n;
+    const chainId = "1";
     const nowMs = BigInt(Date.now());
     const body = makeSignedJsonRpcBody(1, "0x1");
     const { fetch: mockFetch } = makeMockFetch(body, chainId, nowMs);
@@ -486,13 +500,13 @@ describe("VerifierClient", () => {
     let capturedHeaders: Record<string, string> | undefined;
     const signedBody = makeSignedJsonRpcBody(1, "0x1");
     const ts = BigInt(Date.now());
-    const { fetch } = makeMockFetch(signedBody, 1n, ts);
+    const { fetch } = makeMockFetch(signedBody, "1", ts);
     const wrapped = (async (input: string | URL, init?: RequestInit) => {
       capturedHeaders = init?.headers as Record<string, string>;
       return fetch(input as string, init);
     }) as typeof fetch;
     const client = new VerifierClient(TEST_URL, {
-      chainId: 1n,
+      chainId: "1",
       headers: { "x-api-key": "secret-key" },
       fetch: wrapped,
     });
