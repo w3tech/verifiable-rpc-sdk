@@ -251,6 +251,39 @@ try {
 
 ---
 
+## 6. Rollout (SHARK-3410 string chain ids)
+
+**Breaking wire change.** The signed canonical pre-image grew from 80 bytes
+(`chain_id` as an 8-byte LE integer) to **104 bytes** (`sha256(utf8(chain_id))`
+at bytes [0..32], see section 2). Old and new formats are mutually
+unverifiable: an old SDK against a new sidecar (or vice versa) reconstructs a
+different pre-image and fails with `BadSignature` on every response — a loud,
+fail-closed mismatch, never silent acceptance.
+
+**Coordinated upgrade.** Sidecar and SDK must move together:
+
+| Component | Minimum version |
+| --------- | --------------- |
+| sidecar   | ≥ 0.5.0         |
+| SDK (all `@w3tech.io/vrpc-*` packages) | ≥ 0.3.0 |
+
+Upgrade the sidecar on a node first, then point SDK ≥ 0.3.0 clients at it.
+There is no dual-format negotiation window — clients on the old SDK cannot
+verify a new node and vice versa, so per-node cutover is atomic.
+
+**Node upgrade procedure (dstack/TEE nodes).** Bump the sidecar image in the
+node's `app_compose`, then reboot the CVM. Because the compose file is part of
+the attested measurement, the upgrade **changes the node's `compose_hash`** —
+attestation policies or allowlists pinning the old hash must be updated in the
+same rollout step.
+
+**Non-EVM nodes (ton, stellar, …).** These currently run older sidecars with
+the placeholder numeric chain id. Their move to real string ids (e.g.
+CAIP-2-style `"tvm:-239"`) requires a sidecar ≥ 0.5.0 redeploy per node and is
+tracked under a separate ops ticket — not part of this SDK release.
+
+---
+
 ## Runnable examples
 
 Three runnable scripts live in `examples/`. All target Ankr's public Arbitrum
