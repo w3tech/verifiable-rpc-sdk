@@ -252,7 +252,7 @@ try {
 
 ---
 
-## 6. Rollout (SHARK-3410 string chain ids)
+## 6. Version gate & coordinated upgrade
 
 **Breaking wire change.** The signed canonical pre-image grew from 80 bytes
 (`chain_id` as an 8-byte LE integer) to **104 bytes** (`sha256(utf8(chain_id))`
