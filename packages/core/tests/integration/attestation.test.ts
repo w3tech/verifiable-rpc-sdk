@@ -30,7 +30,7 @@ d("integration: attestation", () => {
     // `/attestation` does not hit the upstream, but the sidecar still requires
     // `--upstream-url` to start, so spawn a mock and pass its URL.
     upstream = await spawnMockUpstream();
-    sidecar = await spawnSidecar(simulator.socketPath, upstream.url, 1);
+    sidecar = await spawnSidecar(simulator.socketPath, upstream.url, "1");
   });
 
   afterAll(async () => {
