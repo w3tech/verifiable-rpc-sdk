@@ -11,6 +11,7 @@ import {
   parseChainId,
   TrustedVerifier,
   type TrustedVerifierOptions,
+  validateChainId,
 } from "@w3tech.io/vrpc-core";
 import {
   type FetchRequest,
@@ -43,16 +44,20 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
  * `new VrpcProvider(url, undefined, { pubkeyCacheTtlMs })`.
  */
 export class VrpcProvider extends JsonRpcProvider {
-  #chainId: bigint | undefined;
+  #chainId: string | undefined;
   // Memoized in-flight bootstrap: N concurrent first calls share ONE fetch.
-  #chainIdPromise: Promise<bigint> | null = null;
+  #chainIdPromise: Promise<string> | null = null;
   // Builds the verifier from options closed over at construction; chainId is the
   // one late-bound field (may be auto-derived), so it is the factory's argument.
-  readonly #makeVerifier: (chainId: bigint) => TrustedVerifier;
+  readonly #makeVerifier: (chainId: string) => TrustedVerifier;
   // ONE TrustedVerifier per provider (lifetime cache); eager on pin, lazy on auto-derive.
   #trustedVerifier: TrustedVerifier | undefined;
 
-  constructor(url: string | FetchRequest, chainIdArg?: number | bigint, options: VrpcOptions = {}) {
+  constructor(
+    url: string | FetchRequest,
+    chainIdArg?: number | bigint | string,
+    options: VrpcOptions = {},
+  ) {
     const {
       replayWindowMs,
       pubkeyCacheTtlMs,
@@ -80,14 +85,28 @@ export class VrpcProvider extends JsonRpcProvider {
     // gateway route rejects it (fail-closed). A string URL carries no headers.
     const attestationHeaders = typeof url === "string" ? undefined : url.headers;
 
-    // bigint without a number round-trip: chain ids can exceed 2^53 and the
-    // pre-image binds the full u64, so widening through `number` would false-reject.
-    const chainId = chainIdArg != null ? BigInt(chainIdArg) : undefined;
+    // Normalize to the canonical decimal string the pre-image binds. number and
+    // bigint args are adapter ergonomics only: BigInt(...).toString(10) — no
+    // `number` round-trip (chain ids can exceed 2^53) and fail-fast on
+    // non-integer numbers. A string arg is validated by core's `validateChainId`
+    // (sidecar-identical rules) and the returned trimmed value is what binds.
+    let chainId: string | undefined;
+    if (chainIdArg != null) {
+      chainId =
+        typeof chainIdArg === "string"
+          ? validateChainId(chainIdArg)
+          : BigInt(chainIdArg).toString(10);
+    }
 
     // staticNetwork (pin only) skips ethers' startup eth_chainId probe without
     // weakening the binding; ethersOpts spread first so a user value can't win.
-    const superOptions = chainId != null ? { ...ethersOpts, staticNetwork: true } : ethersOpts;
-    super(superUrl, chainId, superOptions);
+    // Only an all-decimal id can be pinned as an ethers network: CAIP-2 style
+    // ids are non-EVM, ethers cannot represent such a network, so those pass no
+    // network arg (ethers probes lazily) — the verifier still binds the exact string.
+    const networkChainId = chainId !== undefined && /^\d+$/.test(chainId) ? BigInt(chainId) : null;
+    const superOptions =
+      networkChainId != null ? { ...ethersOpts, staticNetwork: true } : ethersOpts;
+    super(superUrl, networkChainId ?? undefined, superOptions);
 
     this.#chainId = chainId;
     this.#makeVerifier = (resolvedChainId) =>
@@ -125,8 +144,10 @@ export class VrpcProvider extends JsonRpcProvider {
   }
 
   // Feed the SAME memoized resolver as _send so detection and verification agree.
+  // Auto-derived ids are always decimal (parseChainId), so BigInt is safe here;
+  // a pinned CAIP-2 style id has no ethers Network representation and fails loud.
   override async _detectNetwork(): Promise<Network> {
-    return Network.from(await this.#resolveChainId());
+    return Network.from(BigInt(await this.#resolveChainId()));
   }
 
   // POST a payload, return the request/response bytes + headers the verifier needs.
@@ -148,7 +169,7 @@ export class VrpcProvider extends JsonRpcProvider {
   // own `result` IS the chainId, so the signature only verifies for the chain the
   // node really signed). Memoized; own request, never via _send; on verify failure
   // chainId is NOT set (fail-fast, no unverified fallback).
-  #resolveChainId(): Promise<bigint> {
+  #resolveChainId(): Promise<string> {
     if (this.#chainId != null) {
       return Promise.resolve(this.#chainId);
     }
@@ -173,7 +194,7 @@ export class VrpcProvider extends JsonRpcProvider {
   }
 
   // Memoized verifier, built lazily once chainId is known.
-  #getTrustedVerifier(chainId: bigint): TrustedVerifier {
+  #getTrustedVerifier(chainId: string): TrustedVerifier {
     if (this.#trustedVerifier === undefined) {
       this.#trustedVerifier = this.#makeVerifier(chainId);
     }

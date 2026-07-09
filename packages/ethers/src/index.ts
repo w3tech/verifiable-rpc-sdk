@@ -13,6 +13,7 @@
 // reuses — one error family across both adapters.
 export {
   BadSignature,
+  InvalidChainId,
   MalformedHeader,
   MissingHeader,
   StaleTimestamp,

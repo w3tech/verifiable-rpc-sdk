@@ -16,6 +16,7 @@
 // shape. `instanceof`-checks work without importing core directly.
 export {
   BadSignature,
+  InvalidChainId,
   MalformedHeader,
   MissingHeader,
   StaleTimestamp,
