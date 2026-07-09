@@ -1,6 +1,13 @@
 import { describe, expect, test } from "vitest";
 
-import { buildPreImage, buildPreImageFromHashes, sha256, u64LE } from "../src/preimage";
+import { InvalidChainId } from "../src/errors";
+import {
+  buildPreImage,
+  buildPreImageFromHashes,
+  sha256,
+  u64LE,
+  validateChainId,
+} from "../src/preimage";
 
 /**
  * Hex-encode a Uint8Array to lowercase hex (no 0x prefix).
@@ -14,46 +21,80 @@ function toHex(bytes: Uint8Array): string {
   return out;
 }
 
+const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
+
 describe("preimage", () => {
   /**
    * Mirror of sidecar `src/signing.rs::tests::pre_image_layout_is_byte_exact`.
    *
    * Inputs:
-   *   chain_id     = 0x1122334455667788
-   *   request_hash = [0xaa; 32]
-   *   response_hash= [0xbb; 32]
-   *   timestamp_ms = 0x9988776655443322
+   *   chain_id_hash = [0xcc; 32]
+   *   request_hash  = [0xaa; 32]
+   *   response_hash = [0xbb; 32]
+   *   timestamp_ms  = 0x9988776655443322
    *
-   * Expected 80-byte layout:
-   *   [0..8]   chain_id LE       = 88 77 66 55 44 33 22 11
-   *   [8..40]  request_hash      = aa * 32
-   *   [40..72] response_hash     = bb * 32
-   *   [72..80] timestamp_ms LE   = 22 33 44 55 66 77 88 99
+   * Expected 104-byte layout:
+   *   [0..32]   chain_id_hash     = cc * 32
+   *   [32..64]  request_hash      = aa * 32
+   *   [64..96]  response_hash     = bb * 32
+   *   [96..104] timestamp_ms LE   = 22 33 44 55 66 77 88 99
    *
-   * If this drifts even one byte, the SDK signs over the wrong bytes and the
-   * sidecar's signatures stop verifying. Hard fail.
+   * If this drifts even one byte, the SDK verifies against the wrong bytes and
+   * the sidecar's signatures stop verifying. Hard fail.
    */
   test("preImageLayoutIsByteExact", () => {
-    const chainId = 0x1122334455667788n;
+    const chainIdHash = new Uint8Array(32).fill(0xcc);
     const requestHash = new Uint8Array(32).fill(0xaa);
     const responseHash = new Uint8Array(32).fill(0xbb);
     const timestampMs = 0x9988776655443322n;
 
-    const pre = buildPreImageFromHashes(chainId, requestHash, responseHash, timestampMs);
+    const pre = buildPreImageFromHashes(chainIdHash, requestHash, responseHash, timestampMs);
 
-    expect(pre.length).toBe(80);
+    expect(pre.length).toBe(104);
 
-    // chain_id (8B LE)
-    expect(Array.from(pre.slice(0, 8))).toEqual([0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11]);
+    // chain_id_hash (32B) — all 0xcc
+    expect(pre.slice(0, 32).every((b) => b === 0xcc)).toBe(true);
 
     // request_hash (32B) — all 0xaa
-    expect(pre.slice(8, 40).every((b) => b === 0xaa)).toBe(true);
+    expect(pre.slice(32, 64).every((b) => b === 0xaa)).toBe(true);
 
     // response_hash (32B) — all 0xbb
-    expect(pre.slice(40, 72).every((b) => b === 0xbb)).toBe(true);
+    expect(pre.slice(64, 96).every((b) => b === 0xbb)).toBe(true);
 
     // timestamp_ms (8B LE)
-    expect(Array.from(pre.slice(72, 80))).toEqual([0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99]);
+    expect(Array.from(pre.slice(96, 104))).toEqual([
+      0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99,
+    ]);
+
+    // Public builder: buildPreImage hashes the chain id string internally and
+    // places sha256(utf8(chainId)) at [0..32].
+    const req = new Uint8Array([0x01, 0x02, 0x03]);
+    const resp = new Uint8Array([0x04, 0x05, 0x06]);
+    const ts = 1_700_000_000_000n;
+    const full = buildPreImage("42161", req, resp, ts);
+    expect(full.length).toBe(104);
+    expect(toHex(full.slice(0, 32))).toBe(toHex(sha256(utf8("42161"))));
+    expect(toHex(full.slice(32, 64))).toBe(toHex(sha256(req)));
+    expect(toHex(full.slice(64, 96))).toBe(toHex(sha256(resp)));
+    expect(Array.from(full.slice(96, 104))).toEqual(Array.from(u64LE(ts)));
+  });
+
+  /**
+   * Mirror of sidecar `chain_id_hash_matches_known_answer`. These three
+   * vectors are copied verbatim from `src/signing.rs` (main @ dcc4b03) — the
+   * verifier SDK must reproduce them byte-exactly. Numeric-looking ids are
+   * hashed as strings too, never parsed.
+   */
+  test("chainIdHashMatchesKnownAnswer", () => {
+    expect(toHex(sha256(utf8("tvm:-239")))).toBe(
+      "4c4033c233f0d4354a729a4c42ae6af64f6af48ab2d6604ffcb55376b18c65fe",
+    );
+    expect(toHex(sha256(utf8("stellar:pubnet")))).toBe(
+      "012618588378e37b4cf24801913bf48560a860f5b5ff01a0b62ecd05dddb13d2",
+    );
+    expect(toHex(sha256(utf8("42161")))).toBe(
+      "936a20303015aca26be61e6782c83b1de6b4b25f3dbdf555a97d85e0477a53a9",
+    );
   });
 
   /**
@@ -69,41 +110,44 @@ describe("preimage", () => {
   /**
    * Locks the public API contract: `buildPreImage(chainId, requestBody,
    * responseBody, timestampMs)` MUST hash the bodies internally and embed
-   * those hashes at offsets [8..40] and [40..72].
+   * those hashes at offsets [32..64] and [64..96].
    *
    * Known vector pinned for byte-exact regression detection:
-   *   chainId=1n, request=[0x01,0x02,0x03], response=[0x04,0x05,0x06],
+   *   chainId="1", request=[0x01,0x02,0x03], response=[0x04,0x05,0x06],
    *   timestampMs=0x0102030405060708n.
    *
    * Expected hashes (computed independently via @noble/hashes):
+   *   sha256("1")              = 6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b
    *   sha256([0x01,0x02,0x03]) = 039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81
    *   sha256([0x04,0x05,0x06]) = 787c798e39a5bc1910355bae6d0cd87a36b2e10fd0202a83e3bb6b005da83472
    */
   test("buildPreImageHashesBodiesInternally", () => {
-    const chainId = 1n;
     const requestBody = new Uint8Array([0x01, 0x02, 0x03]);
     const responseBody = new Uint8Array([0x04, 0x05, 0x06]);
     const timestampMs = 0x0102030405060708n;
 
-    const pre = buildPreImage(chainId, requestBody, responseBody, timestampMs);
+    const pre = buildPreImage("1", requestBody, responseBody, timestampMs);
 
-    expect(pre.length).toBe(80);
-    expect(toHex(pre.slice(8, 40))).toBe(
+    expect(pre.length).toBe(104);
+    // chain_id_hash: sha256(utf8("1"))
+    expect(toHex(pre.slice(0, 32))).toBe(
+      "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+    );
+    expect(toHex(pre.slice(32, 64))).toBe(
       "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
     );
-    expect(toHex(pre.slice(40, 72))).toBe(
+    expect(toHex(pre.slice(64, 96))).toBe(
       "787c798e39a5bc1910355bae6d0cd87a36b2e10fd0202a83e3bb6b005da83472",
     );
-
-    // chain_id LE: 1 → 01 00 00 00 00 00 00 00
-    expect(Array.from(pre.slice(0, 8))).toEqual([0x01, 0, 0, 0, 0, 0, 0, 0]);
     // timestamp LE: 0x0102030405060708 → 08 07 06 05 04 03 02 01
-    expect(Array.from(pre.slice(72, 80))).toEqual([0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01]);
+    expect(Array.from(pre.slice(96, 104))).toEqual([
+      0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01,
+    ]);
   });
 
-  test("preImageLengthIsExactly80", () => {
-    const pre = buildPreImage(42n, new Uint8Array([1]), new Uint8Array([2]), 0n);
-    expect(pre.length).toBe(80);
+  test("preImageLengthIsExactly104", () => {
+    const pre = buildPreImage("42", new Uint8Array([1]), new Uint8Array([2]), 0n);
+    expect(pre.length).toBe(104);
   });
 
   /**
@@ -124,9 +168,9 @@ describe("preimage", () => {
 
   /**
    * `u64LE` must FAIL LOUD on out-of-u64 inputs instead of silently
-   * wrapping mod 2^64. Otherwise the chainId binding would only hold
-   * "mod 2^64": `u64LE(C)` and `u64LE(C + 2^64)` would be byte-identical and
-   * the stored chainId could diverge from the bytes actually bound.
+   * wrapping mod 2^64. Otherwise the timestamp binding would only hold
+   * "mod 2^64": `u64LE(T)` and `u64LE(T + 2^64)` would be byte-identical and
+   * the stored timestamp could diverge from the bytes actually bound.
    */
   test("u64LeRejectsOutOfRange", () => {
     // 2^64 (first value past the max) → throws.
@@ -137,20 +181,62 @@ describe("preimage", () => {
     expect(Array.from(u64LE((1n << 64n) - 1n))).toEqual([
       0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
     ]);
-    // a normal EVM chain id (arbitrum = 42161) → bytes unchanged.
-    expect(Array.from(u64LE(42161n))).toEqual([0xb1, 0xa4, 0, 0, 0, 0, 0, 0]);
-    // out-of-range chainId propagates through the pre-image builder too.
-    expect(() => buildPreImage(1n << 64n, new Uint8Array([1]), new Uint8Array([2]), 0n)).toThrow(
-      RangeError,
-    );
+    // out-of-range timestamp propagates through the pre-image builder too.
+    expect(() =>
+      buildPreImage("1", new Uint8Array([1]), new Uint8Array([2]), 1n << 64n),
+    ).toThrow(RangeError);
   });
 
   test("buildPreImageFromHashesRejectsNon32ByteHashes", () => {
-    expect(() => buildPreImageFromHashes(1n, new Uint8Array(31), new Uint8Array(32), 0n)).toThrow(
-      RangeError,
-    );
-    expect(() => buildPreImageFromHashes(1n, new Uint8Array(32), new Uint8Array(33), 0n)).toThrow(
-      RangeError,
-    );
+    const ok = new Uint8Array(32);
+    // chainIdHash wrong length.
+    expect(() => buildPreImageFromHashes(new Uint8Array(31), ok, ok, 0n)).toThrow(RangeError);
+    expect(() => buildPreImageFromHashes(new Uint8Array(33), ok, ok, 0n)).toThrow(RangeError);
+    // requestHash wrong length.
+    expect(() => buildPreImageFromHashes(ok, new Uint8Array(31), ok, 0n)).toThrow(RangeError);
+    // responseHash wrong length.
+    expect(() => buildPreImageFromHashes(ok, ok, new Uint8Array(33), 0n)).toThrow(RangeError);
+  });
+
+  /**
+   * Mirror of sidecar `validate_chain_id_accepts_valid_ids`
+   * (src/signing.rs). Chain ids are opaque strings — CAIP-2 style ids and
+   * numeric-looking ids are all just strings, never parsed numerically.
+   */
+  test("validateChainIdAcceptsValidIds", () => {
+    expect(validateChainId("42161")).toBe("42161");
+    expect(validateChainId("0x89")).toBe("0x89");
+    expect(validateChainId("tvm:-239")).toBe("tvm:-239");
+    expect(validateChainId("stellar:pubnet")).toBe("stellar:pubnet");
+    // Surrounding whitespace is trimmed, not rejected.
+    expect(validateChainId(" 137 ")).toBe("137");
+    // 64-byte boundary is accepted.
+    const max = "x".repeat(64);
+    expect(validateChainId(max)).toBe(max);
+  });
+
+  /**
+   * Mirror of sidecar `validate_chain_id_rejects_invalid_ids`
+   * (src/signing.rs). Every rejection throws the typed `InvalidChainId`
+   * with a message naming the failed constraint.
+   */
+  test("validateChainIdRejectsInvalidIds", () => {
+    // Empty (before or after trim) is rejected.
+    expect(() => validateChainId("")).toThrow(InvalidChainId);
+    expect(() => validateChainId(" ")).toThrow(InvalidChainId);
+    // Internal whitespace is rejected.
+    expect(() => validateChainId("a b")).toThrow(InvalidChainId);
+    expect(() => validateChainId("a\tb")).toThrow(InvalidChainId);
+    // 65 bytes exceeds the limit.
+    expect(() => validateChainId("x".repeat(65))).toThrow(InvalidChainId);
+    // Non-ASCII is rejected.
+    expect(() => validateChainId("cépas")).toThrow(InvalidChainId);
+    // Non-printable control characters are rejected.
+    expect(() => validateChainId("a\u007Fb")).toThrow(InvalidChainId);
+
+    // Error messages name the failed constraint.
+    expect(() => validateChainId("")).toThrow(/empty/);
+    expect(() => validateChainId("x".repeat(65))).toThrow(/byte/);
+    expect(() => validateChainId("cépas")).toThrow(/character/);
   });
 });
