@@ -103,7 +103,8 @@ The signature is over a **104-byte canonical pre-image** (`src/signing.rs`):
 
 The `chain_id` is a **string** — the exact value the sidecar is configured with
 (decimal for EVM chains, e.g. `"42161"`; the exact configured string for non-EVM
-chains, e.g. TON's global id `"-239"` or a CAIP-2 style id like `"stellar:pubnet"`).
+chains, e.g. TON's global id `"-239"` or Stellar's network id — the sha256 of its
+mainnet passphrase, a 64-char hex string).
 
 The signature covers the **content-decoded (plaintext)** response body: the
 sidecar forces `Accept-Encoding: identity` upstream to get plaintext, signs that,

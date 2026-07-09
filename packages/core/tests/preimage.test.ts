@@ -81,17 +81,20 @@ describe("preimage", () => {
 
   /**
    * Mirror of sidecar `chain_id_hash_matches_known_answer`. These three
-   * vectors are copied verbatim from `src/signing.rs` (main @ dcc4b03) — the
-   * verifier SDK must reproduce them byte-exactly. Numeric-looking ids are
-   * hashed as strings too, never parsed.
+   * vectors must match the sidecar's `src/signing.rs` known-answer vectors —
+   * the verifier SDK reproduces them byte-exactly. Numeric-looking ids are
+   * hashed as strings too, never parsed. Sample ids: TON global id "-239",
+   * Stellar network id (sha256 of the mainnet passphrase), EVM "42161".
    */
   test("chainIdHashMatchesKnownAnswer", () => {
     expect(toHex(sha256(utf8("-239")))).toBe(
       "7d1a0b60d68a1efc2e01df13132034d669b2ce5b05c8bf6d4ae6322e810c5659",
     );
-    expect(toHex(sha256(utf8("stellar:pubnet")))).toBe(
-      "012618588378e37b4cf24801913bf48560a860f5b5ff01a0b62ecd05dddb13d2",
-    );
+    // Stellar's chain id is its network id — SHA-256 of the mainnet network
+    // passphrase — a 64-char (64-byte) hex string, at the validation limit.
+    expect(
+      toHex(sha256(utf8("7ac33997544e3175d266bd022439b22cdb16508c01163f26e5cb2a3e1045a979"))),
+    ).toBe("dd4a5b7a84a301d6a8db49bff6877b3ef17b03d7afd19302fab324d1b7b4e1f7");
     expect(toHex(sha256(utf8("42161")))).toBe(
       "936a20303015aca26be61e6782c83b1de6b4b25f3dbdf555a97d85e0477a53a9",
     );
@@ -207,7 +210,9 @@ describe("preimage", () => {
     expect(validateChainId("42161")).toBe("42161");
     expect(validateChainId("0x89")).toBe("0x89");
     expect(validateChainId("-239")).toBe("-239");
-    expect(validateChainId("stellar:pubnet")).toBe("stellar:pubnet");
+    // Stellar network id — 64-byte hex, exactly at the length limit.
+    const stellarId = "7ac33997544e3175d266bd022439b22cdb16508c01163f26e5cb2a3e1045a979";
+    expect(validateChainId(stellarId)).toBe(stellarId);
     // Surrounding whitespace is trimmed, not rejected.
     expect(validateChainId(" 137 ")).toBe("137");
     // 64-byte boundary is accepted.
