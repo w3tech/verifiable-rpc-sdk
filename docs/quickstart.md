@@ -40,7 +40,7 @@ A vRPC node runs inside an Intel TDX confidential VM (a "CVM"), built on [Phala 
 - the **blockchain node** (e.g. Arbitrum Nitro), and
 - the **vRPC sidecar**, which sits in front of the node, proxies RPC traffic, and signs every response.
 
-The signing key is an Ed25519 key the enclave's KMS generates *inside* the CVM. It exists only there. Its public half is bound into the TDX attestation quote, so anyone can confirm the key signing your responses really belongs to that enclave.
+The signing key is an Ed25519 key derived by dstack-KMS - itself an attested confidential VM - and released to the sidecar only after checking its TDX quote. It exists only inside the enclave. Its public half is bound into the TDX attestation quote, so anyone can confirm the key signing your responses really belongs to that enclave.
 
 Each response carries three headers - `vRPC-Pubkey`, `vRPC-Timestamp`, `vRPC-Signature`. The signature covers a 104-byte pre-image of four segments:
 
@@ -105,6 +105,8 @@ const client = createPublicClient({ chain, transport: vrpcHttp(url) });
 You pass **one** plain URL (e.g. `https://rpc.ankr.com/arbitrum`). The SDK derives the `_vrpc` RPC route and the `/attestation` route itself - there is no second base URL to configure. `chainId` is optional (the SDK can derive it from a *signed* `eth_chainId`) but passing it is recommended: it pins your expected chain and skips a round-trip.
 
 Everything downstream - `getBalance`, `eth_call`, `getLogs`, contract reads, `estimateGas` - works exactly as before, now verified.
+
+vRPC is not EVM-only: the signature covers raw HTTP bytes, so REST/path-based chains (TON HTTP API v2, Stellar Horizon) are signed and verifiable the same way. The ethers/viem drop-ins are JSON-RPC adapters; for REST responses use the core `verifyResponse` primitive from `@w3tech.io/vrpc-core` (see the core README).
 
 ### Get it running
 
