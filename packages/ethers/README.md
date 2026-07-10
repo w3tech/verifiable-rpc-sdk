@@ -66,7 +66,7 @@ import { FetchRequest } from "ethers";
 const req = new FetchRequest("https://rpc.ankr.com/arbitrum");
 req.setHeader("x-api-key", process.env.ANKR_API_KEY!);
 
-const provider = new VrpcProvider(req, 42161n); // chainId bound into the signature
+const provider = new VrpcProvider(req, 42161); // chainId bound into the signature as "42161"
 
 try {
   const balance = await provider.getBalance("0x0000000000000000000000000000000000000000");
@@ -88,23 +88,33 @@ try {
 
 ```ts
 // single signature — chainId is an optional positional arg:
-new VrpcProvider(url: string | FetchRequest, chainId?: number | bigint, options?: VrpcOptions)
+new VrpcProvider(url: string | FetchRequest, chainId?: number | bigint | string, options?: VrpcOptions)
 ```
 
 - **`url`** — node/proxy URL or a `FetchRequest` (use the latter to attach
   `x-api-key` or other headers).
-- **`chainId`** — `number | bigint`, **optional but strongly recommended**.
-  Bound into the signed pre-image. Coerced with `BigInt()` *without* a `number`
-  round-trip, so chain ids beyond `Number.MAX_SAFE_INTEGER` (2^53−1) bind exactly
-  — no precision loss, no false `BadSignature`.
-  - **Explicit (recommended)** — `new VrpcProvider(url, chainId)`. The
-    constructor pins this as a static network (`staticNetwork: true`) so the
-    provider issues **zero** `eth_chainId` round-trips; this only skips the
-    round-trip and does not weaken the signature binding. It also pins to **your
-    expected chain**, catching a wrong-node / wrong-URL misconfig where
-    auto-derive (which trusts the node's self-reported chain) would happily
-    verify *genuine* data from the *wrong* chain. To pass options without pinning
-    a chain id, use `new VrpcProvider(url, undefined, { ... })`.
+- **`chainId`** — `number | bigint | string`, **optional but strongly
+  recommended**. The signed pre-image binds a chain-id **string** (the exact
+  value the sidecar is configured with); `number`/`bigint` args normalize to the
+  decimal string immediately (`42161` → `"42161"`, via `BigInt().toString(10)` —
+  no `number` round-trip, so ids beyond `Number.MAX_SAFE_INTEGER` bind exactly).
+  A string arg is validated (`InvalidChainId` at construction on empty /
+  whitespace / >64 bytes / non-printable-ASCII) and bound verbatim — non-EVM
+  chains pass the exact configured string (e.g. TON's global id `"-239"`).
+  The chain-id string is hashed into the 104-byte pre-image; version gate: SDK
+  `>=0.3.0` requires sidecar `>=0.5.0` (older sidecars sign the legacy
+  pre-image and verification fails closed).
+  - **Explicit (recommended)** — `new VrpcProvider(url, chainId)`. For an
+    all-decimal id the constructor pins it as a static network
+    (`staticNetwork: true`) so the provider issues **zero** `eth_chainId`
+    round-trips; this only skips the round-trip and does not weaken the
+    signature binding. It also pins to **your expected chain**, catching a
+    wrong-node / wrong-URL misconfig where auto-derive (which trusts the node's
+    self-reported chain) would happily verify *genuine* data from the *wrong*
+    chain. A non-decimal (CAIP-2 style) id cannot be represented as an ethers
+    network, so no network arg is pinned — the verifier still binds the exact
+    string. To pass options without pinning a chain id, use
+    `new VrpcProvider(url, undefined, { ... })`.
   - **Omitted (auto-derive)** — `new VrpcProvider(url)`. On first use the
     provider derives the chain id from a **signed `eth_chainId` response**,
     memoized so concurrent first calls share a single fetch, and **verifies that
@@ -127,7 +137,6 @@ passed through to `super(...)` unchanged. The vRPC-specific fields:
 
 | Field            | Type                                  | Default          | Meaning |
 | ---------------- | ------------------------------------- | ---------------- | ------- |
-| `chainId`        | `number \| bigint`                    | auto-derived     | Optional alternative to the positional 2nd arg. Strongly recommended — pins to **your expected chain** and skips the `eth_chainId` bootstrap. Omit → derived lazily from a **signed, self-consistently-verified** `eth_chainId` response on first use (tampered/forged/unsigned → fail-fast `VerificationError`, no unverified fallback). |
 | `replayWindowMs` | `number`                              | vrpc-core (60s)  | Freshness window forwarded to `verifyResponse`. Omit in production. Do **not** set `0` outside fixture tests — it always rejects on clock skew. |
 
 Spread order is enforced so `staticNetwork` cannot be overridden away.
@@ -178,7 +187,7 @@ errors and propagates (fail-closed).
 // is no separate apiKey option. Attestation is always-on, derived from the URL.
 const req = new FetchRequest("https://rpc.ankr.com/arbitrum");
 req.setHeader("x-api-key", process.env.ANKR_API_KEY); // covers both legs (never logged)
-const provider = new VrpcProvider(req, 42161n, {
+const provider = new VrpcProvider(req, 42161, {
   pubkeyCacheTtlMs: 3_600_000, // 1h (default)
 });
 // Ordinary reads. The first unknown pubkey triggers one attestation fetch +
@@ -200,7 +209,7 @@ import { anchorTrust } from "@w3tech.io/vrpc-core";
 const anchor = await anchorTrust({
   rpcBaseUrl: "https://rpc.ankr.com",
   chain: "arbitrum",
-  chainId: 42161n,
+  chainId: "42161",
   headers: { "x-api-key": process.env.ANKR_API_KEY },
 });
 console.log(anchor.nodeId, anchor.pubkey); // pubkey: 0x + 64 hex

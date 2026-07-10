@@ -14,6 +14,7 @@
 
 import {
   BadSignature,
+  InvalidChainId,
   MalformedHeader,
   MissingHeader,
   VerificationError,
@@ -54,15 +55,15 @@ const NODE_ID = "node-abc";
 function autoDeriveRequest(
   responseBody: string,
   opts: {
-    bootstrapChainId?: bigint;
-    bootstrapSigningChainId?: bigint;
+    bootstrapChainId?: string;
+    bootstrapSigningChainId?: string;
     bootstrapUnsigned?: boolean;
     bootstrapTamper?: boolean;
     // Override the bootstrap body with a raw (possibly malformed) string —
     // bad JSON, missing `result`, or non-hex `result`. Returned UNSIGNED since
     // the parse/shape guard must reject it BEFORE verifyResponse runs.
     bootstrapRawBody?: string;
-    signingChainId?: bigint;
+    signingChainId?: string;
     bootstrapHits?: { n: number };
   } = {},
 ): FetchRequest {
@@ -86,7 +87,7 @@ function autoDeriveRequest(
           body: new TextEncoder().encode(opts.bootstrapRawBody),
         };
       }
-      const bootstrapResult = `0x${bootstrapChainId.toString(16)}`;
+      const bootstrapResult = `0x${BigInt(bootstrapChainId).toString(16)}`;
       let body = new TextEncoder().encode(
         JSON.stringify({ jsonrpc: "2.0", id: 1, result: bootstrapResult }),
       );
@@ -185,7 +186,7 @@ describe("VrpcProvider._send wiring", () => {
     // for arbitrum (42161): the signature is valid yet the pre-image chainId
     // differs → BadSignature.
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { signingChainId: 1n }),
+      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { signingChainId: "1" }),
       CHAIN_ID_NUMBER,
       WIDE_WINDOW,
     );
@@ -339,18 +340,18 @@ describe("VrpcProvider._send wiring", () => {
   });
 
   // chain ids beyond Number.MAX_SAFE_INTEGER (2^53−1) must survive the
-  // constructor without precision loss. The pre-image binds the full u64 chain
-  // id, so a `number`-widened chainId would diverge from what the sidecar signed
-  // and reject an intact response (false BadSignature). Passing a bigint through
-  // the constructor → #chainId → verify({ chainId }) chain must round-trip the
-  // exact value: sign-and-verify succeeds for the large id, and a one-off
-  // mismatch still throws BadSignature (verification is NOT weakened).
+  // constructor without precision loss. The pre-image hashes the exact decimal
+  // string, so a `number`-widened chainId would diverge from what the sidecar
+  // signed and reject an intact response (false BadSignature). Passing a bigint
+  // through the constructor → decimal string → verify({ chainId }) chain must
+  // round-trip the exact value: sign-and-verify succeeds for the large id, and a
+  // one-off mismatch still throws BadSignature (verification is NOT weakened).
   const LARGE_CHAIN_ID = (1n << 53n) + 12_345n; // 9_007_199_254_753_337n > 2^53−1
 
   test("large chainId > 2^53−1 round-trips exactly (bigint, no precision loss)", async () => {
     const provider = new VrpcProvider(
       signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
-        chainId: LARGE_CHAIN_ID,
+        chainId: LARGE_CHAIN_ID.toString(10),
         nodeId: NODE_ID,
       }),
       LARGE_CHAIN_ID,
@@ -364,7 +365,7 @@ describe("VrpcProvider._send wiring", () => {
     // Signed for LARGE_CHAIN_ID+1, verified against LARGE_CHAIN_ID → mismatch.
     const provider = new VrpcProvider(
       signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
-        signingChainId: LARGE_CHAIN_ID + 1n,
+        signingChainId: (LARGE_CHAIN_ID + 1n).toString(10),
       }),
       LARGE_CHAIN_ID,
       WIDE_WINDOW,
@@ -446,7 +447,7 @@ describe("VrpcProvider._send wiring", () => {
     // no deferred BadSignature on a later call.
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
-        bootstrapChainId: 1n,
+        bootstrapChainId: "1",
         bootstrapSigningChainId: CHAIN_ID,
         signingChainId: CHAIN_ID,
       }),
@@ -526,11 +527,38 @@ describe("VrpcProvider._send wiring", () => {
     const bootstrapHits = { n: 0 };
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
-      CHAIN_ID,
+      BigInt(CHAIN_ID),
       WIDE_WINDOW,
     );
     const balance = await provider.getBalance(ADDR);
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
     expect(bootstrapHits.n).toBe(0);
+  });
+
+  // STRING-CHAINID — the constructor accepts number | bigint | string and
+  // normalizes to ONE canonical decimal string, so all three arg forms bind the
+  // IDENTICAL pre-image bytes (fixtures sign with the string "42161").
+
+  test("number, bigint and string chainId args all bind the same decimal string", async () => {
+    for (const arg of [42_161, 42_161n, "42161"] as const) {
+      const provider = new VrpcProvider(
+        signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID }),
+        arg,
+        WIDE_WINDOW,
+      );
+      const balance = await provider.getBalance(ADDR);
+      expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
+    }
+  });
+
+  test("non-EVM string chainId is accepted at construction (no network pin)", () => {
+    // No network assertions and no requests fired — ethers cannot represent a
+    // non-EVM network; the verifier would bind the exact string on first use.
+    // "-239" is TON's global id (non-decimal → no staticNetwork pin).
+    expect(() => new VrpcProvider("http://test.invalid", "-239", WIDE_WINDOW)).not.toThrow();
+  });
+
+  test("invalid string chainId throws InvalidChainId at construction", () => {
+    expect(() => new VrpcProvider("http://test.invalid", " ", WIDE_WINDOW)).toThrow(InvalidChainId);
   });
 });

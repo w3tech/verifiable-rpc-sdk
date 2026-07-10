@@ -43,8 +43,8 @@ export interface SidecarHandle {
   url: string;
   /** Ed25519 signing pubkey advertised in the boot log (`0x` + 64 hex). */
   pubkeyHex: string;
-  /** Chain ID the sidecar was started with. */
-  chainId: number;
+  /** Chain ID the sidecar was started with — the exact string it signs with. */
+  chainId: string;
   /** Terminate the sidecar process. Best-effort, never throws. */
   kill: () => Promise<void>;
 }
@@ -116,7 +116,7 @@ export async function spawnSimulator(): Promise<SimulatorHandle> {
 export async function spawnSidecar(
   simSocketPath: string,
   upstreamUrl: string,
-  chainId: number,
+  chainId: string,
 ): Promise<SidecarHandle> {
   const bin = requireEnv("SIDECAR_BIN");
   const port = await ephemeralPort();
@@ -127,7 +127,7 @@ export async function spawnSidecar(
     "--upstream-url",
     upstreamUrl,
     "--chain-id",
-    String(chainId),
+    chainId,
     "--dstack-endpoint",
     simSocketPath,
   ];

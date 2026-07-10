@@ -92,7 +92,7 @@ the gateway-derived `attestationUrl` and the captured `nodeId`).
 
 ## 2. The `chainId` argument — optional but strongly recommended
 
-`chainId` is **optional** on both adapters and is `number | bigint`:
+`chainId` is **optional** on both adapters and is `number | bigint | string`:
 
 - ethers: `new VrpcProvider(url, chainId, options?)` (positional only) or
   `new VrpcProvider(url)` (auto-derive).
@@ -100,22 +100,27 @@ the gateway-derived `attestationUrl` and the captured `nodeId`).
   vrpcHttp(url) })` (chain id comes from `chain.id`) — or omit `chain` to
   auto-derive.
 
-**Why it is bound.** The chain id is bound into the signed canonical pre-image:
+**Why it is bound.** The chain id is bound into the signed canonical pre-image
+(104 bytes):
 
 ```
-chain_id (8B LE) ‖ sha256(request_body) (32B) ‖ sha256(response_body) (32B) ‖ timestamp_ms (8B LE)
+sha256(utf8(chain_id)) (32B) ‖ sha256(request_body) (32B) ‖ sha256(response_body) (32B) ‖ timestamp_ms (8B LE)
 ```
 
 The sidecar signs over this pre-image, so the SDK must reconstruct it with the
-**same** chain id to verify the signature. This is the chain id the sidecar was
-configured with (`SIDECAR_CHAIN_ID`), not necessarily the node's reported
-`eth_chainId`. A mismatch does **not** silently pass — it reconstructs a
-different pre-image and surfaces as a clear `BadSignature` (a `VerificationError`
-subclass).
+**same** chain id string to verify the signature. This is the chain id the
+sidecar was configured with (`SIDECAR_CHAIN_ID`), not necessarily the node's
+reported `eth_chainId`. A mismatch does **not** silently pass — it reconstructs
+a different pre-image and surfaces as a clear `BadSignature` (a
+`VerificationError` subclass).
 
-Both adapters coerce via `BigInt(chainId)` **without** a `number` round-trip, so
-chain ids above `Number.MAX_SAFE_INTEGER` (2^53−1) keep full `u64` precision and
-do not produce false `BadSignature` rejections.
+Both adapters normalize `number`/`bigint` args to the decimal string immediately
+(`42161` → `"42161"`, via `BigInt().toString(10)` — no `number` round-trip, so
+chain ids above `Number.MAX_SAFE_INTEGER` (2^53−1) bind exactly and do not
+produce false `BadSignature` rejections). Non-EVM chains pass the exact
+configured string (e.g. TON's global id `"-239"`, or Stellar's network id — the
+sha256 of its passphrase, a 64-char hex string) — an invalid string throws
+`InvalidChainId` at construction.
 
 **Why set it explicitly (recommended).** When the chain id is omitted (no
 positional `chainId` for ethers, no `chain` on the viem client), each adapter

@@ -2,7 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // VerifierClient — the public entry point. Wraps `fetch` with:
 //   1. JSON-RPC 2.0 envelope construction (auto-increment id per instance)
-//   2. Canonical 80-byte pre-image reconstruction
+//   2. Canonical 104-byte pre-image reconstruction
 //   3. Ed25519 verifyAsync against `vRPC-Signature` / `vRPC-Pubkey`
 //   4. Replay-window enforcement against `vRPC-Timestamp`
 //
@@ -12,15 +12,18 @@
 import type { PinnedAllowlist, TcbPolicy } from "@w3tech.io/dstack-verify";
 
 import { type Attestation, fetchAttestation } from "./attestation";
+import { validateChainId } from "./preimage";
 import { DEFAULT_REPLAY_WINDOW_MS, verifyResponse } from "./verify";
 
 export interface VerifierClientOptions {
   /**
-   * EVM-style chain id bound into the canonical pre-image (8 bytes LE). MUST
-   * match the chain id the sidecar was configured with — mismatch produces
-   * a `BadSignature` even on intact responses.
+   * Opaque chain id string bound into the canonical pre-image as
+   * `sha256(utf8(chainId))` at bytes [0..32]. MUST match the chain id string
+   * the sidecar was configured with — mismatch produces a `BadSignature` even
+   * on intact responses. Validated synchronously at construction
+   * (`validateChainId`); an invalid id throws `InvalidChainId`.
    */
-  chainId: bigint;
+  chainId: string;
   /**
    * Allowed skew between the client clock and the sidecar's signed timestamp.
    * Default 60_000 ms. `0` rejects anything but an exact-millisecond
@@ -80,14 +83,14 @@ export interface VerifiedResponse<T = unknown> {
     /** `0x` + 64 lowercase hex chars. */
     pubkeyHex: string;
     timestampMs: bigint;
-    /** sha256 of the 80-byte canonical pre-image, for diagnostics. */
+    /** sha256 of the 104-byte canonical pre-image, for diagnostics. */
     preImageSha256: Uint8Array;
   };
 }
 
 export class VerifierClient {
   private readonly url: string;
-  private readonly chainId: bigint;
+  private readonly chainId: string;
   private readonly replayWindowMs: number;
   private readonly fetchImpl: typeof fetch;
   private readonly extraHeaders: Record<string, string>;
@@ -98,7 +101,9 @@ export class VerifierClient {
       throw new TypeError(`VerifierClient: url must start with http:// or https:// (got: ${url})`);
     }
     this.url = url;
-    this.chainId = opts.chainId;
+    // Synchronous fail-fast (no-throw-from-async convention): an invalid chain
+    // id throws InvalidChainId here, mirroring the sidecar's boot validation.
+    this.chainId = validateChainId(opts.chainId);
     this.replayWindowMs = opts.replayWindowMs ?? DEFAULT_REPLAY_WINDOW_MS;
     this.fetchImpl = opts.fetch ?? globalThis.fetch;
     this.extraHeaders = opts.headers ?? {};

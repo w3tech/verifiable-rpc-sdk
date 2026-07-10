@@ -92,9 +92,9 @@ interface SeamOptions {
   /** Flip one ASCII digit of the response body AFTER signing → BadSignature. */
   tamper?: boolean;
   /** Chain id used ONLY for signing (forge a chain-id-mismatch fixture). */
-  signingChainId?: bigint;
+  signingChainId?: string;
   /** Chain id bound into the pre-image AND signed (large-id round-trip). */
-  chainId?: bigint;
+  chainId?: string;
   /** Increment on every call — proves retryCount:0 (no retry of a failure). */
   counter?: { n: number };
   /** Capture the raw POST body of each call (batch-default assertion). */
@@ -182,15 +182,15 @@ function jsonResult(result: unknown): string {
 function autoDeriveFetch(
   responseBody: string,
   seam: {
-    bootstrapChainId?: bigint;
-    bootstrapSigningChainId?: bigint;
+    bootstrapChainId?: string;
+    bootstrapSigningChainId?: string;
     bootstrapUnsigned?: boolean;
     bootstrapTamper?: boolean;
     // Override the bootstrap body with a raw (possibly malformed) string —
     // bad JSON, missing `result`, or non-hex `result`. Returned UNSIGNED since
     // the parse/shape guard must reject it BEFORE verifyResponse runs.
     bootstrapRawBody?: string;
-    signingChainId?: bigint;
+    signingChainId?: string;
     bootstrapHits?: { n: number };
   } = {},
 ): (url: string, init: RequestInit) => Promise<Response> {
@@ -218,7 +218,7 @@ function autoDeriveFetch(
       const bootstrapBody = JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
-        result: `0x${bootstrapChainId.toString(16)}`,
+        result: `0x${BigInt(bootstrapChainId).toString(16)}`,
       });
       if (seam.bootstrapUnsigned) {
         // UNSIGNED bootstrap → MissingHeader fail-fast at bootstrap.
@@ -336,7 +336,7 @@ describe("vrpcHttp transport wiring", () => {
   // against arbitrum) → BadSignature.
   test("wrong chainId → BadSignature (signed for one chain, verified against another)", async () => {
     const transport = pinnedTransport(
-      signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { signingChainId: 1n }),
+      signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { signingChainId: "1" }),
     );
     await expect(
       transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
@@ -344,10 +344,11 @@ describe("vrpcHttp transport wiring", () => {
   });
 
   // a chain id beyond Number.MAX_SAFE_INTEGER round-trips exactly through
-  // the auto-derive bootstrap (parseChainId reads the full u64 off the hex; no
-  // number coercion). Explicit pinning of such ids is N/A — viem's chain.id is a
-  // number — but the verified bootstrap still binds the full u64.
-  const LARGE_CHAIN_ID = (1n << 53n) + 12_345n; // 9_007_199_254_753_337n > 2^53−1
+  // the auto-derive bootstrap (parseChainId decodes the full value off the hex
+  // into a decimal string; no number coercion). Explicit pinning of such ids is
+  // N/A — viem's chain.id is a number — but the verified bootstrap still binds
+  // the exact decimal string.
+  const LARGE_CHAIN_ID = ((1n << 53n) + 12_345n).toString(10); // "9007199254753337" > 2^53−1
 
   test("large chainId > 2^53−1 derives + binds exactly via the verified bootstrap", async () => {
     const c = createPublicClient({
@@ -557,7 +558,7 @@ describe("vrpcHttp transport wiring", () => {
     // no deferred BadSignature on a later call.
     const transport = vrpcHttp(URL, {
       fetchFn: autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), {
-        bootstrapChainId: 1n,
+        bootstrapChainId: "1",
         bootstrapSigningChainId: CHAIN_ID,
         signingChainId: CHAIN_ID,
       }),

@@ -2,10 +2,15 @@
 
 TypeScript verifier client for Ankr's verifiable RPC sidecar
 (`verifiable-rpc-sidecar`). Verifies Ed25519-signed JSON-RPC responses and
-fetches TDX attestation quotes from the sidecar. Pairs with sidecar `v0.2.0`
-wire contract — the signature covers the content-DECODED body, so it verifies
-on either transport encoding (gzip or identity). ESM-first, vitest-tested,
-chain-agnostic.
+fetches TDX attestation quotes from the sidecar. Pairs with sidecar `v0.5.0`
+wire contract — string chain id hashed into a 104-byte pre-image; the signature
+covers the content-DECODED body, so it verifies on either transport encoding
+(gzip or identity). ESM-first, vitest-tested, chain-agnostic.
+
+**Version gate:** SDK `>=0.3.0` requires sidecar `>=0.5.0` (string chain id,
+104-byte pre-image). Older sidecars sign the legacy format and verification
+fails closed. Coordinated release — deployed nodes keep their image until the
+compose bump.
 
 ## Commands
 
@@ -97,12 +102,14 @@ with the simulator binary on the runner is tracked separately.
   `@w3tech.io/dstack-verify`).
 - SDK is a thin verifier wrapping `fetch` — no JSON-RPC re-implementation, no
   batching, no method-specific decoders.
-- Pairs with `verifiable-rpc-sidecar` `v0.2.0`. Wire contract = the 80-byte
-  canonical pre-image + `vRPC-Signature` / `vRPC-Timestamp` / `vRPC-Pubkey`
-  headers + `/attestation?nonce=<hex>` JSON shape. As of v0.2.0 the signature
-  covers the content-DECODED (plaintext) body, so it verifies whether the
-  client requested gzip or identity (the `v0.1.0` contract is forward-compatible
-  on the identity path). The `03-vrpc-core-walkthrough.ts` example and
+- Pairs with `verifiable-rpc-sidecar` `v0.5.0`. Wire contract = the 104-byte
+  canonical pre-image (`sha256(utf8(chain_id))` ‖ `sha256(req)` ‖ `sha256(resp)`
+  ‖ `timestamp_ms` u64 LE) + `vRPC-Signature` / `vRPC-Timestamp` / `vRPC-Pubkey`
+  headers + `/attestation?nonce=<hex>` JSON shape. Version gate: SDK `>=0.3.0`
+  requires sidecar `>=0.5.0` — older sidecars sign the legacy pre-image and
+  verification fails closed. As of sidecar v0.2.0 the signature covers the
+  content-DECODED (plaintext) body, so it verifies whether the client requested
+  gzip or identity. The `03-vrpc-core-walkthrough.ts` example and
   `packages/core/README.md` describe the content-decoded-body signing introduced
   in v0.2.0.
 - **`call()` pins `accept-encoding: identity` as defense-in-depth — no longer a
@@ -141,11 +148,11 @@ with the simulator binary on the runner is tracked separately.
 - **ESM-first, `type: "module"`** in `package.json`. No CJS in v3 entry.
 - **No JSON-RPC re-impl** — SDK wraps `fetch`, returns typed
   `VerifiedResponse<T>`. Consumers handle batching, retries.
-- **Byte-exact 80-byte pre-image** — pinned by a unit test mirroring
+- **Byte-exact 104-byte pre-image** — pinned by a unit test mirroring
   `pre_image_layout_is_byte_exact` from the sidecar; any drift is a hard bug.
 - **Typed errors at every boundary** — `VerificationError` subclasses for
   `MissingHeader`, `MalformedHeader`, `BadSignature`, `StaleTimestamp`,
-  `InvalidNonce`, `MalformedAttestationResponse`.
+  `InvalidNonce`, `InvalidChainId`, `MalformedAttestationResponse`.
 - **No throw-from-async-constructor** — synchronous fail-fast in
   `new VerifierClient(url, opts)` for config errors; runtime verification
   errors from call sites only.

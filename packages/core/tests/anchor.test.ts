@@ -5,13 +5,14 @@ import { anchorTrust } from "../src/anchor";
 import {
   AttestationCorrelationError,
   AttestationNodeNotFoundError,
+  InvalidChainId,
   MissingHeader,
 } from "../src/errors";
 import { buildPreImage } from "../src/preimage";
 
 const RPC_BASE = "https://rpc.ankr.com";
 const CHAIN = "arbitrum";
-const CHAIN_ID = 42161n;
+const CHAIN_ID = "42161";
 const TEST_SEED = new Uint8Array(32).fill(0x42);
 // A second, unrelated key so the attestation route can return a NON-matching
 // pubkey to exercise the correlation-failure (fail-closed) path.
@@ -217,17 +218,19 @@ describe("anchorTrust", () => {
     expect(attUrl).toContain(`nonce=${"07".repeat(32)}`);
   });
 
-  test("acceptsNumberChainIdWithoutPrecisionLoss", async () => {
-    // anchorTrust accepts number|bigint; coercion must not round-trip through a
-    // lossy number for the verify pre-image.
+  test("rejectsInvalidChainId", async () => {
+    // The chain id string is passed through verbatim; VerifierClient's
+    // constructor validates it and an invalid id rejects with InvalidChainId
+    // before any network call.
     const mock = installGatewayMock({ nodeIdHeader: "node-abc" });
-    const summary = await anchorTrust({
-      rpcBaseUrl: RPC_BASE,
-      chain: CHAIN,
-      chainId: 42161,
-      fetch: mock.fetch,
-      nonceSource: () => new Uint8Array(32).fill(0x07),
-    });
-    expect(summary.nodeId).toBe("node-abc");
+    await expect(
+      anchorTrust({
+        rpcBaseUrl: RPC_BASE,
+        chain: CHAIN,
+        chainId: "a b",
+        fetch: mock.fetch,
+        nonceSource: () => new Uint8Array(32).fill(0x07),
+      }),
+    ).rejects.toBeInstanceOf(InvalidChainId);
   });
 });

@@ -3,13 +3,17 @@
 Transport-agnostic Ed25519 verification primitives for Ankr's verifiable RPC.
 
 This is the verification **engine** — the layer both the ethers and viem
-adapters build on. It owns the canonical 80-byte pre-image, the Ed25519
+adapters build on. It owns the canonical 104-byte pre-image, the Ed25519
 signature check, the replay window, the attestation fetch/correlation helpers,
 and the typed `VerificationError` family. It has **no blockchain-client
 dependency** — its runtime deps are `@noble/ed25519`, `@noble/hashes`,
 `lru-cache` (pubkey cache), and the sibling `@w3tech.io/dstack-verify` (hardware
 verifier).
-Pairs with the `verifiable-rpc-sidecar` `v0.2.0` wire contract.
+Pairs with the `verifiable-rpc-sidecar` `v0.5.0` wire contract.
+
+**Version gate:** SDK `>=0.3.0` requires sidecar `>=0.5.0` (string chain id
+hashed into the 104-byte pre-image). Older sidecars sign the legacy pre-image
+and verification fails closed.
 
 Use this package directly when you verify responses captured outside a normal
 ethers/viem call path (an off-chain pipeline, a log archive, an audit script),
@@ -46,9 +50,9 @@ For each HTTP JSON-RPC response, the engine enforces — fail-closed — that th
 response is:
 
 - **Signed** — `vRPC-Signature` is a valid Ed25519 signature, and
-- **Untampered** — it verifies over the canonical 80-byte pre-image
-  `chain_id ‖ sha256(request_body) ‖ sha256(response_body) ‖ timestamp_ms`, so
-  any mutation of request or response body fails as `BadSignature`, and
+- **Untampered** — it verifies over the canonical 104-byte pre-image
+  `sha256(utf8(chain_id)) ‖ sha256(request_body) ‖ sha256(response_body) ‖ timestamp_ms`,
+  so any mutation of request or response body fails as `BadSignature`, and
 - **Fresh** — `vRPC-Timestamp` is inside the replay window (default 60s); a
   replayed old response is rejected as `StaleTimestamp`, and
 - **Correctly bound** — against the **chain id you pinned** (a wrong/substituted
@@ -76,7 +80,7 @@ HTTP path and unverified.
 
 `verifyResponse` is the transport-agnostic seam: hand it the
 **content-decoded** request bytes, the response bytes, and the response headers,
-and it does header parse → 80-byte pre-image rebuild → Ed25519 verify → replay
+and it does header parse → 104-byte pre-image rebuild → Ed25519 verify → replay
 check. It knows nothing about `fetch`, JSON-RPC envelopes, or `accept-encoding`.
 
 ```ts
@@ -91,7 +95,7 @@ const responseHeaders = resp.headers; // Headers | Record<string, string>
 
 try {
   const pair = await verifyResponse(requestBytes, responseBytes, responseHeaders, {
-    chainId: 1n, // MUST match the chain id the sidecar signs with
+    chainId: "1", // MUST match the exact string the sidecar signs with
   });
   // pair.responseBytes — verified bytes, exactly as signed
   // pair.nodeId        — serving node id (vRPC-NodeId), if present
@@ -114,7 +118,7 @@ path, shared with the adapters).
 import { VerifierClient } from "@w3tech.io/vrpc-core";
 
 const client = new VerifierClient("https://rpc.ankr.com/eth_vrpc", {
-  chainId: 1n,
+  chainId: "1",
   headers: { "x-api-key": process.env.ANKR_API_KEY },
 });
 
@@ -153,7 +157,7 @@ provider — a plain ethers/viem provider stays silent):
 | Event | What it shows |
 | --- | --- |
 | `verify.start` | truncated request/response bytes + the `vrpc-*` headers |
-| `preimage.computed` | chainId, timestamp, the 80-byte pre-image hash |
+| `preimage.computed` | chainId, timestamp, the 104-byte pre-image hash |
 | `signature.checked` | Ed25519 result, the signature + signing pubkey |
 | `timestamp.checked` | clock skew vs the replay window |
 | `cache.lookup` | is this pubkey already trusted? (hit → skip attestation) |
@@ -185,7 +189,7 @@ function verifyResponse(
 
 Steps performed: (4) header parse — missing `vRPC-Signature` / `vRPC-Pubkey` /
 `vRPC-Timestamp` → `MissingHeader`; (5) shape validate → `MalformedHeader`;
-(6) rebuild the canonical 80-byte pre-image via `buildPreImage`; (7) hex →
+(6) rebuild the canonical 104-byte pre-image via `buildPreImage`; (7) hex →
 bytes; (8) Ed25519 `verifyAsync` → `BadSignature` on failure (tampered bytes or
 wrong `chainId`); (9) replay-window check, run **after** signature verify →
 `StaleTimestamp`. Header lookup is case-insensitive over both `Headers` and
@@ -195,7 +199,7 @@ plain records. `vRPC-NodeId` is optional (older proxies omit it).
 
 | Option           | Type      | Default            | Notes                                                         |
 | ---------------- | --------- | ------------------ | ------------------------------------------------------------- |
-| `chainId`        | `bigint`  | — (required)       | Bound into the pre-image (8 bytes LE). Mismatch → `BadSignature`. |
+| `chainId`        | `string`  | — (required)       | Validated (`validateChainId`) then hashed into the pre-image. Invalid → `InvalidChainId`; mismatch → `BadSignature`. |
 | `replayWindowMs` | `number`  | `60_000`           | Allowed clock skew. `0` requires an exact-ms match (tests only). |
 | `nowMs`          | `bigint`  | `BigInt(Date.now())` | Injected wall clock for deterministic tests.                |
 
@@ -219,7 +223,7 @@ auto-incrementing JSON-RPC `id` is maintained per instance.
 
 | Option           | Type                       | Default              | Notes                                                                 |
 | ---------------- | -------------------------- | -------------------- | --------------------------------------------------------------------- |
-| `chainId`        | `bigint`                   | — (required)         | Bound into the pre-image. Mismatch → `BadSignature`.                  |
+| `chainId`        | `string`                   | — (required)         | Validated at construction (`InvalidChainId`), hashed into the pre-image. Mismatch → `BadSignature`. |
 | `replayWindowMs` | `number`                   | `60_000`             | Forwarded to `verifyResponse`.                                        |
 | `headers`        | `Record<string, string>`  | `{}`                 | Merged into the POST (e.g. `x-api-key`). Pinned wire headers (`content-type`, `accept-encoding: identity`) always win. |
 | `fetch`          | `typeof fetch`             | `globalThis.fetch`   | Override for tests against a mock sidecar.                            |
@@ -231,7 +235,7 @@ auto-incrementing JSON-RPC `id` is maintained per instance.
 ### Pre-image and compose-hash
 
 ```ts
-buildPreImage(chainId: bigint, requestBody: Uint8Array, responseBody: Uint8Array, timestampMs: bigint): Uint8Array; // 80 bytes
+buildPreImage(chainId: string, requestBody: Uint8Array, responseBody: Uint8Array, timestampMs: bigint): Uint8Array; // 104 bytes
 ```
 
 **`computeComposeHash`** (Layer A — "is the measured code the code I expect?"):
@@ -290,8 +294,8 @@ member on any failure — `MissingHeader("vRPC-NodeId")` when the proxy omits th
 node id, `AttestationNodeNotFoundError` on a stale id,
 `AttestationCorrelationError` on pubkey mismatch.
 
-**`AnchorTrustOptions`**: `rpcBaseUrl`, `chain`, `chainId` (`number | bigint`,
-coerced via `BigInt()` without a `number` round-trip), `headers?`,
+**`AnchorTrustOptions`**: `rpcBaseUrl`, `chain`, `chainId` (`string`, the exact
+value the sidecar signs with — validated downstream), `headers?`,
 `fetch?`, `nonceSource?` (defaults to `crypto.getRandomValues`). Returns
 **`AnchorTrustResult`** = `{ nodeId, pubkey }`.
 
@@ -304,7 +308,8 @@ coerced via `BigInt()` without a `number` round-trip), `headers?`,
 | `DEFAULT_PUBKEY_CACHE_TTL_MS` | const | Default TTL for the `TrustedVerifier` pubkey cache. |
 | `deriveVrpcUrls(...)` | function | Derives the vRPC endpoint URL set from a base. |
 | `VrpcUrls` | type | Shape returned by `deriveVrpcUrls`. |
-| `parseChainId(...)` | function | Decodes a `bigint` chainId from the raw bytes of a signed `eth_chainId` response (the auto-derive bootstrap used by the ethers/viem adapters); throws `MalformedHeader` on invalid JSON or a non-0x-hex `result`. |
+| `parseChainId(...)` | function | Decodes a decimal-string chainId (e.g. `"42161"`) from the raw bytes of a signed `eth_chainId` response (the auto-derive bootstrap used by the ethers/viem adapters); throws `MalformedHeader` on invalid JSON or a non-0x-hex `result`. |
+| `validateChainId(...)` | function | Validates a chain id string (sidecar-identical rules: non-empty, ≤64 bytes, printable ASCII, no inner whitespace) and returns the trimmed value; throws `InvalidChainId`. |
 | `isSignedVrpcResponse(...)` | function | Predicate: whether a response carries the `vRPC-*` signing headers. |
 
 ---
@@ -321,6 +326,7 @@ Every verification failure throws a subclass of the abstract `VerificationError`
 | `BadSignature`                 | `"BadSignature"`                | Ed25519 verify failed (tampered bytes or wrong chainId). `.signatureHex/.pubkeyHex/.preImageSha256` |
 | `StaleTimestamp`               | `"StaleTimestamp"`              | Valid signature but timestamp outside replay window. `.observedMs/.nowMs/.skewMs/.allowedWindowMs` |
 | `InvalidNonce`                 | `"InvalidNonce"`                | Attestation nonce not exactly 32 bytes. `.reason`                |
+| `InvalidChainId`               | `"InvalidChainId"`              | Chain id string fails `validateChainId` (empty, >64 bytes, non-printable-ASCII or whitespace). Thrown at construction / verify entry. `.chainId/.reason` |
 | `MalformedAttestationResponse` | `"MalformedAttestationResponse"`| `/attestation` body off-contract. `.reason`                      |
 | `AttestationNodeNotFoundError` | `"AttestationNodeNotFound"`     | The RPC gateway returned 404 for the targeted `node_id`. `.nodeId` |
 | `AttestationCorrelationError`  | `"AttestationCorrelation"`      | Attestation pubkey ≠ response signer. `.expectedPubkey/.actualPubkey` |
@@ -349,8 +355,8 @@ from the ethers provider is the same class you catch here.
 ## Caveats
 
 - **Byte-exact pre-image.** `buildPreImage` mirrors the sidecar's
-  `build_pre_image` byte-for-byte (`chain_id` LE / `sha256(request)` /
-  `sha256(response)` / `timestamp_ms` LE = 80 bytes). Any drift makes intact
+  `build_pre_image` byte-for-byte (`sha256(utf8(chain_id))` / `sha256(request)` /
+  `sha256(response)` / `timestamp_ms` LE = 104 bytes). Any drift makes intact
   responses fail as `BadSignature`. Pinned by `packages/core/tests/preimage.test.ts`.
 - **`chainId` is load-bearing.** A wrong/substituted chain id binds a different
   pre-image and surfaces as `BadSignature` even on a genuine response.

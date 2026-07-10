@@ -77,7 +77,8 @@ Production runs on real Intel TDX hardware via dstack; local development uses th
 ## 2. The sidecar — how it works and what it returns
 
 The **sidecar** (`verifiable-rpc-sidecar`, a Rust service in a separate repo; this
-SDK targets its `v0.2.0` wire contract) sits
+SDK targets its `v0.5.0` wire contract — SDK `>=0.3.0` requires sidecar
+`>=0.5.0`) sits
 in front of the real blockchain node's HTTP endpoint **inside the TDX confidential
 VM**. It proxies RPC traffic and signs every response with a TDX-attested key.
 It listens on plain HTTP. (`src/config.rs`, `src/server.rs`.)
@@ -91,14 +92,19 @@ For every proxied RPC response, the sidecar adds three headers
 - **`vRPC-Pubkey`** — `0x` + 32-byte Ed25519 verifying key.
 - **`vRPC-Timestamp`** — Unix milliseconds when the sidecar signed.
 
-The signature is over an **80-byte canonical pre-image** (`src/signing.rs`):
+The signature is over a **104-byte canonical pre-image** (`src/signing.rs`):
 
 | bytes   | content                              |
 |---------|--------------------------------------|
-| `[0..8]`   | `chain_id` (u64, little-endian)    |
-| `[8..40]`  | `sha256(request_body)` (32 bytes)  |
-| `[40..72]` | `sha256(response_body)` (32 bytes) |
-| `[72..80]` | `timestamp_ms` (u64, little-endian)|
+| `[0..32]`   | `sha256(utf8(chain_id))` (32 bytes) |
+| `[32..64]`  | `sha256(request_body)` (32 bytes)  |
+| `[64..96]`  | `sha256(response_body)` (32 bytes) |
+| `[96..104]` | `timestamp_ms` (u64, little-endian)|
+
+The `chain_id` is a **string** — the exact value the sidecar is configured with
+(decimal for EVM chains, e.g. `"42161"`; the exact configured string for non-EVM
+chains, e.g. TON's global id `"-239"` or Stellar's network id — the sha256 of its
+mainnet passphrase, a 64-char hex string).
 
 The signature covers the **content-decoded (plaintext)** response body: the
 sidecar forces `Accept-Encoding: identity` upstream to get plaintext, signs that,
@@ -204,7 +210,7 @@ the RPC leg (`_vrpc`) and attestation leg (`_vrpc/attestation`) itself via
    (+ optional `vRPC-NodeId`); missing → `MissingHeader`.
 2. Validate shapes (`signature` `0x`+128 hex, `pubkey` `0x`+64 hex, timestamp
    decimal); malformed → `MalformedHeader`.
-3. Rebuild the **same 80-byte pre-image** the sidecar signed (§2 table).
+3. Rebuild the **same 104-byte pre-image** the sidecar signed (§2 table).
 4. Ed25519-verify the signature over that pre-image (`@noble/ed25519`); fail →
    `BadSignature`.
 5. Check `vRPC-Timestamp` is inside the replay window — done *after* signature
@@ -284,9 +290,9 @@ SDK automates) is:
    `…_vrpc/attestation`.
 2. **Make the RPC call**, keeping the **raw response bytes** and the response
    **headers** (`vRPC-Signature`, `vRPC-Pubkey`, `vRPC-Timestamp`).
-3. **Rebuild the 80-byte pre-image**: `chain_id`(8 LE) ‖ `sha256(request_body)` ‖
-   `sha256(response_body)` ‖ `timestamp_ms`(8 LE), using the plaintext (decoded)
-   bodies.
+3. **Rebuild the 104-byte pre-image**: `sha256(chain_id)`(32B) ‖
+   `sha256(request_body)`(32B) ‖ `sha256(response_body)`(32B) ‖
+   `timestamp_ms`(8B LE), using the plaintext (decoded) bodies.
 4. **Ed25519-verify** `vRPC-Signature` over that pre-image using `vRPC-Pubkey`.
    Fail → reject.
 5. **Check freshness**: `vRPC-Timestamp` within the replay window. Stale → reject.

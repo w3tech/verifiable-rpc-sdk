@@ -7,7 +7,7 @@
 //   - ./verify      — transport-agnostic verifyResponse seam
 //   - ./attestation — fetchAttestation helper + Attestation/GetQuoteResponse types
 //   - ./errors      — VerificationError abstract base + typed subclasses
-//   - ./preimage    — canonical 80-byte pre-image builder (exported for
+//   - ./preimage    — canonical 104-byte pre-image builder (exported for
 //                     advanced consumers and test infrastructure)
 
 // Hardware-verifier surface re-exported from @w3tech.io/dstack-verify so adapters
@@ -30,6 +30,7 @@ export {
   AttestationFailed,
   AttestationNodeNotFoundError,
   BadSignature,
+  InvalidChainId,
   InvalidNonce,
   MalformedAttestationResponse,
   MalformedHeader,
@@ -40,7 +41,7 @@ export {
 export { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
 export type { Logger } from "./logger";
 export { createConsoleLogger, defaultLogger, safeLogger } from "./logger";
-export { buildPreImage } from "./preimage";
+export { buildPreImage, validateChainId } from "./preimage";
 export type { TrustedVerifierOptions } from "./trusted-verifier";
 export {
   DEFAULT_PUBKEY_CACHE_MAX,

@@ -14,7 +14,7 @@ import {
 } from "@w3tech.io/vrpc-core";
 
 const URL = "https://rpc.ankr.com/arbitrum_vrpc/123456";
-const CHAIN_ID = 42161n;
+const CHAIN_ID = "42161";
 
 async function main() {
   // 1 — make a request; the node attaches vRPC-Signature/Timestamp/Pubkey headers

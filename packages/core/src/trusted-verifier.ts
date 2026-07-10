@@ -31,6 +31,7 @@ import { type Attestation, fetchAttestation, verifyAttestationCorrelation } from
 import { AttestationFailed } from "./errors";
 import { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
+import { validateChainId } from "./preimage";
 import type { VerifiedResponse } from "./verifier";
 import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
 
@@ -49,11 +50,13 @@ export const DEFAULT_PUBKEY_CACHE_MAX = 1024;
  */
 export interface TrustedVerifierOptions {
   /**
-   * EVM-style chain id bound into the canonical pre-image (8 bytes LE). MUST
-   * match the chain id the sidecar was configured with — mismatch produces a
-   * `BadSignature` even on intact responses.
+   * Opaque chain id string bound into the canonical pre-image as
+   * `sha256(utf8(chainId))` at bytes [0..32]. MUST match the chain id string
+   * the sidecar was configured with — mismatch produces a `BadSignature` even
+   * on intact responses. Validated synchronously at construction
+   * (`validateChainId`); an invalid id throws `InvalidChainId`.
    */
-  chainId: bigint;
+  chainId: string;
   /** Allowed skew between client clock and signed timestamp; default 60_000 ms. */
   replayWindowMs?: number;
   /** Full attestation endpoint URL, e.g. `https://rpc.ankr.com/arbitrum_vrpc/attestation`. */
@@ -188,7 +191,7 @@ export class TrustedVerifier {
   private readonly cache: LRUCache<string, true>;
   private readonly nonceSource: () => Uint8Array;
   private readonly verifyAttestationImpl: (b: AttestationBundle, p: VerifyPolicy) => Promise<void>;
-  private readonly chainId: bigint;
+  private readonly chainId: string;
   private readonly replayWindowMs: number | undefined;
   private readonly attestationUrl: string;
   private readonly headers: Record<string, string> | undefined;
@@ -212,7 +215,9 @@ export class TrustedVerifier {
     });
     this.nonceSource = opts.nonceSource ?? (() => crypto.getRandomValues(new Uint8Array(32)));
     this.verifyAttestationImpl = opts.verifyAttestation ?? verifyDstackAttestation;
-    this.chainId = opts.chainId;
+    // Synchronous fail-fast (no-throw-from-async convention): an invalid chain
+    // id throws InvalidChainId here, mirroring the sidecar's boot validation.
+    this.chainId = validateChainId(opts.chainId);
     this.replayWindowMs = opts.replayWindowMs;
     this.attestationUrl = opts.attestationUrl;
     this.headers = opts.headers;
@@ -263,7 +268,7 @@ export class TrustedVerifier {
       const headerRecord: Record<string, string> =
         headers instanceof Headers ? Object.fromEntries(headers.entries()) : { ...headers };
       this.logger.debug("verify.start", {
-        chainId: this.chainId.toString(),
+        chainId: this.chainId,
         req: truncateHex(bytesToHex(requestBytes)),
         res: truncateHex(bytesToHex(responseBytes)),
         headers: pickVrpcHeaders(headerRecord),

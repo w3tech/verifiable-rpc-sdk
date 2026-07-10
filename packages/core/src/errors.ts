@@ -16,6 +16,7 @@
 export type VerificationErrorKind =
   | "MissingHeader"
   | "MalformedHeader"
+  | "InvalidChainId"
   | "BadSignature"
   | "StaleTimestamp"
   | "InvalidNonce"
@@ -63,12 +64,31 @@ export class MalformedHeader extends VerificationError {
   }
 }
 
+/**
+ * Configured chain id failed validation (`validateChainId`). Chain ids are
+ * opaque strings that must be non-empty after trimming, at most 64 UTF-8
+ * bytes, and printable ASCII with no whitespace — mirroring the sidecar's
+ * `validate_chain_id` boot check. Thrown synchronously from client
+ * construction and from `verifyResponse` entry; the `reason` names the failed
+ * constraint.
+ */
+export class InvalidChainId extends VerificationError {
+  readonly kind = "InvalidChainId" as const;
+
+  constructor(
+    public readonly chainId: string,
+    public readonly reason: string,
+  ) {
+    super(`Invalid chain id ${JSON.stringify(chainId)}: ${reason}`);
+  }
+}
+
 export interface BadSignatureContext {
   /** `0x` + 128 lowercase hex chars (64-byte Ed25519 signature). */
   signatureHex: string;
   /** `0x` + 64 lowercase hex chars (32-byte Ed25519 pubkey). */
   pubkeyHex: string;
-  /** sha256 of the 80-byte canonical pre-image, for diagnostics. */
+  /** sha256 of the 104-byte canonical pre-image, for diagnostics. */
   preImageSha256: Uint8Array;
 }
 

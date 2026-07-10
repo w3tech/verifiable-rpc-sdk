@@ -9,12 +9,17 @@
 import { MalformedHeader } from "./errors";
 
 /**
- * Decode + parse a chainId (as `bigint`) from the raw bytes of a signed
- * `eth_chainId` response. `BigInt()` is taken directly off the 0x-hex string — no
- * number round-trip — since a chain id may exceed `Number.MAX_SAFE_INTEGER` and
- * must bind the full u64 into the canonical pre-image.
+ * Decode + parse a chainId (as a DECIMAL STRING, e.g. `"42161"` for `0xa4b1`)
+ * from the raw bytes of a signed `eth_chainId` response. The 0x-hex result is
+ * converted via `BigInt()` then base-10 `toString()` — no `Number` round-trip,
+ * since a chain id may exceed `Number.MAX_SAFE_INTEGER`.
+ *
+ * The decimal string is what EVM nodes are configured with (the arbitrum GA
+ * node uses `"42161"`), so EVM auto-detect binds the exact string the sidecar
+ * signs under. Non-EVM chains have no `eth_chainId` auto-detect and must
+ * configure their chain id explicitly.
  */
-export function parseChainId(rawResponseBytes: Uint8Array): bigint {
+export function parseChainId(rawResponseBytes: Uint8Array): string {
   const rawText = new TextDecoder().decode(rawResponseBytes);
   let parsed: { result?: string };
   try {
@@ -33,5 +38,5 @@ export function parseChainId(rawResponseBytes: Uint8Array): bigint {
       "auto-derived chainId could not be parsed: expected 0x-hex chain id",
     );
   }
-  return BigInt(parsed.result);
+  return BigInt(parsed.result).toString(10);
 }

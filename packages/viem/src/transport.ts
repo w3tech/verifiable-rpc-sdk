@@ -45,13 +45,13 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
   // Pinned from the viem client's chain.id (seeded in the factory below), or
   // auto-derived lazily when no chain is set; the in-flight bootstrap promise is
   // memoized so concurrent first calls share ONE fetch.
-  let chainIdResolved: bigint | undefined;
-  let chainIdPromise: Promise<bigint> | null = null;
+  let chainIdResolved: string | undefined;
+  let chainIdPromise: Promise<string> | null = null;
 
   // ONE TrustedVerifier per transport (lifetime pubkey cache); built lazily once
   // chainId is known. (v6.0: the verifier defaults the trust policy internally.)
   let trustedVerifier: TrustedVerifier | undefined;
-  const getTrustedVerifier = (chainId: bigint): TrustedVerifier => {
+  const getTrustedVerifier = (chainId: string): TrustedVerifier => {
     if (trustedVerifier === undefined) {
       trustedVerifier = new TrustedVerifier(
         pruneUndefined<TrustedVerifierOptions>({
@@ -76,7 +76,9 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
     // the options bag — mirrors ethers taking it from the ctor). No chain → the
     // lazy verified eth_chainId bootstrap fills it on the first request.
     if (chainIdResolved === undefined && chain?.id != null) {
-      chainIdResolved = BigInt(chain.id);
+      // viem chain ids are plain numbers; decimal stringification matches what
+      // EVM sidecars are configured with (e.g. 42161 → "42161").
+      chainIdResolved = String(chain.id);
     }
     // Effective timeout: explicit option → client-injected → viem's 10s default.
     const timeout = opts.timeout ?? injectedTimeout ?? 10_000;
@@ -85,7 +87,7 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
     // own `result` IS the chainId, so the signature only verifies for the chain
     // the node really signed). Memoized; reuses the in-scope fetch/headers/timeout;
     // on verify failure chainIdResolved is NOT set (fail-fast, no fallback).
-    const resolveChainId = (): Promise<bigint> => {
+    const resolveChainId = (): Promise<string> => {
       if (chainIdResolved != null) {
         return Promise.resolve(chainIdResolved);
       }

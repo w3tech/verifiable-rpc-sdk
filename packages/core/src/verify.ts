@@ -12,7 +12,7 @@
 // Steps performed:
 //   4. Header parse — missing -> MissingHeader
 //   5. Header validate — bad shape -> MalformedHeader
-//   6. Canonical 80-byte pre-image reconstruct (buildPreImage, verbatim)
+//   6. Canonical 104-byte pre-image reconstruct (buildPreImage, verbatim)
 //   7. Hex -> bytes
 //   8. Ed25519 verifyAsync — false -> BadSignature
 //   9. Replay-window check (AFTER signature verify) -> StaleTimestamp
@@ -27,7 +27,7 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 
 import { BadSignature, MalformedHeader, MissingHeader, StaleTimestamp } from "./errors";
 import type { Logger } from "./logger";
-import { buildPreImage, sha256 } from "./preimage";
+import { buildPreImage, sha256, validateChainId } from "./preimage";
 
 export const DEFAULT_REPLAY_WINDOW_MS = 60_000;
 
@@ -50,11 +50,13 @@ export type ResponseHeaders = Headers | Record<string, string>;
 
 export interface VerifyResponseOptions {
   /**
-   * EVM-style chain id bound into the canonical pre-image (8 bytes LE). MUST
-   * match the chain id the sidecar was configured with — mismatch produces a
-   * `BadSignature` even on intact responses.
+   * Opaque chain id string bound into the canonical pre-image as
+   * `sha256(utf8(chainId))` at bytes [0..32]. MUST match the chain id string
+   * the sidecar was configured with — mismatch produces a `BadSignature` even
+   * on intact responses. Validated at entry (`validateChainId`); an invalid id
+   * throws `InvalidChainId` before any header parsing.
    */
-  chainId: bigint;
+  chainId: string;
   /**
    * Allowed skew between the client clock and the sidecar's signed timestamp.
    * Default 60_000 ms. `0` rejects anything but an exact-millisecond match —
@@ -90,7 +92,7 @@ export interface VerifiedPair {
     /** `0x` + 64 lowercase hex chars. */
     pubkeyHex: string;
     timestampMs: bigint;
-    /** sha256 of the 80-byte canonical pre-image, for diagnostics. */
+    /** sha256 of the 104-byte canonical pre-image, for diagnostics. */
     preImageSha256: Uint8Array;
   };
 }
@@ -145,6 +147,7 @@ function absBigint(n: bigint): bigint {
  * supplies already content-decoded bytes and the raw response headers.
  *
  * Throws a typed `VerificationError` subclass on any failure:
+ *   - `InvalidChainId`  — the configured chain id failed validation
  *   - `MissingHeader`   — a required `vRPC-*` header is absent
  *   - `MalformedHeader` — a header is present but fails shape validation
  *   - `BadSignature`    — Ed25519 verify failed (tampered bytes or wrong chainId)
@@ -156,6 +159,11 @@ export async function verifyResponse(
   responseHeaders: ResponseHeaders,
   opts: VerifyResponseOptions,
 ): Promise<VerifiedPair> {
+  // Validate the configured chain id ONCE at entry — fail-fast with
+  // InvalidChainId before any header parsing. The trimmed return value is what
+  // gets bound into the pre-image, mirroring the sidecar's boot validation.
+  const chainId = validateChainId(opts.chainId);
+
   // 4. Header parse — missing -> MissingHeader.
   const sigHex = getHeader(responseHeaders, SIGNATURE_HEADER);
   if (sigHex === null) {
@@ -185,7 +193,7 @@ export async function verifyResponse(
   const timestampMs = BigInt(tsRaw);
 
   // 6. Pre-image reconstruct.
-  const preImage = buildPreImage(opts.chainId, requestBytes, rawResponseBytes, timestampMs);
+  const preImage = buildPreImage(chainId, requestBytes, rawResponseBytes, timestampMs);
 
   if (opts.logger) {
     opts.logger.debug("preimage.computed", {

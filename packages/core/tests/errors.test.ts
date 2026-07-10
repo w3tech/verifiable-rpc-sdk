@@ -4,6 +4,7 @@ import {
   AttestationCorrelationError,
   AttestationNodeNotFoundError,
   BadSignature,
+  InvalidChainId,
   InvalidNonce,
   MalformedAttestationResponse,
   MalformedHeader,
@@ -48,6 +49,11 @@ describe("errors", () => {
     expect(invalidNonce instanceof VerificationError).toBe(true);
     expect(invalidNonce instanceof InvalidNonce).toBe(true);
 
+    const invalidChainId = new InvalidChainId("", "must not be empty");
+    expect(invalidChainId instanceof Error).toBe(true);
+    expect(invalidChainId instanceof VerificationError).toBe(true);
+    expect(invalidChainId instanceof InvalidChainId).toBe(true);
+
     const malformedAttestation = new MalformedAttestationResponse("missing field quote.event_log");
     expect(malformedAttestation instanceof Error).toBe(true);
     expect(malformedAttestation instanceof VerificationError).toBe(true);
@@ -78,6 +84,15 @@ describe("errors", () => {
 
     expect(new InvalidNonce("x").kind).toBe("InvalidNonce");
     expect(new MalformedAttestationResponse("y").kind).toBe("MalformedAttestationResponse");
+    expect(new InvalidChainId("a b", "whitespace").kind).toBe("InvalidChainId");
+  });
+
+  test("invalidChainIdCarriesIdAndReason", () => {
+    const err = new InvalidChainId("cépas", "contains non-printable-ASCII or whitespace character");
+    expect(err.chainId).toBe("cépas");
+    expect(err.reason).toBe("contains non-printable-ASCII or whitespace character");
+    expect(err.message).toContain("cépas");
+    expect(err.message).toContain("non-printable-ASCII");
   });
 
   test("missingHeaderCarriesHeaderName", () => {
@@ -172,6 +187,7 @@ describe("errors", () => {
     ).toBe("StaleTimestamp");
     expect(new InvalidNonce("x").name).toBe("InvalidNonce");
     expect(new MalformedAttestationResponse("y").name).toBe("MalformedAttestationResponse");
+    expect(new InvalidChainId("", "must not be empty").name).toBe("InvalidChainId");
   });
 
   test("attestationNodeNotFoundCarriesNodeIdAndKind", () => {

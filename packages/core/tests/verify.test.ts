@@ -1,12 +1,18 @@
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 import { describe, expect, test } from "vitest";
 
-import { BadSignature, MalformedHeader, MissingHeader, StaleTimestamp } from "../src/errors";
+import {
+  BadSignature,
+  InvalidChainId,
+  MalformedHeader,
+  MissingHeader,
+  StaleTimestamp,
+} from "../src/errors";
 import { buildPreImage } from "../src/preimage";
 import { type ResponseHeaders, verifyResponse } from "../src/verify";
 
 const TEST_SEED = new Uint8Array(32).fill(0x42);
-const CHAIN_ID = 1n;
+const CHAIN_ID = "1";
 
 function toHex(bytes: Uint8Array): string {
   let out = "";
@@ -23,7 +29,7 @@ interface SignedTriple {
 }
 
 /**
- * Sign a (request, response) pair with TEST_SEED over the canonical 80-byte
+ * Sign a (request, response) pair with TEST_SEED over the canonical 104-byte
  * pre-image and emit the matching `vRPC-*` headers. No fetch / no
  * VerifierClient — drives `verifyResponse` directly.
  */
@@ -31,7 +37,7 @@ async function signTriple(
   request: string,
   response: string,
   timestampMs: bigint,
-  opts: { signingChainId?: bigint; nodeId?: string } = {},
+  opts: { signingChainId?: string; nodeId?: string } = {},
 ): Promise<SignedTriple> {
   const requestBytes = new TextEncoder().encode(request);
   const responseBytes = new TextEncoder().encode(response);
@@ -95,15 +101,28 @@ describe("verifyResponse", () => {
 
   test("chainIdMismatchThrowsBadSignature", async () => {
     const nowMs = BigInt(Date.now());
-    // Signed with chain id 137n, verified expecting 1n -> wrong pre-image.
-    const t = await signTriple(REQUEST, RESPONSE, nowMs, { signingChainId: 137n });
+    // Signed with chain id "137", verified expecting "1" -> wrong pre-image.
+    const t = await signTriple(REQUEST, RESPONSE, nowMs, { signingChainId: "137" });
     let caught: unknown;
     try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, { chainId: 1n, nowMs });
+      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, { chainId: "1", nowMs });
     } catch (err) {
       caught = err;
     }
     expect(caught).toBeInstanceOf(BadSignature);
+  });
+
+  test("invalidChainIdThrowsAtEntry", async () => {
+    // Fail-fast: an invalid configured chain id rejects with InvalidChainId
+    // before any header parsing — even with completely empty headers.
+    const nowMs = BigInt(Date.now());
+    const t = await signTriple(REQUEST, RESPONSE, nowMs);
+    await expect(
+      verifyResponse(t.requestBytes, t.responseBytes, {}, { chainId: "", nowMs }),
+    ).rejects.toBeInstanceOf(InvalidChainId);
+    await expect(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, { chainId: "a b", nowMs }),
+    ).rejects.toBeInstanceOf(InvalidChainId);
   });
 
   test("missingSignatureHeaderThrowsMissingHeader", async () => {

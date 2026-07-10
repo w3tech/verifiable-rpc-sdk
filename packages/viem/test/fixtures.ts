@@ -3,7 +3,7 @@
 // This module PRODUCES bytes + `vRPC-*` headers that `@w3tech.io/vrpc-core`
 // `verifyResponse` accepts — it does NOT re-test core crypto. It mirrors the
 // request-aware `signResponseBytes` helper in `packages/ethers/test/fixtures.ts`:
-// Ed25519 over the canonical 80-byte pre-image built by `buildPreImage`, signed
+// Ed25519 over the canonical 104-byte pre-image built by `buildPreImage`, signed
 // with a single fixed `TEST_SEED` so the matching pubkey is deterministic.
 //
 // Unlike the ethers mirror, the eagerly-synthesized static `Fixture` objects and
@@ -25,9 +25,10 @@ const TEST_SEED = new Uint8Array(32).fill(0x42);
 /**
  * Chain id bound into every fixture's pre-image (arbitrum — matches
  * `examples/shared.ts` conventions). Exported so tests pass it to
- * `verifyResponse({ chainId: CHAIN_ID })`.
+ * `verifyResponse({ chainId: CHAIN_ID })`. Decimal string — the exact value the
+ * sidecar is configured with and hashes into the pre-image.
  */
-export const CHAIN_ID = 42161n;
+export const CHAIN_ID = "42161";
 
 /**
  * Fixed signing timestamp (unix ms) so fixtures are byte-stable across runs.
@@ -53,7 +54,7 @@ function toHex(bytes: Uint8Array): string {
 
 export interface SignFixtureOptions {
   /** Chain id bound into the pre-image AND used for signing. Defaults to `CHAIN_ID`. */
-  chainId?: bigint;
+  chainId?: string;
   /** Signed timestamp. Defaults to `FIXTURE_TIMESTAMP_MS`. */
   timestampMs?: bigint;
   /**
@@ -61,7 +62,7 @@ export interface SignFixtureOptions {
    * signature is valid but verifies against a different chain). Defaults to
    * `chainId`.
    */
-  signingChainId?: bigint;
+  signingChainId?: string;
   /** Optional `vRPC-NodeId` header value. */
   nodeId?: string;
 }
