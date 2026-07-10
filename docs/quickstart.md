@@ -122,7 +122,7 @@ pnpm example:02-viem-client            # viem transport
 pnpm example:03-vrpc-core-walkthrough  # the core primitives, step by step
 ```
 
-The packages aren't published to npm yet (final names will be `@w3tech.io/vrpc-*`), so you run from the repo. See the per-adapter [package READMEs](../packages) and [MIGRATION.md](../MIGRATION.md) for pointing the examples at a live vRPC endpoint and key.
+The packages are published to npm under the `@w3tech.io` scope (`pnpm add @w3tech.io/vrpc-ethers ethers` or `pnpm add @w3tech.io/vrpc-viem viem`). See the per-adapter [package READMEs](../packages) and [MIGRATION.md](../MIGRATION.md) for pointing the examples at a live vRPC endpoint and key.
 
 ### Inspect mode
 
