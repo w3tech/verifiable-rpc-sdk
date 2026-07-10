@@ -118,8 +118,12 @@ jobs:
       # commit/tag is created and the bump is NOT committed back to main — it lives only in
       # the runner. Runs AFTER the frozen-lockfile install (the stamp mutates versions, not
       # the workspace:* lockfile specifiers) and BEFORE the publish.
+      # --allow-same-version: the tag is the sole version source, so releasing vX.Y.Z when the
+      # committed package.json baseline is already X.Y.Z (e.g. the first tag after a manifest
+      # bump PR) must NOT fail with ERR_PNPM_VERSION_NOT_CHANGED — it re-stamps to the same
+      # value and proceeds to publish.
       - name: Stamp version across all packages (lockstep)
-        run: pnpm version "$VERSION" --no-git-tag-version -r
+        run: pnpm version "$VERSION" --no-git-tag-version --allow-same-version -r
 
       # Publish all four packages under the derived dist-tag ($DIST_TAG: `latest` for a plain
       # vX.Y.Z, the prerelease channel otherwise). Build already ran above; here we gate with a
