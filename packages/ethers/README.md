@@ -42,8 +42,8 @@ remote attestation. Specifically:
 
 ## Install
 
-Packages are private/unpublished today — consume via the workspace
-(`workspace:*`). The intended public install once published:
+Published to npm as `@w3tech.io/vrpc-ethers` (inside this monorepo it resolves
+via `workspace:*`):
 
 ```sh
 pnpm add @w3tech.io/vrpc-ethers ethers

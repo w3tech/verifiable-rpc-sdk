@@ -30,9 +30,9 @@ apart by error shape.
 pnpm add @w3tech.io/vrpc-viem viem
 ```
 
-> The `@w3tech.io/vrpc-*` packages are currently `private` / unpublished while
-> the API stabilises. Inside this monorepo they resolve via `workspace:*`;
-> the public install name is `@w3tech.io/vrpc-viem` (`peerDependency: viem ^2.52.2`).
+> The `@w3tech.io/vrpc-*` packages are published to npm. Inside this monorepo
+> they resolve via `workspace:*`; the public install name is
+> `@w3tech.io/vrpc-viem` (`peerDependency: viem ^2.52.2`).
 
 ---
 

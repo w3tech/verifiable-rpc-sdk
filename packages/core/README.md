@@ -25,19 +25,13 @@ this engine behind a drop-in provider/transport.
 
 ## Install
 
-Packages in this repo are **private / unpublished** while the API stabilises.
-For now this is a workspace package — depend on it locally:
+Published to npm as `@w3tech.io/vrpc-core`:
 
-```jsonc
-// package.json
-{
-  "dependencies": {
-    "@w3tech.io/vrpc-core": "workspace:*"
-  }
-}
+```sh
+pnpm add @w3tech.io/vrpc-core
 ```
 
-Intended public name once published: `@w3tech.io/vrpc-core`.
+Inside this monorepo the packages resolve via `workspace:*`.
 
 Runtime requires a global `fetch`, `crypto.getRandomValues`, `TextEncoder`,
 and `BigUint64` `DataView` support (Node 18+, Bun, modern browsers).
@@ -82,6 +76,9 @@ HTTP path and unverified.
 **content-decoded** request bytes, the response bytes, and the response headers,
 and it does header parse → 104-byte pre-image rebuild → Ed25519 verify → replay
 check. It knows nothing about `fetch`, JSON-RPC envelopes, or `accept-encoding`.
+Because it is byte-level, it verifies any signed HTTP exchange — JSON-RPC POSTs
+and path-based REST responses (e.g. TON's REST API, Stellar Horizon) alike; for
+a `GET` the request body is empty, so pass an empty `Uint8Array`.
 
 ```ts
 import { verifyResponse, VerificationError } from "@w3tech.io/vrpc-core";

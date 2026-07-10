@@ -77,11 +77,18 @@ Production runs on real Intel TDX hardware via dstack; local development uses th
 ## 2. The sidecar — how it works and what it returns
 
 The **sidecar** (`verifiable-rpc-sidecar`, a Rust service in a separate repo; this
-SDK targets its `v0.5.0` wire contract — SDK `>=0.3.0` requires sidecar
+SDK targets its `>=0.5.0` wire contract — SDK `>=0.3.0` requires sidecar
 `>=0.5.0`) sits
 in front of the real blockchain node's HTTP endpoint **inside the TDX confidential
 VM**. It proxies RPC traffic and signs every response with a TDX-attested key.
 It listens on plain HTTP. (`src/config.rs`, `src/server.rs`.)
+
+Since sidecar `v0.5.1` the configured `upstream_url` is a **base** URL: the
+sidecar appends the inbound request's path and query to it (path-forwarding,
+`src/proxy.rs`). That is what enables path-based REST APIs — e.g. TON's REST API
+or Stellar Horizon — behind the same signing sidecar; JSON-RPC chains whose
+`upstream_url` is already an origin are unaffected. `/attestation` and `/info`
+are always served locally at the sidecar root and never forwarded upstream.
 
 ### Per-response signing (the proxy path)
 
@@ -105,6 +112,14 @@ The `chain_id` is a **string** — the exact value the sidecar is configured wit
 (decimal for EVM chains, e.g. `"42161"`; the exact configured string for non-EVM
 chains, e.g. TON's global id `"-239"` or Stellar's network id — the sha256 of its
 mainnet passphrase, a 64-char hex string).
+
+Signing is not JSON-RPC-specific: **every proxied HTTP response** — including
+path-based REST responses (TON REST, Stellar Horizon; reached through Ankr as
+`https://rpc.ankr.com/rest/<chain>/<path>`) — carries the same three headers
+signed over the same pre-image. The SDK's transport-agnostic
+`verifyResponse` (`packages/core/src/verify.ts`) verifies them too: it takes raw
+request/response bytes, so for a `GET` the request body is simply empty. The
+ethers/viem drop-ins remain JSON-RPC adapters.
 
 The signature covers the **content-decoded (plaintext)** response body: the
 sidecar forces `Accept-Encoding: identity` upstream to get plaintext, signs that,
