@@ -58,14 +58,16 @@ jobs:
       # Trusted Publishing guidance (no `cache: 'pnpm'` here, unlike ci.yml).
       - uses: actions/setup-node@v4
         with:
-          node-version: '22.14'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       # The OIDC token exchange is performed by the npm CLI under the hood even when pnpm
       # orchestrates the publish, so npm must be >= 11.5.1.
+      # Pin the npm major (npm@12, not @latest) so an npm major bump can't surprise CI; node
+      # is on the 22.x line above (>= 22.22.2), which satisfies npm@12's engine requirement.
       - name: Ensure npm >= 11.5.1 for OIDC
         run: |
-          npm i -g npm@latest
+          npm i -g npm@12
           npm -v
 
       - run: pnpm install --frozen-lockfile
