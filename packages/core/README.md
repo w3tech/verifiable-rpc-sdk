@@ -267,10 +267,15 @@ Every verification failure throws a subclass of the abstract `VerificationError`
 | `AttestationCorrelationError`  | `"AttestationCorrelation"`      | Attestation pubkey ≠ response signer. `.expectedPubkey/.actualPubkey` |
 
 ```ts
-import { VerificationError, BadSignature } from "@w3tech.io/vrpc-core";
+import { VerificationError, BadSignature, TrustedVerifier } from "@w3tech.io/vrpc-core";
+
+const tv = new TrustedVerifier({
+  chainId: "1",
+  attestationUrl: "https://rpc.ankr.com/eth_vrpc/attestation",
+});
 
 try {
-  await client.call("eth_getBalance", [addr, "latest"]);
+  await tv.verify(requestBytes, responseBytes, res.headers);
 } catch (err) {
   if (err instanceof BadSignature) {
     // err.signatureHex / err.pubkeyHex / err.preImageSha256 — safe to log (all public)
