@@ -53,10 +53,12 @@ async function main() {
   );
 
   // 4 — anchor the signing key to the TEE: the attestation pubkey must equal the
-  // key that signed our response. (TDX quote verification itself is a v6.0 mock.)
+  // key that signed our response. Behind the gateway the attestation must target
+  // the exact node that answered — pass the response's vRPC-NodeId.
   const attestation = await fetchAttestation({
     attestationUrl: `${URL}/attestation`,
     nonce: crypto.randomBytes(32),
+    nodeId: res.headers.get("vrpc-nodeid") ?? undefined,
   });
   // correlation only needs the signer pubkey; pass the minimal shape the
   // verifier's own helper uses (verifyResponse returns a VerifiedPair).
