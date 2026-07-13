@@ -32,7 +32,6 @@ import { AttestationFailed } from "./errors";
 import { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
 import { validateChainId } from "./preimage";
-import type { VerifiedResponse } from "./verifier";
 import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
 
 /** Default pubkey-cache TTL: 1 hour in ms. */
@@ -323,11 +322,7 @@ export class TrustedVerifier {
 
     // Pass the logger so the correlation step (point 8) is observable before
     // a mismatch throws. On the silent path defaultLogger is a no-op.
-    verifyAttestationCorrelation(
-      att,
-      { verification: { pubkeyHex } } as VerifiedResponse,
-      this.logger,
-    );
+    verifyAttestationCorrelation(att, pubkeyHex, this.logger);
 
     // CHK-A2 (compose-hash self-consistency) reads `att.app_compose`, served
     // verbatim in the /attestation body next to `composeHash`. Empty on older
