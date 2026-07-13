@@ -1,0 +1,42 @@
+version: 2
+updates:
+  # npm / pnpm workspace — single lockfile at root resolves all packages/*
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    target-branch: "main"
+    assignees:
+      - "fasashen"
+      - "memekas"
+      - "askolesov"
+      - "Balevka"
+    commit-message:
+      prefix: "deps"
+    # Group minor/patch updates into a single PR
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions used by CI and publish workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    target-branch: "main"
+    assignees:
+      - "fasashen"
+      - "memekas"
+      - "megatron757"
+    commit-message:
+      prefix: "deps"
+    # Group minor/patch updates into a single PR
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
