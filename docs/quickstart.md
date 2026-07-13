@@ -126,7 +126,7 @@ The packages are published to npm under the `@w3tech.io` scope (`pnpm add @w3tec
 
 ### Inspect mode
 
-Beyond the automatic per-call verification, the SDK exposes the proof: `anchorTrust()` returns the node's verified pubkey and node id, and `fetchAttestation()` returns the raw quote, signing pubkey, and compose hash. (Behind a load balancer the attestation fetch needs the node id from a prior response - the verified path supplies it automatically.)
+Beyond the automatic per-call verification, the SDK exposes the proof: `fetchAttestation()` returns the raw quote, signing pubkey, and compose hash, and `verifyAttestationCorrelation()` checks the attestation pubkey against a response signer — the same correlation `TrustedVerifier` runs lazily on every new pubkey. (Behind a load balancer the attestation fetch needs the node id from a prior response - the verified path supplies it automatically.)
 
 ---
 

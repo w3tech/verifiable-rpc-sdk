@@ -51,8 +51,8 @@ response is:
   replayed old response is rejected as `StaleTimestamp`, and
 - **Correctly bound** — against the **chain id you pinned** (a wrong/substituted
   chain binds a different pre-image → `BadSignature`) and the **signing key** in
-  the response header. `verifyAttestationCorrelation` / `anchorTrust`
-  additionally correlate that key against the serving node's attestation pubkey.
+  the response header. `verifyAttestationCorrelation`
+  additionally correlates that key against the serving node's attestation pubkey.
 
 **The boundary (honest gap):** the low-level `verifyResponse` seam is
 signature-only — **signed + untampered + fresh + bound against a pinned key**. The
@@ -103,24 +103,6 @@ try {
   }
   throw err;
 }
-```
-
-### Call + verify in one shot
-
-`VerifierClient` wraps `fetch`: it builds the JSON-RPC envelope, POSTs, reads
-the raw body, then delegates the verify half to `verifyResponse` (one verify
-path, shared with the adapters).
-
-```ts
-import { VerifierClient } from "@w3tech.io/vrpc-core";
-
-const client = new VerifierClient("https://rpc.ankr.com/eth_vrpc", {
-  chainId: "1",
-  headers: { "x-api-key": process.env.ANKR_API_KEY },
-});
-
-const { result, verification, nodeId } = await client.call<string>("eth_blockNumber", []);
-// `result` is only reachable if the signature verified — throws otherwise.
 ```
 
 ---
@@ -204,31 +186,6 @@ plain records. `vRPC-NodeId` is optional (older proxies omit it).
 `verification = { signatureHex, pubkeyHex, timestampMs, preImageSha256 }`.
 The default `replayWindowMs` is `60_000` (1 minute).
 
-### `class VerifierClient`
-
-```ts
-new VerifierClient(url: string, opts: VerifierClientOptions);
-client.call<T>(method: string, params: unknown[]): Promise<VerifiedResponse<T>>;
-client.fetchAttestation(nonce: Uint8Array): Promise<Attestation>;
-```
-
-The constructor throws `TypeError` synchronously if `url` does not start with
-`http://` or `https://` (fail-fast config error, never from a call site). An
-auto-incrementing JSON-RPC `id` is maintained per instance.
-
-**`VerifierClientOptions`**
-
-| Option           | Type                       | Default              | Notes                                                                 |
-| ---------------- | -------------------------- | -------------------- | --------------------------------------------------------------------- |
-| `chainId`        | `string`                   | — (required)         | Validated at construction (`InvalidChainId`), hashed into the pre-image. Mismatch → `BadSignature`. |
-| `replayWindowMs` | `number`                   | `60_000`             | Forwarded to `verifyResponse`.                                        |
-| `headers`        | `Record<string, string>`  | `{}`                 | Merged into the POST (e.g. `x-api-key`). Pinned wire headers (`content-type`, `accept-encoding: identity`) always win. |
-| `fetch`          | `typeof fetch`             | `globalThis.fetch`   | Override for tests against a mock sidecar.                            |
-
-**`VerifiedResponse<T>`** → `{ result: T, nodeId?, raw: { request, response }, verification }`.
-`call()` pins `accept-encoding: identity` as defense-in-depth (since sidecar
-`v0.2.0` signs the content-decoded body, correctness no longer depends on it).
-
 ### Pre-image and compose-hash
 
 ```ts
@@ -252,7 +209,7 @@ real Layer A anchor (an external, node-independent compose registry) is deferred
 
 ```ts
 fetchAttestation(opts: FetchAttestationOptions): Promise<Attestation>;
-verifyAttestationCorrelation(attestation: Attestation, verifiedResponse: VerifiedResponse): void;
+verifyAttestationCorrelation(attestation: Attestation, signerPubkeyHex: string, logger?: Logger): void;
 ```
 
 `fetchAttestation` (the single attestation-fetch entry point) calls
@@ -262,12 +219,13 @@ verifyAttestationCorrelation(attestation: Attestation, verifiedResponse: Verifie
 `AttestationNodeNotFoundError`, terminal — no retry/fallback. The nonce must be
 exactly 32 bytes or `InvalidNonce` is thrown **before** any network call. This
 route is unsigned by contract — no `vRPC-*` verification runs, and a malformed
-body throws `MalformedAttestationResponse`. `fetchAttestation` has two consumers:
-`anchorTrust` (boot-time correlation, below) and `TrustedVerifier`, which calls
-it lazily per request as its attestation seam.
-`verifyAttestationCorrelation` asserts `attestation.pubkey ===
-verifiedResponse.verification.pubkeyHex`, throwing `AttestationCorrelationError`
-on mismatch.
+body throws `MalformedAttestationResponse`. `fetchAttestation` is called lazily
+per request by `TrustedVerifier` as its attestation seam, and is available
+standalone for direct use.
+`verifyAttestationCorrelation` asserts `attestation.pubkey === signerPubkeyHex`
+(the `vRPC-Pubkey` of the verified response, lowercase `0x`-hex), throwing
+`AttestationCorrelationError` on mismatch. It is called by `TrustedVerifier`'s
+lazy attestation leg.
 
 `Attestation` = `{ quote: GetQuoteResponse, pubkey, composeHash, app_compose }`,
 where `app_compose` is a required field carrying the raw verbatim app-compose text
@@ -275,26 +233,6 @@ used for the CHK-A2 self-consistency check (defaults to `""` on older
 sidecars/simulator, in which case CHK-A2 dormant-skips);
 `GetQuoteResponse` = `{ quote, event_log, report_data, vm_config }` (bare-hex
 fields; some empty under the dstack simulator).
-
-### `anchorTrust(opts)` — boot-time correlation
-
-```ts
-anchorTrust(opts: AnchorTrustOptions): Promise<AnchorTrustResult>;
-```
-
-Adapter-neutral, **opt-in**: `await` it once at startup after constructing your
-provider/client. It orchestrates existing primitives (no copied crypto): one
-signed `eth_blockNumber` through `VerifierClient` (the successful return *is* the
-Ed25519 verification), then `fetchAttestation` for the serving node, then
-`verifyAttestationCorrelation`. **Fail-closed**: throws a `VerificationError`
-member on any failure — `MissingHeader("vRPC-NodeId")` when the proxy omits the
-node id, `AttestationNodeNotFoundError` on a stale id,
-`AttestationCorrelationError` on pubkey mismatch.
-
-**`AnchorTrustOptions`**: `rpcBaseUrl`, `chain`, `chainId` (`string`, the exact
-value the sidecar signs with — validated downstream), `headers?`,
-`fetch?`, `nonceSource?` (defaults to `crypto.getRandomValues`). Returns
-**`AnchorTrustResult`** = `{ nodeId, pubkey }`.
 
 ### Additional exports
 
@@ -361,9 +299,9 @@ from the ethers provider is the same class you catch here.
   give it — feed it the decoded body, not gzip wire bytes, matching what the
   sidecar signs (`v0.2.0` signs the content-decoded body).
 - **Replay window is a clock contract.** Large client/server skew → `StaleTimestamp`.
-- **No JSON-RPC re-implementation.** `VerifierClient.call` assumes a 2.0 result
-  shape and does not handle batching, retries, or error envelopes — that's the
-  consumer's job.
+- **No JSON-RPC re-implementation.** The SDK ships no JSON-RPC client —
+  `TrustedVerifier`/`verifyResponse` are transport-agnostic and verify the bytes
+  you hand them; batching, retries, and error envelopes are the consumer's job.
 
 ---
 
@@ -371,5 +309,5 @@ from the ethers provider is the same class you catch here.
 
 See `examples/03-vrpc-core-walkthrough.ts` at the repo root: signed wire →
 `verifyResponse` → tamper → `BadSignature` → `fetchAttestation` + correlation via
-`verifyAttestationCorrelation` → `VerifierClient`. Run with
+`verifyAttestationCorrelation` → `TrustedVerifier`. Run with
 `pnpm example:03-vrpc-core-walkthrough`.

@@ -282,30 +282,6 @@ the ethers adapter's stance.
 
 ---
 
-## Boot-time trust anchor (`anchorTrust`)
-
-`anchorTrust` is an adapter-neutral, **opt-in** helper from
-`@w3tech.io/vrpc-core`. Call it **once at startup**, after constructing the
-client. It does a fresh signed read through the Ankr RPC gateway, fetches the serving node's
-attestation by `vRPC-NodeId`, and correlates that attestation pubkey against
-the response signer — fail-closed (throws a `VerificationError`-family member on
-mismatch / stale node / missing header). It does **not** alter the transport,
-and the ethers adapter calls the identical helper.
-
-```ts
-import { anchorTrust } from "@w3tech.io/vrpc-core";
-
-const anchor = await anchorTrust({
-  rpcBaseUrl: "https://rpc.ankr.com", // no trailing slash
-  chain: "arbitrum",               // builds the <chain>_vrpc route
-  chainId: 42161,
-  headers: { "x-api-key": process.env.ANKR_API_KEY! },
-});
-// anchor.nodeId, anchor.pubkey (0x + 64 hex) — pubkey == attestation == response signer
-```
-
----
-
 ## Runnable example
 
 `examples/02-viem-client.ts` builds a `createPublicClient` with `vrpcHttp` and
@@ -325,8 +301,8 @@ per-request batching default, cross-adapter parity).
 
 ## Companion
 
-- `@w3tech.io/vrpc-core` — verification primitives (`verifyResponse`,
-  `VerifierClient`, `anchorTrust`, the `VerificationError` family).
+- `@w3tech.io/vrpc-core` — verification primitives (`TrustedVerifier`,
+  `verifyResponse`, `fetchAttestation`, the `VerificationError` family).
 - `@w3tech.io/vrpc-ethers` — the same drop-in for ethers v6 (`VrpcProvider`).
 - [`w3tech/verifiable-rpc-sidecar`](https://github.com/w3tech/verifiable-rpc-sidecar)
   — the Rust sidecar that produces the signed responses (wire contract `v0.5.0`;
