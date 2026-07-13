@@ -30,8 +30,8 @@ interface SignedTriple {
 
 /**
  * Sign a (request, response) pair with TEST_SEED over the canonical 104-byte
- * pre-image and emit the matching `vRPC-*` headers. No fetch / no
- * VerifierClient — drives `verifyResponse` directly.
+ * pre-image and emit the matching `vRPC-*` headers. No fetch — drives
+ * `verifyResponse` directly.
  */
 async function signTriple(
   request: string,
