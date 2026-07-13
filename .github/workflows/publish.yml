@@ -44,7 +44,7 @@ jobs:
       id-token: write # OIDC token exchange for tokenless Trusted Publishing (critical)
       contents: write # action-gh-release creates the GitHub Release
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # Full history so action-gh-release can diff release notes to the previous tag.
           fetch-depth: 0
