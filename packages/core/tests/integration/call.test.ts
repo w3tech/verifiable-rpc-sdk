@@ -30,6 +30,11 @@ if (!integrationEnabled) {
 
 const d = integrationEnabled ? describe : describe.skip;
 
+// Auto-incrementing JSON-RPC id: consecutive calls must send distinct request
+// bytes so their pre-images (and deterministic Ed25519 signatures) always
+// differ, even when two loopback round-trips land in the same millisecond.
+let nextId = 1;
+
 /** POST a JSON-RPC envelope to the sidecar and return the raw wire triple. */
 async function rpcCall(
   url: string,
@@ -37,7 +42,7 @@ async function rpcCall(
   params: unknown[],
 ): Promise<{ requestBytes: Uint8Array; responseBytes: Uint8Array; headers: Headers }> {
   const requestBytes = new TextEncoder().encode(
-    JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    JSON.stringify({ jsonrpc: "2.0", id: nextId++, method, params }),
   );
   const res = await fetch(url, {
     method: "POST",
@@ -112,9 +117,9 @@ d("integration: call", () => {
     const { pair: a } = await verifiedBlockNumber(sidecar.url);
     const { pair: b } = await verifiedBlockNumber(sidecar.url);
     expect(a.verification.pubkeyHex).toBe(b.verification.pubkeyHex);
-    // If this ever fires on the same signatureHex, the sidecar is broken —
-    // either the timestamp is frozen or the signing key got reused with a
-    // stale pre-image.
+    // The two requests carry distinct JSON-RPC ids, so their pre-images differ
+    // regardless of timestamp resolution. If this ever fires on the same
+    // signatureHex, the sidecar signed a stale/cached pre-image.
     expect(a.verification.signatureHex).not.toBe(b.verification.signatureHex);
   });
 });
