@@ -52,7 +52,7 @@ jobs:
           # and checkout defaults to the pushed tag ref (which is correct).
           ref: ${{ inputs.tag }}
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       # NOTE: package-manager caching is deliberately DISABLED in the release job per npm
       # Trusted Publishing guidance (no `cache: 'pnpm'` here, unlike ci.yml).
