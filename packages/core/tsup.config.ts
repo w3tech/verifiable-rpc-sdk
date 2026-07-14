@@ -14,7 +14,10 @@ export default defineConfig({
   entry: ["src/index.ts", "src/errors.ts"],
   format: ["esm"],
   target: "node20",
-  dts: true,
+  // Declarations are emitted separately by `tsc -p tsconfig.build.json` (see build
+  // script). tsup's dts:true uses rollup-plugin-dts, which needs the TypeScript
+  // programmatic Compiler API — absent in the TS 7 native compiler until 7.1.
+  dts: false,
   clean: true,
   splitting: true,
   sourcemap: true,

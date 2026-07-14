@@ -61,8 +61,8 @@
     }
   },
   "scripts": {
-    "build": "tsup",
-    "prepublishOnly": "tsup",
+    "build": "tsup && tsc -p tsconfig.build.json",
+    "prepublishOnly": "tsup && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:unit": "vitest run tests --exclude 'tests/integration/**'",
     "test:integration": "vitest run tests/integration",

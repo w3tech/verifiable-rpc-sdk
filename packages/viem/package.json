@@ -51,8 +51,8 @@
     }
   },
   "scripts": {
-    "build": "tsup",
-    "prepublishOnly": "tsup",
+    "build": "tsup && tsc -p tsconfig.build.json",
+    "prepublishOnly": "tsup && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
