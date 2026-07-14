@@ -1,6 +1,6 @@
 # Examples
 
-Three runnable examples for the verifiable-rpc-sdk. All target Ankr's public
+Four runnable examples for the verifiable-rpc-sdk. All target Ankr's public
 Arbitrum vRPC endpoint and need no API key.
 
 | # | Script | What it shows |
@@ -8,6 +8,7 @@ Arbitrum vRPC endpoint and need no API key.
 | 01 | `01-ethers-client.ts` | Drop-in **ethers** provider (`VrpcProvider`) — `getBlock` / `getBalance`, every response verified before ethers returns it. |
 | 02 | `02-viem-client.ts` | Drop-in **viem** transport (`vrpcHttp`) wired into `createPublicClient` — the same calls, verified inside the transport. |
 | 03 | `03-vrpc-core-walkthrough.ts` | Step-by-step **`@w3tech.io/vrpc-core`**: signed wire → `verifyResponse` → tamper→`BadSignature` → `fetchAttestation` + correlation → `TrustedVerifier`. |
+| 04 | `04-proxy.ts` | Local verifying **proxy** (`@w3tech.io/vrpc-proxy`) spawned as a child process — a plain `fetch` client with zero SDK imports gets fail-closed-verified responses. |
 
 ## Run
 
