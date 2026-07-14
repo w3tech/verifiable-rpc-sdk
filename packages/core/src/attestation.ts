@@ -19,7 +19,6 @@ import {
   MalformedAttestationResponse,
 } from "./errors";
 import type { Logger } from "./logger";
-import type { VerifiedResponse } from "./verifier";
 
 /**
  * Inner `quote` object inside the attestation response. All fields are
@@ -82,8 +81,7 @@ export interface FetchAttestationOptions {
 /**
  * Fetch a fresh TDX attestation quote from the `/attestation` endpoint, bound to
  * the caller-supplied 32-byte nonce. The single attestation-fetch entry point —
- * used by both the lazy verify seam ({@link TrustedVerifier}) and the boot-time
- * `anchorTrust`.
+ * used by the lazy verify seam ({@link TrustedVerifier}) and available standalone.
  *
  * Sends `GET ${attestationUrl}?nonce=<bare-lowercase-hex>`, plus `&node_id=<id>`
  * when {@link FetchAttestationOptions.nodeId} is present. The nonce is validated
@@ -124,9 +122,11 @@ export async function fetchAttestation(opts: FetchAttestationOptions): Promise<A
 
 /**
  * Prove the fetched attestation belongs to the node that signed the RPC
- * response: the attestation `pubkey` must equal the response `vRPC-Pubkey`
- * (`verification.pubkeyHex`, already normalized to lowercase `0x`-hex). On
- * mismatch throws {@link AttestationCorrelationError}; on match returns.
+ * response: the attestation `pubkey` must equal `signerPubkeyHex` — the
+ * `vRPC-Pubkey` of the VERIFIED response (lowercase `0x`-hex, as returned in
+ * `verification.pubkeyHex`). Called by {@link TrustedVerifier}'s lazy
+ * attestation leg. On mismatch throws {@link AttestationCorrelationError};
+ * on match returns.
  *
  * `logger` is an OPTIONAL opt-in narration sink (already safe-wrapped by the
  * caller). When present, the `attestation.correlation` event is emitted BEFORE
@@ -135,10 +135,10 @@ export async function fetchAttestation(opts: FetchAttestationOptions): Promise<A
  */
 export function verifyAttestationCorrelation(
   attestation: Attestation,
-  verifiedResponse: VerifiedResponse,
+  signerPubkeyHex: string,
   logger?: Logger,
 ): void {
-  const expected = verifiedResponse.verification.pubkeyHex;
+  const expected = signerPubkeyHex;
   if (logger) {
     logger.debug("attestation.correlation", {
       expectedPubkey: expected,

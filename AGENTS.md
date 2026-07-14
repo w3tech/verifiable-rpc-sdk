@@ -93,10 +93,10 @@ with the simulator binary on the runner is tracked separately.
   the verification primitives), `ethers` (`@w3tech.io/vrpc-ethers`), `viem`
   (`@w3tech.io/vrpc-viem`), and `dstack-verify` (`@w3tech.io/dstack-verify`).
 - Public surface re-exported through `packages/core/src/index.ts`; implementation
-  lives in `packages/core/src/verifier.ts`, `packages/core/src/verify.ts`,
+  lives in `packages/core/src/trusted-verifier.ts`, `packages/core/src/verify.ts`,
   `packages/core/src/attestation.ts`,
   `packages/core/src/errors.ts`, `packages/core/src/preimage.ts` (plus
-  `anchor.ts`, `trusted-verifier.ts`, `utils.ts`, `vrpc-url.ts`). Compose-hash
+  `utils.ts`, `vrpc-url.ts`, `logger.ts`, `log-redact.ts`). Compose-hash
   logic lives outside core: `computeComposeHash` is in
   `packages/dstack-verify/src/verify-steps.ts` (exported via
   `@w3tech.io/dstack-verify`).
@@ -112,19 +112,16 @@ with the simulator binary on the runner is tracked separately.
   gzip or identity. The `03-vrpc-core-walkthrough.ts` example and
   `packages/core/README.md` describe the content-decoded-body signing introduced
   in v0.2.0.
-- **`call()` pins `accept-encoding: identity` as defense-in-depth — no longer a
-  correctness requirement.** Since v0.2.0 signs the content-decoded body, a
-  standard auto-decoding `fetch` (which gunzips a `content-encoding: gzip`
-  response before `arrayBuffer()`) hashes the same bytes the sidecar signed and
-  verifies fine. Pinning identity is retained because it keeps the hashed bytes
-  byte-identical to the wire bytes and avoids relying on the proxy's
-  re-encoding, but correctness does not depend on it.
+- **Content encoding is not a correctness concern.** Since v0.2.0 the sidecar
+  signs the content-decoded body, so a standard auto-decoding `fetch` (which
+  gunzips a `content-encoding: gzip` response before `arrayBuffer()`) hashes the
+  same bytes the sidecar signed and verifies fine on either transport encoding.
 
 ## Source layout
 
 | File                          | Responsibility                                                                                                                                                                            |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/core/src/index.ts`  | Public barrel re-exporting `VerifierClient`, `verifyResponse`/`isSignedVrpcResponse`, `fetchAttestation`/`verifyAttestationCorrelation`, `anchorTrust`, `TrustedVerifier`, the `VerificationError` family, `buildPreImage`, `parseChainId`, and `deriveVrpcUrls`. |
+| `packages/core/src/index.ts`  | Public barrel re-exporting `TrustedVerifier`, `verifyResponse`/`isSignedVrpcResponse`, `fetchAttestation`/`verifyAttestationCorrelation`, the `VerificationError` family, `buildPreImage`, `parseChainId`, and `deriveVrpcUrls`. |
 | `packages/dstack-verify/src/verify-steps.ts`| `computeComposeHash` (`sha256(utf8(app_compose))` bare-hex, used by CHK-A2) + `parseReportData` (CHK-A1). Lives here — compose-hash is a dstack/TDX concept. |
 | `tsconfig.base.json`          | Strict TS config (target ESNext, moduleResolution bundler, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`). Root `tsconfig.json` only `extends` it with `files: []`; each package's `tsconfig.json` extends it too.        |
 | `biome.json`                  | Biome lint + formatter config (root).                                                                                                                                                     |
@@ -146,15 +143,15 @@ with the simulator binary on the runner is tracked separately.
   logical change. Never push to `main` directly, never self-merge.
 - **Atomic commits:** one logical chunk per commit.
 - **ESM-first, `type: "module"`** in `package.json`. No CJS in v3 entry.
-- **No JSON-RPC re-impl** — SDK wraps `fetch`, returns typed
-  `VerifiedResponse<T>`. Consumers handle batching, retries.
+- **No JSON-RPC re-impl** — the verify seam is byte-level and returns a typed
+  `VerifiedPair`. Consumers handle batching, retries.
 - **Byte-exact 104-byte pre-image** — pinned by a unit test mirroring
   `pre_image_layout_is_byte_exact` from the sidecar; any drift is a hard bug.
 - **Typed errors at every boundary** — `VerificationError` subclasses for
   `MissingHeader`, `MalformedHeader`, `BadSignature`, `StaleTimestamp`,
   `InvalidNonce`, `InvalidChainId`, `MalformedAttestationResponse`.
-- **No throw-from-async-constructor** — synchronous fail-fast in
-  `new VerifierClient(url, opts)` for config errors; runtime verification
+- **No throw-from-async-constructor** — synchronous fail-fast for config errors
+  (e.g. `new TrustedVerifier(opts)` / `validateChainId`); runtime verification
   errors from call sites only.
 - **Worktree rule** from parent `../AGENTS.md` applies: create a git worktree
   off `main` for feature work; never switch the checked-out branch in place.

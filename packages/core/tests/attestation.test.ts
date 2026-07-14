@@ -8,8 +8,6 @@ import {
   InvalidNonce,
   MalformedAttestationResponse,
 } from "../src/errors";
-import type { VerifiedResponse } from "../src/verifier";
-import { VerifierClient } from "../src/verifier";
 
 const TEST_URL = "http://test.local:8545";
 const TEST_ATTESTATION_URL = `${TEST_URL}/attestation`;
@@ -226,26 +224,6 @@ describe("fetchAttestation", () => {
     expect(b.composeHash).toBe("deadbeef");
   });
 
-  test("clientDelegatesToStandaloneFn", async () => {
-    const state = installMockFetch(GOLDEN_FIXTURE);
-    const nonce = new Uint8Array(32).fill(0x11);
-    const client = new VerifierClient(TEST_URL, { chainId: "1" });
-    const result = await client.fetchAttestation(nonce);
-    const expectedHex = bytesToHex(nonce);
-    expect(state.capturedUrl).toBe(`${TEST_URL}/attestation?nonce=${expectedHex}`);
-    expect(result).toEqual({
-      quote: {
-        quote: "00010203",
-        event_log: "04050607",
-        report_data: "08090a0b",
-        vm_config: "",
-      },
-      pubkey: "0x0000000000000000000000000000000000000000000000000000000000000000",
-      composeHash: "deadbeef",
-      app_compose: '{"manifest_version":2,"name":"demo"}',
-    });
-  });
-
   // ── Gateway-routed attestation: the former via-gateway helper's describe,
   // merged in. The helper's `{ rpcBaseUrl, chain, nodeId, nonce, ... }` args are
   // now expressed as `{ attestationUrl: rpcBaseUrl + "/" + chain + "_vrpc/attestation",
@@ -397,24 +375,9 @@ function installGatewayMockFetch(body: unknown, status = 200): GatewayMockState 
 describe("verifyAttestationCorrelation", () => {
   const pubkey = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
-  function makeVerifiedResponse(pubkeyHex: string): VerifiedResponse {
-    return {
-      result: "0x1",
-      raw: { request: new Uint8Array(0), response: new Uint8Array(0) },
-      verification: {
-        signatureHex: `0x${"00".repeat(64)}`,
-        pubkeyHex,
-        timestampMs: 0n,
-        preImageSha256: new Uint8Array(32),
-      },
-    };
-  }
-
   test("returnsOnPubkeyMatch", () => {
     const attestation = { ...GOLDEN_FIXTURE, pubkey };
-    expect(() =>
-      verifyAttestationCorrelation(attestation, makeVerifiedResponse(pubkey)),
-    ).not.toThrow();
+    expect(() => verifyAttestationCorrelation(attestation, pubkey)).not.toThrow();
   });
 
   test("throwsCorrelationOnMismatch", () => {
@@ -423,7 +386,7 @@ describe("verifyAttestationCorrelation", () => {
     const attestation = { ...GOLDEN_FIXTURE, pubkey: attestationPubkey };
     let caught: unknown;
     try {
-      verifyAttestationCorrelation(attestation, makeVerifiedResponse(responsePubkey));
+      verifyAttestationCorrelation(attestation, responsePubkey);
     } catch (err) {
       caught = err;
     }

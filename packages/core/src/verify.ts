@@ -2,12 +2,10 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Transport-agnostic verify seam.
 //
-// `verifyResponse` is the verify half (steps 4-9) of `VerifierClient.call()`,
-// lifted into a free function so both the ethers `_send` override and
+// `verifyResponse` is a free function so both the ethers `_send` override and
 // the viem `custom` transport can feed raw request bytes + raw
 // (content-decoded) response bytes + response headers through ONE verify path
-// without any client-lib knowledge. `VerifierClient.call()` is itself refactored
-// to delegate here — there is exactly one verify implementation.
+// without any client-lib knowledge — there is exactly one verify implementation.
 //
 // Steps performed:
 //   4. Header parse — missing -> MissingHeader

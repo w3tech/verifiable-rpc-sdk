@@ -3,7 +3,6 @@
 // Public barrel — re-exports the SDK's public surface.
 //
 // Implementation lives in:
-//   - ./verifier    — VerifierClient class + options/response types
 //   - ./verify      — transport-agnostic verifyResponse seam
 //   - ./attestation — fetchAttestation helper + Attestation/GetQuoteResponse types
 //   - ./errors      — VerificationError abstract base + typed subclasses
@@ -16,8 +15,6 @@
 // test mock. The default is the Phala cloud verifier wired by buildVerifyPolicy.
 export type { CloudVerifierConfig, HardwareVerifier } from "@w3tech.io/dstack-verify";
 export { createCloudVerifier, DEFAULT_PHALA_VERIFY_ENDPOINT } from "@w3tech.io/dstack-verify";
-export type { AnchorTrustOptions, AnchorTrustResult } from "./anchor";
-export { anchorTrust } from "./anchor";
 export type {
   Attestation,
   FetchAttestationOptions,
@@ -49,8 +46,6 @@ export {
   TrustedVerifier,
 } from "./trusted-verifier";
 export { parseChainId } from "./utils";
-export type { VerifiedResponse, VerifierClientOptions } from "./verifier";
-export { VerifierClient } from "./verifier";
 export type { ResponseHeaders, VerifiedPair, VerifyResponseOptions } from "./verify";
 export { isSignedVrpcResponse, verifyResponse } from "./verify";
 export type { VrpcUrls } from "./vrpc-url";

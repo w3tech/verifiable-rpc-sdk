@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Typed verification errors thrown by `VerifierClient.call`.
+// Typed verification errors thrown by the vrpc-core verification APIs.
 //
 // Discriminated union via the `kind` field plus a class hierarchy:
 //   try { ... } catch (err: unknown) {

@@ -260,7 +260,7 @@ returned):
 
 - [`examples/01-ethers-client.ts`](./examples/01-ethers-client.ts) — drop-in ethers `VrpcProvider`
 - [`examples/02-viem-client.ts`](./examples/02-viem-client.ts) — viem `vrpcHttp` transport + `createPublicClient`
-- [`examples/03-vrpc-core-walkthrough.ts`](./examples/03-vrpc-core-walkthrough.ts) — `@w3tech.io/vrpc-core` walkthrough (signed wire → `verifyResponse` → tamper→`BadSignature` → `fetchAttestation` + `VerifierClient`)
+- [`examples/03-vrpc-core-walkthrough.ts`](./examples/03-vrpc-core-walkthrough.ts) — `@w3tech.io/vrpc-core` walkthrough (signed wire → `verifyResponse` → tamper→`BadSignature` → `fetchAttestation` + `TrustedVerifier`)
 
 ```sh
 pnpm install

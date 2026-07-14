@@ -33,8 +33,9 @@ remote attestation. Specifically:
 
 - **Full TDX remote attestation is NOT performed.** The signing key is *not yet*
   proven to chain to an Intel PCK root, and there is no compose-hash registry
-  check (both deferred). `anchorTrust` correlates the response signer against the
-  serving node's attestation pubkey — it does not validate the TDX quote itself.
+  check (both deferred). `TrustedVerifier` lazily correlates each new response
+  signer against the serving node's attestation pubkey — it does not validate
+  the TDX quote against an Intel PCK root locally.
 - **WebSocket push is NOT verified.** `eth_subscribe` / WS push bypasses the HTTP
   signing chokepoint. Use HTTP polling for anything you need a signature on.
 - **ENS off-chain reads are NOT verified.** CCIP-Read / avatar / IPFS resolution
@@ -195,26 +196,6 @@ const provider = new VrpcProvider(req, 42161, {
 await provider.getBalance("0x0000000000000000000000000000000000000000");
 ```
 
-### `anchorTrust(...)` — opt-in boot-time trust anchor (from `@w3tech.io/vrpc-core`)
-
-After constructing the provider, optionally call `anchorTrust` **once** at
-startup to confirm the serving node's attestation pubkey == the response
-signer's pubkey, end-to-end through the Ankr RPC gateway. It is adapter-neutral, does **not**
-alter the (sync) constructor, and **throws a `VerificationError`-family member on
-failure** (fail-closed).
-
-```ts
-import { anchorTrust } from "@w3tech.io/vrpc-core";
-
-const anchor = await anchorTrust({
-  rpcBaseUrl: "https://rpc.ankr.com",
-  chain: "arbitrum",
-  chainId: "42161",
-  headers: { "x-api-key": process.env.ANKR_API_KEY },
-});
-console.log(anchor.nodeId, anchor.pubkey); // pubkey: 0x + 64 hex
-```
-
 ### Re-exported error family
 
 For `instanceof` checks without importing core directly, the shared error family
@@ -267,9 +248,9 @@ try {
   `JSON.parse`; the WS push transport has no such chokepoint.
 - **ENS off-chain reads** (CCIP-Read, avatar, IPFS) are unverified — they leave
   the signed RPC path.
-- `anchorTrust` correlates the signer against the node's attestation pubkey; it
-  does **not** verify the TDX quote against an Intel PCK root or a compose-hash
-  registry (deferred).
+- The lazy attestation correlation binds the signer to the node's attestation
+  pubkey; it does **not** verify the TDX quote against an Intel PCK root or a
+  compose-hash registry (deferred).
 
 ## Runnable example
 
@@ -281,7 +262,7 @@ endpoint (no API key required):
 pnpm example:01-ethers-client
 ```
 
-For the `anchorTrust` / attestation-correlation flow end-to-end, see
+For the attestation-correlation flow end-to-end, see
 [`examples/03-vrpc-core-walkthrough.ts`](../../examples/03-vrpc-core-walkthrough.ts):
 
 ```sh

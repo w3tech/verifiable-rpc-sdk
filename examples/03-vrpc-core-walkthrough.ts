@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
 // vrpc-core walkthrough: the verification engine the ethers/viem adapters wrap,
-// used directly so you can see each step of the trust chain.
+// used directly so you can see each step of the trust chain — raw verify
+// primitives first (steps 1-4), then the TrustedVerifier one-shot (step 5).
 import crypto from "node:crypto";
 
 import {
   BadSignature,
+  deriveVrpcUrls,
   fetchAttestation,
-  type VerifiedResponse,
-  VerifierClient,
+  TrustedVerifier,
   verifyAttestationCorrelation,
   verifyResponse,
 } from "@w3tech.io/vrpc-core";
@@ -53,25 +54,24 @@ async function main() {
   );
 
   // 4 — anchor the signing key to the TEE: the attestation pubkey must equal the
-  // key that signed our response. (TDX quote verification itself is a v6.0 mock.)
+  // key that signed our response.
   const attestation = await fetchAttestation({
     attestationUrl: `${URL}/attestation`,
     nonce: crypto.randomBytes(32),
   });
-  // correlation only needs the signer pubkey; pass the minimal shape the
-  // verifier's own helper uses (verifyResponse returns a VerifiedPair).
-  verifyAttestationCorrelation(attestation, {
-    verification: verified.verification,
-  } as VerifiedResponse);
+  verifyAttestationCorrelation(attestation, verified.verification.pubkeyHex);
 
-  // 5 — the everyday one-liner: POST + verify in one call (what the adapters use).
-  const client = new VerifierClient(URL, { chainId: CHAIN_ID });
-  const { result } = await client.call<string>("eth_blockNumber", []);
+  // 5 — the everyday seam (what the ethers/viem adapters construct):
+  // signature + replay + lazy attestation + mandatory hardware verify,
+  // cached per pubkey. Reuses the step-1 bytes — no extra fetch.
+  const { attestationUrl } = deriveVrpcUrls(URL);
+  const tv = new TrustedVerifier({ chainId: CHAIN_ID, attestationUrl });
+  const pair = await tv.verify(requestBytes, responseBytes, res.headers);
 
   console.log({
     signer: verified.verification.pubkeyHex,
     attested: attestation.pubkey,
-    blockNumber: result,
+    trustedVerifierPubkey: pair.verification.pubkeyHex,
   });
 }
 
