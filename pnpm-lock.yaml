@@ -96,6 +96,25 @@ importers:
         specifier: ^6.16.0
         version: 6.17.0
 
+  packages/proxy:
+    dependencies:
+      '@w3tech.io/vrpc-core':
+        specifier: workspace:*
+        version: link:../core
+      undici:
+        specifier: ^7.28.0
+        version: 7.28.0
+    devDependencies:
+      '@noble/ed25519':
+        specifier: ^3.1.0
+        version: 3.1.0
+      '@types/node':
+        specifier: '*'
+        version: 26.0.0
+      '@w3tech.io/dstack-verify':
+        specifier: workspace:*
+        version: link:../dstack-verify
+
   packages/viem:
     dependencies:
       '@w3tech.io/dstack-verify':
@@ -1052,6 +1071,10 @@ packages:
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
+  undici@7.28.0:
+    resolution: {integrity: sha512-cRZYrTDwWznlnRiPjggAGxZXanty6M8RV1ff8Wm4LWXBp7/IG8v5DnOm74DtUBp9OONpK75YlPnIjQqX0dBDtA==}
+    engines: {node: '>=20.18.1'}
+
   viem@2.53.1:
     resolution: {integrity: sha512-FhfJ/SW73CVosiyVLmIMVgKDRKYV1AGCLzZoHYvmNayyVff63Qi1ocPCk59LqC/cNw244RbBJjHnmxqXkE7NpA==}
     peerDependencies:
@@ -1889,6 +1912,8 @@ snapshots:
   undici-types@6.19.8: {}
 
   undici-types@8.3.0: {}
+
+  undici@7.28.0: {}
 
   viem@2.53.1(typescript@5.9.3):
     dependencies:
