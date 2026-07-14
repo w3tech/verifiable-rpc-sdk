@@ -29,6 +29,9 @@ importers:
       '@w3tech.io/vrpc-ethers':
         specifier: workspace:*
         version: link:packages/ethers
+      '@w3tech.io/vrpc-proxy':
+        specifier: workspace:*
+        version: link:packages/proxy
       '@w3tech.io/vrpc-viem':
         specifier: workspace:*
         version: link:packages/viem

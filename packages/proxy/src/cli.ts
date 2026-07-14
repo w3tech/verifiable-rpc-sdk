@@ -18,8 +18,14 @@ function fail(message: string): never {
 }
 
 function loadConfig(): ProxyConfig {
+  // pnpm passes the `--` separator through to the script verbatim
+  // (`pnpm run proxy -- --upstream ...`); drop it before flag parsing.
+  const argv = process.argv.slice(2);
+  if (argv[0] === "--") {
+    argv.shift();
+  }
   try {
-    return parseConfig(process.argv.slice(2), process.env);
+    return parseConfig(argv, process.env);
   } catch (err) {
     if (err instanceof ProxyError || err instanceof VerificationError) {
       fail(err.message);

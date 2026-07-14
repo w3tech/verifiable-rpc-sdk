@@ -24,12 +24,14 @@
     "example:01-ethers-client": "tsx examples/01-ethers-client.ts",
     "example:02-viem-client": "tsx examples/02-viem-client.ts",
     "example:03-vrpc-core-walkthrough": "tsx examples/03-vrpc-core-walkthrough.ts",
-    "example:all": "pnpm example:01-ethers-client && pnpm example:02-viem-client && pnpm example:03-vrpc-core-walkthrough"
+    "example:all": "pnpm example:01-ethers-client && pnpm example:02-viem-client && pnpm example:03-vrpc-core-walkthrough",
+    "proxy": "tsx packages/proxy/src/cli.ts"
   },
   "devDependencies": {
     "@w3tech.io/dstack-verify": "workspace:*",
     "@w3tech.io/vrpc-core": "workspace:*",
     "@w3tech.io/vrpc-ethers": "workspace:*",
+    "@w3tech.io/vrpc-proxy": "workspace:*",
     "@w3tech.io/vrpc-viem": "workspace:*",
     "@biomejs/biome": "^2.5.3",
     "@noble/ed25519": "^3.1.0",
