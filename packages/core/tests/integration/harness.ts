@@ -84,7 +84,17 @@ export async function spawnSimulator(): Promise<SimulatorHandle> {
   const proc = spawn(bin, [], { cwd: dir, stdio: "ignore" });
 
   const socketPath = join(dir, "dstack.sock");
-  await waitForPath(socketPath, 5_000);
+  try {
+    await waitForPath(socketPath, 5_000);
+  } catch (err) {
+    // Boot failure happens inside beforeAll before the handle is assigned, so
+    // afterAll's cleanup() can never reap this child — kill it here and remove
+    // the tmpdir before rethrowing (mirrors spawnSidecar's kill-on-failure).
+    proc.kill("SIGTERM");
+    await waitExit(proc).catch(() => undefined);
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    throw err;
+  }
 
   return {
     socketPath,
