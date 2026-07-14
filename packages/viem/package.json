@@ -61,11 +61,11 @@
     "@w3tech.io/vrpc-core": "workspace:*"
   },
   "peerDependencies": {
-    "viem": "^2.52.2"
+    "viem": "^2.55.1"
   },
   "devDependencies": {
     "@noble/ed25519": "^3.1.0",
     "@types/node": "^26.1.1",
-    "viem": "^2.52.2"
+    "viem": "^2.55.1"
   }
 }
