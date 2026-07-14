@@ -102,7 +102,13 @@ export function buildTargetUrl(upstreamUrl: string, clientUrl: string): string {
   const clientPath = qIdx === -1 ? clientUrl : clientUrl.slice(0, qIdx);
   const clientQuery = qIdx === -1 ? "" : clientUrl.slice(qIdx + 1);
   const basePath = upstream.pathname.replace(/\/+$/, "");
-  const mergedPath = basePath + normalizeClientPath(clientPath);
+  // A root client path ("/?query" — the bare "/" case fast-paths above) maps
+  // to the upstream path as configured, not basePath + "/": a trailing slash
+  // can be rejected by key-in-path upstreams.
+  const mergedPath =
+    clientPath === "/" || clientPath === ""
+      ? upstream.pathname
+      : basePath + normalizeClientPath(clientPath);
   const upstreamQuery = upstream.search.startsWith("?") ? upstream.search.slice(1) : "";
   const mergedQuery =
     upstreamQuery !== "" && clientQuery !== ""

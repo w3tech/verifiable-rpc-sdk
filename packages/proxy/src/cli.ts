@@ -54,9 +54,11 @@ for (const warning of config.warnings ?? []) {
 const server = buildServer(config);
 
 server.listen(config.listenPort, config.listenHost, () => {
-  // The only unconditional output: one banner line on stderr.
+  // The only unconditional output: one banner line on stderr. Only the
+  // upstream ORIGIN is printed — the full URL may carry an API key as a path
+  // segment, which must never reach container logs.
   process.stderr.write(
-    `vrpc-proxy listening on http://${config.listenHost}:${config.listenPort} -> ${config.upstreamUrl} (chain ${config.chainId})\n`,
+    `vrpc-proxy listening on http://${config.listenHost}:${config.listenPort} -> ${new URL(config.upstreamUrl).origin} (chain ${config.chainId})\n`,
   );
 });
 

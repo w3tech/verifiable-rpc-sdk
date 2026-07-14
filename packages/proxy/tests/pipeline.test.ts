@@ -53,6 +53,12 @@ describe("buildTargetUrl", () => {
     expect(buildTargetUrl(UPSTREAM, "/")).toBe(UPSTREAM);
   });
 
+  test("rootPathWithQueryKeepsUpstreamPathWithoutTrailingSlash", () => {
+    // "/?foo=bar" misses the bare-"/" fast path but must not grow a trailing
+    // slash either — key-in-path upstreams can reject ".../KEY/?foo=bar".
+    expect(buildTargetUrl(UPSTREAM, "/?foo=bar")).toBe(`${UPSTREAM}?foo=bar`);
+  });
+
   test("clientPathAppendsToUpstreamBasePath", () => {
     expect(buildTargetUrl(UPSTREAM, "/foo/bar")).toBe(`${UPSTREAM}/foo/bar`);
   });
