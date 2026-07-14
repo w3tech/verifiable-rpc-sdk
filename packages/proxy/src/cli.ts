@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
 // Runnable entry (via tsx): parse + validate config, construct the server

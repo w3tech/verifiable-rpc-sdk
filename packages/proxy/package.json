@@ -31,6 +31,9 @@
       "default": "./dist/index.js"
     }
   },
+  "bin": {
+    "vrpc-proxy": "dist/cli.js"
+  },
   "files": [
     "dist",
     "src",

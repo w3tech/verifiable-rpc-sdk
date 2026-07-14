@@ -1,11 +1,11 @@
-# Release pipeline for the four @w3tech.io/* packages.
+# Release pipeline for the five @w3tech.io/* packages.
 #
 # Publishing is TOKENLESS: it uses npm Trusted Publishing (OIDC). The runner mints a
 # short-lived OIDC id-token (id-token: write) which the npm CLI exchanges under the hood
 # for a ~1h package-scoped publish credential. There is intentionally no long-lived publish
 # token anywhere in this file.
 #
-# Provenance is emitted for all four packages (NPM_CONFIG_PROVENANCE + --provenance). Note
+# Provenance is emitted for all five packages (NPM_CONFIG_PROVENANCE + --provenance). Note
 # that npm only attaches provenance attestations when BOTH the source repo AND the package
 # are public; installing the private @w3tech.io/* deps from the registry would require a
 # read token until the repo + packages are public (moot once public — local frozen-lockfile
@@ -115,7 +115,7 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "DIST_TAG=$DIST_TAG" >> "$GITHUB_ENV"
 
-      # Lockstep-stamp the tag version into all four package.json files and resolve
+      # Lockstep-stamp the tag version into all five package.json files and resolve
       # workspace:* to concrete versions at publish time. --no-git-tag-version ensures NO git
       # commit/tag is created and the bump is NOT committed back to main — it lives only in
       # the runner. Runs AFTER the frozen-lockfile install (the stamp mutates versions, not
@@ -127,7 +127,7 @@ jobs:
       - name: Stamp version across all packages (lockstep)
         run: pnpm version "$VERSION" --no-git-tag-version --allow-same-version -r
 
-      # Publish all four packages under the derived dist-tag ($DIST_TAG: `latest` for a plain
+      # Publish all five packages under the derived dist-tag ($DIST_TAG: `latest` for a plain
       # vX.Y.Z, the prerelease channel otherwise). Build already ran above; here we gate with a
       # --dry-run then do the real publish, both pinned to $DIST_TAG so prereleases never land
       # on `latest`. --no-git-checks is REQUIRED — publish runs from a detached HEAD at the
