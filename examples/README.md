@@ -1,7 +1,12 @@
 # Examples
 
 Four runnable examples for the verifiable-rpc-sdk. All target Ankr's public
-Arbitrum vRPC endpoint and need no API key.
+Arbitrum vRPC endpoint. The production ingress may require a valid Ankr API
+key in the URL path (`https://rpc.ankr.com/<chain>/<key>`) and reject the
+committed placeholder key — in that case the SDK/proxy fails closed rather
+than returning unverified data. For verified-success runs use a real key:
+example 04 reads it from the `ANKR_API_KEY` env var; for 01–03 edit the URL
+in the example. Never commit key values.
 
 | # | Script | What it shows |
 | - | ------ | ------------- |
@@ -14,8 +19,11 @@ Arbitrum vRPC endpoint and need no API key.
 
 ```sh
 pnpm install
-pnpm example:all
+ANKR_API_KEY=<your key> pnpm example:all   # key optional — see note above
 ```
+
+Without `ANKR_API_KEY`, example 04 still runs end-to-end and demonstrates the
+proxy's fail-closed refusal instead of a verified-success result.
 
 To point at a different chain, edit the URL (`https://rpc.ankr.com/<chain>/<key>`)
 and chain id in the example. The adapters own the `_vrpc` suffix and attestation

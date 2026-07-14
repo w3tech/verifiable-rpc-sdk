@@ -8,7 +8,13 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 
-const UPSTREAM_URL = "https://rpc.ankr.com/arbitrum_vrpc/123456";
+// Ankr's production ingress may require a valid API key in the URL path and
+// rejects the committed placeholder. Set ANKR_API_KEY to see a
+// verified-success run; without it this example still demonstrates the
+// proxy's fail-closed refusal (no unverified byte is ever relayed).
+const API_KEY = process.env.ANKR_API_KEY ?? "123456";
+const HAS_REAL_KEY = !!process.env.ANKR_API_KEY;
+const UPSTREAM_URL = `https://rpc.ankr.com/arbitrum_vrpc/${API_KEY}`;
 const CHAIN_ID = "42161";
 // Explicit non-default port so the example never collides with a dev-running
 // default instance on 8969.
@@ -78,6 +84,17 @@ async function main() {
     });
     const body = await res.text();
     if (!res.ok) {
+      if (!HAS_REAL_KEY) {
+        // Expected without a key: the upstream rejects the placeholder, the
+        // proxy refuses to relay the unsigned reply — fail-closed by design.
+        console.log(
+          `Upstream rejected the placeholder API key; the proxy failed closed ` +
+            `(HTTP ${res.status}: ${truncate(body, 200)}).\n` +
+            `This is the fail-closed guarantee in action — no unverified byte was relayed.\n` +
+            `Set ANKR_API_KEY=<your Ankr API key> to see a verified-success run.`,
+        );
+        return;
+      }
       throw new Error(`proxy returned HTTP ${res.status}: ${body}`);
     }
     // The vRPC-* headers pass through untouched — proof the relayed response
