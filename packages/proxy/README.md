@@ -29,6 +29,14 @@ typed error (see [Failure semantics](#failure-semantics)).
   the proxy carries plaintext already-verified bytes; anything able to tamper
   with that hop sits inside your own machine's trust domain.
 
+## Quick start (npx)
+
+```sh
+npx @w3tech.io/vrpc-proxy --upstream <url> --chain <id>
+```
+
+The package is available from the npm registry after the next release.
+
 ## Usage (repo run)
 
 ```sh
