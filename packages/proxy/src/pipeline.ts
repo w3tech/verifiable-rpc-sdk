@@ -73,12 +73,27 @@ async function bufferStream(
 }
 
 /**
+ * Normalize a client request path via WHATWG URL semantics: resolves `.`/`..`
+ * segments (including their percent-encoded forms) so the result is an
+ * absolute path with no dot segments. Appending it to the upstream base path
+ * therefore cannot climb above the base. The path is embedded after a
+ * placeholder authority (not resolved as a relative URL) so a `//host/...`
+ * request-target stays a path instead of being parsed as an authority.
+ */
+function normalizeClientPath(clientPath: string): string {
+  const rawPath = clientPath.startsWith("/") ? clientPath : `/${clientPath}`;
+  return new URL(`http://vrpc-proxy.invalid${rawPath}`).pathname;
+}
+
+/**
  * Build the upstream target URL from the configured upstream and the client's
  * request URL. A bare `/` (no query) forwards to the upstream URL unchanged —
  * the plain JSON-RPC POST case, avoiding a trailing slash on key-in-path
- * upstreams. Otherwise the client path is appended to the upstream path
- * (upstream trailing slash removed) and query strings are merged with the
- * upstream's own query first.
+ * upstreams. Otherwise the client path is dot-segment-normalized (so it cannot
+ * traverse above the configured upstream base path — the one deliberate
+ * deviation from verbatim request-line forwarding), appended to the upstream
+ * path (upstream trailing slash removed), and query strings are merged with
+ * the upstream's own query first.
  */
 export function buildTargetUrl(upstreamUrl: string, clientUrl: string): string {
   if (clientUrl === "/") return upstreamUrl;
@@ -87,7 +102,7 @@ export function buildTargetUrl(upstreamUrl: string, clientUrl: string): string {
   const clientPath = qIdx === -1 ? clientUrl : clientUrl.slice(0, qIdx);
   const clientQuery = qIdx === -1 ? "" : clientUrl.slice(qIdx + 1);
   const basePath = upstream.pathname.replace(/\/+$/, "");
-  const mergedPath = basePath + clientPath;
+  const mergedPath = basePath + normalizeClientPath(clientPath);
   const upstreamQuery = upstream.search.startsWith("?") ? upstream.search.slice(1) : "";
   const mergedQuery =
     upstreamQuery !== "" && clientQuery !== ""
