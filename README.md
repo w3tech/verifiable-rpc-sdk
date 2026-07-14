@@ -32,6 +32,7 @@ The chain id bound into every signature is a **string** — the exact value the 
 | **`@w3tech.io/vrpc-ethers`** | ethers v6 drop-in `JsonRpcProvider` that verifies every HTTP response in `_send`, fail-closed. | [packages/ethers/README.md](./packages/ethers/README.md) |
 | **`@w3tech.io/vrpc-viem`** | Verifiable drop-in for viem's `http()` transport — verifies every response before parse. | [packages/viem/README.md](./packages/viem/README.md) |
 | **`@w3tech.io/vrpc-core`** | Transport-agnostic Ed25519 verification engine both adapters build on (zero client-lib deps). | [packages/core/README.md](./packages/core/README.md) |
+| **`@w3tech.io/vrpc-proxy`** | Local verifying reverse proxy — point any plain HTTP client at it; every response verified fail-closed. | [packages/proxy/README.md](./packages/proxy/README.md) |
 
 Install only what you use — the adapters declare `ethers` / `viem` as **peer dependencies**, so installing one never pulls the other:
 
@@ -40,7 +41,7 @@ pnpm add @w3tech.io/vrpc-ethers ethers     # ethers users
 pnpm add @w3tech.io/vrpc-viem viem         # viem users
 ```
 
-New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line swap, the optional (but strongly recommended) `chainId`, and the caveats for both adapters. Runnable examples live in [`examples/`](./examples/): `01-ethers-client.ts`, `02-viem-client.ts`, `03-vrpc-core-walkthrough.ts`. Run them with `pnpm example:01-ethers-client` (and `:02-viem-client`, `:03-vrpc-core-walkthrough`).
+New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line swap, the optional (but strongly recommended) `chainId`, and the caveats for both adapters. Runnable examples live in [`examples/`](./examples/): `01-ethers-client.ts`, `02-viem-client.ts`, `03-vrpc-core-walkthrough.ts`, `04-proxy.ts`. Run them with `pnpm example:01-ethers-client` (and `:02-viem-client`, `:03-vrpc-core-walkthrough`, `:04-proxy`).
 
 ## What is verified — and what is not
 

@@ -6,14 +6,37 @@ vRPC endpoint, verifies every response with `@w3tech.io/vrpc-core`
 (Ed25519 signature + attestation, fail-closed), and relays verified bytes
 back unchanged. An unverified body is never returned to the client.
 
+## What gets verified (trust boundary)
+
+Every relayed response has passed the full `TrustedVerifier` policy from
+`@w3tech.io/vrpc-core`: **signed + untampered** (Ed25519 over the canonical
+104-byte pre-image), **fresh** (replay window), **correctly bound** (chain id +
+signer key), plus the lazy attestation leg — correlation of the signing key to
+the node's TDX attestation and the **mandatory, always-on hardware verify** of
+the DCAP quote. A response failing any check is withheld and replaced with a
+typed error (see [Failure semantics](#failure-semantics)).
+
+**What the proxy does NOT protect against:**
+
+- A **malicious-but-correctly-signing enclave image** — the signature proves
+  the bytes came unmodified from the attested node, not that the node's code
+  is honest (the node-independent compose-hash anchor is deferred; see
+  [core's trust boundary](../core/README.md#what-gets-verified-trust-boundary)).
+- **Non-TEE data layers behind the node** — the enclave boundary covers the
+  serving process; disks, upstream peers, and the chain data it reads are
+  outside it.
+- The **client → proxy hop itself** — the loopback leg between your client and
+  the proxy carries plaintext already-verified bytes; anything able to tamper
+  with that hop sits inside your own machine's trust domain.
+
 ## Usage (repo run)
 
 ```sh
-pnpm run proxy -- --upstream https://rpc.example.com/arbitrum_vrpc/KEY --chain arbitrum
+pnpm run proxy -- --upstream https://rpc.example.com/arbitrum_vrpc/KEY --chain 42161
 ```
 
-(The root `proxy` script is wired in a follow-up commit; inside the package:
-`pnpm --filter @w3tech.io/vrpc-proxy start -- --upstream <url> --chain <id>`.)
+Inside the package:
+`pnpm --filter @w3tech.io/vrpc-proxy start -- --upstream <url> --chain <id>`.
 
 ## Flags and environment variables
 
@@ -33,13 +56,30 @@ CLI flag wins over env var, env var wins over the default.
 
 ## Failure semantics
 
-The proxy fails closed: a response that cannot be verified is never relayed.
+The proxy fails closed: a response that cannot be verified is never relayed —
+zero upstream body bytes reach the client. Every error path responds with a
+typed JSON body:
 
-- Verification failure, missing vRPC headers, unreachable upstream,
-  undecodable/oversized upstream body → HTTP `502` with a typed JSON body
-  `{"error":{"kind":"...","message":"..."}}` — zero upstream body bytes.
-- Upstream timeout → HTTP `504`, same typed JSON shape.
-- Request body over the cap → HTTP `413`.
+```json
+{ "error": { "kind": "...", "message": "..." } }
+```
+
+One row per `ProxyError` kind (source of truth: `src/errors.ts`):
+
+| Error kind | HTTP status | Thrown when |
+| ---------- | ----------- | ----------- |
+| `Config` | — (startup: message on stderr, exit 1 before the socket binds) | Invalid or missing startup configuration |
+| `BodyTooLarge` | `413` | Inbound request body exceeds the configured cap |
+| `UpstreamTimeout` | `504` | Upstream did not answer within the configured timeout |
+| `UpstreamConnect` | `502` | Upstream connection or dispatch failed (DNS, refused, reset, TLS, …) |
+| `UpstreamBodyTooLarge` | `502` | Upstream response body exceeds the cap — cannot be safely verified |
+| `UnsignedUpstream` | `502` | Upstream answered without vRPC signature headers — not a vRPC endpoint, or an unsigned gateway error |
+| `UnsupportedEncoding` | `502` | Upstream used a `Content-Encoding` the proxy cannot decode — cannot verify |
+| `DecodeFailed` | `502` | Upstream body failed to decode under its declared `Content-Encoding` |
+| `Internal` | `502` | Unexpected internal failure — generic message, no details leaked |
+
+Verification failures from core (`BadSignature`, `StaleTimestamp`, …) also
+respond `502` with the same JSON shape, carrying core's `kind` discriminator.
 
 Verified responses are relayed verbatim — body bytes, `Content-Encoding`, and
 `vRPC-*` headers untouched. The one deviation: when the upstream's encoding is
@@ -53,3 +93,25 @@ By default the attestation URL is derived from the upstream URL
 (`deriveVrpcUrls`). Derivation drops query parameters and the hash fragment —
 if your upstream URL carries query parameters (e.g. an API key in the query),
 pass `--attestation-url` explicitly.
+
+## Integration tests
+
+An env-gated real-wire suite (dstack simulator + attestation sidecar + this
+proxy in-process) lives in `tests/integration/`. It needs three env vars —
+`SIDECAR_BIN`, `DSTACK_SIMULATOR_BIN`, `DSTACK_SIMULATOR_FIXTURES_DIR` — and
+runs with:
+
+```sh
+SIDECAR_BIN=… DSTACK_SIMULATOR_BIN=… DSTACK_SIMULATOR_FIXTURES_DIR=… \
+  pnpm --filter @w3tech.io/vrpc-proxy test:integration
+```
+
+When the vars are unset the suite skips cleanly, so plain `pnpm -r test`
+stays unit-only. See the repo `AGENTS.md` for where the binaries come from.
+
+## Example
+
+See `examples/04-proxy.ts` at the repo root: the proxy spawned as a child
+process and queried by a plain `fetch` client that imports zero SDK code —
+verified result plus the passed-through `vRPC-*` headers printed. Run with
+`pnpm example:04-proxy`.
