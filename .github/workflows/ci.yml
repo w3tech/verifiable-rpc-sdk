@@ -19,9 +19,9 @@ jobs:
   lint-test-typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '22.14'
           cache: 'pnpm'
@@ -29,4 +29,5 @@ jobs:
       - run: pnpm run format:check
       - run: pnpm run lint
       - run: pnpm -r typecheck
+      - run: pnpm -r build
       - run: pnpm -r test
