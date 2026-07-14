@@ -67,7 +67,7 @@ The release job references `environment: prod` and sets `NODE_AUTH_TOKEN` from t
 registered yet. This lets the **same** workflow bootstrap the first publish (token) and then
 run fully tokenless (OIDC) afterwards.
 
-After the first publish, for each of the four packages register a per-package
+After the first publish, for each published package register a per-package
 trusted-publisher on npmjs.com:
 
 - Provider: **GitHub Actions**
