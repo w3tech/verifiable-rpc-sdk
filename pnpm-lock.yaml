@@ -45,8 +45,8 @@ importers:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
       viem:
-        specifier: ^2.55.1
-        version: 2.55.1(@typescript/typescript6@6.0.2)
+        specifier: ^2.55.2
+        version: 2.55.2(@typescript/typescript6@6.0.2)
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@26.1.1)(vite@7.3.5(@types/node@26.1.1)(tsx@4.23.1))
@@ -115,8 +115,8 @@ importers:
         specifier: ^26.1.1
         version: 26.1.1
       viem:
-        specifier: ^2.55.1
-        version: 2.55.1(typescript@7.0.2)
+        specifier: ^2.55.2
+        version: 2.55.2(typescript@7.0.2)
 
 packages:
 
@@ -1169,8 +1169,8 @@ packages:
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
-  viem@2.55.1:
-    resolution: {integrity: sha512-sajvEmONS3dEDFh0jKXGugTU8ImyGoIV3sEHSWNRhgkH484v/+6DjZAplRhcdeqNV/VBxOs/l3raOG4NaXvX9A==}
+  viem@2.55.2:
+    resolution: {integrity: sha512-XlJeyNAZ96dQfOHlxLTK1FKgtWw/TtxENKNMBSBgxqALjiWiBWrFmSSzwwMivryKnBwkbt5E+90jSCLnVEilLA==}
     peerDependencies:
       typescript: '>=5.0.4'
     peerDependenciesMeta:
@@ -2092,7 +2092,7 @@ snapshots:
 
   undici-types@8.3.0: {}
 
-  viem@2.55.1(@typescript/typescript6@6.0.2):
+  viem@2.55.2(@typescript/typescript6@6.0.2):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
@@ -2109,7 +2109,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  viem@2.55.1(typescript@7.0.2):
+  viem@2.55.2(typescript@7.0.2):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
