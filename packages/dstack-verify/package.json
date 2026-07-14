@@ -60,6 +60,6 @@
     "@noble/hashes": "^2.2.0"
   },
   "devDependencies": {
-    "@types/node": "*"
+    "@types/node": "^26.1.1"
   }
 }

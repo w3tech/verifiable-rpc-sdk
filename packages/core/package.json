@@ -72,9 +72,9 @@
     "@w3tech.io/dstack-verify": "workspace:*",
     "@noble/ed25519": "^3.1.0",
     "@noble/hashes": "^2.2.0",
-    "lru-cache": "^11.5.1"
+    "lru-cache": "^11.5.2"
   },
   "devDependencies": {
-    "@types/node": "*"
+    "@types/node": "^26.1.1"
   }
 }
