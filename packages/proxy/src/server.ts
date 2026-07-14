@@ -14,6 +14,7 @@ import {
   TrustedVerifier,
   type TrustedVerifierOptions,
 } from "@w3tech.io/vrpc-core";
+import { Agent } from "undici";
 
 import type { ProxyConfig } from "./config";
 import { createRequestHandler } from "./pipeline";
@@ -56,5 +57,15 @@ export function createProxyServer(
     options.verifyAttestation = overrides.verifyAttestation;
 
   const verifier = new TrustedVerifier(options);
-  return http.createServer(createRequestHandler({ config, verifier, logger }));
+
+  // Dedicated upstream Agent so the TCP/TLS connect phase is bound by the
+  // configured --timeout too — per-request undici options cover only the
+  // headers/body phases. Closed with the server to release keep-alive sockets.
+  const dispatcher = new Agent({ connect: { timeout: config.upstreamTimeoutMs } });
+
+  const server = http.createServer(createRequestHandler({ config, verifier, logger, dispatcher }));
+  server.on("close", () => {
+    void dispatcher.close();
+  });
+  return server;
 }

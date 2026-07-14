@@ -41,6 +41,13 @@ export interface RequestContext {
   config: ProxyConfig;
   verifier: TrustedVerifier;
   logger: Logger;
+  /**
+   * The undici dispatcher for upstream requests. The server factory supplies
+   * an Agent whose connect timeout is bound to `config.upstreamTimeoutMs` —
+   * undici's per-request options cover only headers/body timeouts, so without
+   * this the connect phase would run on the global dispatcher's default.
+   */
+  dispatcher: Dispatcher;
 }
 
 /**
@@ -89,10 +96,18 @@ export function buildTargetUrl(upstreamUrl: string, clientUrl: string): string {
   return `${upstream.origin}${mergedPath}${mergedQuery === "" ? "" : `?${mergedQuery}`}`;
 }
 
-/** Map an undici dispatch error onto the proxy's transport taxonomy. */
-function mapUndiciError(err: unknown): ProxyError {
+/**
+ * Map an undici dispatch error onto the proxy's transport taxonomy. All three
+ * timeout phases (connect, headers, body) are timeouts → 504; everything else
+ * (DNS, refused, reset, TLS, ...) is a connect failure → 502.
+ */
+export function mapUndiciError(err: unknown): ProxyError {
   const code = (err as { code?: string }).code;
-  if (code === "UND_ERR_HEADERS_TIMEOUT" || code === "UND_ERR_BODY_TIMEOUT") {
+  if (
+    code === "UND_ERR_CONNECT_TIMEOUT" ||
+    code === "UND_ERR_HEADERS_TIMEOUT" ||
+    code === "UND_ERR_BODY_TIMEOUT"
+  ) {
     return new UpstreamTimeoutError("Upstream did not respond within the configured timeout");
   }
   const detail = err instanceof Error ? err.message : String(err);
@@ -177,6 +192,7 @@ export function createRequestHandler(ctx: RequestContext): http.RequestListener 
         method: (req.method ?? "GET") as Dispatcher.HttpMethod,
         headers: forwardHeaders,
         body: requestBytes.length > 0 ? requestBytes : null,
+        dispatcher: ctx.dispatcher,
         headersTimeout: config.upstreamTimeoutMs,
         bodyTimeout: config.upstreamTimeoutMs,
       });
