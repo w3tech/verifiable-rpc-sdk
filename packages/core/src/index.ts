@@ -47,6 +47,6 @@ export {
 } from "./trusted-verifier";
 export { parseChainId } from "./utils";
 export type { ResponseHeaders, VerifiedPair, VerifyResponseOptions } from "./verify";
-export { isSignedVrpcResponse, verifyResponse } from "./verify";
+export { DEFAULT_REPLAY_WINDOW_MS, isSignedVrpcResponse, verifyResponse } from "./verify";
 export type { VrpcUrls } from "./vrpc-url";
 export { deriveVrpcUrls } from "./vrpc-url";

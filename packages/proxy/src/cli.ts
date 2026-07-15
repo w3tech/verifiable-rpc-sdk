@@ -7,7 +7,11 @@
 
 import type http from "node:http";
 
-import { VerificationError } from "@w3tech.io/vrpc-core";
+import {
+  DEFAULT_PUBKEY_CACHE_TTL_MS,
+  DEFAULT_REPLAY_WINDOW_MS,
+  VerificationError,
+} from "@w3tech.io/vrpc-core";
 
 import { type ProxyConfig, parseConfig } from "./config";
 import { ProxyError } from "./errors";
@@ -31,7 +35,10 @@ function redactUrl(url: string): string {
 }
 
 function startupBanner(config: ProxyConfig): string {
-  const ms = (v: number | undefined) => (v === undefined ? "core default" : `${v}ms`);
+  // Unset optional knobs fall back to core's own default — show that value so
+  // the banner reflects the effective config, sourced from core's constants.
+  const ms = (v: number | undefined, dflt: number) =>
+    v === undefined ? `default (${dflt}ms)` : `${v}ms`;
   return [
     `vrpc-proxy listening on http://${config.listenHost}:${config.listenPort}`,
     `  upstream:              ${redactUrl(config.upstreamUrl)}`,
@@ -39,8 +46,8 @@ function startupBanner(config: ProxyConfig): string {
     `  chain-id:              ${config.chainId}`,
     `  api-key:               ${config.apiKey === undefined ? "unset" : "set"}`,
     `  timeout:               ${config.upstreamTimeoutMs}ms`,
-    `  replay-window:         ${ms(config.replayWindowMs)}`,
-    `  attestation-cache-ttl: ${ms(config.pubkeyCacheTtlMs)}`,
+    `  replay-window:         ${ms(config.replayWindowMs, DEFAULT_REPLAY_WINDOW_MS)}`,
+    `  attestation-cache-ttl: ${ms(config.pubkeyCacheTtlMs, DEFAULT_PUBKEY_CACHE_TTL_MS)}`,
     `  max-body-bytes:        ${config.maxBodyBytes}`,
     `  log-level:             ${config.logLevel}`,
     "",
