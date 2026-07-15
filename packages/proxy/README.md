@@ -16,19 +16,6 @@ the node's TDX attestation and the **mandatory, always-on hardware verify** of
 the DCAP quote. A response failing any check is withheld and replaced with a
 typed error (see [Failure semantics](#failure-semantics)).
 
-**What the proxy does NOT protect against:**
-
-- A **malicious-but-correctly-signing enclave image** — the signature proves
-  the bytes came unmodified from the attested node, not that the node's code
-  is honest (the node-independent compose-hash anchor is deferred; see
-  [core's trust boundary](../core/README.md#what-gets-verified-trust-boundary)).
-- **Non-TEE data layers behind the node** — the enclave boundary covers the
-  serving process; disks, upstream peers, and the chain data it reads are
-  outside it.
-- The **client → proxy hop itself** — the loopback leg between your client and
-  the proxy carries plaintext already-verified bytes; anything able to tamper
-  with that hop sits inside your own machine's trust domain.
-
 ## Quick start (npx)
 
 ```sh
