@@ -22,8 +22,6 @@ typed error (see [Failure semantics](#failure-semantics)).
 npx @w3tech.io/vrpc-proxy --upstream <url> --chain-id <id>
 ```
 
-The package is available from the npm registry after the next release.
-
 ## Usage (repo run)
 
 ```sh
