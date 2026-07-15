@@ -13,8 +13,8 @@ One proxy instance serves exactly one blockchain: a single upstream vRPC
 endpoint (`--upstream`) bound to a single chain id (`--chain-id`). Run one
 instance per chain.
 
-> **Note:** a multichain proxy (routing several chains through one instance) is
-> in development.
+> 🚧 **Note:** a multichain proxy (routing several chains through one instance)
+> is in development.
 
 ## Quick start (npx)
 
