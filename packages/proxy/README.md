@@ -80,21 +80,6 @@ not acceptable to the client, the already-verified decoded plaintext is served
 instead (the signature covers the plaintext, so the fallback body remains
 client-re-verifiable).
 
-## Integration tests
-
-An env-gated real-wire suite (dstack simulator + attestation sidecar + this
-proxy in-process) lives in `tests/integration/`. It needs three env vars —
-`SIDECAR_BIN`, `DSTACK_SIMULATOR_BIN`, `DSTACK_SIMULATOR_FIXTURES_DIR` — and
-runs with:
-
-```sh
-SIDECAR_BIN=… DSTACK_SIMULATOR_BIN=… DSTACK_SIMULATOR_FIXTURES_DIR=… \
-  pnpm --filter @w3tech.io/vrpc-proxy test:integration
-```
-
-When the vars are unset the suite skips cleanly, so plain `pnpm -r test`
-stays unit-only. See the repo `AGENTS.md` for where the binaries come from.
-
 ## Example
 
 See `examples/04-proxy.ts` at the repo root: the proxy spawned as a child
