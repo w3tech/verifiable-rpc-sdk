@@ -9,6 +9,13 @@ back unchanged. An unverified body is never returned to the client.
 For what vRPC proves, the attestation flow, and the trust boundary, see the
 [Quickstart and how-it-works guide](../../docs/quickstart.md).
 
+One proxy instance serves exactly one blockchain: a single upstream vRPC
+endpoint (`--upstream`) bound to a single chain id (`--chain-id`). Run one
+instance per chain.
+
+> **Note:** a multichain proxy (routing several chains through one instance) is
+> in development.
+
 ## Quick start (npx)
 
 ```sh
