@@ -18,6 +18,35 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+// Mask any path segment that looks like an API key (shark's key shape) so the
+// startup banner never leaks a key-in-path secret to logs.
+const KEY_SEGMENT = /^([a-fA-F0-9]{64}|[a-zA-Z0-9]{32})$/;
+function redactUrl(url: string): string {
+  const u = new URL(url);
+  u.pathname = u.pathname
+    .split("/")
+    .map((seg) => (KEY_SEGMENT.test(seg) ? "***" : seg))
+    .join("/");
+  return u.toString();
+}
+
+function startupBanner(config: ProxyConfig): string {
+  const ms = (v: number | undefined) => (v === undefined ? "core default" : `${v}ms`);
+  return [
+    `vrpc-proxy listening on http://${config.listenHost}:${config.listenPort}`,
+    `  upstream:              ${redactUrl(config.upstreamUrl)}`,
+    `  attestation:           ${redactUrl(config.attestationUrl)}`,
+    `  chain-id:              ${config.chainId}`,
+    `  api-key:               ${config.apiKey === undefined ? "unset" : "set"}`,
+    `  timeout:               ${config.upstreamTimeoutMs}ms`,
+    `  replay-window:         ${ms(config.replayWindowMs)}`,
+    `  attestation-cache-ttl: ${ms(config.pubkeyCacheTtlMs)}`,
+    `  max-body-bytes:        ${config.maxBodyBytes}`,
+    `  log-level:             ${config.logLevel}`,
+    "",
+  ].join("\n");
+}
+
 function loadConfig(): ProxyConfig {
   // pnpm passes the `--` separator through to the script verbatim
   // (`pnpm run proxy -- --upstream ...`); drop it before flag parsing.
@@ -54,12 +83,9 @@ for (const warning of config.warnings ?? []) {
 const server = buildServer(config);
 
 server.listen(config.listenPort, config.listenHost, () => {
-  // The only unconditional output: one banner line on stderr. Only the
-  // upstream ORIGIN is printed — the full URL may carry an API key as a path
-  // segment, which must never reach container logs.
-  process.stderr.write(
-    `vrpc-proxy listening on http://${config.listenHost}:${config.listenPort} -> ${new URL(config.upstreamUrl).origin} (chain ${config.chainId})\n`,
-  );
+  // Startup banner on stderr: the launch config, with any key-in-path segment
+  // and the API key value redacted so secrets never reach container logs.
+  process.stderr.write(startupBanner(config));
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
