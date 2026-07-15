@@ -11,28 +11,28 @@ import { parseConfig } from "../src/config";
 import { ConfigError } from "../src/errors";
 
 const UPSTREAM = "https://rpc.example.com/arbitrum_vrpc/KEY";
-const BASE = ["--upstream", UPSTREAM, "--chain", "test-chain"];
+const BASE = ["--upstream", UPSTREAM, "--chain-id", "test-chain"];
 
 describe("parseConfig", () => {
   test("missingUpstreamNamesFlagAndEnvVar", () => {
-    expect(() => parseConfig(["--chain", "test-chain"], {})).toThrow(ConfigError);
-    expect(() => parseConfig(["--chain", "test-chain"], {})).toThrow(/--upstream/);
-    expect(() => parseConfig(["--chain", "test-chain"], {})).toThrow(/VRPC_PROXY_UPSTREAM/);
+    expect(() => parseConfig(["--chain-id", "test-chain"], {})).toThrow(ConfigError);
+    expect(() => parseConfig(["--chain-id", "test-chain"], {})).toThrow(/--upstream/);
+    expect(() => parseConfig(["--chain-id", "test-chain"], {})).toThrow(/VRPC_PROXY_UPSTREAM/);
   });
 
   test("missingChainThrowsConfigError", () => {
     expect(() => parseConfig(["--upstream", UPSTREAM], {})).toThrow(ConfigError);
-    expect(() => parseConfig(["--upstream", UPSTREAM], {})).toThrow(/--chain/);
+    expect(() => parseConfig(["--upstream", UPSTREAM], {})).toThrow(/--chain-id/);
   });
 
   test("invalidUpstreamUrlThrowsConfigError", () => {
-    expect(() => parseConfig(["--upstream", "not a url", "--chain", "test-chain"], {})).toThrow(
+    expect(() => parseConfig(["--upstream", "not a url", "--chain-id", "test-chain"], {})).toThrow(
       ConfigError,
     );
   });
 
   test("invalidChainIdPropagatesCoreInvalidChainId", () => {
-    const args = (chain: string) => ["--upstream", UPSTREAM, "--chain", chain];
+    const args = (chain: string) => ["--upstream", UPSTREAM, "--chain-id", chain];
     // Whitespace-only trims to empty.
     expect(() => parseConfig(args("   "), {})).toThrow(InvalidChainId);
     // Oversized: > 64 UTF-8 bytes.
@@ -68,7 +68,7 @@ describe("parseConfig", () => {
   });
 
   test("envFallbackUsedWhenFlagAbsent", () => {
-    const config = parseConfig(["--chain", "test-chain"], { VRPC_PROXY_UPSTREAM: UPSTREAM });
+    const config = parseConfig(["--chain-id", "test-chain"], { VRPC_PROXY_UPSTREAM: UPSTREAM });
     expect(config.upstreamUrl).toBe(UPSTREAM);
   });
 
@@ -84,7 +84,7 @@ describe("parseConfig", () => {
 
   test("upstreamQueryProducesWarning", () => {
     const config = parseConfig(
-      ["--upstream", "https://rpc.example.com/chain?key=abc", "--chain", "test-chain"],
+      ["--upstream", "https://rpc.example.com/chain?key=abc", "--chain-id", "test-chain"],
       {},
     );
     expect(config.warnings).toBeDefined();

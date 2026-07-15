@@ -59,7 +59,7 @@ function spawnProxy(): Promise<{ child: ChildProcess; url: string }> {
     "packages/proxy/src/cli.ts",
     "--upstream",
     UPSTREAM_URL,
-    "--chain",
+    "--chain-id",
     CHAIN_ID,
     "--listen",
     LISTEN,

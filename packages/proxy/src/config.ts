@@ -34,7 +34,7 @@ const DEFAULT_MAX_BODY_BYTES = 33_554_432; // 32 MiB
 
 const PARSE_OPTIONS = {
   upstream: { type: "string" },
-  chain: { type: "string" },
+  "chain-id": { type: "string" },
   "api-key": { type: "string" },
   listen: { type: "string" },
   timeout: { type: "string" },
@@ -80,7 +80,7 @@ function parseListen(value: string): { host: string; port: number } {
 export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig {
   let values: {
     upstream?: string;
-    chain?: string;
+    "chain-id"?: string;
     "api-key"?: string;
     listen?: string;
     timeout?: string;
@@ -104,9 +104,9 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   if (upstream === undefined || upstream === "") {
     throw new ConfigError("Missing required --upstream flag (env: VRPC_PROXY_UPSTREAM)");
   }
-  const chain = values.chain ?? env.VRPC_PROXY_CHAIN;
+  const chain = values["chain-id"] ?? env.VRPC_PROXY_CHAIN_ID;
   if (chain === undefined || chain === "") {
-    throw new ConfigError("Missing required --chain flag (env: VRPC_PROXY_CHAIN)");
+    throw new ConfigError("Missing required --chain-id flag (env: VRPC_PROXY_CHAIN_ID)");
   }
 
   let upstreamParsed: URL;

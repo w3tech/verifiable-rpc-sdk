@@ -32,7 +32,7 @@ typed error (see [Failure semantics](#failure-semantics)).
 ## Quick start (npx)
 
 ```sh
-npx @w3tech.io/vrpc-proxy --upstream <url> --chain <id>
+npx @w3tech.io/vrpc-proxy --upstream <url> --chain-id <id>
 ```
 
 The package is available from the npm registry after the next release.
@@ -40,11 +40,11 @@ The package is available from the npm registry after the next release.
 ## Usage (repo run)
 
 ```sh
-pnpm run proxy -- --upstream https://rpc.example.com/arbitrum_vrpc/KEY --chain 42161
+pnpm run proxy -- --upstream https://rpc.example.com/arbitrum_vrpc/KEY --chain-id 42161
 ```
 
 Inside the package:
-`pnpm --filter @w3tech.io/vrpc-proxy start -- --upstream <url> --chain <id>`.
+`pnpm --filter @w3tech.io/vrpc-proxy start -- --upstream <url> --chain-id <id>`.
 
 ## Flags and environment variables
 
@@ -53,7 +53,7 @@ CLI flag wins over env var, env var wins over the default.
 | Flag | Env var | Default | Description |
 | ---- | ------- | ------- | ----------- |
 | `--upstream` (required) | `VRPC_PROXY_UPSTREAM` | — | Upstream vRPC endpoint URL |
-| `--chain` (required) | `VRPC_PROXY_CHAIN` | — | Chain id (opaque string, validated at startup) |
+| `--chain-id` (required) | `VRPC_PROXY_CHAIN_ID` | — | Chain id (opaque string, validated at startup) |
 | `--api-key` | `VRPC_PROXY_API_KEY` | — | Optional API key sent as `x-api-key` to both the upstream and the attestation endpoint; a client-supplied `x-api-key` header takes precedence |
 | `--listen` | `VRPC_PROXY_LISTEN` | `127.0.0.1:8969` | Listen `host:port` |
 | `--timeout` | `VRPC_PROXY_TIMEOUT` | `30000` | Upstream timeout, ms |
