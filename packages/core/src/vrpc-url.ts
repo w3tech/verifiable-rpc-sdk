@@ -31,10 +31,34 @@ export interface VrpcUrls {
  * `https://rpc.ankr.com/arbitrum/<key>`  → rpc `…/arbitrum_vrpc/<key>`,  attest `…/arbitrum_vrpc/<key>/attestation`
  * `https://rpc.ankr.com/arbitrum_vrpc`   → rpc `…/arbitrum_vrpc` (unchanged)
  * `http://host:8545` (no path)           → rpc `…:8545/_vrpc`            (direct node serves vRPC at `/_vrpc`)
+ * `…/premium-http/ton_api_v2/<key>`      → rpc `…/premium-http/ton_api_v2_vrpc/<key>`, attest `…/ton_api_v2_vrpc/<key>/attestation`
+ *                                          (REST prefix kept on the RPC leg, stripped from the attestation leg)
  */
+/**
+ * REST/HTTP-API route prefixes that precede the chain segment. On the public
+ * `rpc.ankr.com` form non-EVM HTTP APIs live under `premium-http/<chain>/<key>`
+ * (rewritten to shark's `/apikey/<key>/rest/<chain>`); shark's direct form is
+ * `rest/<chain>`. The attestation ingress only matches the UNprefixed
+ * `/<chain>/<key>/attestation` route, so the prefix is kept on the RPC leg and
+ * stripped from the attestation leg.
+ */
+const REST_PREFIXES = new Set(["premium-http", "rest"]);
+
 export function deriveVrpcUrls(url: string): VrpcUrls {
   const u = new URL(url);
   const segments = u.pathname.split("/").filter(Boolean);
+
+  // A known REST prefix shifts the chain to the SECOND segment: suffix that,
+  // keep the prefix on the RPC route, drop it from the attestation route.
+  if (segments.length >= 2 && REST_PREFIXES.has(segments[0] as string)) {
+    const [prefix, chain, ...rest] = segments as [string, string, ...string[]];
+    const chainVrpc = chain.endsWith("_vrpc") ? chain : `${chain}_vrpc`;
+    const tail = [chainVrpc, ...rest].join("/");
+    return {
+      rpcUrl: `${u.origin}/${prefix}/${tail}`,
+      attestationUrl: `${u.origin}/${tail}/attestation`,
+    };
+  }
 
   if (segments.length === 0) {
     // No chain segment (e.g. a direct node root `http://host:port`). The node
