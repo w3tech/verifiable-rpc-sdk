@@ -35,8 +35,6 @@ const DEFAULT_MAX_BODY_BYTES = 33_554_432; // 32 MiB
 const PARSE_OPTIONS = {
   upstream: { type: "string" },
   chain: { type: "string" },
-  "attestation-url": { type: "string" },
-  "attestation-header": { type: "string", multiple: true },
   "api-key": { type: "string" },
   listen: { type: "string" },
   timeout: { type: "string" },
@@ -73,19 +71,6 @@ function parseListen(value: string): { host: string; port: number } {
   return { host, port };
 }
 
-function parseHeaderPair(pair: string, source: string): [string, string] {
-  const idx = pair.indexOf(":");
-  if (idx <= 0) {
-    throw new ConfigError(`${source} must be "Name: value", got ${JSON.stringify(pair)}`);
-  }
-  const name = pair.slice(0, idx).trim();
-  const value = pair.slice(idx + 1).trim();
-  if (name === "") {
-    throw new ConfigError(`${source} has an empty header name: ${JSON.stringify(pair)}`);
-  }
-  return [name, value];
-}
-
 /**
  * Parse and validate the proxy configuration from CLI argv and environment.
  * Throws ConfigError for any transport/config problem and lets core's
@@ -96,8 +81,6 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   let values: {
     upstream?: string;
     chain?: string;
-    "attestation-url"?: string;
-    "attestation-header"?: string[];
     "api-key"?: string;
     listen?: string;
     timeout?: string;
@@ -160,29 +143,12 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
     );
   }
 
-  const attestationHeaders: Record<string, string> = {};
-  const headerPairs =
-    values["attestation-header"] ??
-    (env.VRPC_PROXY_ATTESTATION_HEADER === undefined
-      ? []
-      : env.VRPC_PROXY_ATTESTATION_HEADER.split("\n").filter((line) => line.trim() !== ""));
-  const headerSource =
-    values["attestation-header"] !== undefined
-      ? "--attestation-header"
-      : "VRPC_PROXY_ATTESTATION_HEADER";
-  for (const pair of headerPairs) {
-    const [name, value] = parseHeaderPair(pair, headerSource);
-    attestationHeaders[name] = value;
-  }
-
+  // Same single-URL model as the SDK adapters: both legs derive from the
+  // upstream URL; the API key rides as an `x-api-key` header on both.
   const apiKey = values["api-key"] ?? env.VRPC_PROXY_API_KEY;
-  if (apiKey !== undefined && apiKey !== "") {
-    // Explicit --attestation-header wins over the convenience flag.
-    attestationHeaders["x-api-key"] ??= apiKey;
-  }
-
-  const explicitAttestationUrl = values["attestation-url"] ?? env.VRPC_PROXY_ATTESTATION_URL;
-  const attestationUrl = explicitAttestationUrl ?? deriveVrpcUrls(upstream).attestationUrl;
+  const attestationHeaders: Record<string, string> =
+    apiKey !== undefined && apiKey !== "" ? { "x-api-key": apiKey } : {};
+  const attestationUrl = deriveVrpcUrls(upstream).attestationUrl;
 
   const config: ProxyConfig = {
     upstreamUrl: upstream,
@@ -201,9 +167,9 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   if (apiKey !== undefined && apiKey !== "") {
     config.apiKey = apiKey;
   }
-  if (explicitAttestationUrl === undefined && upstreamParsed.search !== "") {
+  if (upstreamParsed.search !== "") {
     config.warnings = [
-      "The upstream URL carries query parameters, which the derived attestation URL drops; pass --attestation-url explicitly if the attestation endpoint needs them.",
+      "The upstream URL carries query parameters, which the derived attestation URL drops; prefer --api-key or a key-in-path upstream URL.",
     ];
   }
   return config;

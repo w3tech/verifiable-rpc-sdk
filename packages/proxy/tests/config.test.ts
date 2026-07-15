@@ -77,39 +77,12 @@ describe("parseConfig", () => {
     expect(config.upstreamTimeoutMs).toBe(5000);
   });
 
-  test("repeatableAttestationHeaderFlagsCollected", () => {
-    const config = parseConfig(
-      [...BASE, "--attestation-header", "X-Api-Key: k1", "--attestation-header", "X-Other: v"],
-      {},
-    );
-    expect(config.attestationHeaders).toEqual({ "X-Api-Key": "k1", "X-Other": "v" });
-  });
-
-  test("newlineSeparatedEnvAttestationHeadersParsed", () => {
-    const config = parseConfig(BASE, {
-      VRPC_PROXY_ATTESTATION_HEADER: "X-Api-Key: k1\nX-Other: v",
-    });
-    expect(config.attestationHeaders).toEqual({ "X-Api-Key": "k1", "X-Other": "v" });
-  });
-
-  test("attestationHeaderWithoutColonThrowsConfigError", () => {
-    expect(() => parseConfig([...BASE, "--attestation-header", "no-colon-here"], {})).toThrow(
-      ConfigError,
-    );
-  });
-
   test("attestationUrlDerivedFromUpstream", () => {
     const config = parseConfig(BASE, {});
     expect(config.attestationUrl).toBe(deriveVrpcUrls(UPSTREAM).attestationUrl);
   });
 
-  test("explicitAttestationUrlOverrideWins", () => {
-    const override = "https://sidecar.internal:8080/attestation";
-    const config = parseConfig([...BASE, "--attestation-url", override], {});
-    expect(config.attestationUrl).toBe(override);
-  });
-
-  test("upstreamQueryWithoutOverrideProducesWarning", () => {
+  test("upstreamQueryProducesWarning", () => {
     const config = parseConfig(
       ["--upstream", "https://rpc.example.com/chain?key=abc", "--chain", "test-chain"],
       {},
@@ -128,15 +101,6 @@ describe("parseConfig", () => {
     const config = parseConfig(BASE, { VRPC_PROXY_API_KEY: "envkey" });
     expect(config.apiKey).toBe("envkey");
     expect(config.attestationHeaders["x-api-key"]).toBe("envkey");
-  });
-
-  test("explicitAttestationHeaderWinsOverApiKey", () => {
-    const config = parseConfig(
-      [...BASE, "--api-key", "sekret", "--attestation-header", "x-api-key: explicit"],
-      {},
-    );
-    expect(config.attestationHeaders["x-api-key"]).toBe("explicit");
-    expect(config.apiKey).toBe("sekret");
   });
 
   test("absentApiKeyLeavesConfigUnset", () => {

@@ -54,9 +54,7 @@ CLI flag wins over env var, env var wins over the default.
 | ---- | ------- | ------- | ----------- |
 | `--upstream` (required) | `VRPC_PROXY_UPSTREAM` | — | Upstream vRPC endpoint URL |
 | `--chain` (required) | `VRPC_PROXY_CHAIN` | — | Chain id (opaque string, validated at startup) |
-| `--attestation-url` | `VRPC_PROXY_ATTESTATION_URL` | derived from `--upstream` | Attestation endpoint override |
-| `--attestation-header` (repeatable, `"Name: value"`) | `VRPC_PROXY_ATTESTATION_HEADER` (newline-separated pairs) | — | Extra headers for the attestation leg (e.g. `x-api-key`) |
-| `--api-key` | `VRPC_PROXY_API_KEY` | — | Optional API key sent as `x-api-key` to both the upstream and the attestation endpoint; a client-supplied `x-api-key` or explicit `--attestation-header` takes precedence |
+| `--api-key` | `VRPC_PROXY_API_KEY` | — | Optional API key sent as `x-api-key` to both the upstream and the attestation endpoint; a client-supplied `x-api-key` header takes precedence |
 | `--listen` | `VRPC_PROXY_LISTEN` | `127.0.0.1:8969` | Listen `host:port` |
 | `--timeout` | `VRPC_PROXY_TIMEOUT` | `30000` | Upstream timeout, ms |
 | `--replay-window` | `VRPC_PROXY_REPLAY_WINDOW` | core default (`60000`) | Replay window, ms |
@@ -98,10 +96,10 @@ client-re-verifiable).
 
 ## Attestation URL note
 
-By default the attestation URL is derived from the upstream URL
-(`deriveVrpcUrls`). Derivation drops query parameters and the hash fragment —
-if your upstream URL carries query parameters (e.g. an API key in the query),
-pass `--attestation-url` explicitly.
+The attestation URL is derived from the upstream URL (`deriveVrpcUrls`) — the
+same single-URL model as the SDK adapters. Derivation drops query parameters
+and the hash fragment; pass the API key via `--api-key` (or key-in-path)
+instead of the query string.
 
 ## Integration tests
 

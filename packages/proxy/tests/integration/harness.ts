@@ -284,8 +284,8 @@ function simulatorVerifyAttestation(bundle: AttestationBundle, policy: VerifyPol
  * window) runs the production `TrustedVerifier` path. The attestation URL is
  * set explicitly to `${upstreamUrl}/attestation` — the raw sidecar serves
  * `/attestation`, while `deriveVrpcUrls` targets shark-routed/direct-node
- * topologies (`/_vrpc/…`); this mirrors the production `--attestation-url`
- * override and core's own integration tests.
+ * topologies (`/_vrpc/…`); the CLI has no override flag (SDK-style
+ * single-URL derivation) — this programmatic seam exists for tests.
  */
 export async function spawnProxy(opts: {
   upstreamUrl: string;
