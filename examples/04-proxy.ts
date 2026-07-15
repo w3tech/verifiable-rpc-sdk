@@ -1,77 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Verifying proxy demo: spawn the local vrpc-proxy as a child process, then
-// call it with a plain `fetch` — the client imports zero SDK code, yet every
-// byte it receives was verified fail-closed (signature + attestation +
-// mandatory hardware verify) by the proxy before being relayed.
+// Spawn vrpc-proxy, then call it with a plain fetch. The client imports no SDK
+// code, yet every byte it receives was verified fail-closed before relay.
 import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 
-// Ankr's production ingress may require a valid API key in the URL path and
-// rejects the committed placeholder. Set ANKR_API_KEY to see a
-// verified-success run; without it this example still demonstrates the
-// proxy's fail-closed refusal (no unverified byte is ever relayed).
+// Set ANKR_API_KEY for a verified-success run; without it the placeholder is
+// rejected upstream and the proxy fails closed — still a valid demo.
 const API_KEY = process.env.ANKR_API_KEY ?? "123456";
-const HAS_REAL_KEY = !!process.env.ANKR_API_KEY;
 const UPSTREAM_URL = `https://rpc.ankr.com/arbitrum_vrpc/${API_KEY}`;
 const CHAIN_ID = "42161";
-// Explicit non-default port so the example never collides with a dev-running
-// default instance on 8969.
 const LISTEN = "127.0.0.1:8970";
-
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
-const BOOT_TIMEOUT_MS = 30_000;
-
-/**
- * Spawn the proxy CLI directly via tsx and resolve with its listen URL parsed
- * out of the single stderr banner line.
- */
-function spawnProxy(): Promise<{ child: ChildProcess; url: string }> {
-  const child = spawn(
-    "tsx",
-    [
-      "packages/proxy/src/cli.ts",
-      "--upstream",
-      UPSTREAM_URL,
-      "--chain",
-      CHAIN_ID,
-      "--listen",
-      LISTEN,
-    ],
-    { cwd: REPO_ROOT, stdio: ["ignore", "ignore", "pipe"] },
-  );
-
-  return new Promise((resolve, reject) => {
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(new Error(`proxy did not print its banner within ${BOOT_TIMEOUT_MS}ms:\n${stderr}`));
-    }, BOOT_TIMEOUT_MS);
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString();
-      const banner = stderr.match(/vrpc-proxy listening on (http:\/\/\S+)/);
-      if (banner?.[1]) {
-        clearTimeout(timer);
-        resolve({ child, url: banner[1] });
-      }
-    });
-    child.on("exit", (code) => {
-      clearTimeout(timer);
-      reject(new Error(`proxy exited before binding (code ${code}):\n${stderr}`));
-    });
-  });
-}
-
-function truncate(value: string, max = 24): string {
-  return value.length > max ? `${value.slice(0, max)}…` : value;
-}
 
 async function main() {
   const { child, url } = await spawnProxy();
   try {
-    // Plain HTTP client — no SDK imports; the proxy owns all verification and
-    // never relays a body it could not verify.
     const res = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -83,36 +28,22 @@ async function main() {
       }),
     });
     const body = await res.text();
+
+    // The proxy never relays a body it could not verify.
     if (!res.ok) {
-      if (!HAS_REAL_KEY) {
-        // Expected without a key: the upstream rejects the placeholder, the
-        // proxy refuses to relay the unsigned reply — fail-closed by design.
-        console.log(
-          `Upstream rejected the placeholder API key; the proxy failed closed ` +
-            `(HTTP ${res.status}: ${truncate(body, 200)}).\n` +
-            `This is the fail-closed guarantee in action — no unverified byte was relayed.\n` +
-            `Set ANKR_API_KEY=<your Ankr API key> to see a verified-success run.`,
-        );
-        return;
-      }
-      throw new Error(`proxy returned HTTP ${res.status}: ${body}`);
+      console.log(
+        `Proxy failed closed: HTTP ${res.status}. Set ANKR_API_KEY=<key> for a verified-success run.`,
+      );
+      return;
     }
-    // The vRPC-* headers pass through untouched — proof the relayed response
-    // is the node-signed original, re-verifiable by the client at any time.
-    const vrpcHeaders = ["vrpc-signature", "vrpc-timestamp", "vrpc-pubkey"].map(
-      (name) => [name, res.headers.get(name)] as const,
-    );
-    if (vrpcHeaders.some(([, value]) => value === null)) {
-      throw new Error(`vRPC headers missing on a relayed response: ${truncate(body, 200)}`);
-    }
-    const parsed = JSON.parse(body) as { result?: { number?: string; hash?: string } };
+
+    // A relayed 200 carries the node's vRPC-* headers verbatim — re-verifiable by the client.
+    const { result } = JSON.parse(body) as { result?: { number?: string; hash?: string } };
     console.log({
       httpStatus: res.status,
-      blockNumber: parsed.result?.number,
-      blockHash: parsed.result?.hash,
-      verifiedHeaders: Object.fromEntries(
-        vrpcHeaders.map(([name, value]) => [name, truncate(value ?? "")]),
-      ),
+      blockNumber: result?.number,
+      blockHash: result?.hash,
+      pubkey: res.headers.get("vrpc-pubkey"),
     });
   } finally {
     if (child.exitCode === null) {
@@ -120,6 +51,39 @@ async function main() {
       await once(child, "exit").catch(() => {});
     }
   }
+}
+
+// Resolve once the proxy's stderr banner reports its listen URL.
+function spawnProxy(): Promise<{ child: ChildProcess; url: string }> {
+  const args = [
+    "packages/proxy/src/cli.ts",
+    "--upstream",
+    UPSTREAM_URL,
+    "--chain",
+    CHAIN_ID,
+    "--listen",
+    LISTEN,
+  ];
+  const child = spawn("tsx", args, { cwd: REPO_ROOT, stdio: ["ignore", "ignore", "pipe"] });
+  return new Promise((resolve, reject) => {
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error(`proxy did not start within 30s:\n${stderr}`));
+    }, 30_000);
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+      const url = stderr.match(/listening on (http:\/\/\S+)/)?.[1];
+      if (url) {
+        clearTimeout(timer);
+        resolve({ child, url });
+      }
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      reject(new Error(`proxy exited before binding (code ${code}):\n${stderr}`));
+    });
+  });
 }
 
 main().catch((err) => {
