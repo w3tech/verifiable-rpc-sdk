@@ -14,6 +14,8 @@ import { ConfigError } from "./errors";
 export interface ProxyConfig {
   upstreamUrl: string;
   chainId: string;
+  /** Optional API key sent as `x-api-key` to both the upstream and the attestation endpoint. */
+  apiKey?: string;
   attestationUrl: string;
   attestationHeaders: Record<string, string>;
   listenHost: string;
@@ -35,6 +37,7 @@ const PARSE_OPTIONS = {
   chain: { type: "string" },
   "attestation-url": { type: "string" },
   "attestation-header": { type: "string", multiple: true },
+  "api-key": { type: "string" },
   listen: { type: "string" },
   timeout: { type: "string" },
   "replay-window": { type: "string" },
@@ -95,6 +98,7 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
     chain?: string;
     "attestation-url"?: string;
     "attestation-header"?: string[];
+    "api-key"?: string;
     listen?: string;
     timeout?: string;
     "replay-window"?: string;
@@ -171,6 +175,12 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
     attestationHeaders[name] = value;
   }
 
+  const apiKey = values["api-key"] ?? env.VRPC_PROXY_API_KEY;
+  if (apiKey !== undefined && apiKey !== "") {
+    // Explicit --attestation-header wins over the convenience flag.
+    attestationHeaders["x-api-key"] ??= apiKey;
+  }
+
   const explicitAttestationUrl = values["attestation-url"] ?? env.VRPC_PROXY_ATTESTATION_URL;
   const attestationUrl = explicitAttestationUrl ?? deriveVrpcUrls(upstream).attestationUrl;
 
@@ -187,6 +197,9 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   };
   if (replayWindowMs !== undefined) {
     config.replayWindowMs = replayWindowMs;
+  }
+  if (apiKey !== undefined && apiKey !== "") {
+    config.apiKey = apiKey;
   }
   if (explicitAttestationUrl === undefined && upstreamParsed.search !== "") {
     config.warnings = [

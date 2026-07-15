@@ -117,4 +117,31 @@ describe("parseConfig", () => {
     expect(config.warnings).toBeDefined();
     expect(config.warnings?.length).toBeGreaterThan(0);
   });
+
+  test("apiKeyFlagSetsConfigAndAttestationHeader", () => {
+    const config = parseConfig([...BASE, "--api-key", "sekret"], {});
+    expect(config.apiKey).toBe("sekret");
+    expect(config.attestationHeaders["x-api-key"]).toBe("sekret");
+  });
+
+  test("apiKeyEnvFallback", () => {
+    const config = parseConfig(BASE, { VRPC_PROXY_API_KEY: "envkey" });
+    expect(config.apiKey).toBe("envkey");
+    expect(config.attestationHeaders["x-api-key"]).toBe("envkey");
+  });
+
+  test("explicitAttestationHeaderWinsOverApiKey", () => {
+    const config = parseConfig(
+      [...BASE, "--api-key", "sekret", "--attestation-header", "x-api-key: explicit"],
+      {},
+    );
+    expect(config.attestationHeaders["x-api-key"]).toBe("explicit");
+    expect(config.apiKey).toBe("sekret");
+  });
+
+  test("absentApiKeyLeavesConfigUnset", () => {
+    const config = parseConfig(BASE, {});
+    expect(config.apiKey).toBeUndefined();
+    expect(config.attestationHeaders["x-api-key"]).toBeUndefined();
+  });
 });

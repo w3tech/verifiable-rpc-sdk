@@ -6,10 +6,10 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 
-// Set ANKR_API_KEY for a verified-success run; without it the placeholder is
-// rejected upstream and the proxy fails closed — still a valid demo.
-const API_KEY = process.env.ANKR_API_KEY ?? "123456";
-const UPSTREAM_URL = `https://rpc.ankr.com/arbitrum_vrpc/${API_KEY}`;
+// Set ANKR_API_KEY for a verified-success run; without it the upstream rejects
+// the request and the proxy fails closed — still a valid demo.
+const API_KEY = process.env.ANKR_API_KEY;
+const UPSTREAM_URL = "https://rpc.ankr.com/arbitrum_vrpc";
 const CHAIN_ID = "42161";
 const LISTEN = "127.0.0.1:8970";
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -64,6 +64,7 @@ function spawnProxy(): Promise<{ child: ChildProcess; url: string }> {
     "--listen",
     LISTEN,
   ];
+  if (API_KEY) args.push("--api-key", API_KEY);
   const child = spawn("tsx", args, { cwd: REPO_ROOT, stdio: ["ignore", "ignore", "pipe"] });
   return new Promise((resolve, reject) => {
     let stderr = "";

@@ -201,6 +201,10 @@ export function createRequestHandler(ctx: RequestContext): http.RequestListener 
     // 2. Forward verbatim to the upstream.
     const targetUrl = buildTargetUrl(config.upstreamUrl, req.url ?? "/");
     const forwardHeaders = buildForwardHeaders(req.headers);
+    if (config.apiKey !== undefined) {
+      // Convenience injection; a client-supplied x-api-key is forwarded verbatim instead.
+      forwardHeaders["x-api-key"] ??= config.apiKey;
+    }
     log.debug("proxy.forward", {
       method: req.method,
       url: req.url,

@@ -56,6 +56,7 @@ CLI flag wins over env var, env var wins over the default.
 | `--chain` (required) | `VRPC_PROXY_CHAIN` | — | Chain id (opaque string, validated at startup) |
 | `--attestation-url` | `VRPC_PROXY_ATTESTATION_URL` | derived from `--upstream` | Attestation endpoint override |
 | `--attestation-header` (repeatable, `"Name: value"`) | `VRPC_PROXY_ATTESTATION_HEADER` (newline-separated pairs) | — | Extra headers for the attestation leg (e.g. `x-api-key`) |
+| `--api-key` | `VRPC_PROXY_API_KEY` | — | Optional API key sent as `x-api-key` to both the upstream and the attestation endpoint; a client-supplied `x-api-key` or explicit `--attestation-header` takes precedence |
 | `--listen` | `VRPC_PROXY_LISTEN` | `127.0.0.1:8969` | Listen `host:port` |
 | `--timeout` | `VRPC_PROXY_TIMEOUT` | `30000` | Upstream timeout, ms |
 | `--replay-window` | `VRPC_PROXY_REPLAY_WINDOW` | core default (`60000`) | Replay window, ms |
