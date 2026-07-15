@@ -9,6 +9,7 @@ import { parseArgs } from "node:util";
 import { deriveVrpcUrls, validateChainId } from "@w3tech.io/vrpc-core";
 
 import { ConfigError } from "./errors";
+import type { LogLevel } from "./logger";
 
 /** Resolved, validated proxy configuration. */
 export interface ProxyConfig {
@@ -29,7 +30,7 @@ export interface ProxyConfig {
    */
   pubkeyCacheTtlMs?: number;
   maxBodyBytes: number;
-  logLevel: "silent" | "debug";
+  logLevel: LogLevel;
   /** Non-fatal startup warnings; cli.ts prints them to stderr. */
   warnings?: string[];
 }
@@ -151,10 +152,10 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   const listenRaw = values.listen ?? env.VRPC_PROXY_LISTEN ?? DEFAULT_LISTEN;
   const { host: listenHost, port: listenPort } = parseListen(listenRaw);
 
-  const logLevelRaw = values["log-level"] ?? env.VRPC_PROXY_LOG_LEVEL ?? "silent";
-  if (logLevelRaw !== "silent" && logLevelRaw !== "debug") {
+  const logLevelRaw = values["log-level"] ?? env.VRPC_PROXY_LOG_LEVEL ?? "error";
+  if (logLevelRaw !== "silent" && logLevelRaw !== "error" && logLevelRaw !== "debug") {
     throw new ConfigError(
-      `--log-level must be "silent" or "debug", got ${JSON.stringify(logLevelRaw)}`,
+      `--log-level must be "silent", "error", or "debug", got ${JSON.stringify(logLevelRaw)}`,
     );
   }
 

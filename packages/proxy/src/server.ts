@@ -17,6 +17,7 @@ import {
 import { Agent } from "undici";
 
 import type { ProxyConfig } from "./config";
+import { createProxyLogger } from "./logger";
 import { createRequestHandler } from "./pipeline";
 
 /**
@@ -37,8 +38,11 @@ export function createProxyServer(
   config: ProxyConfig,
   overrides: ProxyTestOverrides = {},
 ): http.Server {
-  const logger =
+  // Core verifier logger (debug-only trace) — separate from the proxy's own
+  // leveled logger. Tests may inject `overrides.logger` to capture verify logs.
+  const verifierLogger =
     overrides.logger ?? (config.logLevel === "debug" ? createConsoleLogger() : defaultLogger);
+  const proxyLogger = createProxyLogger(config.logLevel);
 
   // Optional keys are set conditionally rather than spread as `key: undefined`
   // (exactOptionalPropertyTypes).
@@ -46,7 +50,7 @@ export function createProxyServer(
     chainId: config.chainId,
     attestationUrl: config.attestationUrl,
     headers: config.attestationHeaders,
-    logger,
+    logger: verifierLogger,
   };
   if (config.replayWindowMs !== undefined) options.replayWindowMs = config.replayWindowMs;
   if (config.pubkeyCacheTtlMs !== undefined) options.pubkeyCacheTtlMs = config.pubkeyCacheTtlMs;
@@ -64,7 +68,9 @@ export function createProxyServer(
   // headers/body phases. Closed with the server to release keep-alive sockets.
   const dispatcher = new Agent({ connect: { timeout: config.upstreamTimeoutMs } });
 
-  const server = http.createServer(createRequestHandler({ config, verifier, logger, dispatcher }));
+  const server = http.createServer(
+    createRequestHandler({ config, verifier, logger: proxyLogger, dispatcher }),
+  );
   server.on("close", () => {
     void dispatcher.close();
   });

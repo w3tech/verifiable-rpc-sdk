@@ -10,9 +10,7 @@ import type http from "node:http";
 import {
   byteLen,
   isSignedVrpcResponse,
-  type Logger,
   pickVrpcHeaders,
-  safeLogger,
   type TrustedVerifier,
   VerificationError,
 } from "@w3tech.io/vrpc-core";
@@ -35,12 +33,13 @@ import {
   flattenForVerify,
   isEncodingAcceptable,
 } from "./headers";
+import type { ProxyLogger } from "./logger";
 
 /** Per-process context shared by every request. */
 export interface RequestContext {
   config: ProxyConfig;
   verifier: TrustedVerifier;
-  logger: Logger;
+  logger: ProxyLogger;
   /**
    * The undici dispatcher for upstream requests. The server factory supplies
    * an Agent whose connect timeout is bound to `config.upstreamTimeoutMs` —
@@ -140,7 +139,7 @@ export function mapUndiciError(err: unknown): ProxyError {
  * are serialized; upstream body bytes and stack traces are never written —
  * unexpected errors collapse to a generic `Internal` kind.
  */
-function renderError(res: http.ServerResponse, err: unknown, log: Logger): void {
+function renderError(res: http.ServerResponse, err: unknown, log: ProxyLogger): void {
   let status: number;
   let kind: string;
   let message: string;
@@ -157,7 +156,7 @@ function renderError(res: http.ServerResponse, err: unknown, log: Logger): void 
     kind = "Internal";
     message = "Internal proxy error";
   }
-  log.debug("proxy.error", { kind, status, message });
+  log.error("proxy.error", { kind, status, message });
   if (res.headersSent) {
     res.destroy();
     return;
@@ -187,7 +186,7 @@ function renderError(res: http.ServerResponse, err: unknown, log: Logger): void 
  *    signature is over the plaintext, so the fallback stays re-verifiable).
  */
 export function createRequestHandler(ctx: RequestContext): http.RequestListener {
-  const log = safeLogger(ctx.logger);
+  const log = ctx.logger;
   const { config, verifier } = ctx;
 
   async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {

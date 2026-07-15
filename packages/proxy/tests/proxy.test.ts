@@ -327,7 +327,7 @@ describe("proxy pipeline", () => {
     await expectErrorKind(res, 502, "DecodeFailed");
   });
 
-  test("silentDefaultProducesZeroConsoleOutput", async () => {
+  test("silentLevelProducesZeroConsoleOutput", async () => {
     const spies = [
       vi.spyOn(console, "log").mockImplementation(() => {}),
       vi.spyOn(console, "info").mockImplementation(() => {}),

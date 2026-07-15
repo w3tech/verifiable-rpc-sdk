@@ -44,7 +44,7 @@ CLI flag wins over env var, env var wins over the default.
 | `--timeout` | `VRPC_PROXY_TIMEOUT` | `30000` | Upstream timeout, ms |
 | `--replay-window` | `VRPC_PROXY_REPLAY_WINDOW` | core default (`60000`) | Replay window, ms |
 | `--attestation-cache-ttl` | `VRPC_PROXY_ATTESTATION_CACHE_TTL` | core default (`3600000`) | How long a verified attestation (per signing pubkey) is reused before re-attestation, ms |
-| `--log-level` | `VRPC_PROXY_LOG_LEVEL` | `silent` | `silent` or `debug` |
+| `--log-level` | `VRPC_PROXY_LOG_LEVEL` | `error` | `silent` (nothing), `error` (fail-closed reasons only), or `debug` (per-request forward/verify trace) |
 | `--max-body-bytes` | `VRPC_PROXY_MAX_BODY_BYTES` | `33554432` (32 MiB) | Request/response body cap |
 
 ## Failure semantics

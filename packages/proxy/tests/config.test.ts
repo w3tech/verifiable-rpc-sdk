@@ -63,8 +63,15 @@ describe("parseConfig", () => {
     expect(config.listenPort).toBe(8969);
     expect(config.upstreamTimeoutMs).toBe(30_000);
     expect(config.maxBodyBytes).toBe(33_554_432);
-    expect(config.logLevel).toBe("silent");
+    expect(config.logLevel).toBe("error");
     expect(config.replayWindowMs).toBeUndefined();
+  });
+
+  test("logLevelFlagAcceptsErrorAndDebugRejectsOther", () => {
+    expect(parseConfig([...BASE, "--log-level", "error"], {}).logLevel).toBe("error");
+    expect(parseConfig([...BASE, "--log-level", "debug"], {}).logLevel).toBe("debug");
+    expect(parseConfig([...BASE, "--log-level", "silent"], {}).logLevel).toBe("silent");
+    expect(() => parseConfig([...BASE, "--log-level", "verbose"], {})).toThrow(ConfigError);
   });
 
   test("attestationCacheTtlFlagAndEnvParsed", () => {
