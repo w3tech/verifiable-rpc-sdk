@@ -80,13 +80,6 @@ not acceptable to the client, the already-verified decoded plaintext is served
 instead (the signature covers the plaintext, so the fallback body remains
 client-re-verifiable).
 
-## Attestation URL note
-
-The attestation URL is derived from the upstream URL (`deriveVrpcUrls`) — the
-same single-URL model as the SDK adapters. Derivation drops query parameters
-and the hash fragment; pass the API key via `--api-key` (or key-in-path)
-instead of the query string.
-
 ## Integration tests
 
 An env-gated real-wire suite (dstack simulator + attestation sidecar + this
