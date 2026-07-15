@@ -6,15 +6,8 @@ vRPC endpoint, verifies every response with `@w3tech.io/vrpc-core`
 (Ed25519 signature + attestation, fail-closed), and relays verified bytes
 back unchanged. An unverified body is never returned to the client.
 
-## What gets verified (trust boundary)
-
-Every relayed response has passed the full `TrustedVerifier` policy from
-`@w3tech.io/vrpc-core`: **signed + untampered** (Ed25519 over the canonical
-104-byte pre-image), **fresh** (replay window), **correctly bound** (chain id +
-signer key), plus the lazy attestation leg — correlation of the signing key to
-the node's TDX attestation and the **mandatory, always-on hardware verify** of
-the DCAP quote. A response failing any check is withheld and replaced with a
-typed error (see [Failure semantics](#failure-semantics)).
+For what vRPC proves, the attestation flow, and the trust boundary, see the
+[Quickstart and how-it-works guide](../../docs/quickstart.md).
 
 ## Quick start (npx)
 
