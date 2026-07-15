@@ -49,6 +49,7 @@ export function createProxyServer(
     logger,
   };
   if (config.replayWindowMs !== undefined) options.replayWindowMs = config.replayWindowMs;
+  if (config.pubkeyCacheTtlMs !== undefined) options.pubkeyCacheTtlMs = config.pubkeyCacheTtlMs;
   if (overrides.fetch !== undefined) options.fetch = overrides.fetch;
   if (overrides.hardwareVerifier !== undefined)
     options.hardwareVerifier = overrides.hardwareVerifier;

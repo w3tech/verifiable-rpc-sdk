@@ -22,6 +22,12 @@ export interface ProxyConfig {
   listenPort: number;
   upstreamTimeoutMs: number;
   replayWindowMs?: number;
+  /**
+   * How long a verified attestation (keyed by the node's signing pubkey) is
+   * reused before re-attestation — the `--attestation-cache-ttl` flag. Maps to
+   * core's `pubkeyCacheTtlMs`; when unset core's default applies.
+   */
+  pubkeyCacheTtlMs?: number;
   maxBodyBytes: number;
   logLevel: "silent" | "debug";
   /** Non-fatal startup warnings; cli.ts prints them to stderr. */
@@ -39,6 +45,7 @@ const PARSE_OPTIONS = {
   listen: { type: "string" },
   timeout: { type: "string" },
   "replay-window": { type: "string" },
+  "attestation-cache-ttl": { type: "string" },
   "log-level": { type: "string" },
   "max-body-bytes": { type: "string" },
 } as const;
@@ -85,6 +92,7 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
     listen?: string;
     timeout?: string;
     "replay-window"?: string;
+    "attestation-cache-ttl"?: string;
     "log-level"?: string;
     "max-body-bytes"?: string;
   };
@@ -127,6 +135,13 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   const replayWindowMs =
     replayRaw === undefined ? undefined : parsePositiveInt(replayRaw, "--replay-window");
 
+  const attestationCacheTtlRaw =
+    values["attestation-cache-ttl"] ?? env.VRPC_PROXY_ATTESTATION_CACHE_TTL;
+  const pubkeyCacheTtlMs =
+    attestationCacheTtlRaw === undefined
+      ? undefined
+      : parsePositiveInt(attestationCacheTtlRaw, "--attestation-cache-ttl");
+
   const maxBodyRaw = values["max-body-bytes"] ?? env.VRPC_PROXY_MAX_BODY_BYTES;
   const maxBodyBytes =
     maxBodyRaw === undefined
@@ -163,6 +178,9 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   };
   if (replayWindowMs !== undefined) {
     config.replayWindowMs = replayWindowMs;
+  }
+  if (pubkeyCacheTtlMs !== undefined) {
+    config.pubkeyCacheTtlMs = pubkeyCacheTtlMs;
   }
   if (apiKey !== undefined && apiKey !== "") {
     config.apiKey = apiKey;

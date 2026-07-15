@@ -67,6 +67,17 @@ describe("parseConfig", () => {
     expect(config.replayWindowMs).toBeUndefined();
   });
 
+  test("attestationCacheTtlFlagAndEnvParsed", () => {
+    expect(parseConfig([...BASE, "--attestation-cache-ttl", "600000"], {}).pubkeyCacheTtlMs).toBe(
+      600_000,
+    );
+    expect(parseConfig(BASE, { VRPC_PROXY_ATTESTATION_CACHE_TTL: "300000" }).pubkeyCacheTtlMs).toBe(
+      300_000,
+    );
+    expect(parseConfig(BASE, {}).pubkeyCacheTtlMs).toBeUndefined();
+    expect(() => parseConfig([...BASE, "--attestation-cache-ttl", "0"], {})).toThrow(ConfigError);
+  });
+
   test("envFallbackUsedWhenFlagAbsent", () => {
     const config = parseConfig(["--chain-id", "test-chain"], { VRPC_PROXY_UPSTREAM: UPSTREAM });
     expect(config.upstreamUrl).toBe(UPSTREAM);
