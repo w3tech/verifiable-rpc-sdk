@@ -82,7 +82,7 @@ client-re-verifiable).
 
 ## Example
 
-See `examples/04-proxy.ts` at the repo root: the proxy spawned as a child
+See [`examples/04-proxy.ts`](../../examples/04-proxy.ts) at the repo root: the proxy spawned as a child
 process and queried by a plain `fetch` client that imports zero SDK code —
 verified result plus the passed-through `vRPC-*` headers printed. Run with
 `pnpm example:04-proxy`.
