@@ -25,7 +25,7 @@ npx @w3tech.io/vrpc-proxy --upstream <url> --chain-id <id>
 ## Usage (repo run)
 
 ```sh
-pnpm run proxy -- --upstream https://rpc.example.com/arbitrum_vrpc/KEY --chain-id 42161
+pnpm run proxy -- --upstream https://rpc.ankr.com/arbitrum --chain-id 42161 --api-key <key>
 ```
 
 Inside the package:
@@ -37,7 +37,7 @@ CLI flag wins over env var, env var wins over the default.
 
 | Flag | Env var | Default | Description |
 | ---- | ------- | ------- | ----------- |
-| `--upstream` (required) | `VRPC_PROXY_UPSTREAM` | — | Upstream vRPC endpoint URL |
+| `--upstream` (required) | `VRPC_PROXY_UPSTREAM` | — | Endpoint URL; the `_vrpc` route and the attestation sub-route are derived from it (same single-URL model as the SDK) |
 | `--chain-id` (required) | `VRPC_PROXY_CHAIN_ID` | — | Chain id (opaque string, validated at startup) |
 | `--api-key` | `VRPC_PROXY_API_KEY` | — | Optional API key sent as `x-api-key` to both the upstream and the attestation endpoint; a client-supplied `x-api-key` header takes precedence |
 | `--listen` | `VRPC_PROXY_LISTEN` | `127.0.0.1:8969` | Listen `host:port` |

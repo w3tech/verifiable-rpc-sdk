@@ -163,10 +163,13 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   const apiKey = values["api-key"] ?? env.VRPC_PROXY_API_KEY;
   const attestationHeaders: Record<string, string> =
     apiKey !== undefined && apiKey !== "" ? { "x-api-key": apiKey } : {};
-  const attestationUrl = deriveVrpcUrls(upstream).attestationUrl;
+  // Both legs derive from the one user URL (same as the SDK adapters): the RPC
+  // route gets `_vrpc`, the attestation route drops any REST prefix. So a bare
+  // `/arbitrum` resolves to the vRPC endpoint without the user spelling it out.
+  const { rpcUrl, attestationUrl } = deriveVrpcUrls(upstream);
 
   const config: ProxyConfig = {
-    upstreamUrl: upstream,
+    upstreamUrl: rpcUrl,
     chainId,
     attestationUrl,
     attestationHeaders,

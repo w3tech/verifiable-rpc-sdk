@@ -93,6 +93,15 @@ describe("parseConfig", () => {
     expect(config.attestationUrl).toBe(deriveVrpcUrls(UPSTREAM).attestationUrl);
   });
 
+  test("bareChainUrlGetsVrpcSuffixOnRpcLeg", () => {
+    const config = parseConfig(
+      ["--upstream", "https://rpc.ankr.com/arbitrum", "--chain-id", "42161"],
+      {},
+    );
+    expect(config.upstreamUrl).toBe("https://rpc.ankr.com/arbitrum_vrpc");
+    expect(config.attestationUrl).toBe("https://rpc.ankr.com/arbitrum_vrpc/attestation");
+  });
+
   test("upstreamQueryProducesWarning", () => {
     const config = parseConfig(
       ["--upstream", "https://rpc.example.com/chain?key=abc", "--chain-id", "test-chain"],
