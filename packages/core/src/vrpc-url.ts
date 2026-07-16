@@ -23,7 +23,6 @@ export interface VrpcUrls {
  *
  * `https://rpc.ankr.com/arbitrum_vrpc`        → rpc unchanged, attest `…/arbitrum_vrpc/attestation`
  * `https://rpc.ankr.com/arbitrum_vrpc/<key>`  → rpc unchanged, attest `…/arbitrum_vrpc/<key>/attestation`
- * `http://host:8545/_vrpc`                    → rpc unchanged, attest `…:8545/_vrpc/attestation`
  */
 export function deriveVrpcUrls(url: string): VrpcUrls {
   const u = new URL(url);

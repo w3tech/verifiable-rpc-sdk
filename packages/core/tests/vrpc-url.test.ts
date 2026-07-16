@@ -35,14 +35,7 @@ describe("deriveVrpcUrls", () => {
     });
   });
 
-  test("direct node /_vrpc route used as-is", () => {
-    expect(deriveVrpcUrls("http://node.example:8545/_vrpc")).toEqual({
-      rpcUrl: "http://node.example:8545/_vrpc",
-      attestationUrl: "http://node.example:8545/_vrpc/attestation",
-    });
-  });
-
-  test("no path: origin used as-is (no /_vrpc auto-derivation)", () => {
+  test("no path: origin used as-is", () => {
     expect(deriveVrpcUrls("http://node.example:8545")).toEqual({
       rpcUrl: "http://node.example:8545",
       attestationUrl: "http://node.example:8545/attestation",
