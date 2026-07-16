@@ -136,14 +136,16 @@ export function mapUndiciError(err: unknown): ProxyError {
 
 /**
  * Shark (and any front returning it) tags every response with a trace id
- * header. Append it to the error message so a fail-closed 502 can be
- * correlated with the upstream's own logs. No-op when the header is absent.
+ * header. Attach it to the error as a `traceId` property so a fail-closed 502
+ * can be correlated with the upstream's own logs — surfaced as a separate key
+ * in the error body and the log line, not glued into the message. No-op when
+ * the header is absent.
  */
 const TRACE_ID_HEADER = "x-shark-trace-id";
-function appendUpstreamTraceId(err: unknown, headers: Record<string, string>): unknown {
+function attachUpstreamTraceId(err: unknown, headers: Record<string, string>): unknown {
   const traceId = headers[TRACE_ID_HEADER];
   if (traceId !== undefined && traceId !== "" && err instanceof Error) {
-    err.message += ` (upstream trace id: ${traceId})`;
+    (err as { traceId?: string }).traceId = traceId;
   }
   return err;
 }
@@ -170,12 +172,13 @@ function renderError(res: http.ServerResponse, err: unknown, log: ProxyLogger): 
     kind = "Internal";
     message = "Internal proxy error";
   }
-  log.error("proxy.error", { kind, status, message });
+  const traceId = (err as { traceId?: string }).traceId;
+  log.error("proxy.error", { kind, status, message, ...(traceId ? { traceId } : {}) });
   if (res.headersSent) {
     res.destroy();
     return;
   }
-  const body = errorResponseBody(kind, message);
+  const body = errorResponseBody(kind, message, traceId);
   res.writeHead(status, {
     "content-type": "application/json",
     "content-length": String(Buffer.byteLength(body)),
@@ -292,7 +295,7 @@ export function createRequestHandler(ctx: RequestContext): http.RequestListener 
         res.end(decodedCopy);
       }
     } catch (err) {
-      throw appendUpstreamTraceId(err, flatHeaders);
+      throw attachUpstreamTraceId(err, flatHeaders);
     }
   }
 

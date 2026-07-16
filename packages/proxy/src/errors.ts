@@ -130,6 +130,6 @@ export class InternalProxyError extends ProxyError {
  * `message` are serialized — core's StaleTimestamp carries bigint fields, so
  * stringifying an error object raw would throw.
  */
-export function errorResponseBody(kind: string, message: string): string {
-  return JSON.stringify({ error: { kind, message } });
+export function errorResponseBody(kind: string, message: string, traceId?: string): string {
+  return JSON.stringify({ error: { kind, message, ...(traceId ? { traceId } : {}) } });
 }

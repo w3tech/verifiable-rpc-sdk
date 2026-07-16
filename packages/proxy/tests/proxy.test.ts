@@ -253,9 +253,12 @@ describe("proxy pipeline", () => {
     });
     const res = await post(url, RPC_REQUEST);
     expect(res.status).toBe(502);
-    const parsed = JSON.parse(res.body.toString()) as { error: { kind: string; message: string } };
+    const parsed = JSON.parse(res.body.toString()) as {
+      error: { kind: string; message: string; traceId?: string };
+    };
     expect(parsed.error.kind).toBe("UnsignedUpstream");
-    expect(parsed.error.message).toContain(`(upstream trace id: ${traceId})`);
+    expect(parsed.error.traceId).toBe(traceId);
+    expect(parsed.error.message).not.toContain(traceId);
   });
 
   test("signedErrorBodyWithUpstream500IsRelayedVerbatim", async () => {

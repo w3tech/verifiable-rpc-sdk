@@ -54,8 +54,12 @@ zero upstream body bytes reach the client. Every error path responds with a
 typed JSON body:
 
 ```json
-{ "error": { "kind": "...", "message": "..." } }
+{ "error": { "kind": "...", "message": "...", "traceId": "..." } }
 ```
+
+`traceId` is present only when the upstream answered with an `x-shark-trace-id`
+header (the same value also appears as a `traceId` field in the `proxy.error`
+log line) — use it to correlate a fail-closed error with the upstream's logs.
 
 One row per `ProxyError` kind (source of truth: `src/errors.ts`):
 
