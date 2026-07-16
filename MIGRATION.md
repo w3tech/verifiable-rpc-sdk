@@ -254,7 +254,7 @@ try {
 
 ## Runnable examples
 
-Three runnable scripts live in `examples/`. All target Ankr's public Arbitrum
+Runnable scripts live in `examples/`. All target Ankr's public Arbitrum
 vRPC endpoint and need no API key (every response is verified before it is
 returned):
 
