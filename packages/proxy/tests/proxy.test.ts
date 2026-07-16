@@ -244,6 +244,20 @@ describe("proxy pipeline", () => {
     expect(JSON.parse(res503.body.toString()).error.message).toContain("503");
   });
 
+  test("upstreamTraceIdAppendedToErrorMessage", async () => {
+    const traceId = "0a2d2888c132131e6350a26ddcd9d5a8";
+    const { url } = await startProxy({
+      tamper: "unsigned",
+      status: 403,
+      extraHeaders: { "x-shark-trace-id": traceId },
+    });
+    const res = await post(url, RPC_REQUEST);
+    expect(res.status).toBe(502);
+    const parsed = JSON.parse(res.body.toString()) as { error: { kind: string; message: string } };
+    expect(parsed.error.kind).toBe("UnsignedUpstream");
+    expect(parsed.error.message).toContain(`(upstream trace id: ${traceId})`);
+  });
+
   test("signedErrorBodyWithUpstream500IsRelayedVerbatim", async () => {
     // Verified content is relayed even when the upstream status is 5xx — a
     // signed JSON-RPC error body is verified content.

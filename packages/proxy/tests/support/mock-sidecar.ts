@@ -43,6 +43,8 @@ export interface MockSidecarOptions {
   status?: number;
   /** Delay before responding, for upstream-timeout tests. */
   delayMs?: number;
+  /** Extra response headers (e.g. a shark-style trace id). */
+  extraHeaders?: Record<string, string>;
 }
 
 export interface MockSidecar {
@@ -123,6 +125,7 @@ export async function startMockSidecar(opts: MockSidecarOptions = {}): Promise<M
         headers["content-encoding"] = contentEncoding;
       }
       headers["content-length"] = String(wire.length);
+      Object.assign(headers, opts.extraHeaders ?? {});
       state.lastCompressedBody = wire;
 
       const respond = () => {

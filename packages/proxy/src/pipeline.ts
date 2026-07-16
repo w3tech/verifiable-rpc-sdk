@@ -135,6 +135,20 @@ export function mapUndiciError(err: unknown): ProxyError {
 }
 
 /**
+ * Shark (and any front returning it) tags every response with a trace id
+ * header. Append it to the error message so a fail-closed 502 can be
+ * correlated with the upstream's own logs. No-op when the header is absent.
+ */
+const TRACE_ID_HEADER = "x-shark-trace-id";
+function appendUpstreamTraceId(err: unknown, headers: Record<string, string>): unknown {
+  const traceId = headers[TRACE_ID_HEADER];
+  if (traceId !== undefined && traceId !== "" && err instanceof Error) {
+    err.message += ` (upstream trace id: ${traceId})`;
+  }
+  return err;
+}
+
+/**
  * Render an error as the typed JSON error response. Only `kind` and `message`
  * are serialized; upstream body bytes and stack traces are never written —
  * unexpected errors collapse to a generic `Internal` kind.
@@ -224,55 +238,61 @@ export function createRequestHandler(ctx: RequestContext): http.RequestListener 
       throw mapUndiciError(err);
     }
 
-    // 3. Buffer the upstream response body under the same cap.
-    let responseBytes: Buffer;
-    try {
-      responseBytes = await bufferStream(
-        upstreamRes.body,
-        config.maxBodyBytes,
-        () => new UpstreamBodyTooLargeError(config.maxBodyBytes),
-      );
-    } catch (err) {
-      if (err instanceof ProxyError) throw err;
-      throw mapUndiciError(err);
-    }
-
-    // 4. No vRPC headers → fail closed whether the upstream answered 200 or 5xx.
+    // From here the upstream has answered — any failure below carries its
+    // trace id (when present) for correlation with upstream logs.
     const flatHeaders = flattenForVerify(upstreamRes.headers);
-    if (!isSignedVrpcResponse(flatHeaders)) {
-      throw new UnsignedUpstreamError(upstreamRes.statusCode);
-    }
+    try {
+      // 3. Buffer the upstream response body under the same cap.
+      let responseBytes: Buffer;
+      try {
+        responseBytes = await bufferStream(
+          upstreamRes.body,
+          config.maxBodyBytes,
+          () => new UpstreamBodyTooLargeError(config.maxBodyBytes),
+        );
+      } catch (err) {
+        if (err instanceof ProxyError) throw err;
+        throw mapUndiciError(err);
+      }
 
-    // 5. Decode the throwaway copy and verify — the SAME requestBytes Buffer
-    //    from step 1; the signature covers the content-decoded response body.
-    const decodedCopy = await decodeBody(
-      responseBytes,
-      flatHeaders["content-encoding"],
-      config.maxBodyBytes,
-    );
-    await verifier.verify(requestBytes, decodedCopy, flatHeaders);
-    log.debug("proxy.verified", {
-      status: upstreamRes.statusCode,
-      headers: pickVrpcHeaders(flatHeaders),
-      bodyBytes: byteLen(decodedCopy),
-    });
+      // 4. No vRPC headers → fail closed whether the upstream answered 200 or 5xx.
+      if (!isSignedVrpcResponse(flatHeaders)) {
+        throw new UnsignedUpstreamError(upstreamRes.statusCode);
+      }
 
-    // 6. Relay. Verbatim when the client can accept the upstream's encoding;
-    //    otherwise fall back to the already-verified decoded plaintext.
-    const acceptRaw = req.headers["accept-encoding"];
-    const acceptHeader = Array.isArray(acceptRaw) ? acceptRaw.join(", ") : acceptRaw;
-    const contentEncoding = flatHeaders["content-encoding"];
-    if (isEncodingAcceptable(contentEncoding, acceptHeader)) {
-      res.writeHead(
-        upstreamRes.statusCode,
-        buildRelayHeaders(upstreamRes.headers, responseBytes.length),
+      // 5. Decode the throwaway copy and verify — the SAME requestBytes Buffer
+      //    from step 1; the signature covers the content-decoded response body.
+      const decodedCopy = await decodeBody(
+        responseBytes,
+        flatHeaders["content-encoding"],
+        config.maxBodyBytes,
       );
-      res.end(responseBytes);
-    } else {
-      const relayHeaders = buildRelayHeaders(upstreamRes.headers, decodedCopy.length);
-      delete relayHeaders["content-encoding"];
-      res.writeHead(upstreamRes.statusCode, relayHeaders);
-      res.end(decodedCopy);
+      await verifier.verify(requestBytes, decodedCopy, flatHeaders);
+      log.debug("proxy.verified", {
+        status: upstreamRes.statusCode,
+        headers: pickVrpcHeaders(flatHeaders),
+        bodyBytes: byteLen(decodedCopy),
+      });
+
+      // 6. Relay. Verbatim when the client can accept the upstream's encoding;
+      //    otherwise fall back to the already-verified decoded plaintext.
+      const acceptRaw = req.headers["accept-encoding"];
+      const acceptHeader = Array.isArray(acceptRaw) ? acceptRaw.join(", ") : acceptRaw;
+      const contentEncoding = flatHeaders["content-encoding"];
+      if (isEncodingAcceptable(contentEncoding, acceptHeader)) {
+        res.writeHead(
+          upstreamRes.statusCode,
+          buildRelayHeaders(upstreamRes.headers, responseBytes.length),
+        );
+        res.end(responseBytes);
+      } else {
+        const relayHeaders = buildRelayHeaders(upstreamRes.headers, decodedCopy.length);
+        delete relayHeaders["content-encoding"];
+        res.writeHead(upstreamRes.statusCode, relayHeaders);
+        res.end(decodedCopy);
+      }
+    } catch (err) {
+      throw appendUpstreamTraceId(err, flatHeaders);
     }
   }
 
