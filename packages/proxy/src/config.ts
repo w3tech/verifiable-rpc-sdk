@@ -166,7 +166,7 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
     apiKey !== undefined && apiKey !== "" ? { "x-api-key": apiKey } : {};
   // Both legs derive from the one user URL (same as the SDK adapters): the RPC
   // route is the URL verbatim — the user spells the vRPC route out explicitly
-  // (e.g. `/arbitrum_vrpc`) — and the attestation route drops any REST prefix.
+  // (e.g. `/arbitrum_vrpc`) — and the attestation route appends `/attestation`.
   const { rpcUrl, attestationUrl } = deriveVrpcUrls(upstream);
 
   const config: ProxyConfig = {

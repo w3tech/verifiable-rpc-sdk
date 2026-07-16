@@ -49,26 +49,12 @@ describe("deriveVrpcUrls", () => {
     });
   });
 
-  test("restPrefixKeptOnRpcLegStrippedFromAttestation", () => {
+  test("restPrefixKeptOnBothLegs", () => {
     // Public non-EVM HTTP-API form (e.g. TON): rpc.ankr.com/premium-http/<chain>/<key>.
+    // The prefixed attestation spelling is served by its own ingress rule.
     expect(deriveVrpcUrls(`https://rpc.ankr.com/premium-http/ton_api_v2_vrpc/${KEY}`)).toEqual({
       rpcUrl: `https://rpc.ankr.com/premium-http/ton_api_v2_vrpc/${KEY}`,
-      attestationUrl: `https://rpc.ankr.com/ton_api_v2_vrpc/${KEY}/attestation`,
-    });
-  });
-
-  test("sharkDirectRestPrefixHandledLikePremiumHttp", () => {
-    expect(deriveVrpcUrls("https://shark.example.com/rest/ton_api_v2_vrpc")).toEqual({
-      rpcUrl: "https://shark.example.com/rest/ton_api_v2_vrpc",
-      attestationUrl: "https://shark.example.com/ton_api_v2_vrpc/attestation",
-    });
-  });
-
-  test("bareRestPrefixWithoutChainFallsThroughToChainRule", () => {
-    // A single "rest" segment is treated as the chain itself, not a prefix.
-    expect(deriveVrpcUrls("https://host.example.com/rest")).toEqual({
-      rpcUrl: "https://host.example.com/rest",
-      attestationUrl: "https://host.example.com/rest/attestation",
+      attestationUrl: `https://rpc.ankr.com/premium-http/ton_api_v2_vrpc/${KEY}/attestation`,
     });
   });
 });
