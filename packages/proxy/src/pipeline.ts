@@ -261,9 +261,7 @@ export function createRequestHandler(ctx: RequestContext): http.RequestListener 
       //    Any decode failure (unknown coding, corrupt stream) → DecodeFailed.
       let decodedCopy: Buffer;
       try {
-        decodedCopy = Buffer.from(
-          await decodeBuffer(responseBytes, flatHeaders["content-encoding"]),
-        );
+        decodedCopy = await decodeBuffer(responseBytes, flatHeaders["content-encoding"]);
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         throw new DecodeFailedError(`Failed to decode upstream body: ${detail}`);
