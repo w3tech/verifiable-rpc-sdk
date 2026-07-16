@@ -3,10 +3,9 @@
 // Single-URL derivation for the vRPC transport convention.
 //
 // The user passes ONE endpoint URL — the explicit vRPC route (e.g.
-// `https://rpc.ankr.com/arbitrum_vrpc`, or `http://host:8545/_vrpc` on a direct
-// node). The SDK never rewrites the route: the URL is used as-is for the RPC
-// leg, and only the `/attestation` sub-route derives from it, so there is no
-// separate `attestationBaseUrl`/`chainSlug`.
+// `https://rpc.ankr.com/arbitrum_vrpc`). The SDK never rewrites the route: the
+// URL is used as-is for the RPC leg, and only the `/attestation` sub-route
+// derives from it, so there is no separate `attestationBaseUrl`/`chainSlug`.
 
 /** RPC + attestation endpoints derived from one user-supplied URL. */
 export interface VrpcUrls {
