@@ -14,13 +14,12 @@ import {
   type TrustedVerifier,
   VerificationError,
 } from "@w3tech.io/vrpc-core";
-import { decodeBuffer } from "http-encoding";
 import { type Dispatcher, request } from "undici";
 
 import type { ProxyConfig } from "./config";
+import { decodeBody } from "./decode";
 import {
   BodyTooLargeError,
-  DecodeFailedError,
   errorResponseBody,
   ProxyError,
   UnsignedUpstreamError,
@@ -265,14 +264,11 @@ export function createRequestHandler(ctx: RequestContext): http.RequestListener 
 
       // 5. Decode the throwaway copy and verify — the SAME requestBytes Buffer
       //    from step 1; the signature covers the content-decoded response body.
-      //    Any decode failure (unknown coding, corrupt stream) → DecodeFailed.
-      let decodedCopy: Buffer;
-      try {
-        decodedCopy = await decodeBuffer(responseBytes, flatHeaders["content-encoding"]);
-      } catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
-        throw new DecodeFailedError(`Failed to decode upstream body: ${detail}`);
-      }
+      const decodedCopy = await decodeBody(
+        responseBytes,
+        flatHeaders["content-encoding"],
+        config.maxBodyBytes,
+      );
       await verifier.verify(requestBytes, decodedCopy, flatHeaders);
       log.debug("proxy.verified", {
         status: upstreamRes.statusCode,

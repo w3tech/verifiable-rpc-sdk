@@ -68,7 +68,6 @@
   },
   "dependencies": {
     "@w3tech.io/vrpc-core": "workspace:*",
-    "http-encoding": "^2.2.0",
     "undici": "^8.7.0"
   },
   "devDependencies": {

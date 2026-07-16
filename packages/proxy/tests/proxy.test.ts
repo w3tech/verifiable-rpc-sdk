@@ -327,6 +327,19 @@ describe("proxy pipeline", () => {
     await expectErrorKind(res, 502, "UpstreamConnect");
   });
 
+  test("decompressionBombFailsClosedWithDecodeFailed", async () => {
+    // 8 MiB of zeros gzips to a tiny wire body — the wire cap passes, but the
+    // decode-side maxOutputLength guard trips (threat T-02-04).
+    const { url } = await startProxy(
+      { encoding: "gzip", plaintext: Buffer.alloc(8 * 1024 * 1024) },
+      { maxBodyBytes: 1024 * 1024 },
+    );
+
+    const res = await post(url, RPC_REQUEST, { "accept-encoding": "gzip" });
+
+    await expectErrorKind(res, 502, "DecodeFailed");
+  });
+
   test("silentLevelProducesZeroConsoleOutput", async () => {
     const spies = [
       vi.spyOn(console, "log").mockImplementation(() => {}),
@@ -347,9 +360,8 @@ describe("proxy pipeline", () => {
 });
 
 // Gated by the SAME runtime detect the production decode layer uses — CI's
-// The fixture COMPRESSES with native zstd (landed in Node 23.8); decode-side
-// http-encoding falls back to WASM, but without native compression there is
-// no fixture body to test against.
+// zstd landed in Node 23.8 — both the fixture compression and the decode side
+// need the native codec; older runtimes skip.
 describe.skipIf(typeof zlib.zstdDecompressSync !== "function")("proxy pipeline (zstd)", () => {
   test("happyPathZstdRelaysExactCompressedBytes", async () => {
     const plaintext = '{"jsonrpc":"2.0","id":1,"result":"0xzstdbody"}';
