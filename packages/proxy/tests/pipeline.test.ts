@@ -122,4 +122,10 @@ describe("flattenForVerify", () => {
   test("repeatedNonVrpcHeaderTakesFirstElement", () => {
     expect(flattenForVerify({ "set-cookie": ["a=1", "b=2"] })).toEqual({ "set-cookie": "a=1" });
   });
+
+  test("repeatedContentEncodingFailsClosedWithMalformedHeader", () => {
+    // Verify decodes under flatHeaders["content-encoding"]; a multi-value
+    // header would relay a different coding declaration than was verified.
+    expect(() => flattenForVerify({ "content-encoding": ["gzip", "br"] })).toThrow(MalformedHeader);
+  });
 });

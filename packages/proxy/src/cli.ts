@@ -15,27 +15,12 @@ import {
 
 import { type ProxyConfig, parseConfig } from "./config";
 import { ProxyError } from "./errors";
+import { redactUrl } from "./redact";
 import { createProxyServer } from "./server";
 
 function fail(message: string): never {
   process.stderr.write(`${message}\n`);
   process.exit(1);
-}
-
-// Mask any path segment that looks like an API key (shark's key shape) and
-// every query-string value so the startup banner never leaks a key-in-path or
-// key-in-query secret to logs.
-const KEY_SEGMENT = /^([a-fA-F0-9]{64}|[a-zA-Z0-9]{32})$/;
-function redactUrl(url: string): string {
-  const u = new URL(url);
-  u.pathname = u.pathname
-    .split("/")
-    .map((seg) => (KEY_SEGMENT.test(seg) ? "***" : seg))
-    .join("/");
-  for (const key of u.searchParams.keys()) {
-    u.searchParams.set(key, "***");
-  }
-  return u.toString();
 }
 
 function startupBanner(config: ProxyConfig): string {

@@ -47,10 +47,13 @@ export function buildForwardHeaders(
 
 /**
  * Flatten undici response headers (`string | string[]`) into the
- * `Record<string, string>` shape core's verify expects. A repeated `vRPC-*`
- * header is ambiguous signing material (the relay would carry both values
- * while only one was verified) → fail closed with `MalformedHeader`. Other
- * repeated headers take the first element — verify does not read them.
+ * `Record<string, string>` shape core's verify expects. A repeated header the
+ * verify path READS is ambiguous (the relay would carry both values while
+ * verification saw one): repeated `vRPC-*` is ambiguous signing material, a
+ * repeated `content-encoding` would make the proxy decode under a different
+ * coding chain than the relayed declaration — both fail closed with
+ * `MalformedHeader`. Other repeated headers take the first element — verify
+ * does not read them.
  */
 export function flattenForVerify(headers: RawHeaders): Record<string, string> {
   const out: Record<string, string> = {};
@@ -58,7 +61,7 @@ export function flattenForVerify(headers: RawHeaders): Record<string, string> {
     if (value === undefined) continue;
     const lower = name.toLowerCase();
     if (Array.isArray(value)) {
-      if (lower.startsWith("vrpc-")) {
+      if (lower.startsWith("vrpc-") || lower === "content-encoding") {
         throw new MalformedHeader(lower, value.join(", "), "repeated header");
       }
       if (value[0] !== undefined) out[lower] = value[0];
