@@ -249,11 +249,15 @@ describe("proxy pipeline", () => {
     // which the proxy does not compose. Pin that: an unsigned 302 fails
     // closed instead of being chased to its Location target. Catches anyone
     // ever composing interceptors.redirect onto the upstream dispatcher.
-    const { mock, url } = await startProxy({ tamper: "unsigned", status: 302 });
+    const { mock, url } = await startProxy({
+      tamper: "unsigned",
+      status: 302,
+      extraHeaders: { location: "/elsewhere" },
+    });
     const res = await post(url, RPC_REQUEST);
     await expectErrorKind(res, 502, "UnsignedUpstream");
     expect(JSON.parse(res.body.toString()).error.message).toContain("302");
-    // Exactly one upstream request — nothing chased the redirect.
+    // Exactly one upstream request — nothing chased the Location target.
     expect(mock.received).toHaveLength(1);
   });
 
