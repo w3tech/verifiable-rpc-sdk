@@ -22,8 +22,9 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-// Mask any path segment that looks like an API key (shark's key shape) so the
-// startup banner never leaks a key-in-path secret to logs.
+// Mask any path segment that looks like an API key (shark's key shape) and
+// every query-string value so the startup banner never leaks a key-in-path or
+// key-in-query secret to logs.
 const KEY_SEGMENT = /^([a-fA-F0-9]{64}|[a-zA-Z0-9]{32})$/;
 function redactUrl(url: string): string {
   const u = new URL(url);
@@ -31,6 +32,9 @@ function redactUrl(url: string): string {
     .split("/")
     .map((seg) => (KEY_SEGMENT.test(seg) ? "***" : seg))
     .join("/");
+  for (const key of u.searchParams.keys()) {
+    u.searchParams.set(key, "***");
+  }
   return u.toString();
 }
 
