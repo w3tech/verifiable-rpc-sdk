@@ -4,9 +4,11 @@
 // taxonomy map and the upstream target-URL merge (path join, query merge,
 // dot-segment traversal containment). No network, no server.
 
+import { MalformedHeader } from "@w3tech.io/vrpc-core";
 import { describe, expect, test } from "vitest";
 
 import { UpstreamConnectError, UpstreamTimeoutError } from "../src/errors";
+import { flattenForVerify } from "../src/headers";
 import { buildTargetUrl, mapUndiciError } from "../src/pipeline";
 
 function undiciError(code: string, message = code): Error & { code: string } {
@@ -101,5 +103,23 @@ describe("buildTargetUrl", () => {
 
   test("traversalWithQueryStillContainedAndQueryPreserved", () => {
     expect(buildTargetUrl(UPSTREAM, "/../foo?x=1")).toBe(`${UPSTREAM}/foo?x=1`);
+  });
+});
+
+describe("flattenForVerify", () => {
+  test("lowercasesNamesAndPassesSingleValues", () => {
+    expect(
+      flattenForVerify({ "vRPC-Signature": "0xabc", "Content-Type": "application/json" }),
+    ).toEqual({ "vrpc-signature": "0xabc", "content-type": "application/json" });
+  });
+
+  test("repeatedVrpcHeaderFailsClosedWithMalformedHeader", () => {
+    expect(() => flattenForVerify({ "vrpc-signature": ["0xaaa", "0xbbb"] })).toThrow(
+      MalformedHeader,
+    );
+  });
+
+  test("repeatedNonVrpcHeaderTakesFirstElement", () => {
+    expect(flattenForVerify({ "set-cookie": ["a=1", "b=2"] })).toEqual({ "set-cookie": "a=1" });
   });
 });

@@ -7,6 +7,8 @@
 
 import type { IncomingHttpHeaders } from "node:http";
 
+import { MalformedHeader } from "@w3tech.io/vrpc-core";
+
 /** RFC 7230 §6.1 hop-by-hop headers (lowercase), stripped on both legs. */
 export const HOP_BY_HOP: ReadonlySet<string> = new Set([
   "connection",
@@ -45,17 +47,24 @@ export function buildForwardHeaders(
 
 /**
  * Flatten undici response headers (`string | string[]`) into the
- * `Record<string, string>` shape core's verify expects. Arrays take the FIRST
- * element — a repeated `vRPC-*` header then fails core's shape validation
- * (`MalformedHeader`), which is the correct fail-closed outcome.
+ * `Record<string, string>` shape core's verify expects. A repeated `vRPC-*`
+ * header is ambiguous signing material (the relay would carry both values
+ * while only one was verified) → fail closed with `MalformedHeader`. Other
+ * repeated headers take the first element — verify does not read them.
  */
 export function flattenForVerify(headers: RawHeaders): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [name, value] of Object.entries(headers)) {
     if (value === undefined) continue;
-    const first = Array.isArray(value) ? value[0] : value;
-    if (first === undefined) continue;
-    out[name.toLowerCase()] = first;
+    const lower = name.toLowerCase();
+    if (Array.isArray(value)) {
+      if (lower.startsWith("vrpc-")) {
+        throw new MalformedHeader(lower, value.join(", "), "repeated header");
+      }
+      if (value[0] !== undefined) out[lower] = value[0];
+      continue;
+    }
+    out[lower] = value;
   }
   return out;
 }

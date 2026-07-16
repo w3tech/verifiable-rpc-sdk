@@ -67,7 +67,11 @@ function parseListen(value: string): { host: string; port: number } {
   if (idx <= 0 || idx === value.length - 1) {
     throw new ConfigError(`--listen must be host:port, got ${JSON.stringify(value)}`);
   }
-  const host = value.slice(0, idx);
+  // Bracketed IPv6 ("[::1]:8969") — node's listen() wants the bare address.
+  let host = value.slice(0, idx);
+  if (host.startsWith("[") && host.endsWith("]")) {
+    host = host.slice(1, -1);
+  }
   const portRaw = value.slice(idx + 1);
   if (!/^\d+$/.test(portRaw)) {
     throw new ConfigError(`--listen port must be an integer, got ${JSON.stringify(portRaw)}`);

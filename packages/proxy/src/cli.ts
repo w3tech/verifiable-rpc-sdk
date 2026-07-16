@@ -89,6 +89,12 @@ for (const warning of config.warnings ?? []) {
 
 const server = buildServer(config);
 
+// Bind failures (EADDRINUSE, EADDRNOTAVAIL, ...) exit cleanly like config
+// errors instead of surfacing as an uncaught exception with a stack trace.
+server.on("error", (err) => {
+  fail(err instanceof Error ? err.message : String(err));
+});
+
 server.listen(config.listenPort, config.listenHost, () => {
   // Startup banner on stderr: the launch config, with any key-in-path segment
   // and the API key value redacted so secrets never reach container logs.

@@ -57,6 +57,12 @@ describe("parseConfig", () => {
     expect(() => parseConfig([...BASE, "--listen", "127.0.0.1:abc"], {})).toThrow(ConfigError);
   });
 
+  test("bracketedIpv6ListenUnwrapsToBareAddress", () => {
+    const config = parseConfig([...BASE, "--listen", "[::1]:8969"], {});
+    expect(config.listenHost).toBe("::1");
+    expect(config.listenPort).toBe(8969);
+  });
+
   test("defaultsAppliedWhenFlagsAbsent", () => {
     const config = parseConfig(BASE, {});
     expect(config.listenHost).toBe("127.0.0.1");

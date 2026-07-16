@@ -118,7 +118,7 @@ export function buildTargetUrl(upstreamUrl: string, clientUrl: string): string {
  * (DNS, refused, reset, TLS, ...) is a connect failure → 502.
  */
 export function mapUndiciError(err: unknown): ProxyError {
-  const code = (err as { code?: string }).code;
+  const code = (err as { code?: string } | null | undefined)?.code;
   if (
     code === "UND_ERR_CONNECT_TIMEOUT" ||
     code === "UND_ERR_HEADERS_TIMEOUT" ||
@@ -236,7 +236,14 @@ export function createRequestHandler(ctx: RequestContext): http.RequestListener 
 
     // From here the upstream has answered — any failure below carries its
     // trace id (when present) for correlation with upstream logs.
-    const flatHeaders = flattenForVerify(upstreamRes.headers);
+    let flatHeaders: Record<string, string>;
+    try {
+      flatHeaders = flattenForVerify(upstreamRes.headers);
+    } catch (err) {
+      // Repeated vRPC-* header → fail closed; release the unread upstream body.
+      upstreamRes.body.destroy();
+      throw err;
+    }
     try {
       // 3. Buffer the upstream response body under the same cap.
       let responseBytes: Buffer;
@@ -286,6 +293,13 @@ export function createRequestHandler(ctx: RequestContext): http.RequestListener 
 
   return (req, res) => {
     handle(req, res).catch((err: unknown) => {
+      // A client that disconnected mid-request is baseline noise, not a proxy
+      // error: debug-log and drop the socket instead of rendering a 502.
+      if (res.destroyed || (err as { code?: string } | null | undefined)?.code === "ECONNRESET") {
+        log.debug("proxy.clientAborted", { url: req.url });
+        res.destroy();
+        return;
+      }
       renderError(res, err, log);
       // An over-cap inbound body leaves unread data on the socket; destroy the
       // request once the error response has flushed so keep-alive reuse cannot
