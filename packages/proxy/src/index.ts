@@ -6,7 +6,7 @@
 //   - ./server   — createProxyServer factory + test-override seam
 //   - ./config   — parseConfig (CLI flags + VRPC_PROXY_* env)
 //   - ./errors   — ProxyError transport taxonomy
-// (cli/pipeline/decode/headers are internal modules.)
+// (cli/pipeline/headers are internal modules.)
 
 export type { ProxyConfig } from "./config";
 export { parseConfig } from "./config";

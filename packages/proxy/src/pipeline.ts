@@ -14,15 +14,17 @@ import {
   type TrustedVerifier,
   VerificationError,
 } from "@w3tech.io/vrpc-core";
+import { decodeBuffer } from "http-encoding";
 import { type Dispatcher, request } from "undici";
 
 import type { ProxyConfig } from "./config";
-import { decodeBody } from "./decode";
 import {
   BodyTooLargeError,
+  DecodeFailedError,
   errorResponseBody,
   ProxyError,
   UnsignedUpstreamError,
+  UnsupportedEncodingError,
   UpstreamBodyTooLargeError,
   UpstreamConnectError,
   UpstreamTimeoutError,
@@ -257,11 +259,21 @@ export function createRequestHandler(ctx: RequestContext): http.RequestListener 
 
       // 5. Decode the throwaway copy and verify — the SAME requestBytes Buffer
       //    from step 1; the signature covers the content-decoded response body.
-      const decodedCopy = await decodeBody(
-        responseBytes,
-        flatHeaders["content-encoding"],
-        config.maxBodyBytes,
-      );
+      //    http-encoding throws a generic Error; map "Unsupported encoding: X"
+      //    onto the UnsupportedEncoding kind, everything else onto DecodeFailed.
+      let decodedCopy: Buffer;
+      try {
+        decodedCopy = Buffer.from(
+          await decodeBuffer(responseBytes, flatHeaders["content-encoding"]),
+        );
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        const unsupported = detail.match(/^Unsupported encoding: (.*)$/);
+        if (unsupported) {
+          throw new UnsupportedEncodingError(unsupported[1] ?? "unknown");
+        }
+        throw new DecodeFailedError(`Failed to decode upstream body: ${detail}`);
+      }
       await verifier.verify(requestBytes, decodedCopy, flatHeaders);
       log.debug("proxy.verified", {
         status: upstreamRes.statusCode,
