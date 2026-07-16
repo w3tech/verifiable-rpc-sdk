@@ -19,8 +19,8 @@ import { TEST_CHAIN_ID, TEST_SEED, toHex } from "./test-overrides";
 /**
  * Wire encoding applied AFTER signing. `{ rawToken }` sets an arbitrary
  * content-encoding header while sending the UNENCODED plaintext bytes — use it
- * to drive UnsupportedEncoding (unknown token) or DecodeFailed (a known token
- * such as "gzip" whose bytes then fail to decode).
+ * to drive DecodeFailed (an unknown token, or a known token such as "gzip"
+ * whose bytes then fail to decode).
  */
 export type MockSidecarEncoding = "identity" | "gzip" | "zstd" | { rawToken: string };
 

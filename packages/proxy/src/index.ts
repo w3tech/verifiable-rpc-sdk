@@ -19,7 +19,6 @@ export {
   InternalProxyError,
   ProxyError,
   UnsignedUpstreamError,
-  UnsupportedEncodingError,
   UpstreamBodyTooLargeError,
   UpstreamConnectError,
   UpstreamTimeoutError,

@@ -14,7 +14,6 @@ export type ProxyErrorKind =
   | "UpstreamConnect"
   | "UpstreamBodyTooLarge"
   | "UnsignedUpstream"
-  | "UnsupportedEncoding"
   | "DecodeFailed"
   | "Internal";
 
@@ -98,16 +97,7 @@ export class UnsignedUpstreamError extends ProxyError {
   }
 }
 
-/** Upstream used a Content-Encoding the proxy cannot decode — cannot verify. */
-export class UnsupportedEncodingError extends ProxyError {
-  readonly kind = "UnsupportedEncoding" as const;
-
-  constructor(public readonly encoding: string) {
-    super(`Unsupported upstream content-encoding: ${JSON.stringify(encoding)}`, 502);
-  }
-}
-
-/** Upstream body failed to decode under its declared Content-Encoding. */
+/** Upstream body failed to decode under its declared Content-Encoding (unknown coding or corrupt stream). */
 export class DecodeFailedError extends ProxyError {
   readonly kind = "DecodeFailed" as const;
 

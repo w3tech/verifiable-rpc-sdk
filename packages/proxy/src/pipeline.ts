@@ -24,7 +24,6 @@ import {
   errorResponseBody,
   ProxyError,
   UnsignedUpstreamError,
-  UnsupportedEncodingError,
   UpstreamBodyTooLargeError,
   UpstreamConnectError,
   UpstreamTimeoutError,
@@ -259,8 +258,7 @@ export function createRequestHandler(ctx: RequestContext): http.RequestListener 
 
       // 5. Decode the throwaway copy and verify — the SAME requestBytes Buffer
       //    from step 1; the signature covers the content-decoded response body.
-      //    http-encoding throws a generic Error; map "Unsupported encoding: X"
-      //    onto the UnsupportedEncoding kind, everything else onto DecodeFailed.
+      //    Any decode failure (unknown coding, corrupt stream) → DecodeFailed.
       let decodedCopy: Buffer;
       try {
         decodedCopy = Buffer.from(
@@ -268,10 +266,6 @@ export function createRequestHandler(ctx: RequestContext): http.RequestListener 
         );
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
-        const unsupported = detail.match(/^Unsupported encoding: (.*)$/);
-        if (unsupported) {
-          throw new UnsupportedEncodingError(unsupported[1] ?? "unknown");
-        }
         throw new DecodeFailedError(`Failed to decode upstream body: ${detail}`);
       }
       await verifier.verify(requestBytes, decodedCopy, flatHeaders);

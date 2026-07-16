@@ -71,8 +71,7 @@ One row per `ProxyError` kind (source of truth: `src/errors.ts`):
 | `UpstreamConnect` | `502` | Upstream connection or dispatch failed (DNS, refused, reset, TLS, …) |
 | `UpstreamBodyTooLarge` | `502` | Upstream response body exceeds the cap — cannot be safely verified |
 | `UnsignedUpstream` | `502` | Upstream answered without vRPC signature headers — not a vRPC endpoint, or an unsigned gateway error |
-| `UnsupportedEncoding` | `502` | Upstream used a `Content-Encoding` the proxy cannot decode — cannot verify |
-| `DecodeFailed` | `502` | Upstream body failed to decode under its declared `Content-Encoding` |
+| `DecodeFailed` | `502` | Upstream body failed to decode under its declared `Content-Encoding` (unknown coding or corrupt stream) — cannot verify |
 | `Internal` | `502` | Unexpected internal failure — generic message, no details leaked |
 
 Verification failures from core (`BadSignature`, `StaleTimestamp`, …) also

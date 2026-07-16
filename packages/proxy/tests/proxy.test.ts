@@ -290,7 +290,7 @@ describe("proxy pipeline", () => {
   test("unsupportedUpstreamEncodingFailsClosed", async () => {
     const { url } = await startProxy({ encoding: { rawToken: "snappy" } });
     const res = await post(url, RPC_REQUEST);
-    await expectErrorKind(res, 502, "UnsupportedEncoding");
+    await expectErrorKind(res, 502, "DecodeFailed");
   });
 
   test("undecodableGzipBodyFailsClosedWithDecodeFailed", async () => {
