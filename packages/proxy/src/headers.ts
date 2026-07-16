@@ -80,29 +80,3 @@ export function buildRelayHeaders(
   out["content-length"] = String(bodyLength);
   return out;
 }
-
-/**
- * Token-presence Accept-Encoding match — deliberate conservative
- * simplification for a verifying proxy (no q-value weighting): split the
- * client's Accept-Encoding on commas, strip q-values and whitespace,
- * lowercase. `identity` (or an absent Content-Encoding) is always acceptable;
- * a `*` token accepts anything; an ABSENT Accept-Encoding header accepts only
- * identity, so any encoded upstream body falls back to decoded plaintext.
- */
-export function isEncodingAcceptable(
-  contentEncoding: string | undefined,
-  acceptEncodingHeader: string | undefined,
-): boolean {
-  const codings = (contentEncoding ?? "")
-    .split(",")
-    .map((c) => c.trim().toLowerCase())
-    .filter((c) => c !== "" && c !== "identity");
-  if (codings.length === 0) return true;
-  if (acceptEncodingHeader === undefined) return false;
-  const accepted = acceptEncodingHeader
-    .split(",")
-    .map((t) => (t.split(";")[0] ?? "").trim().toLowerCase())
-    .filter((t) => t !== "");
-  if (accepted.includes("*")) return true;
-  return codings.every((c) => accepted.includes(c));
-}

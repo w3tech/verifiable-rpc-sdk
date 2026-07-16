@@ -27,12 +27,7 @@ import {
   UpstreamConnectError,
   UpstreamTimeoutError,
 } from "./errors";
-import {
-  buildForwardHeaders,
-  buildRelayHeaders,
-  flattenForVerify,
-  isEncodingAcceptable,
-} from "./headers";
+import { buildForwardHeaders, buildRelayHeaders, flattenForVerify } from "./headers";
 import type { ProxyLogger } from "./logger";
 
 /** Per-process context shared by every request. */
@@ -197,10 +192,7 @@ function renderError(res: http.ServerResponse, err: unknown, log: ProxyLogger): 
  * 4. Missing vRPC headers → 502 fail-closed regardless of upstream status.
  * 5. Decode a THROWAWAY copy per Content-Encoding (signature is over the
  *    plaintext) and verify fail-closed.
- * 6. Relay the ORIGINAL upstream bytes and headers verbatim; when the
- *    upstream encoding is not client-acceptable, serve the already-verified
- *    decoded plaintext instead (still carrying the vRPC-* headers — the
- *    signature is over the plaintext, so the fallback stays re-verifiable).
+ * 6. Relay the ORIGINAL upstream bytes and headers verbatim.
  */
 export function createRequestHandler(ctx: RequestContext): http.RequestListener {
   const log = ctx.logger;
@@ -277,23 +269,12 @@ export function createRequestHandler(ctx: RequestContext): http.RequestListener 
         bodyBytes: byteLen(decodedCopy),
       });
 
-      // 6. Relay. Verbatim when the client can accept the upstream's encoding;
-      //    otherwise fall back to the already-verified decoded plaintext.
-      const acceptRaw = req.headers["accept-encoding"];
-      const acceptHeader = Array.isArray(acceptRaw) ? acceptRaw.join(", ") : acceptRaw;
-      const contentEncoding = flatHeaders["content-encoding"];
-      if (isEncodingAcceptable(contentEncoding, acceptHeader)) {
-        res.writeHead(
-          upstreamRes.statusCode,
-          buildRelayHeaders(upstreamRes.headers, responseBytes.length),
-        );
-        res.end(responseBytes);
-      } else {
-        const relayHeaders = buildRelayHeaders(upstreamRes.headers, decodedCopy.length);
-        delete relayHeaders["content-encoding"];
-        res.writeHead(upstreamRes.statusCode, relayHeaders);
-        res.end(decodedCopy);
-      }
+      // 6. Relay the original upstream bytes and headers verbatim.
+      res.writeHead(
+        upstreamRes.statusCode,
+        buildRelayHeaders(upstreamRes.headers, responseBytes.length),
+      );
+      res.end(responseBytes);
     } catch (err) {
       throw attachUpstreamTraceId(err, flatHeaders);
     }

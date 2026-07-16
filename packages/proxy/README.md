@@ -79,10 +79,7 @@ Verification failures from core (`BadSignature`, `StaleTimestamp`, …) also
 respond `502` with the same JSON shape, carrying core's `kind` discriminator.
 
 Verified responses are relayed verbatim — body bytes, `Content-Encoding`, and
-`vRPC-*` headers untouched. The one deviation: when the upstream's encoding is
-not acceptable to the client, the already-verified decoded plaintext is served
-instead (the signature covers the plaintext, so the fallback body remains
-client-re-verifiable).
+`vRPC-*` headers untouched.
 
 ## Example
 

@@ -2,7 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // End-to-end pipeline tests against the signing mock sidecar: happy paths
 // (identity/gzip/zstd), the fail-closed tamper matrix, byte-exact request
-// forwarding, the R5 decoded-plaintext fallback, body caps, transport error
+// forwarding, verbatim relay, body caps, transport error
 // kinds, and the silent-by-default guarantee. All requests use undici.request
 // (raw wire bytes — global fetch would auto-decompress); all verification legs
 // are injected via testOverrides(), so no test touches the network.
@@ -143,7 +143,7 @@ describe("proxy pipeline", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers["content-encoding"]).toBe("gzip");
-    // Byte-identical relay (R4/R5): the exact compressed bytes the fixture sent.
+    // Byte-identical relay: the exact compressed bytes the fixture sent.
     expect(Buffer.compare(res.body, mock.lastCompressedBody)).toBe(0);
     expect(zlib.gunzipSync(res.body).toString()).toBe(plaintext);
     expect(typeof res.headers["vrpc-signature"]).toBe("string");
@@ -274,21 +274,17 @@ describe("proxy pipeline", () => {
     expect(typeof res.headers["vrpc-signature"]).toBe("string");
   });
 
-  test("fallsBackToDecodedPlaintextWhenClientDoesNotAcceptGzip", async () => {
-    const plaintext = '{"jsonrpc":"2.0","id":1,"result":"0xfallback"}';
-    const { url } = await startProxy({ encoding: "gzip", plaintext });
+  test("relaysUpstreamEncodingVerbatimRegardlessOfClientAcceptEncoding", async () => {
+    const plaintext = '{"jsonrpc":"2.0","id":1,"result":"0xverbatim"}';
+    const { mock, url } = await startProxy({ encoding: "gzip", plaintext });
 
-    // No accept-encoding header at all → identity-only client (R5).
+    // No accept-encoding header — the proxy still relays what it received.
     const res = await post(url, RPC_REQUEST);
 
     expect(res.status).toBe(200);
-    expect(res.headers["content-encoding"]).toBeUndefined();
-    expect(res.body.toString()).toBe(plaintext);
-    expect(res.headers["content-length"]).toBe(String(Buffer.byteLength(plaintext)));
-    // The signature covers the plaintext, so the fallback stays re-verifiable.
+    expect(res.headers["content-encoding"]).toBe("gzip");
+    expect(Buffer.compare(res.body, mock.lastCompressedBody)).toBe(0);
     expect(typeof res.headers["vrpc-signature"]).toBe("string");
-    expect(typeof res.headers["vrpc-timestamp"]).toBe("string");
-    expect(typeof res.headers["vrpc-pubkey"]).toBe("string");
   });
 
   test("unsupportedUpstreamEncodingFailsClosed", async () => {
