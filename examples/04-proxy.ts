@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 // Set ANKR_API_KEY for a verified-success run; without it the upstream rejects
 // the request and the proxy fails closed — still a valid demo.
 const API_KEY = process.env.ANKR_API_KEY;
-const UPSTREAM_URL = "https://rpc.ankr.com/arbitrum";
+const UPSTREAM_URL = "https://rpc.ankr.com/arbitrum_vrpc";
 const CHAIN_ID = "42161";
 const LISTEN = "127.0.0.1:8970";
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));

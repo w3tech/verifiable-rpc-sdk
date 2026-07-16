@@ -62,19 +62,19 @@ its single verifying `request`.
 > options. **Never hard-code the key** — read it from an env var by name (see the
 > [examples](#runnable-examples) and the workspace secrets rule).
 
-### One URL — the SDK owns the `_vrpc` route
+### One URL — you spell the vRPC route out
 
-You pass a **single** plain URL (e.g. `https://rpc.ankr.com/arbitrum`). The SDK
-owns the route convention and derives both legs from it:
+You pass a **single** URL — the explicit vRPC route (e.g.
+`https://rpc.ankr.com/arbitrum_vrpc`). The SDK uses it verbatim for the
+JSON-RPC leg and derives only the attestation leg from it:
 
-- the JSON-RPC leg appends `_vrpc` → `https://rpc.ankr.com/arbitrum_vrpc`;
+- the JSON-RPC leg is the URL as-is → `https://rpc.ankr.com/arbitrum_vrpc`;
 - the attestation leg appends `/attestation` →
   `https://rpc.ankr.com/arbitrum_vrpc/attestation`.
 
-The suffix is **dup-guarded** — a URL that already ends with `_vrpc` is left as
-is (never doubled to `_vrpc_vrpc`), so passing either form is safe. Do **not**
-hand-build the `_vrpc` suffix yourself, and there is **no** separate
-`attestationBaseUrl` / `chainSlug` to configure — both were removed.
+The SDK does **not** append `_vrpc` itself — pass the vRPC route explicitly.
+There is **no** separate `attestationBaseUrl` / `chainSlug` to configure —
+both were removed.
 
 Attestation correlation is **always-on**: the verifier is always used (there is
 no permissive / opt-out mode — verification is fail-closed). The serving node id

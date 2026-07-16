@@ -34,8 +34,8 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
 /**
  * `JsonRpcProvider` that Ed25519-verifies every response over its raw bytes and
  * lazily attests the signing pubkey via TDX (per pubkey, TTL-cached). Drop-in:
- * `new VrpcProvider(url)`; the SDK derives the `_vrpc` route + `/attestation`
- * sub-route from the single URL.
+ * `new VrpcProvider(url)`; the URL is used verbatim for RPC and the SDK derives
+ * the `/attestation` sub-route from it.
  *
  * `chainId` is optional — omit it and it is derived from a self-consistently
  * verified `eth_chainId` response on first use (fail-fast, no unverified
@@ -67,8 +67,9 @@ export class VrpcProvider extends JsonRpcProvider {
       ...ethersOpts
     } = options;
 
-    // Derive the `_vrpc` route + `/attestation` from the single URL; for a
-    // FetchRequest, clone it so the consumer's auth/headers ride along.
+    // Derive `/attestation` from the single URL (the URL is the explicit vRPC
+    // route, used verbatim for RPC); for a FetchRequest, clone it so the
+    // consumer's auth/headers ride along.
     const urls = deriveVrpcUrls(typeof url === "string" ? url : url.url);
     const attestationUrl = urls.attestationUrl;
     let superUrl: string | FetchRequest = urls.rpcUrl;

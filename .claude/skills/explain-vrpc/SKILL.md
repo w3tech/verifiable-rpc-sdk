@@ -211,8 +211,9 @@ over the exact node-signed bytes, before you ever see the data. Packages
   transport.
 - **`dstack-verify`** — the dstack/TDX attestation-verification module.
 
-The user passes **one URL** (e.g. `https://rpc.ankr.com/<chain>`); the SDK derives
-the RPC leg (`_vrpc`) and attestation leg (`_vrpc/attestation`) itself via
+The user passes **one URL** — the explicit vRPC route (e.g.
+`https://rpc.ankr.com/<chain>_vrpc`); the SDK uses it verbatim for the RPC leg
+and derives the attestation leg (`/attestation`) itself via
 `deriveVrpcUrls()` — no separate base URL/slug to configure
 (`packages/core/src/vrpc-url.ts`).
 
@@ -301,8 +302,8 @@ IPFS) that resolve through arbitrary gateways outside the signed path.
 If a user asks "how do I check a response is genuine?", the procedure (what the
 SDK automates) is:
 
-1. **Derive the endpoints** from the one URL: RPC leg `…_vrpc`, attestation leg
-   `…_vrpc/attestation`.
+1. **Derive the endpoints** from the one URL (the explicit vRPC route): RPC leg
+   is the URL as-is, attestation leg appends `/attestation`.
 2. **Make the RPC call**, keeping the **raw response bytes** and the response
    **headers** (`vRPC-Signature`, `vRPC-Pubkey`, `vRPC-Timestamp`).
 3. **Rebuild the 104-byte pre-image**: `sha256(chain_id)`(32B) ‖
@@ -346,7 +347,7 @@ sequence as the procedure above:
 import { createConsoleLogger } from "@w3tech.io/vrpc-core";
 import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
 
-const provider = new VrpcProvider("https://rpc.ankr.com/eth", 1, {
+const provider = new VrpcProvider("https://rpc.ankr.com/eth_vrpc", 1, {
   logger: createConsoleLogger(),
 });
 // viem: vrpcHttp(url, { headers, logger: createConsoleLogger() })

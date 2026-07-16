@@ -28,8 +28,9 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
 /**
  * A viem `Transport` that Ed25519-verifies every response over its raw bytes
  * before it reaches the client. Drop-in:
- * `createPublicClient({ transport: vrpcHttp(url) })`. The transport derives the
- * `_vrpc` RPC route + `/attestation` sub-route from the single URL.
+ * `createPublicClient({ transport: vrpcHttp(url) })`. The URL is the explicit
+ * vRPC route (e.g. `…/arbitrum_vrpc`), used verbatim for RPC; the transport
+ * derives only the `/attestation` sub-route from it.
  *
  * The chain id bound into the pre-image comes from the viem client's `chain`
  * (`chain.id`). With no chain set it is derived from a self-consistently verified
@@ -39,7 +40,7 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
 export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vrpc-http"> {
   const fetchFn = opts.fetchFn ?? fetch;
 
-  // Derive the `_vrpc` RPC route + `/attestation` from the single URL.
+  // Derive the `/attestation` sub-route from the single URL.
   const { rpcUrl, attestationUrl } = deriveVrpcUrls(url);
 
   // Pinned from the viem client's chain.id (seeded in the factory below), or

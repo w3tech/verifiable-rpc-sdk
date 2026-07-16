@@ -63,8 +63,8 @@ import { FetchRequest } from "ethers";
 // Auth (x-api-key) rides on a FetchRequest — the same mechanism ethers uses for
 // header injection. VrpcOptions extends JsonRpcApiProviderOptions, so a
 // FetchRequest passes straight through to the underlying connection.
-// Pass the plain URL — the SDK appends `_vrpc` (and derives `/attestation`).
-const req = new FetchRequest("https://rpc.ankr.com/arbitrum");
+// Pass the vRPC URL — used verbatim for RPC; the SDK derives `/attestation`.
+const req = new FetchRequest("https://rpc.ankr.com/arbitrum_vrpc");
 req.setHeader("x-api-key", process.env.ANKR_API_KEY!);
 
 const provider = new VrpcProvider(req, 42161); // chainId bound into the signature as "42161"
@@ -161,8 +161,8 @@ The normal verify routes through `@w3tech.io/vrpc-core`'s `TrustedVerifier`,
 which lazily fetches + correlates the serving node's TDX attestation on an
 **unknown** signing pubkey and **caches** the verified pubkey (configurable TTL,
 default 1h). This is **always-on**: the attestation endpoint is **derived from
-the single URL** you pass (the SDK appends `_vrpc` and the `/attestation`
-sub-route, dup-guarded), so there is **no** `attestationBaseUrl` / `chainSlug`
+the single URL** you pass (the SDK appends the `/attestation` sub-route), so
+there is **no** `attestationBaseUrl` / `chainSlug`
 to set and no opt-out — verification is fail-closed. The chainId bootstrap
 always stays on plain `verifyResponse`.
 
@@ -186,7 +186,7 @@ errors and propagates (fail-closed).
 // Auth the idiomatic ethers way: set it on the FetchRequest. The SDK reuses
 // those headers for BOTH the RPC POST and the internal attestation fetch — there
 // is no separate apiKey option. Attestation is always-on, derived from the URL.
-const req = new FetchRequest("https://rpc.ankr.com/arbitrum");
+const req = new FetchRequest("https://rpc.ankr.com/arbitrum_vrpc");
 req.setHeader("x-api-key", process.env.ANKR_API_KEY); // covers both legs (never logged)
 const provider = new VrpcProvider(req, 42161, {
   pubkeyCacheTtlMs: 3_600_000, // 1h (default)

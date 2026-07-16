@@ -25,9 +25,9 @@ ANKR_API_KEY=<your key> pnpm example:all   # key optional — see note above
 Without `ANKR_API_KEY`, example 04 still runs end-to-end and demonstrates the
 proxy's fail-closed refusal instead of a verified-success result.
 
-To point at a different chain, edit the URL (`https://rpc.ankr.com/<chain>/<key>`)
-and chain id in the example. The adapters own the `_vrpc` suffix and attestation
-sub-route; pass `https://host/<chain>/<key>` and the SDK derives the rest.
+To point at a different chain, edit the URL (`https://rpc.ankr.com/<chain>_vrpc/<key>`)
+and chain id in the example. The URL is the explicit vRPC route, used verbatim
+for RPC; the adapters derive only the `/attestation` sub-route from it.
 
 ## What is and isn't verified
 

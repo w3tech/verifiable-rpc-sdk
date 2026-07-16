@@ -57,8 +57,8 @@ export interface FetchAttestationOptions {
   /**
    * Full attestation endpoint URL (no query), e.g.
    * `https://rpc.ankr.com/arbitrum_vrpc/attestation`. The transport layer derives
-   * this from the user URL (`deriveVrpcUrls`); the `_vrpc` route convention lives
-   * there, not here.
+   * this from the user URL (`deriveVrpcUrls`); the user spells the vRPC route
+   * out explicitly there, not here.
    */
   attestationUrl: string;
   /** Caller-supplied 32-byte attestation nonce. */

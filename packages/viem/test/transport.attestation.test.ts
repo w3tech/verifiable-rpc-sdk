@@ -26,9 +26,9 @@ import { describe, expect, test } from "vitest";
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
 import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
-// Path-ful URL (chain slug): deriveVrpcUrls inserts `_vrpc` on the chain segment,
-// so `${URL}_vrpc` == the derived rpc route (and `${URL}_vrpc/attestation`).
-const URL = "http://test.invalid/arbitrum";
+// Path-ful URL (vRPC route): used verbatim as the rpc route; the attestation
+// leg is `${URL}/attestation`.
+const URL = "http://test.invalid/arbitrum_vrpc";
 const ADDR = "0x1111111111111111111111111111111111111111" as const;
 // Fixed seed used by the fixture signer — its pubkey is what the attestation
 // body must correlate to.
@@ -60,7 +60,7 @@ function toHex(bytes: Uint8Array): string {
 interface SeamFetch {
   fetchFn: (url: string, init: RequestInit) => Promise<Response>;
   attGetCount: number;
-  /** Last attestation GET URL — asserts the derived `_vrpc/attestation` route. */
+  /** Last attestation GET URL — asserts the derived `/attestation` route. */
   lastAttUrl: string | undefined;
 }
 
@@ -150,7 +150,7 @@ describe("vrpcHttp always-on attestation (viem half)", () => {
     expect(seam.lastAttUrl).not.toContain("node_id");
   });
 
-  test("derivedAttestationRoute: the attestation GET targets the `_vrpc/attestation` route from the single URL", async () => {
+  test("derivedAttestationRoute: the attestation GET targets the `/attestation` route from the single URL", async () => {
     const seam = seamFetch();
     const c = createPublicClient({
       chain: TEST_CHAIN,
@@ -162,7 +162,7 @@ describe("vrpcHttp always-on attestation (viem half)", () => {
     });
     await c.getBalance({ address: ADDR });
     expect(seam.attGetCount).toBe(1);
-    expect(seam.lastAttUrl).toContain(`${URL}_vrpc/attestation`);
+    expect(seam.lastAttUrl).toContain(`${URL}/attestation`);
     expect(seam.lastAttUrl).toContain(`node_id=${NODE_ID}`);
   });
 });

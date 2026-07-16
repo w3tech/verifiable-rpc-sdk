@@ -2,18 +2,15 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Single-URL derivation for the vRPC transport convention.
 //
-// The user passes ONE endpoint URL. The SDK owns the `_vrpc` route suffix and
-// the `/attestation` sub-route — the user never spells either out. Both the RPC
-// leg and the attestation leg derive from that single URL, so there is no
+// The user passes ONE endpoint URL — the explicit vRPC route (e.g.
+// `https://rpc.ankr.com/arbitrum_vrpc`, or `http://host:8545/_vrpc` on a direct
+// node). The SDK never rewrites the route: the URL is used as-is for the RPC
+// leg, and only the `/attestation` sub-route derives from it, so there is no
 // separate `attestationBaseUrl`/`chainSlug`.
-//
-// `_vrpc` suffixes the CHAIN path segment (the first path segment), NOT the end
-// of the URL — so a trailing API-key segment (the public `rpc.ankr.com/<chain>/<key>`
-// form) is preserved after the suffix.
 
 /** RPC + attestation endpoints derived from one user-supplied URL. */
 export interface VrpcUrls {
-  /** JSON-RPC POST target — the `_vrpc` route, e.g. `https://rpc.ankr.com/arbitrum_vrpc`. */
+  /** JSON-RPC POST target — the user URL as-is, e.g. `https://rpc.ankr.com/arbitrum_vrpc`. */
   rpcUrl: string;
   /** Attestation GET target, e.g. `https://rpc.ankr.com/arbitrum_vrpc/attestation`. */
   attestationUrl: string;
@@ -23,52 +20,35 @@ export interface VrpcUrls {
 const REST_PREFIXES = new Set(["premium-http", "rest"]);
 
 /**
- * Derive the `_vrpc` RPC route and its `/attestation` sub-route from a single
- * user URL. `_vrpc` is appended to the **chain** path segment, unless it
- * already ends with `_vrpc` (dup-guard — a caller who passes a `_vrpc` URL is not
- * doubled). The chain is normally the first segment; a known REST/HTTP-API
- * prefix (`premium-http` on the public `rpc.ankr.com` form, `rest` on shark's
- * direct form) shifts it to the second. The attestation ingress only matches
- * the UNprefixed `/<chain>/<key>/attestation` route, so such a prefix is kept
- * on the RPC leg and stripped from the attestation leg. Any path segments
- * after the chain (e.g. an API key) are preserved. Query/hash are not expected
- * on a vRPC URL (`fetchAttestation` adds `?nonce=…`) and are dropped.
+ * Derive the `/attestation` sub-route from a single user URL. The URL itself is
+ * the RPC leg, verbatim — the user spells the vRPC route out explicitly (the
+ * SDK does NOT append `_vrpc`). A known REST/HTTP-API prefix (`premium-http`
+ * on the public `rpc.ankr.com` form, `rest` on shark's direct form) is kept on
+ * the RPC leg but stripped from the attestation leg, because the attestation
+ * ingress only matches the UNprefixed `/<chain>/<key>/attestation` route. Any
+ * path segments after the chain (e.g. an API key) are preserved. Query/hash
+ * are not expected on a vRPC URL (`fetchAttestation` adds `?nonce=…`) and are
+ * dropped.
  *
- * `https://rpc.ankr.com/arbitrum`        → rpc `…/arbitrum_vrpc`,        attest `…/arbitrum_vrpc/attestation`
- * `https://rpc.ankr.com/arbitrum/<key>`  → rpc `…/arbitrum_vrpc/<key>`,  attest `…/arbitrum_vrpc/<key>/attestation`
- * `https://rpc.ankr.com/arbitrum_vrpc`   → rpc `…/arbitrum_vrpc` (unchanged)
- * `http://host:8545` (no path)           → rpc `…:8545/_vrpc`            (direct node serves vRPC at `/_vrpc`)
- * `…/premium-http/ton_api_v2/<key>`      → rpc `…/premium-http/ton_api_v2_vrpc/<key>`, attest `…/ton_api_v2_vrpc/<key>/attestation`
+ * `https://rpc.ankr.com/arbitrum_vrpc`        → rpc unchanged, attest `…/arbitrum_vrpc/attestation`
+ * `https://rpc.ankr.com/arbitrum_vrpc/<key>`  → rpc unchanged, attest `…/arbitrum_vrpc/<key>/attestation`
+ * `http://host:8545/_vrpc`                    → rpc unchanged, attest `…:8545/_vrpc/attestation`
+ * `…/premium-http/ton_api_v2_vrpc/<key>`      → rpc unchanged, attest `…/ton_api_v2_vrpc/<key>/attestation`
  */
 export function deriveVrpcUrls(url: string): VrpcUrls {
   const u = new URL(url);
   const segments = u.pathname.split("/").filter(Boolean);
 
-  // A known REST prefix shifts the chain to the SECOND segment: suffix that,
-  // keep the prefix on the RPC route, drop it from the attestation route.
+  // A known REST prefix is kept on the RPC route but dropped from the
+  // attestation route.
   if (segments.length >= 2 && REST_PREFIXES.has(segments[0] as string)) {
-    const [prefix, chain, ...rest] = segments as [string, string, ...string[]];
-    const chainVrpc = chain.endsWith("_vrpc") ? chain : `${chain}_vrpc`;
-    const tail = [chainVrpc, ...rest].join("/");
+    const [prefix, ...tail] = segments as [string, ...string[]];
     return {
-      rpcUrl: `${u.origin}/${prefix}/${tail}`,
-      attestationUrl: `${u.origin}/${tail}/attestation`,
+      rpcUrl: `${u.origin}/${prefix}/${tail.join("/")}`,
+      attestationUrl: `${u.origin}/${tail.join("/")}/attestation`,
     };
   }
 
-  if (segments.length === 0) {
-    // No chain segment (e.g. a direct node root `http://host:port`). The node
-    // serves the vRPC endpoint at `/_vrpc`.
-    const rpcUrl = `${u.origin}/_vrpc`;
-    return { rpcUrl, attestationUrl: `${rpcUrl}/attestation` };
-  }
-
-  // First path segment is the chain slug. Append `_vrpc` (dup-guard); preserve
-  // everything after it (e.g. an API key).
-  const chain = segments[0] as string;
-  if (!chain.endsWith("_vrpc")) {
-    segments[0] = `${chain}_vrpc`;
-  }
-  const rpcUrl = `${u.origin}/${segments.join("/")}`;
+  const rpcUrl = segments.length === 0 ? u.origin : `${u.origin}/${segments.join("/")}`;
   return { rpcUrl, attestationUrl: `${rpcUrl}/attestation` };
 }

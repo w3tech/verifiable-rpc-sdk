@@ -100,9 +100,9 @@ describe("parseConfig", () => {
     expect(config.attestationUrl).toBe(deriveVrpcUrls(UPSTREAM).attestationUrl);
   });
 
-  test("bareChainUrlGetsVrpcSuffixOnRpcLeg", () => {
+  test("upstreamUrlUsedVerbatimOnRpcLeg", () => {
     const config = parseConfig(
-      ["--upstream", "https://rpc.ankr.com/arbitrum", "--chain-id", "42161"],
+      ["--upstream", "https://rpc.ankr.com/arbitrum_vrpc", "--chain-id", "42161"],
       {},
     );
     expect(config.upstreamUrl).toBe("https://rpc.ankr.com/arbitrum_vrpc");
