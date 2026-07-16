@@ -244,6 +244,19 @@ describe("proxy pipeline", () => {
     expect(JSON.parse(res503.body.toString()).error.message).toContain("503");
   });
 
+  test("upstreamRedirectIsNeverFollowed", async () => {
+    // undici v8 follows redirects only via an opt-in redirect interceptor,
+    // which the proxy does not compose. Pin that: an unsigned 302 fails
+    // closed instead of being chased to its Location target. Catches anyone
+    // ever composing interceptors.redirect onto the upstream dispatcher.
+    const { mock, url } = await startProxy({ tamper: "unsigned", status: 302 });
+    const res = await post(url, RPC_REQUEST);
+    await expectErrorKind(res, 502, "UnsignedUpstream");
+    expect(JSON.parse(res.body.toString()).error.message).toContain("302");
+    // Exactly one upstream request — nothing chased the redirect.
+    expect(mock.received).toHaveLength(1);
+  });
+
   test("upstreamTraceIdAppendedToErrorMessage", async () => {
     const traceId = "0a2d2888c132131e6350a26ddcd9d5a8";
     const { url } = await startProxy({
