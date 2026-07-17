@@ -56,7 +56,7 @@ jobs:
 
       # NOTE: package-manager caching is deliberately DISABLED in the release job per npm
       # Trusted Publishing guidance (no `cache: 'pnpm'` here, unlike ci.yml).
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
