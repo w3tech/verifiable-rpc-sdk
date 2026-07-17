@@ -1,0 +1,16 @@
+# Build-context hygiene: keep the context small and the layer inputs stable.
+# The Dockerfile COPY steps are already narrow; this is defense in depth.
+.git
+node_modules
+**/node_modules
+**/dist
+**/dist-docker
+examples
+docs
+research
+coverage
+*.log
+.env*
+.claude
+.codegraph
+*.tsbuildinfo
