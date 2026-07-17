@@ -143,8 +143,7 @@ npx @w3tech.io/vrpc-proxy \
 ```
 
 Then point your client at `http://127.0.0.1:8969`. The image is signed (cosign) and
-carries build provenance — see [`packages/proxy/README.md`](../packages/proxy/README.md)
-for run flags and `cosign verify` / `gh attestation verify` instructions.
+carries build provenance — see [`packages/proxy/README.md`](../packages/proxy/README.md).
 
 ### Inspect mode
 
