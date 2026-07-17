@@ -22,6 +22,45 @@ instance per chain.
 npx @w3tech.io/vrpc-proxy --upstream <url> --chain-id <id>
 ```
 
+## Run with Docker
+
+```sh
+docker run --rm -p 8969:8969 ghcr.io/w3tech/vrpc-proxy --upstream <url> --chain-id <id>
+```
+
+The image binds `0.0.0.0:8969` by default (baked `VRPC_PROXY_LISTEN`) so port
+mapping works; `--listen` or the env var still override it. The image is
+amd64-only and has no `HEALTHCHECK` (distroless runtime, no health endpoint);
+`docker run --init` is optional — SIGTERM is already handled.
+
+The image is published to GHCR on each release tag; until the package is made
+public, `docker login ghcr.io` is required to pull.
+
+### Verify the image
+
+Every release image is cosign-signed and provenance-attested by CI. Verify the
+signature — proves the image was pushed by this repo's release workflow:
+
+```sh
+cosign verify ghcr.io/w3tech/vrpc-proxy:<version> \
+  --certificate-identity-regexp 'https://github\.com/w3tech/verifiable-rpc-sdk/\.github/workflows/docker-publish\.yml@.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+Verify the image's build provenance — proves which workflow, commit, and repo
+built exactly these bytes:
+
+```sh
+gh attestation verify oci://ghcr.io/w3tech/vrpc-proxy:<version> -R w3tech/verifiable-rpc-sdk
+```
+
+Verify a standalone copy of the bundled `cli.js` (extracted from the image) —
+any distributed copy of the bundle file is attested per release:
+
+```sh
+gh attestation verify <path/to/cli.js> -R w3tech/verifiable-rpc-sdk
+```
+
 ## Usage (repo run)
 
 ```sh
