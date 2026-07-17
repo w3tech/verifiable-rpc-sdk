@@ -210,12 +210,15 @@ over the exact node-signed bytes, before you ever see the data. Packages
   verifies each response in `_send` before `JSON.parse`.
 - **`vrpc-viem`** — `vrpcHttp()`, a verifiable drop-in for viem's `http()`
   transport.
-- **`vrpc-proxy`** — a standalone local **verifying reverse proxy** (`vrpc-proxy`
-  CLI, also shipped as `ghcr.io/w3tech/vrpc-proxy`). For clients **not** in
-  TypeScript (Go, Rust, Python, curl, …): run it locally, point your existing RPC
-  client at it, and it verifies every response fail-closed with the same
-  `vrpc-core` engine — returning verified bytes only, never the unverified body.
-  Language-agnostic, zero backend integration. (`packages/proxy/`.)
+- **`vrpc-proxy`** — a standalone **verifying reverse proxy** (`vrpc-proxy` CLI,
+  and — the primary way to run it — the `ghcr.io/w3tech/vrpc-proxy` **Docker
+  image**). For clients **not** in TypeScript (Go, Rust, Python, curl, …): run it
+  as a container (or locally via npx), point your existing RPC client at it, and it
+  verifies every response fail-closed with the same `vrpc-core` engine — returning
+  verified bytes only, never the unverified body. Docker is the intended
+  deployment: it drops into any infrastructure as a sidecar/service regardless of
+  the client language. Language-agnostic, zero backend integration.
+  (`packages/proxy/`, root `Dockerfile`.)
 - **`dstack-verify`** — the dstack/TDX attestation-verification module.
 
 The user passes **one URL** — the explicit vRPC route (e.g.
@@ -341,9 +344,9 @@ SDK automates) is:
 The simplest answer for most users: **"Use the `@w3tech.io/vrpc-ethers` or
 `@w3tech.io/vrpc-viem` drop-in — it does every step above on every call and throws
 if anything fails."** For a **non-TypeScript** client, the equivalent answer is
-**"run `vrpc-proxy` (npx or `docker run ghcr.io/w3tech/vrpc-proxy`) and point your
-client at it"** — it runs the same steps server-side and only ever relays verified
-bytes.
+**"run the `vrpc-proxy` container (`docker run ghcr.io/w3tech/vrpc-proxy`, or npx
+locally) and point your client at it"** — it runs the same steps server-side and
+only ever relays verified bytes.
 
 ### See it happen — inject a logger
 
