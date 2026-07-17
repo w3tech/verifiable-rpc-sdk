@@ -4,11 +4,12 @@ description: >-
   Explain Ankr's verifiable RPC (vRPC) to a user: what it is and why it exists,
   Intel TDX and Phala dstack, the attestation sidecar and what its /attestation
   endpoint returns, the trust model (why a client need not trust Ankr),
-  and how this SDK (vrpc-core + the verifier) checks a response. Use when a user
+  and how this SDK (vrpc-core + the verifier) checks a response — including the
+  language-agnostic vrpc-proxy for non-TypeScript clients. Use when a user
   asks what vRPC / verifiable RPC is, how response verification works, what the
-  sidecar returns, what Intel TDX or Phala dstack are, or how to verify a vRPC
-  response. Agent-facing knowledge: relay it in plain language, cite the linked
-  sources, and never invent facts.
+  sidecar returns, what Intel TDX or Phala dstack are, how to verify a vRPC
+  response, or how to verify from a non-TypeScript client. Agent-facing knowledge:
+  relay it in plain language, cite the linked sources, and never invent facts.
 allowed-tools:
   - Read
   - Grep
@@ -209,6 +210,12 @@ over the exact node-signed bytes, before you ever see the data. Packages
   verifies each response in `_send` before `JSON.parse`.
 - **`vrpc-viem`** — `vrpcHttp()`, a verifiable drop-in for viem's `http()`
   transport.
+- **`vrpc-proxy`** — a standalone local **verifying reverse proxy** (`vrpc-proxy`
+  CLI, also shipped as `ghcr.io/w3tech/vrpc-proxy`). For clients **not** in
+  TypeScript (Go, Rust, Python, curl, …): run it locally, point your existing RPC
+  client at it, and it verifies every response fail-closed with the same
+  `vrpc-core` engine — returning verified bytes only, never the unverified body.
+  Language-agnostic, zero backend integration. (`packages/proxy/`.)
 - **`dstack-verify`** — the dstack/TDX attestation-verification module.
 
 The user passes **one URL** — the explicit vRPC route (e.g.
@@ -333,7 +340,10 @@ SDK automates) is:
 
 The simplest answer for most users: **"Use the `@w3tech.io/vrpc-ethers` or
 `@w3tech.io/vrpc-viem` drop-in — it does every step above on every call and throws
-if anything fails."**
+if anything fails."** For a **non-TypeScript** client, the equivalent answer is
+**"run `vrpc-proxy` (npx or `docker run ghcr.io/w3tech/vrpc-proxy`) and point your
+client at it"** — it runs the same steps server-side and only ever relays verified
+bytes.
 
 ### See it happen — inject a logger
 
