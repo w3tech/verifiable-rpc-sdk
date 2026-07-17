@@ -124,6 +124,27 @@ pnpm example:03-vrpc-core-walkthrough  # the core primitives, step by step
 
 The packages are published to npm under the `@w3tech.io` scope (`pnpm add @w3tech.io/vrpc-ethers ethers` or `pnpm add @w3tech.io/vrpc-viem viem`). See the per-adapter [package READMEs](../packages) and [MIGRATION.md](../MIGRATION.md) for pointing the examples at a live vRPC endpoint and key.
 
+### Run the proxy (no code change, any client)
+
+Don't want to touch your application code? Run `vrpc-proxy` as a verifying reverse proxy
+and route your RPC traffic through it — any client, any language (Go, Rust, Python, curl,
+existing TypeScript apps), any backend architecture. It forwards to the upstream vRPC
+endpoint, verifies every response fail-closed, and returns verified bytes only. Your
+traffic is vRPC-protected with zero code change.
+
+```bash
+# via Docker (production; amd64)
+docker run -p 8969:8969 ghcr.io/w3tech/vrpc-proxy \
+  --upstream https://rpc.ankr.com/arbitrum_vrpc --chain-id 42161
+
+# or via npx (no Docker)
+npx @w3tech.io/vrpc-proxy \
+  --upstream https://rpc.ankr.com/arbitrum_vrpc --chain-id 42161
+```
+
+Then point your client at `http://127.0.0.1:8969`. The image is signed (cosign) and
+carries build provenance — see [`packages/proxy/README.md`](../packages/proxy/README.md).
+
 ### Inspect mode
 
 Beyond the automatic per-call verification, the SDK exposes the proof: `fetchAttestation()` returns the raw quote, signing pubkey, and compose hash, and `verifyAttestationCorrelation()` checks the attestation pubkey against a response signer — the same correlation `TrustedVerifier` runs lazily on every new pubkey. (Behind a load balancer the attestation fetch needs the node id from a prior response - the verified path supplies it automatically.)

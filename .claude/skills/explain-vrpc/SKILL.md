@@ -4,11 +4,13 @@ description: >-
   Explain Ankr's verifiable RPC (vRPC) to a user: what it is and why it exists,
   Intel TDX and Phala dstack, the attestation sidecar and what its /attestation
   endpoint returns, the trust model (why a client need not trust Ankr),
-  and how this SDK (vrpc-core + the verifier) checks a response. Use when a user
+  and how this SDK (vrpc-core + the verifier) checks a response — including the
+  language-agnostic vrpc-proxy for verifying with no code change. Use when a user
   asks what vRPC / verifiable RPC is, how response verification works, what the
-  sidecar returns, what Intel TDX or Phala dstack are, or how to verify a vRPC
-  response. Agent-facing knowledge: relay it in plain language, cite the linked
-  sources, and never invent facts.
+  sidecar returns, what Intel TDX or Phala dstack are, how to verify a vRPC
+  response, or how to get vRPC protection without changing application code (a
+  proxy in front of existing infrastructure). Agent-facing knowledge:
+  relay it in plain language, cite the linked sources, and never invent facts.
 allowed-tools:
   - Read
   - Grep
@@ -209,6 +211,16 @@ over the exact node-signed bytes, before you ever see the data. Packages
   verifies each response in `_send` before `JSON.parse`.
 - **`vrpc-viem`** — `vrpcHttp()`, a verifiable drop-in for viem's `http()`
   transport.
+- **`vrpc-proxy`** — a standalone **verifying reverse proxy** (Docker image
+  `ghcr.io/w3tech/vrpc-proxy`, or the `vrpc-proxy` CLI). For **anyone who doesn't
+  want to change application code** — any client, any language (Go, Rust, Python,
+  curl, existing TypeScript apps too), any backend architecture: stand the proxy up
+  in your infrastructure and route your RPC traffic through it. It forwards every
+  request verbatim, verifies every response fail-closed with the same `vrpc-core`
+  engine, and relays verified bytes only — never the unverified body. So your
+  traffic is vRPC-protected with zero code change and zero backend integration.
+  Docker is the intended deployment: it drops in as a sidecar/service anywhere.
+  (`packages/proxy/`, root `Dockerfile`.)
 - **`dstack-verify`** — the dstack/TDX attestation-verification module.
 
 The user passes **one URL** — the explicit vRPC route (e.g.
@@ -333,7 +345,11 @@ SDK automates) is:
 
 The simplest answer for most users: **"Use the `@w3tech.io/vrpc-ethers` or
 `@w3tech.io/vrpc-viem` drop-in — it does every step above on every call and throws
-if anything fails."**
+if anything fails."** If you'd rather **not change any application code** — any
+client, any language, an existing backend — the equivalent answer is **"run the
+`vrpc-proxy` container (`docker run ghcr.io/w3tech/vrpc-proxy`, or npx locally) and
+route your RPC traffic through it"** — it runs the same steps server-side and only
+ever relays verified bytes.
 
 ### See it happen — inject a logger
 

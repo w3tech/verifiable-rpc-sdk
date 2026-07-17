@@ -21,7 +21,11 @@ the version source.
 
    Or trigger `Publish` manually from the Actions tab with a `tag` input (e.g. `v0.2.0`).
 
-2. **Trigger.** The push of a `v*.*.*` tag triggers `.github/workflows/publish.yml`.
+2. **Trigger.** The push of a `v*.*.*` tag triggers **two** workflows in parallel:
+   `.github/workflows/publish.yml` (npm packages, below) and
+   `.github/workflows/docker-publish.yml` (the `ghcr.io/w3tech/vrpc-proxy` container
+   image — see "Docker image release"). The two are independent; either can succeed or
+   fail on its own.
 
 3. **Version + dist-tag derive.** The version is derived from the tag
    (`VERSION=${GITHUB_REF_NAME#v}`) and validated for shape only:
@@ -47,6 +51,34 @@ the version source.
 
 6. **GitHub Release.** `softprops/action-gh-release` creates a GitHub Release with
    auto-generated, PR-label-categorized notes driven by `.github/release.yml`.
+
+## Docker image release
+
+The same `v*` tag that publishes the npm packages also builds and publishes the
+`ghcr.io/w3tech/vrpc-proxy` container image via `.github/workflows/docker-publish.yml`.
+
+- **amd64 only.** vrpc-proxy is a production infra tool; non-amd64 users run it via
+  `npx @w3tech.io/vrpc-proxy`.
+- **Hermetic build.** The release build runs with `no-cache: true` and reads no layer
+  cache. Only `docker-test-build.yml` (on push) uses the gha layer cache; the release
+  never does, so its attestation covers actually-built bytes rather than a possibly
+  poisoned cache layer.
+- **Tags.** `docker/metadata-action` derives image tags from the git tag: `vX.Y.Z` →
+  `X.Y.Z` + `latest`.
+- **Signing + provenance.** The pushed image is signed with cosign keyless (Sigstore
+  OIDC) and gets two `attest-build-provenance` attestations — one on the image by
+  digest (`push-to-registry: true`) and one on the extracted `cli.js` bundle
+  (`subject-path`). The workflow never touches the GitHub Release, so it stays
+  compatible with immutable releases (which forbid post-publish asset mutation).
+- **Verify.** `cosign verify …` and
+  `gh attestation verify oci://ghcr.io/w3tech/vrpc-proxy@sha256:<digest> --owner w3tech`
+  — see `packages/proxy/README.md` for exact commands.
+- **Immutable releases.** Immutable releases is a repo-wide **GitHub Releases** setting
+  (it locks the tag, assets, and notes of every GitHub Release once published) — it is
+  not specific to docker. In this repo the GitHub Release is created by the npm flow
+  (`publish.yml`, step 6); `docker-publish.yml` only pushes to GHCR and never creates or
+  mutates a release, so it is compatible by construction. The npm registry publish is
+  independently immutable (npm forbids re-publishing a version).
 
 ## Changelog
 

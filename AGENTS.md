@@ -24,6 +24,7 @@ compose bump.
 | Format check     | `pnpm run format:check`                                                                              |
 | Format fix       | `pnpm run format`                                                                                    |
 | Typecheck        | `pnpm -r typecheck` (root fans out: `pnpm -r typecheck`; per-package leaf is `tsc --noEmit`) |
+| Docker build     | `docker build -t vrpc-proxy .` (root `Dockerfile`; amd64 production image). The docker-only bundle step alone: `pnpm --filter '@w3tech.io/vrpc-proxy' run build:docker` |
 
 ## Pre-push gate (mandatory)
 
@@ -128,6 +129,10 @@ with the simulator binary on the runner is tracked separately.
 | `tsconfig.base.json`          | Strict TS config (target ESNext, moduleResolution bundler, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`). Root `tsconfig.json` only `extends` it with `files: []`; each package's `tsconfig.json` extends it too.        |
 | `biome.json`                  | Biome lint + formatter config (root).                                                                                                                                                     |
 | `.github/workflows/ci.yml`    | CI workflow — lint + format:check + typecheck + test on push/PR.                                                                                                                          |
+| `Dockerfile`                  | Root multi-stage image (node:24-slim builder → distroless nodejs24 runtime, amd64, single self-contained `cli.js`). Publishes to GHCR (GitHub Container Registry) as `ghcr.io/w3tech/vrpc-proxy`.                               |
+| `packages/proxy/tsup.docker.config.ts` | Docker-only tsup config — bundles everything (`noExternal`) into one `cli.js` for the distroless stage. Kept out of the npm package (not in the `files` whitelist).                        |
+| `.github/workflows/docker-test-build.yml` | On push: build + in-container smoke, gha layer cache, no registry push. Pre-tag validation.                                                                                     |
+| `.github/workflows/docker-publish.yml`    | On `v*` tag: hermetic (`no-cache`) build + GHCR push, cosign keyless sign, double `attest-build-provenance` (image digest + bundle file).                                    |
 
 ## Where to look first
 
@@ -136,6 +141,8 @@ with the simulator binary on the runner is tracked separately.
 | Add a field to the public surface             | `packages/core/src/index.ts`     |
 | Adjust lint or format rules                   | `biome.json` (Biome 2.x schema)  |
 | Adjust CI pipeline                            | `.github/workflows/ci.yml`       |
+| Build/publish the proxy container image       | `Dockerfile`, `.github/workflows/docker-test-build.yml` (push) + `docker-publish.yml` (tag) |
+| Release runbook (npm + docker, user gates)    | `docs/PUBLISHING.md`             |
 | Change strict-mode TS flags                   | `tsconfig.base.json`             |
 | Explain vRPC / the trust model to a user      | `.claude/skills/explain-vrpc/SKILL.md` |
 

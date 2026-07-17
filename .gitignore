@@ -1,6 +1,7 @@
 # TS / Node / Bun
 node_modules/
 dist/
+dist-docker/
 *.tsbuildinfo
 .bun/
 bun.lockb.bak
