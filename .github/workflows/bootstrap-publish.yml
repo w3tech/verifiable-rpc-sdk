@@ -1,0 +1,67 @@
+# One-time bootstrap publisher for a NEW @w3tech.io/* package that does not yet
+# exist on npm. npm Trusted Publishing cannot create a brand-new package
+# (npm/cli#8544 — no pending publishers, no web-UI "create"), so the very first
+# publish of a new package name must use a token. This workflow does exactly
+# that and NOTHING else: it token-publishes a single package, after which you
+# register the per-package trusted publisher on npmjs.com and every subsequent
+# release goes through the tokenless OIDC pipeline in publish.yml.
+#
+# Trigger: push to the `bootstrap-publish` branch. This is deliberate. A
+# workflow_dispatch trigger only works when the file lives on the default
+# branch; a push trigger runs the workflow from the pushed branch itself, so
+# this can do its job WITHOUT ever merging to main. Re-run by pushing again
+# (e.g. an empty commit) to the branch.
+#
+# Teardown (after the package exists on npm):
+#   1. Register the trusted publisher on npmjs.com
+#      (GitHub Actions / w3tech/verifiable-rpc-sdk / publish.yml).
+#   2. Delete the `bootstrap-publish` branch.
+#   3. Revoke the NPMJS_TOKEN secret — publishing is tokenless from here on.
+name: Bootstrap publish (token, one-time)
+
+on:
+  push:
+    branches:
+      - bootstrap-publish
+
+# Serialize so two pushes cannot publish concurrently.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    # Same release gate as publish.yml: the NPMJS_TOKEN lives in the `prod`
+    # environment, and this environment carries the required-reviewer approval
+    # (Meagan / Roman) — so this one-off token publish goes through the exact
+    # same human gate as every tokenless release.
+    environment: prod
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: pnpm install --frozen-lockfile
+
+      # Build in topological order so the proxy's workspace dep (vrpc-core) is
+      # compiled before the proxy itself.
+      - run: pnpm -r build
+
+      # Publish ONLY the proxy package. pnpm rewrites its `workspace:*` deps to
+      # the concrete published versions (vrpc-core is already on npm), so the
+      # published manifest resolves against the registry. No --provenance: a
+      # token publish from a private repo cannot attest provenance, and that is
+      # fine — provenance only attaches when both repo and package are public.
+      - name: Publish @w3tech.io/vrpc-proxy (token)
+        run: pnpm --filter '@w3tech.io/vrpc-proxy' publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
