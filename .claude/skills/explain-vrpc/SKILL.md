@@ -210,9 +210,8 @@ over the exact node-signed bytes, before you ever see the data. Packages
   verifies each response in `_send` before `JSON.parse`.
 - **`vrpc-viem`** — `vrpcHttp()`, a verifiable drop-in for viem's `http()`
   transport.
-- **`vrpc-proxy`** — a standalone **verifying reverse proxy** (`vrpc-proxy` CLI,
-  and — the primary way to run it — the `ghcr.io/w3tech/vrpc-proxy` **Docker
-  image**). For clients **not** in TypeScript (Go, Rust, Python, curl, …): run it
+- **`vrpc-proxy`** — a standalone **verifying reverse proxy** (Docker image
+  `ghcr.io/w3tech/vrpc-proxy`, or the `vrpc-proxy` CLI). For clients **not** in TypeScript (Go, Rust, Python, curl, …): run it
   as a container (or locally via npx), point your existing RPC client at it, and it
   verifies every response fail-closed with the same `vrpc-core` engine — returning
   verified bytes only, never the unverified body. Docker is the intended
