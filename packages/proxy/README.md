@@ -1,10 +1,15 @@
 # @w3tech.io/vrpc-proxy
 
-Local verifying reverse proxy for vRPC endpoints. Point any plain HTTP client
-at the proxy; it forwards every request verbatim to the configured upstream
-vRPC endpoint, verifies every response with `@w3tech.io/vrpc-core`
-(Ed25519 signature + attestation, fail-closed), and relays verified bytes
-back unchanged. An unverified body is never returned to the client.
+Verifying reverse proxy for vRPC endpoints — get vRPC protection with **zero code
+change**. Stand the proxy up in your infrastructure and route your RPC traffic
+through it: any client, any language (Go, Rust, Python, curl, existing TypeScript
+apps), any backend architecture. It forwards every request verbatim to the
+configured upstream vRPC endpoint, verifies every response with
+`@w3tech.io/vrpc-core` (Ed25519 signature + attestation, fail-closed), and relays
+verified bytes back unchanged. An unverified body is never returned to the client.
+
+Docker is the intended deployment (drops in as a sidecar/service); an npx CLI is
+provided for local runs.
 
 For what vRPC proves, the attestation flow, and the trust boundary, see the
 [Quickstart and how-it-works guide](../../docs/quickstart.md).
@@ -15,12 +20,6 @@ instance per chain.
 
 > 🚧 **Note:** a multichain proxy (routing several chains through one instance)
 > is in development.
-
-## Quick start (npx)
-
-```sh
-npx @w3tech.io/vrpc-proxy --upstream <url> --chain-id <id>
-```
 
 ## Run with Docker
 
@@ -35,6 +34,12 @@ amd64-only and has no `HEALTHCHECK` (distroless runtime, no health endpoint);
 
 The image is published to GHCR on each release tag; until the package is made
 public, `docker login ghcr.io` is required to pull.
+
+## Run with npx (local)
+
+```sh
+npx @w3tech.io/vrpc-proxy --upstream <url> --chain-id <id>
+```
 
 ### Verify the image
 
