@@ -35,7 +35,7 @@ concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
 
-# Least privilege at the workflow level; the release job widens only what it needs.
+# Least privilege at the workflow level; each job widens only what it needs.
 permissions:
   contents: read
 
@@ -55,7 +55,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6
 
-      # NOTE: package-manager caching is deliberately DISABLED in the release job per npm
+      # NOTE: package-manager caching is deliberately DISABLED in this job per npm
       # Trusted Publishing guidance (no `cache: 'pnpm'` here, unlike ci.yml).
       - uses: actions/setup-node@v6
         with:
@@ -156,7 +156,7 @@ jobs:
   # tags from the git ref, and a branch-ref dispatch would mint wrong tags. To
   # retry, re-run the failed job from the Actions UI (same ref, same tags). This
   # job never creates or edits the GitHub release and never uploads release
-  # assets — the release job owns the release, and immutable releases reject
+  # assets — the github-release job owns the release, and immutable releases reject
   # post-publish asset changes.
   docker:
     if: github.event_name == 'push'
