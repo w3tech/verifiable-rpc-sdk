@@ -55,10 +55,15 @@ gh attestation verify oci://ghcr.io/w3tech/vrpc-proxy:<version> -R w3tech/verifi
 ```
 
 Verify a standalone copy of the bundled `cli.js` (extracted from the image) —
-any distributed copy of the bundle file is attested per release:
+any distributed copy of the bundle file is attested per release. Attestation
+matches by file **digest**, so the local filename does not matter:
 
 ```sh
-gh attestation verify <path/to/cli.js> -R w3tech/verifiable-rpc-sdk
+# extract the exact bundle the release attested, from the pushed image
+cid=$(docker create ghcr.io/w3tech/vrpc-proxy@sha256:<digest>)
+docker cp "$cid":/app/cli.js ./cli.js && docker rm "$cid"
+
+gh attestation verify ./cli.js -R w3tech/verifiable-rpc-sdk
 ```
 
 ## Usage (repo run)
