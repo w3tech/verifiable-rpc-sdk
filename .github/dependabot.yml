@@ -48,6 +48,8 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     target-branch: "main"
+    cooldown:
+      default-days: 7
     assignees:
       - "fasashen"
       - "memekas"
