@@ -1,6 +1,7 @@
-# Release pipeline: the @w3tech.io/* workspace packages (npm, `release` job) and
-# the ghcr.io/w3tech/vrpc-proxy container image (`publish-image` job) — one tag,
-# one prod-environment approval, two parallel publish legs.
+# Release pipeline: the @w3tech.io/* workspace packages (`npm` job) and the
+# ghcr.io/w3tech/vrpc-proxy container image (`docker` job) — one tag, one
+# prod-environment approval, two parallel publish legs, then `github-release`
+# finalizes the GitHub Release once both succeed.
 #
 # Publishing is TOKENLESS: it uses npm Trusted Publishing (OIDC). The runner mints a
 # short-lived OIDC id-token (id-token: write) which the npm CLI exchanges under the hood
@@ -39,7 +40,7 @@ permissions:
   contents: read
 
 jobs:
-  release:
+  npm:
     runs-on: ubuntu-latest
     environment: prod # release gate (tag-deployment policy v*); the bootstrap NPMJS_TOKEN it once held is gone (publishing is now tokenless OIDC)
     permissions:
@@ -157,7 +158,7 @@ jobs:
   # job never creates or edits the GitHub release and never uploads release
   # assets — the release job owns the release, and immutable releases reject
   # post-publish asset changes.
-  publish-image:
+  docker:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: prod
@@ -247,17 +248,17 @@ jobs:
   # Create the GitHub Release only after BOTH publish legs succeed — immutable
   # releases make a release final at creation, so it must never point at a
   # failed npm or image publish. On workflow_dispatch the image leg is skipped
-  # (see publish-image) and the release is created without the image section.
+  # (see the docker job) and the release is created without the image section.
   github-release:
-    if: ${{ !cancelled() && needs.release.result == 'success' && (needs.publish-image.result == 'success' || needs.publish-image.result == 'skipped') }}
-    needs: [release, publish-image]
+    if: ${{ !cancelled() && needs.npm.result == 'success' && (needs.docker.result == 'success' || needs.docker.result == 'skipped') }}
+    needs: [npm, docker]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Compose image section for release notes
         env:
-          DIGEST: ${{ needs.publish-image.outputs.digest }}
+          DIGEST: ${{ needs.docker.outputs.digest }}
           TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           : > body.md

@@ -23,7 +23,7 @@ the version source.
 
 2. **Trigger.** The push of a `v*.*.*` tag triggers **two** workflows in parallel:
    `.github/workflows/publish.yml` (npm packages, below) and
-   the `publish-image` job (the `ghcr.io/w3tech/vrpc-proxy` container
+   the `docker` job (the `ghcr.io/w3tech/vrpc-proxy` container
    image — see "Docker image release"). The two are independent; either can succeed or
    fail on its own.
 
@@ -59,7 +59,7 @@ the version source.
 ## Docker image release
 
 The same `v*` tag that publishes the npm packages also builds and publishes the
-`ghcr.io/w3tech/vrpc-proxy` container image via the `publish-image` job in the same
+`ghcr.io/w3tech/vrpc-proxy` container image via the `docker` job in the same
 `publish.yml` workflow.
 
 - **amd64 only.** vrpc-proxy is a production infra tool; non-amd64 users run it via
@@ -81,7 +81,7 @@ The same `v*` tag that publishes the npm packages also builds and publishes the
 - **Immutable releases.** Immutable releases is a repo-wide **GitHub Releases** setting
   (it locks the tag, assets, and notes of every GitHub Release once published) — it is
   not specific to docker. In this repo the GitHub Release is created by the npm flow
-  (the `github-release` job, step 6); the `publish-image` job only pushes to GHCR and never creates or
+  (the `github-release` job, step 6); the `docker` job only pushes to GHCR and never creates or
   mutates a release, so it is compatible by construction. The npm registry publish is
   independently immutable (npm forbids re-publishing a version).
 
