@@ -48,7 +48,7 @@ signature — proves the image was pushed by this repo's release workflow:
 
 ```sh
 cosign verify ghcr.io/w3tech/vrpc-proxy:<version> \
-  --certificate-identity-regexp 'https://github\.com/w3tech/verifiable-rpc-sdk/\.github/workflows/docker-publish\.yml@.*' \
+  --certificate-identity-regexp 'https://github\.com/w3tech/verifiable-rpc-sdk/\.github/workflows/publish\.yml@.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 

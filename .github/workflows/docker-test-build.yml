@@ -3,7 +3,7 @@ name: docker-test-build
 # Build-only pre-tag validation of the vrpc-proxy image: builds the root
 # Dockerfile on pushes/PRs touching image inputs and smoke-runs the result.
 # Never pushes to GHCR. The gha layer cache here is iteration-only and is
-# deliberately NOT read by the release workflow — docker-publish builds
+# deliberately NOT read by the release workflow — the publish-image job builds
 # hermetically so its attestation covers actually-built bytes.
 
 on:
@@ -22,7 +22,7 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/docker-test-build.yml'
-      - '.github/workflows/docker-publish.yml'
+      - '.github/workflows/publish.yml'
   pull_request:
     paths:
       - 'Dockerfile'
@@ -34,7 +34,7 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/docker-test-build.yml'
-      - '.github/workflows/docker-publish.yml'
+      - '.github/workflows/publish.yml'
 
 permissions:
   contents: read
