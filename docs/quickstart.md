@@ -124,11 +124,13 @@ pnpm example:03-vrpc-core-walkthrough  # the core primitives, step by step
 
 The packages are published to npm under the `@w3tech.io` scope (`pnpm add @w3tech.io/vrpc-ethers ethers` or `pnpm add @w3tech.io/vrpc-viem viem`). See the per-adapter [package READMEs](../packages) and [MIGRATION.md](../MIGRATION.md) for pointing the examples at a live vRPC endpoint and key.
 
-### Run the proxy (any language, no TypeScript)
+### Run the proxy (no code change, any client)
 
-Not on TypeScript? Run `vrpc-proxy` as a local verifying reverse proxy and point your
-existing RPC client (Go, Rust, Python, curl, …) at it. It forwards to the upstream vRPC
-endpoint, verifies every response fail-closed, and returns verified bytes only.
+Don't want to touch your application code? Run `vrpc-proxy` as a verifying reverse proxy
+and route your RPC traffic through it — any client, any language (Go, Rust, Python, curl,
+existing TypeScript apps), any backend architecture. It forwards to the upstream vRPC
+endpoint, verifies every response fail-closed, and returns verified bytes only. Your
+traffic is vRPC-protected with zero code change.
 
 ```bash
 # via Docker (production; amd64)
