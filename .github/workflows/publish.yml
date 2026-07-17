@@ -1,4 +1,7 @@
-# Release pipeline for the @w3tech.io/* workspace packages.
+# Release pipeline: the @w3tech.io/* workspace packages (`npm` job) and the
+# ghcr.io/w3tech/vrpc-proxy container image (`docker` job) — one tag, one
+# prod-environment approval, two parallel publish legs, then `github-release`
+# finalizes the GitHub Release once both succeed.
 #
 # Publishing is TOKENLESS: it uses npm Trusted Publishing (OIDC). The runner mints a
 # short-lived OIDC id-token (id-token: write) which the npm CLI exchanges under the hood
@@ -32,31 +35,29 @@ concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
 
-# Least privilege at the workflow level; the release job widens only what it needs.
+# Least privilege at the workflow level; each job widens only what it needs.
 permissions:
   contents: read
 
 jobs:
-  release:
+  npm:
     runs-on: ubuntu-latest
     environment: prod # release gate (tag-deployment policy v*); the bootstrap NPMJS_TOKEN it once held is gone (publishing is now tokenless OIDC)
     permissions:
       id-token: write # OIDC token exchange for tokenless Trusted Publishing (critical)
-      contents: write # action-gh-release creates the GitHub Release
+      contents: read
     steps:
       - uses: actions/checkout@v7
         with:
-          # Full history so action-gh-release can diff release notes to the previous tag.
-          fetch-depth: 0
           # On workflow_dispatch, check out the named tag; on push:tags this input is empty
           # and checkout defaults to the pushed tag ref (which is correct).
           ref: ${{ inputs.tag }}
 
       - uses: pnpm/action-setup@v6
 
-      # NOTE: package-manager caching is deliberately DISABLED in the release job per npm
+      # NOTE: package-manager caching is deliberately DISABLED in this job per npm
       # Trusted Publishing guidance (no `cache: 'pnpm'` here, unlike ci.yml).
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
@@ -141,11 +142,149 @@ jobs:
         env:
           NPM_CONFIG_PROVENANCE: 'true'
 
-      # Create the GitHub Release with auto-generated, PR-label-categorized notes
-      # (.github/release.yml). Pinned to an immutable commit SHA, never a moving tag.
+  # Container image release: build and push ghcr.io/w3tech/vrpc-proxy (semver +
+  # latest tags), cosign-keyless sign the pushed digest, verify the signature
+  # in-workflow, then attest build provenance twice — the image by digest
+  # (pushed to the registry) and the extracted cli.js bundle file. Auth is the
+  # built-in GITHUB_TOKEN; signing and attestation use the runner's OIDC
+  # identity (no long-lived secrets).
+  #
+  # HERMETIC: every layer is rebuilt from the tagged checkout; the shared build
+  # cache is never read, so the attestation covers actually-built bytes.
+  #
+  # Tag pushes only (no workflow_dispatch): docker/metadata-action derives image
+  # tags from the git ref, and a branch-ref dispatch would mint wrong tags. To
+  # retry, re-run the failed job from the Actions UI (same ref, same tags). This
+  # job never creates or edits the GitHub release and never uploads release
+  # assets — the github-release job owns the release, and immutable releases reject
+  # post-publish asset changes.
+  docker:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE: ghcr.io/w3tech/vrpc-proxy
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          # Default flavor (latest=auto) also tags `latest` for non-prerelease
+          # semver tags — deliberate: v0.4.0 publishes 0.4.0 + latest.
+          tags: |
+            type=semver,pattern={{version}}
+
+      - name: Build and push image (hermetic)
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+          no-cache: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes ${{ env.IMAGE }}@${DIGEST}
+
+      - name: Verify signature
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign verify ${{ env.IMAGE }}@${DIGEST} \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+      - name: Attest image provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/w3tech/vrpc-proxy
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      # Extract the EXACT file shipped in the pushed image (not a rebuild) so
+      # the attested file == the in-image file for any distributed copy.
+      - name: Extract bundle from pushed image
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker pull "${IMAGE}@${DIGEST}"
+          cid=$(docker create "${IMAGE}@${DIGEST}")
+          docker cp "$cid":/app/cli.js ./vrpc-proxy-cli.js
+          docker rm "$cid"
+
+      - name: Attest bundle file provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: vrpc-proxy-cli.js
+
+  # Create the GitHub Release only after BOTH publish legs succeed — immutable
+  # releases make a release final at creation, so it must never point at a
+  # failed npm or image publish. On workflow_dispatch the image leg is skipped
+  # (see the docker job) and the release is created without the image section.
+  github-release:
+    if: ${{ !cancelled() && needs.npm.result == 'success' && (needs.docker.result == 'success' || needs.docker.result == 'skipped') }}
+    needs: [npm, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Compose image section for release notes
+        env:
+          DIGEST: ${{ needs.docker.outputs.digest }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          : > body.md
+          if [ -n "$DIGEST" ]; then
+            VERSION="${TAG#v}"
+            {
+              echo "## Container image"
+              echo
+              echo '```'
+              echo "ghcr.io/w3tech/vrpc-proxy:${VERSION}@${DIGEST}"
+              echo '```'
+              echo
+              echo "Signed (cosign keyless) and provenance-attested. Verify:"
+              echo
+              echo '```sh'
+              echo "gh attestation verify oci://ghcr.io/w3tech/vrpc-proxy@${DIGEST} -R w3tech/verifiable-rpc-sdk"
+              echo '```'
+            } >> body.md
+          fi
+
+      # Auto-generated, PR-label-categorized notes (.github/release.yml) with the
+      # image section above prepended. Pinned to an immutable commit SHA.
       - uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           generate_release_notes: true
+          body_path: body.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
