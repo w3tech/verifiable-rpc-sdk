@@ -49,8 +49,12 @@ the version source.
    dist-tag. `--no-git-checks` is required because publish runs from a detached
    `HEAD` at the tag.
 
-6. **GitHub Release.** `softprops/action-gh-release` creates a GitHub Release with
-   auto-generated, PR-label-categorized notes driven by `.github/release.yml`.
+6. **GitHub Release.** A dedicated `github-release` job creates the GitHub Release
+   only after BOTH publish legs (npm + container image) succeed — immutable releases
+   make a release final at creation, so it must never point at a failed publish.
+   Notes are auto-generated and PR-label-categorized (`.github/release.yml`), with a
+   "Container image" section on top: the pushed image ref by digest plus the
+   `gh attestation verify` command.
 
 ## Docker image release
 
@@ -77,7 +81,7 @@ The same `v*` tag that publishes the npm packages also builds and publishes the
 - **Immutable releases.** Immutable releases is a repo-wide **GitHub Releases** setting
   (it locks the tag, assets, and notes of every GitHub Release once published) — it is
   not specific to docker. In this repo the GitHub Release is created by the npm flow
-  (the `release` job, step 6); the `publish-image` job only pushes to GHCR and never creates or
+  (the `github-release` job, step 6); the `publish-image` job only pushes to GHCR and never creates or
   mutates a release, so it is compatible by construction. The npm registry publish is
   independently immutable (npm forbids re-publishing a version).
 
