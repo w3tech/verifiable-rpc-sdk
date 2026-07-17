@@ -73,23 +73,12 @@ The same `v*` tag that publishes the npm packages also builds and publishes the
 - **Verify.** `cosign verify …` and
   `gh attestation verify oci://ghcr.io/w3tech/vrpc-proxy@sha256:<digest> --owner w3tech`
   — see `packages/proxy/README.md` for exact commands.
-
-### One-time setup (admin, before the first `v*` tag)
-
-Three gates must be cleared once, by a repo **admin**, or the first real release is
-incomplete:
-
-1. **npm trusted-publisher bootstrap for `@w3tech.io/vrpc-proxy`.** The package must be
-   published to npm once manually (`cd packages/proxy && npm publish --access public`)
-   and a trusted-publisher registered (see "Bootstrap-then-tokenless authentication"
-   below) — otherwise the npm lockstep fails E404 on the proxy package and burns the
-   version. This blocks tagging until done.
-2. **GHCR package visibility → Public.** After the first image push, flip the
-   `vrpc-proxy` package to Public in GHCR package settings so `docker pull` and
-   `gh attestation verify` work without auth (and so provenance attaches).
-3. **Immutable releases (optional, recommended).** Enable immutable releases in the
-   repository settings (admin-only). The tag-driven flow already finalizes release
-   assets in one shot, so it is compatible.
+- **Immutable releases.** Immutable releases is a repo-wide **GitHub Releases** setting
+  (it locks the tag, assets, and notes of every GitHub Release once published) — it is
+  not specific to docker. In this repo the GitHub Release is created by the npm flow
+  (`publish.yml`, step 6); `docker-publish.yml` only pushes to GHCR and never creates or
+  mutates a release, so it is compatible by construction. The npm registry publish is
+  independently immutable (npm forbids re-publishing a version).
 
 ## Changelog
 
