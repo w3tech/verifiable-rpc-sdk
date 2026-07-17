@@ -1,15 +1,3 @@
-# vrpc-proxy container image — linux/amd64 only (production infra tool; Mac/arm
-# users run `npx @w3tech.io/vrpc-proxy` instead).
-#
-# Multi-stage: node:24-slim builds a single self-contained cli.js bundle
-# (packages/proxy/tsup.docker.config.ts), the distroless nodejs24 runtime stage
-# carries ONLY that file — no shell, no package manager, no node_modules.
-# Both FROM lines are digest-pinned; dependabot (docker ecosystem) bumps the pins.
-#
-# The image bakes VRPC_PROXY_LISTEN (bind 0.0.0.0:8969) because the source
-# default (127.0.0.1:8969) is unreachable through docker port mapping; `--listen`
-# or the env var still override it at run time.
-
 # --- builder -----------------------------------------------------------------
 FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS builder
 WORKDIR /build
