@@ -1,0 +1,85 @@
+name: docker-test-build
+
+# Build-only pre-tag validation of the vrpc-proxy image: builds the root
+# Dockerfile on pushes/PRs touching image inputs and smoke-runs the result.
+# Never pushes to GHCR. The gha layer cache here is iteration-only and is
+# deliberately NOT read by the release workflow — docker-publish builds
+# hermetically so its attestation covers actually-built bytes.
+
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '**'
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'packages/**'
+      - 'package.json'
+      - 'tsconfig.base.json'
+      - 'tsconfig.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/docker-test-build.yml'
+      - '.github/workflows/docker-publish.yml'
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'packages/**'
+      - 'package.json'
+      - 'tsconfig.base.json'
+      - 'tsconfig.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/docker-test-build.yml'
+      - '.github/workflows/docker-publish.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: vrpc-proxy:test
+          cache-from: type=gha,scope=vrpc-proxy
+          cache-to: type=gha,mode=max,scope=vrpc-proxy
+
+      # The CLI has no help flag; the no-args failure is the smoke contract:
+      # exit code 1 + the typed config error proves the bundle boots inside
+      # the distroless runtime.
+      - name: Smoke test (no args)
+        run: |
+          set +e
+          OUTPUT=$(docker run --rm vrpc-proxy:test 2>&1)
+          CODE=$?
+          set -e
+          echo "$OUTPUT"
+          if [ "$CODE" -ne 1 ]; then
+            echo "::error::expected exit code 1, got $CODE"
+            exit 1
+          fi
+          case "$OUTPUT" in
+            *'Missing required --upstream flag'*) echo "smoke OK" ;;
+            *)
+              echo "::error::expected the typed missing-upstream message"
+              exit 1
+              ;;
+          esac
