@@ -1,24 +1,28 @@
 # Examples
 
-Three runnable examples for the verifiable-rpc-sdk. All target Ankr's public
-Arbitrum vRPC endpoint and need no API key.
+Runnable examples for the verifiable-rpc-sdk. All target Ankr's public
+Arbitrum vRPC endpoint.
 
 | # | Script | What it shows |
 | - | ------ | ------------- |
 | 01 | `01-ethers-client.ts` | Drop-in **ethers** provider (`VrpcProvider`) — `getBlock` / `getBalance`, every response verified before ethers returns it. |
 | 02 | `02-viem-client.ts` | Drop-in **viem** transport (`vrpcHttp`) wired into `createPublicClient` — the same calls, verified inside the transport. |
 | 03 | `03-vrpc-core-walkthrough.ts` | Step-by-step **`@w3tech.io/vrpc-core`**: signed wire → `verifyResponse` → tamper→`BadSignature` → `fetchAttestation` + correlation → `TrustedVerifier`. |
+| 04 | `04-proxy.ts` | Local verifying **proxy** (`@w3tech.io/vrpc-proxy`) spawned as a child process — a plain `fetch` client with zero SDK imports gets fail-closed-verified responses. |
 
 ## Run
 
 ```sh
 pnpm install
-pnpm example:all
+ANKR_API_KEY=<your key> pnpm example:all   # key optional — see note below
 ```
 
-To point at a different chain, edit the URL (`https://rpc.ankr.com/<chain>/<key>`)
-and chain id in the example. The adapters own the `_vrpc` suffix and attestation
-sub-route; pass `https://host/<chain>/<key>` and the SDK derives the rest.
+Without `ANKR_API_KEY`, example 04 still runs end-to-end and demonstrates the
+proxy's fail-closed refusal instead of a verified-success result.
+
+To point at a different chain, edit the URL (`https://rpc.ankr.com/<chain>_vrpc/<key>`)
+and chain id in the example. The URL is the explicit vRPC route, used verbatim
+for RPC; the adapters derive only the `/attestation` sub-route from it.
 
 ## What is and isn't verified
 

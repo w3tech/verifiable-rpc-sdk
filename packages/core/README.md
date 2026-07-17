@@ -124,7 +124,7 @@ import { createConsoleLogger } from "@w3tech.io/vrpc-core";
 import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
 
 // Inject through the ethers adapter (drop-in); omit `logger` to stay silent.
-const provider = new VrpcProvider("https://rpc.ankr.com/eth", 1, {
+const provider = new VrpcProvider("https://rpc.ankr.com/eth_vrpc", 1, {
   logger: createConsoleLogger(),
 });
 // works the same on the viem transport: vrpcHttp(url, { logger: createConsoleLogger() })

@@ -29,6 +29,9 @@ importers:
       '@w3tech.io/vrpc-ethers':
         specifier: workspace:*
         version: link:packages/ethers
+      '@w3tech.io/vrpc-proxy':
+        specifier: workspace:*
+        version: link:packages/proxy
       '@w3tech.io/vrpc-viem':
         specifier: workspace:*
         version: link:packages/viem
@@ -98,6 +101,25 @@ importers:
       ethers:
         specifier: ^6.16.0
         version: 6.17.0
+
+  packages/proxy:
+    dependencies:
+      '@w3tech.io/vrpc-core':
+        specifier: workspace:*
+        version: link:../core
+      undici:
+        specifier: ^8.7.0
+        version: 8.7.0
+    devDependencies:
+      '@noble/ed25519':
+        specifier: ^3.1.0
+        version: 3.1.0
+      '@types/node':
+        specifier: '*'
+        version: 26.1.1
+      '@w3tech.io/dstack-verify':
+        specifier: workspace:*
+        version: link:../dstack-verify
 
   packages/viem:
     dependencies:
@@ -1169,6 +1191,10 @@ packages:
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
+  undici@8.7.0:
+    resolution: {integrity: sha512-N7iQtfyLhIMOFgQubvmLV26svHpO0bqKnAiWotTQCVKCmWrcGbBotPuW1x+xwYZ2VHdSTVUfPQQnlEt1/LouTQ==}
+    engines: {node: '>=22.19.0'}
+
   viem@2.55.1:
     resolution: {integrity: sha512-sajvEmONS3dEDFh0jKXGugTU8ImyGoIV3sEHSWNRhgkH484v/+6DjZAplRhcdeqNV/VBxOs/l3raOG4NaXvX9A==}
     peerDependencies:
@@ -2091,6 +2117,8 @@ snapshots:
   undici-types@6.19.8: {}
 
   undici-types@8.3.0: {}
+
+  undici@8.7.0: {}
 
   viem@2.55.1(@typescript/typescript6@6.0.2):
     dependencies:

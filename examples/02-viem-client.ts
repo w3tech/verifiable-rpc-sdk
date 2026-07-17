@@ -11,7 +11,7 @@ async function main() {
   // chain id is taken from the client's `chain` (mirrors ethers' ctor arg).
   const client = createPublicClient({
     chain: arbitrum,
-    transport: vrpcHttp("https://rpc.ankr.com/arbitrum/123456"),
+    transport: vrpcHttp("https://rpc.ankr.com/arbitrum_vrpc/123456"),
   });
 
   const block = await client.getBlockNumber();

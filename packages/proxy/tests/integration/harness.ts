@@ -1,12 +1,19 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
 // Integration test harness — spawns the dstack simulator, the sidecar binary,
-// and an in-process mock JSON-RPC upstream. Mirrors the Rust patterns in
-// `verifiable-rpc-sidecar/tests/common/mod.rs::{spawn_simulator,spawn_sidecar,MockUpstream}`.
+// an in-process mock upstream, and the in-process verifying proxy under test.
+//
+// Local copy of packages/core/tests/integration/harness.ts (cross-package test
+// import is awkward under this package's tsconfig/vitest resolver). Keep the
+// shared spawn helpers byte-identical with the canonical copy; this copy adds
+// two proxy-specific extensions: request capture on the mock upstream and the
+// `spawnProxy` helper wrapping `createProxyServer`.
 //
 // This file deliberately does NOT end in `.test.ts` — the test runner only
 // picks up `*.test.ts`, so importers can pull these helpers without the file
 // being treated as a test suite.
 //
-// Required env vars (when running `pnpm --filter '@w3tech.io/vrpc-core' test:integration`):
+// Required env vars (when running `pnpm --filter '@w3tech.io/vrpc-proxy' test:integration`):
 //   DSTACK_SIMULATOR_BIN          — absolute path to the simulator binary
 //   DSTACK_SIMULATOR_FIXTURES_DIR — directory with app-compose.json, appkeys.json, etc.
 //   SIDECAR_BIN                   — absolute path to the rpc-attest-sidecar binary
@@ -20,6 +27,16 @@ import { createServer as createHttpServer } from "node:http";
 import { type AddressInfo, createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import {
+  type AttestationBundle,
+  type VerifyPolicy,
+  verifyDstackAttestation,
+} from "@w3tech.io/dstack-verify";
+
+import { createProxyServer } from "../../src/server";
+import { mockHardwareVerifier } from "../support/mock-hardware-verifier";
+import { testConfig } from "../support/test-overrides";
 
 /** True when all required integration env vars are set and non-empty. */
 export const integrationEnabled: boolean =
@@ -49,13 +66,31 @@ export interface SidecarHandle {
   kill: () => Promise<void>;
 }
 
+/** One request observed by the mock upstream. */
+export interface CapturedRequest {
+  /** HTTP method as received (e.g. `GET`, `POST`). */
+  method: string;
+  /** Request target as received — path plus query string. */
+  url: string;
+}
+
 /** Handle returned by {@link spawnMockUpstream}. */
 export interface MockUpstreamHandle {
   /** Base URL where the mock is listening (no trailing slash). */
   url: string;
   /** Number of requests received so far. */
   receivedCount: () => number;
+  /** Every request received so far, in arrival order. */
+  requests: () => ReadonlyArray<CapturedRequest>;
   /** Stop the mock server. Best-effort, never throws. */
+  kill: () => Promise<void>;
+}
+
+/** Handle returned by {@link spawnProxy}. */
+export interface ProxyHandle {
+  /** Base URL where the proxy is listening (no trailing slash). */
+  url: string;
+  /** Stop the proxy server. Best-effort, never throws. */
   kill: () => Promise<void>;
 }
 
@@ -188,15 +223,19 @@ export async function spawnSidecar(
 }
 
 /**
- * Spawn an in-process mock JSON-RPC upstream. Defaults to a canned
- * `eth_blockNumber`-style success body; pass `canned` to override.
+ * Spawn an in-process mock upstream. Defaults to a canned
+ * `eth_blockNumber`-style success body; pass `canned` to override. Records
+ * every inbound request's method and url (path + query) so tests can assert
+ * what actually traversed proxy → sidecar → upstream.
  */
 export async function spawnMockUpstream(canned?: string): Promise<MockUpstreamHandle> {
   const body = canned ?? '{"jsonrpc":"2.0","id":1,"result":"0x1234"}';
   let received = 0;
+  const captured: CapturedRequest[] = [];
 
   const server = createHttpServer((req, res) => {
     received++;
+    captured.push({ method: req.method ?? "", url: req.url ?? "" });
     // Drain the request body so the socket can be reused/closed cleanly.
     req.resume();
     res.writeHead(200, { "content-type": "application/json" });
@@ -209,6 +248,63 @@ export async function spawnMockUpstream(canned?: string): Promise<MockUpstreamHa
   return {
     url: `http://127.0.0.1:${port}`,
     receivedCount: () => received,
+    requests: () => captured,
+    kill: async () => {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
+    },
+  };
+}
+
+/**
+ * `verifyAttestation` override: the REAL `verifyDstackAttestation` with the
+ * bundle's `app_compose` cleared so CHK-A2 (compose-hash self-consistency)
+ * dormant-skips via its own designed skip path. The upstream dstack simulator
+ * fixtures are inherently self-inconsistent — `attestation.bin` bakes
+ * compose_hash c143116f… while no checked-in `app-compose.json` revision ever
+ * hashed to it — so CHK-A2 can never pass against a simulator quote. Every
+ * other check (CHK-A1 report_data binding, quote parsing, hardware gate)
+ * still runs for real. CHK-A2 is self-consistency only, not a trust anchor
+ * (both fields are self-reported by the same node).
+ */
+function simulatorVerifyAttestation(bundle: AttestationBundle, policy: VerifyPolicy) {
+  return verifyDstackAttestation(
+    { ...bundle, tcbInfo: { ...bundle.tcbInfo, app_compose: "" } },
+    policy,
+  );
+}
+
+/**
+ * Spawn the verifying proxy in-process via `createProxyServer` on an ephemeral
+ * port. Injects the no-network hardware-verifier mock (a simulator quote is
+ * not real TDX) and the CHK-A2-skipping attestation verifier above — the
+ * attestation leg still hits the real sidecar (that is what makes the suite a
+ * real-wire test); everything else (attestation fetch, Ed25519 verify, replay
+ * window) runs the production `TrustedVerifier` path. The attestation URL is
+ * set explicitly to `${upstreamUrl}/attestation` (same as `deriveVrpcUrls`
+ * would produce for a bare-origin upstream — the raw sidecar serves
+ * `/attestation`); the CLI has no override flag (SDK-style single-URL
+ * derivation) — this programmatic seam exists for tests.
+ */
+export async function spawnProxy(opts: {
+  upstreamUrl: string;
+  chainId: string;
+}): Promise<ProxyHandle> {
+  const config = testConfig(opts.upstreamUrl, {
+    chainId: opts.chainId,
+    attestationUrl: `${opts.upstreamUrl}/attestation`,
+  });
+  const server = createProxyServer(config, {
+    hardwareVerifier: mockHardwareVerifier(),
+    verifyAttestation: simulatorVerifyAttestation,
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+
+  return {
+    url: `http://127.0.0.1:${port}`,
     kill: async () => {
       await new Promise<void>((resolve) => {
         server.close(() => resolve());

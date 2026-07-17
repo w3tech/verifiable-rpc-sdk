@@ -46,23 +46,24 @@ const client = createPublicClient({
   transport: http("https://rpc.ankr.com/arbitrum_vrpc"),
 });
 
-// After — pass the PLAIN route; the SDK appends `_vrpc` (and derives the
-// `/attestation` sub-route) itself. The chain id comes from the viem client's
-// `chain.id` — declare `chain` to pin YOUR chain and skip the bootstrap:
+// After — pass the same vRPC route; the SDK uses it verbatim for RPC and
+// derives the `/attestation` sub-route itself. The chain id comes from the
+// viem client's `chain.id` — declare `chain` to pin YOUR chain and skip the
+// bootstrap:
 import { createPublicClient } from "viem";
 import { arbitrum } from "viem/chains";
 import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 
 const client = createPublicClient({
   chain: arbitrum, // chain.id is bound into the signed pre-image (pins it)
-  transport: vrpcHttp("https://rpc.ankr.com/arbitrum", {
+  transport: vrpcHttp("https://rpc.ankr.com/arbitrum_vrpc", {
     headers: { "x-api-key": process.env.ANKR_API_KEY! },
   }),
 });
 
 // Or bare (no chain → derives chainId from a SIGNED, self-consistently-verified eth_chainId):
 const bareClient = createPublicClient({
-  transport: vrpcHttp("https://rpc.ankr.com/arbitrum"),
+  transport: vrpcHttp("https://rpc.ankr.com/arbitrum_vrpc"),
 });
 
 // Unchanged action code — the returned value IS proof of verification.
@@ -139,9 +140,9 @@ The normal verify routes through `@w3tech.io/vrpc-core`'s `TrustedVerifier`,
 which lazily fetches + correlates the serving node's TDX attestation on an
 **unknown** signing pubkey and **caches** the verified pubkey (configurable TTL,
 default 1h). This is **always-on**: the attestation endpoint is **derived from
-the single URL** you pass (the SDK appends `_vrpc` and the `/attestation`
-sub-route, dup-guarded), so there is **no** `attestationBaseUrl` / `chainSlug`
-to set and no opt-out — verification is fail-closed. The chainId bootstrap
+the single URL** you pass (the SDK appends the `/attestation` sub-route), so
+there is **no** `attestationBaseUrl` / `chainSlug` to set and no opt-out —
+verification is fail-closed. The chainId bootstrap
 always stays on plain `verifyResponse`. The existing `headers` and `fetchFn` are
 **reused** for the attestation-leg fetch (one verifier per transport — never per
 call — so the pubkey cache lives for the transport lifetime).
@@ -166,10 +167,10 @@ attestation GET — which is also the offline test/example seam.
 
 ```ts
 // Attestation is always-on, derived from the single URL — no attestationBaseUrl
-// /chainSlug. Pass the plain route; the SDK appends `_vrpc` and `/attestation`.
+// /chainSlug. Pass the vRPC route; the SDK appends `/attestation`.
 const client = createPublicClient({
   chain: arbitrum, // chain.id pins the chain (skips the bootstrap)
-  transport: vrpcHttp("https://rpc.ankr.com/arbitrum", {
+  transport: vrpcHttp("https://rpc.ankr.com/arbitrum_vrpc", {
     headers: { "x-api-key": process.env.ANKR_API_KEY! }, // RPC + attestation auth
     pubkeyCacheTtlMs: 3_600_000,       // 1h (default)
   }),

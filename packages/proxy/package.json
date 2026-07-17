@@ -1,0 +1,78 @@
+{
+  "name": "@w3tech.io/vrpc-proxy",
+  "version": "0.3.0",
+  "type": "module",
+  "description": "Local verifying reverse proxy for vRPC endpoints",
+  "license": "Apache-2.0",
+  "author": "Web3 Technologies, Inc.",
+  "homepage": "https://github.com/w3tech/verifiable-rpc-sdk#readme",
+  "bugs": "https://github.com/w3tech/verifiable-rpc-sdk/issues",
+  "keywords": [
+    "ethereum",
+    "rpc",
+    "verifiable",
+    "attestation",
+    "tdx",
+    "ed25519",
+    "proxy",
+    "reverse-proxy"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/w3tech/verifiable-rpc-sdk.git",
+    "directory": "packages/proxy"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "vrpc-proxy": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "tsup",
+    "start": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:unit": "vitest run tests --exclude 'tests/integration/**'",
+    "test:integration": "vitest run tests/integration",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@w3tech.io/vrpc-core": "workspace:*",
+    "undici": "^8.7.0"
+  },
+  "devDependencies": {
+    "@noble/ed25519": "^3.1.0",
+    "@types/node": "*",
+    "@w3tech.io/dstack-verify": "workspace:*"
+  }
+}

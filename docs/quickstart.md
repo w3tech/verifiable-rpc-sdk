@@ -102,7 +102,7 @@ import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 const client = createPublicClient({ chain, transport: vrpcHttp(url) });
 ```
 
-You pass **one** plain URL (e.g. `https://rpc.ankr.com/arbitrum`). The SDK derives the `_vrpc` RPC route and the `/attestation` route itself - there is no second base URL to configure. `chainId` is optional (the SDK can derive it from a *signed* `eth_chainId`) but passing it is recommended: it pins your expected chain and skips a round-trip.
+You pass **one** URL — the explicit vRPC route (e.g. `https://rpc.ankr.com/arbitrum_vrpc`). The SDK uses it verbatim for RPC and derives the `/attestation` route itself - there is no second base URL to configure. `chainId` is optional (the SDK can derive it from a *signed* `eth_chainId`) but passing it is recommended: it pins your expected chain and skips a round-trip.
 
 Everything downstream - `getBalance`, `eth_call`, `getLogs`, contract reads, `estimateGas` - works exactly as before, now verified.
 

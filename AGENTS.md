@@ -91,7 +91,8 @@ with the simulator binary on the runner is tracked separately.
 
 - Monorepo: pnpm workspaces under `packages/*` — `core` (`@w3tech.io/vrpc-core`,
   the verification primitives), `ethers` (`@w3tech.io/vrpc-ethers`), `viem`
-  (`@w3tech.io/vrpc-viem`), and `dstack-verify` (`@w3tech.io/dstack-verify`).
+  (`@w3tech.io/vrpc-viem`), `dstack-verify` (`@w3tech.io/dstack-verify`), and
+  `proxy` (`@w3tech.io/vrpc-proxy`, local verifying reverse proxy + `vrpc-proxy` CLI).
 - Public surface re-exported through `packages/core/src/index.ts`; implementation
   lives in `packages/core/src/trusted-verifier.ts`, `packages/core/src/verify.ts`,
   `packages/core/src/attestation.ts`,
@@ -123,6 +124,7 @@ with the simulator binary on the runner is tracked separately.
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/core/src/index.ts`  | Public barrel re-exporting `TrustedVerifier`, `verifyResponse`/`isSignedVrpcResponse`, `fetchAttestation`/`verifyAttestationCorrelation`, the `VerificationError` family, `buildPreImage`, `parseChainId`, and `deriveVrpcUrls`. |
 | `packages/dstack-verify/src/verify-steps.ts`| `computeComposeHash` (`sha256(utf8(app_compose))` bare-hex, used by CHK-A2) + `parseReportData` (CHK-A1). Lives here — compose-hash is a dstack/TDX concept. |
+| `packages/proxy/src/pipeline.ts` | Buffering verifying-proxy pipeline: forward request verbatim, decode a throwaway response copy, `TrustedVerifier.verify` fail-closed, relay original bytes. CLI entry: `packages/proxy/src/cli.ts` (`vrpc-proxy` bin). |
 | `tsconfig.base.json`          | Strict TS config (target ESNext, moduleResolution bundler, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`). Root `tsconfig.json` only `extends` it with `files: []`; each package's `tsconfig.json` extends it too.        |
 | `biome.json`                  | Biome lint + formatter config (root).                                                                                                                                                     |
 | `.github/workflows/ci.yml`    | CI workflow — lint + format:check + typecheck + test on push/PR.                                                                                                                          |

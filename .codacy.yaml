@@ -1,0 +1,11 @@
+---
+# Codacy cannot type-resolve pnpm-workspace packages (@w3tech.io/vrpc-core
+# imports become `any`, node builtins error), so its type-aware rules are ~all
+# false positives here. The native CI gate (biome lint + tsc --noEmit + vitest)
+# runs the same checks type-aware. Exclude the code and let CI be the gate.
+exclude_paths:
+  - "packages/**/src/**"
+  - "packages/**/test/**"
+  - "packages/**/tests/**"
+  - "packages/**/*.config.ts"
+  - "examples/**"
