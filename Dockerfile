@@ -1,5 +1,5 @@
 # --- builder -----------------------------------------------------------------
-FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS builder
+FROM node:25-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS builder
 WORKDIR /build
 RUN npm i -g pnpm@11.8.0
 # Layer-cache friendly: manifests first, then sources. ALL FIVE workspace package
