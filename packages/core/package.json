@@ -70,11 +70,11 @@
   },
   "dependencies": {
     "@w3tech.io/dstack-verify": "workspace:*",
-    "@noble/ed25519": "^3.1.0",
-    "@noble/hashes": "^2.2.0",
+    "@noble/ed25519": "^3.2.0",
+    "@noble/hashes": "^2.4.0",
     "lru-cache": "^11.5.2"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1"
+    "@types/node": "^26.4.1"
   }
 }
