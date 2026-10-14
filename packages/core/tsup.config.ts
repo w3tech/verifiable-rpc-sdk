@@ -18,4 +18,14 @@ export default defineConfig({
   clean: true,
   splitting: true,
   sourcemap: true,
+  // Third-party crypto libraries are bundled at the lockfile's exact versions; workspace
+  // packages and @noble/hashes stay external.
+  noExternal: [
+    "@hpke/core",
+    "@hpke/dhkem-x25519",
+    "@hpke/common",
+    "@noble/curves",
+    "bhttp-ts",
+    "quicvarint",
+  ],
 });
