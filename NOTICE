@@ -3,3 +3,6 @@ Copyright 2026 Web3 Technologies, Inc.
 
 This product includes software developed by
 Web3 Technologies, Inc.
+
+The @w3tech.io/vrpc-core package bundles third-party code distributed under the MIT License;
+see packages/core/THIRD_PARTY_LICENSES.
