@@ -14,7 +14,7 @@ import {
 import { DhkemX25519HkdfSha256 as JsX25519 } from "@hpke/dhkem-x25519";
 import { extract } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
-import { concatBytes } from "@noble/hashes/utils.js";
+import { bytesToHex, concatBytes, hexToBytes } from "@noble/hashes/utils.js";
 import { InvalidNodeKey } from "./node-key";
 
 export type KemChoice = "native" | "js";
@@ -61,10 +61,44 @@ export function createSuite(kem: KemChoice, aeadId: 0x0001 | 0x0002 = 0x0002): C
   });
 }
 
+// CFRG HPKE test vector for this suite (mode 0): the native KEM must open its first encryption.
+const PROBE_IKM_R = "dac33b0e9db1b59dbbea58d59a14e7b5896e9bdf98fad6891e99d1686492b9ee";
+const PROBE_ENC = "6c93e09869df3402d7bf231bf540fadd35cd56be14f97178f0954db94b7fc256";
+const PROBE_INFO = "4f6465206f6e2061204772656369616e2055726e";
+const PROBE_CT =
+  "e5d84cd531cfb583096e7cfa9641bd3079cf3a91cda813c52deb5f512be9931980a41de125a925cdad859d5b7a";
+const PROBE_AAD = "436f756e742d30";
+const PROBE_PT = "4265617574792069732074727574682c20747275746820626561757479";
+
+export async function nativeX25519Works(): Promise<boolean> {
+  try {
+    const suite = createSuite("native");
+    await suite.kem.generateKeyPair();
+    const recipientKey = await suite.kem.deriveKeyPair(hexToBytes(PROBE_IKM_R));
+    const context = await suite.createRecipientContext({
+      recipientKey,
+      enc: hexToBytes(PROBE_ENC),
+      info: hexToBytes(PROBE_INFO),
+    });
+    const pt = await context.open(hexToBytes(PROBE_CT), hexToBytes(PROBE_AAD));
+    return bytesToHex(new Uint8Array(pt)) === PROBE_PT;
+  } catch {
+    return false;
+  }
+}
+
+export async function selectKem(): Promise<KemChoice> {
+  const node = (globalThis as { process?: { versions?: { node?: unknown } } }).process?.versions
+    ?.node;
+  // Node 20.19.0-20.19.2 print an ExperimentalWarning on the first WebCrypto X25519 use.
+  if (typeof node === "string" && Number.parseInt(node, 10) < 22) return "js";
+  return (await nativeX25519Works()) ? "native" : "js";
+}
+
 let contractSuitePromise: Promise<CipherSuite> | undefined;
 
 export function contractSuite(): Promise<CipherSuite> {
-  contractSuitePromise ??= Promise.resolve(createSuite("js"));
+  contractSuitePromise ??= selectKem().then((kem) => createSuite(kem));
   return contractSuitePromise;
 }
 
