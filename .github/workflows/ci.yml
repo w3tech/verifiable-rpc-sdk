@@ -40,6 +40,8 @@ jobs:
         include:
           - node: '20.19.0'
             filter: '--filter @w3tech.io/vrpc-core --filter @w3tech.io/vrpc-ethers --filter @w3tech.io/vrpc-viem --filter @w3tech.io/dstack-verify'
+          - node: '22.12.0'
+            filter: '--filter @w3tech.io/vrpc-core'
           - node: '22.19.0'
             filter: '--filter @w3tech.io/vrpc-proxy'
     steps:

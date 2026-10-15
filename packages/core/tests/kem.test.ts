@@ -3,7 +3,13 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { afterEach, describe, expect, test } from "vitest";
 import { hideX25519 } from "../../test-support/src/index";
 import vector from "../../test-support/vectors/hpke-cfrg-mode0-x25519-sha256-aes256gcm.json";
-import { createSuite, type KemChoice, nativeX25519Works, selectKem } from "../src/ohttp";
+import {
+  createSuite,
+  type KemChoice,
+  nativeX25519Stable,
+  nativeX25519Works,
+  selectKem,
+} from "../src/ohttp";
 
 const KEMS: readonly KemChoice[] = ["js", "native"];
 
@@ -40,7 +46,7 @@ function expectVector(output: SenderOutput): void {
 }
 
 describe("KEM selection", () => {
-  test("is silent and picks native X25519 only from Node 22", async () => {
+  test("is silent and picks native X25519 only where it is stable", async () => {
     const warnings: Error[] = [];
     const onWarning = (warning: Error) => warnings.push(warning);
     process.on("warning", onWarning);
@@ -48,11 +54,24 @@ describe("KEM selection", () => {
       const kem = await selectKem();
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(warnings).toEqual([]);
-      const major = Number.parseInt(process.versions.node, 10);
-      expect(kem).toBe(major < 22 ? "js" : "native");
+      expect(kem).toBe(nativeX25519Stable(process.versions.node) ? "native" : "js");
     } finally {
       process.off("warning", onWarning);
     }
+  });
+
+  test.each([
+    ["20.19.0", false],
+    ["20.19.5", false],
+    ["22.12.0", false],
+    ["22.13.0", true],
+    ["22.19.0", true],
+    ["23.4.0", false],
+    ["23.5.0", true],
+    ["24.0.0", true],
+    ["25.8.1", true],
+  ])("native X25519 on Node %s: %s", (version, stable) => {
+    expect(nativeX25519Stable(version)).toBe(stable);
   });
 });
 
