@@ -56,6 +56,16 @@ export interface ConfidentialClientOptions {
   transport?: ConfidentialTransport;
 }
 
+/** The node the client is pinned to. */
+export interface ConfidentialInfo {
+  nodeId: string;
+  /** Lowercase `0x` hex Ed25519 key the node signs with. */
+  pubkey: string;
+  composeHash: string;
+  /** Unix ms when the attestation was verified. */
+  attestedAt: number;
+}
+
 export interface ConfidentialResponse {
   status: number;
   contentType?: string;
@@ -111,6 +121,15 @@ async function open(opener: ResponseOpener, body: Uint8Array): Promise<InnerResp
   }
 }
 
+function infoOf(pin: Pin): ConfidentialInfo {
+  return {
+    nodeId: pin.nodeId,
+    pubkey: pin.pubkeyHex,
+    composeHash: pin.composeHash,
+    attestedAt: pin.attestedAt,
+  };
+}
+
 function mediaType(value: string | null): string {
   return (value?.split(";", 1)[0] ?? "").trim().toLowerCase();
 }
@@ -157,6 +176,17 @@ export class ConfidentialClient {
         }),
       ttlMs,
     );
+  }
+
+  /** Attests now unless a valid pin exists, and returns the pinned node. */
+  async ready(): Promise<ConfidentialInfo> {
+    return infoOf(await this.#slot.acquire());
+  }
+
+  /** The pinned node, or `undefined` before the first attestation and after the pin expired or was dropped. */
+  getConfidentialInfo(): ConfidentialInfo | undefined {
+    const pin = this.#slot.current();
+    return pin === undefined ? undefined : infoOf(pin);
   }
 
   /** Sends one inner request sealed to the pinned node; any inner status is returned, not thrown. */
