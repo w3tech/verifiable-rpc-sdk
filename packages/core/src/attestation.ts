@@ -94,8 +94,9 @@ export interface FetchAttestationOptions {
  *
  * A `404` is terminal (stale/unknown node id, or a gateway route miss) and throws
  * {@link AttestationNodeNotFoundError} BEFORE parsing — the SDK does NOT retry or
- * fall back to another node. This route is unsigned by contract, so no `vRPC-*`
- * verification runs here; a malformed body throws {@link MalformedAttestationResponse}.
+ * fall back to another node. Any other non-OK status, a body that is not JSON and
+ * a body of the wrong shape throw {@link MalformedAttestationResponse}. This route is
+ * unsigned by contract, so no `vRPC-*` verification runs here.
  */
 export async function fetchAttestation(opts: FetchAttestationOptions): Promise<Attestation> {
   // Synchronous fast-fail BEFORE any fetch.
@@ -119,8 +120,11 @@ export async function fetchAttestation(opts: FetchAttestationOptions): Promise<A
     throw new AttestationNodeNotFoundError(opts.nodeId ?? "(no node_id)");
   }
 
-  const body = (await resp.json()) as unknown;
-  return narrowAttestation(body);
+  const bytes = new Uint8Array(await resp.arrayBuffer());
+  if (!resp.ok) {
+    throw new MalformedAttestationResponse(`unexpected HTTP status ${resp.status}`);
+  }
+  return parseAttestationBody(bytes);
 }
 
 /**

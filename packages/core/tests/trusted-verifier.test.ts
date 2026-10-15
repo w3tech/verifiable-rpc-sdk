@@ -2,7 +2,12 @@ import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 import { AttestationError, EMPTY_ALLOWLIST } from "@w3tech.io/dstack-verify";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { AttestationFailed, InvalidChainId, VerificationError } from "../src/errors";
+import {
+  AttestationFailed,
+  InvalidChainId,
+  MalformedAttestationResponse,
+  VerificationError,
+} from "../src/errors";
 import type { Logger } from "../src/logger";
 import { buildPreImage } from "../src/preimage";
 import {
@@ -96,6 +101,8 @@ interface AttMockState {
   lastUrl: string | undefined;
   /** Seed whose pubkey the mock echoes — set per request so correlation passes. */
   activeSeed: Uint8Array;
+  /** Answer the next attestation GET with this status and a text body. */
+  failNextWithStatus: number | undefined;
 }
 
 /** Mock only the attestation GET leg; count how many times it is hit. */
@@ -105,12 +112,21 @@ function installAttestationMock(): AttMockState {
     attGetCount: 0,
     lastUrl: undefined,
     activeSeed: TEST_SEED,
+    failNextWithStatus: undefined,
   };
   const impl = async (input: string | URL | Request): Promise<Response> => {
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/attestation")) {
       state.attGetCount += 1;
       state.lastUrl = url;
+      if (state.failNextWithStatus !== undefined) {
+        const status = state.failNextWithStatus;
+        state.failNextWithStatus = undefined;
+        return new Response("internal error", {
+          status,
+          headers: { "content-type": "text/plain" },
+        });
+      }
       const attPubkey = await getPublicKeyAsync(state.activeSeed);
       // report_data is the 64-byte CHK-A1 pre-image pubkey(bare) ‖ nonce(bare):
       // the seam binds report_data[0:32]==pubkey and [32:64]==the fetch nonce
@@ -211,6 +227,22 @@ describe("TrustedVerifier / trust seam", () => {
 
   // ── Happy-path suite: real mock verifyDstackAttestation (allowInsecureMock
   // hard-set true by buildVerifyPolicy) → no verifyAttestation override. ──────
+
+  test("attestationStatus500IsMalformedAndNotCached", async () => {
+    const mock = installAttestationMock();
+    mock.failNextWithStatus = 500;
+    const pair = await signedPair();
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
+
+    await expect(tv.verify(pair.requestBytes, pair.responseBytes, pair.headers)).rejects.toThrow(
+      MalformedAttestationResponse,
+    );
+    expect(mock.attGetCount).toBe(1);
+
+    const verified = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    expect(verified.verification.pubkeyHex).toBe(`0x${toHex(await getPublicKeyAsync(TEST_SEED))}`);
+    expect(mock.attGetCount).toBe(2);
+  });
 
   test("cacheMissFetchesAndVerifies", async () => {
     // Unknown pubkey → attestation fetched + verified → VerifiedPair.
