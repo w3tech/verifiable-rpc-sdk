@@ -20,7 +20,7 @@ import {
   MalformedAttestationResponse,
 } from "./errors";
 import type { Logger } from "./logger";
-import type { ConfidentialTransport } from "./transport";
+import { type ConfidentialTransport, MAX_RESPONSE_BYTES, type OuterResponse } from "./transport";
 import { getHeader } from "./verify";
 
 /**
@@ -139,12 +139,21 @@ export async function fetchAttestationWithNodeId(
   if (opts.nonce.length !== 32) {
     throw new InvalidNonce(`expected 32 bytes, got ${opts.nonce.length}`);
   }
-  const response = await transport({
-    method: "GET",
-    url: `${opts.attestationUrl}?nonce=${bytesToHex(opts.nonce)}`,
-    headers: opts.headers,
-    ...(opts.signal === undefined ? {} : { signal: opts.signal }),
-  });
+  let response: OuterResponse;
+  try {
+    response = await transport({
+      method: "GET",
+      url: `${opts.attestationUrl}?nonce=${bytesToHex(opts.nonce)}`,
+      headers: opts.headers,
+      ...(opts.signal === undefined ? {} : { signal: opts.signal }),
+    });
+  } catch (cause) {
+    if (opts.signal?.aborted) throw opts.signal.reason;
+    throw new AttestationUnavailable("transport", { cause });
+  }
+  if (response.body.byteLength > MAX_RESPONSE_BYTES) {
+    throw new AttestationUnavailable("transport");
+  }
   if (response.status < 200 || response.status > 299) {
     throw new AttestationUnavailable("status", { status: response.status });
   }
@@ -152,8 +161,18 @@ export async function fetchAttestationWithNodeId(
   if (nodeId === null || nodeId === "") {
     throw new AttestationUnavailable("node-id-missing", { status: response.status });
   }
-  const body = JSON.parse(new TextDecoder().decode(response.body)) as unknown;
-  return { attestation: narrowAttestation(body), nodeId };
+  return { attestation: parseAttestationBody(response.body), nodeId };
+}
+
+function parseAttestationBody(bytes: Uint8Array): Attestation {
+  let body: unknown;
+  try {
+    body = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    // The platform parse error quotes the input.
+    throw new MalformedAttestationResponse("response is not valid JSON");
+  }
+  return narrowAttestation(body);
 }
 
 /**
