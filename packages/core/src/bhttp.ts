@@ -53,8 +53,16 @@ export class MalformedInnerResponse extends Error {
 
 const TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const FORBIDDEN_METHODS = new Set(["CONNECT", "TRACE", "TRACK"]);
-// Fetch uppercases these names in any case, which would change the method sent.
-const NORMALIZED_METHODS = new Set(["DELETE", "GET", "HEAD", "OPTIONS", "POST", "PUT"]);
+// Fetch uppercases the first six in any case; undici warns on a lowercase `patch`.
+const UPPERCASE_ONLY_METHODS = new Set([
+  "DELETE",
+  "GET",
+  "HEAD",
+  "OPTIONS",
+  "POST",
+  "PUT",
+  "PATCH",
+]);
 const FIELD_VALUE = /^[\t\x20-\x7e]+$/;
 const MAX_PATH_LENGTH = 65534;
 const MAX_HEADER_SECTION = 65536;
@@ -63,7 +71,7 @@ function validMethod(method: string): boolean {
   if (!TOKEN.test(method)) return false;
   const upper = method.toUpperCase();
   if (FORBIDDEN_METHODS.has(upper)) return false;
-  return !NORMALIZED_METHODS.has(upper) || method === upper;
+  return !UPPERCASE_ONLY_METHODS.has(upper) || method === upper;
 }
 
 function validPath(path: string): boolean {

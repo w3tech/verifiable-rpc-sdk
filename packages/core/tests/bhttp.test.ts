@@ -98,11 +98,13 @@ describe("encodeInnerRequest", () => {
     "post",
     "Get",
     "delete",
+    "patch",
+    "Patch",
   ])("rejects method %j", async (method) => {
     await expectRejected({ method, path: "/" }, "method");
   });
 
-  test.each(["PATCH", "patch"])("keeps method %s byte for byte", async (method) => {
+  test.each(["PATCH", "purge"])("keeps method %s byte for byte", async (method) => {
     const bytes = await encode({
       method,
       path: "/",
