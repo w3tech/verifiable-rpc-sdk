@@ -197,6 +197,13 @@ describe("encodeInnerRequest", () => {
     await expectRejected({ method: "POST", path: "/", body }, "content-type-required");
   });
 
+  test.each(["GET", "HEAD"])("rejects %s with a body as a method error", async (method) => {
+    await expectRejected(
+      { method, path: "/", contentType: JSON_TYPE, body: utf8.encode("{}") },
+      "method",
+    );
+  });
+
   test("a request without a body needs no content-type", async () => {
     const decoded = new BHttpDecoder().decodeRequest(await encode({ method: "GET", path: "/" }));
     expect(decoded.headers.has("content-type")).toBe(false);

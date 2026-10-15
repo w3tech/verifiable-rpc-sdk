@@ -116,6 +116,9 @@ function fieldSize(name: string, value: string): number {
 
 export async function encodeInnerRequest(request: InnerRequest): Promise<Uint8Array> {
   if (!validMethod(request.method)) throw new InvalidInnerRequest("method");
+  if (request.body !== undefined && (request.method === "GET" || request.method === "HEAD")) {
+    throw new InvalidInnerRequest("method");
+  }
   if (!validPath(request.path)) throw new InvalidInnerRequest("path");
   const fields: [string, string][] = [];
   if (request.contentType !== undefined) fields.push(["content-type", request.contentType]);
