@@ -31,3 +31,38 @@ jobs:
       - run: pnpm -r typecheck
       - run: pnpm -r build
       - run: pnpm -r test
+
+  node-floor:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: '20.19.0'
+            filter: '--filter @w3tech.io/vrpc-core --filter @w3tech.io/vrpc-ethers --filter @w3tech.io/vrpc-viem --filter @w3tech.io/dstack-verify'
+          - node: '22.19.0'
+            filter: '--filter @w3tech.io/vrpc-proxy'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          standalone: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm ${{ matrix.filter }} test
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps --only-shell chromium
+      - run: pnpm --filter @w3tech.io/vrpc-core test:browser
