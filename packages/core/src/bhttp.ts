@@ -2,7 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Binary HTTP (RFC 9292) encoding of inner requests and decoding of inner responses.
 
-import { BHttpDecoder, BHttpEncoder, vliEncodedLength } from "bhttp-ts";
+import { BHttpDecoder, BHttpEncoder, decodeVli, vliEncodedLength } from "bhttp-ts";
 
 export interface InnerRequest {
   method: string;
@@ -114,11 +114,30 @@ export async function encodeInnerRequest(request: InnerRequest): Promise<Uint8Ar
   }
 }
 
+const KNOWN_LENGTH_RESPONSE = 0x01;
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+
+function firstStatus(bytes: Uint8Array): number {
+  let status: ReturnType<typeof decodeVli>;
+  try {
+    status = decodeVli(bytes, 1);
+  } catch (cause) {
+    throw new MalformedInnerResponse("decode-failed", { cause });
+  }
+  if (status === undefined) throw new MalformedInnerResponse("decode-failed");
+  return status.value;
+}
+
 export async function decodeInnerResponse(bytes: Uint8Array): Promise<InnerResponse> {
+  if (bytes[0] !== KNOWN_LENGTH_RESPONSE) throw new MalformedInnerResponse("framing");
+  // bhttp-ts skips 1xx responses silently, so the first status is checked here.
+  if (firstStatus(bytes) < 200) throw new MalformedInnerResponse("informational");
   try {
     const response = new BHttpDecoder().decodeResponse(bytes);
     const body =
-      response.body === null ? new Uint8Array(0) : new Uint8Array(await response.arrayBuffer());
+      NULL_BODY_STATUSES.has(response.status) || response.body === null
+        ? new Uint8Array(0)
+        : new Uint8Array(await response.arrayBuffer());
     return { status: response.status, contentType: response.headers.get("content-type"), body };
   } catch (cause) {
     throw new MalformedInnerResponse("decode-failed", { cause });

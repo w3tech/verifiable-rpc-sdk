@@ -1,12 +1,23 @@
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { BHttpDecoder, decodeVli } from "bhttp-ts";
 import { describe, expect, test } from "vitest";
+import { createRecipient } from "../../test-support/src/index";
 import rfc9292 from "../../test-support/vectors/rfc9292-section5.json";
-import { encodeInnerRequest, type InnerRequest, InvalidInnerRequest } from "../src/bhttp";
+import {
+  decodeInnerResponse,
+  encodeInnerRequest,
+  type InnerRequest,
+  InvalidInnerRequest,
+  MalformedInnerResponse,
+} from "../src/bhttp";
+import { nodeKeyFromEd25519 } from "../src/node-key";
+import { openResponse, sealRequest } from "../src/ohttp";
 
 const PINNED_REQUEST =
   "0004504f5354056874747073096c6f63616c686f7374052f3f783d313606616363657074106170706c69636174696f6e2f6a736f6e0c636f6e74656e742d74797065106170706c69636174696f6e2f6a736f6e027b7d00";
 const JSON_TYPE = "application/json";
+const PROCESSING_THEN_OK = "0140660040c80002686900";
+const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const utf8 = new TextEncoder();
 
 async function rejection(promise: Promise<unknown>): Promise<unknown> {
@@ -182,5 +193,135 @@ describe("encodeInnerRequest", () => {
     const [first, second] = await Promise.all([encode(request), encode(request)]);
     expect(first && bytesToHex(first)).toBe(PINNED_REQUEST);
     expect(second && bytesToHex(second)).toBe(PINNED_REQUEST);
+  });
+});
+
+function vli(length: number): string {
+  return length < 64 ? length.toString(16).padStart(2, "0") : (0x4000 | length).toString(16);
+}
+
+function field(name: string, value: string): string {
+  return (
+    vli(name.length) +
+    bytesToHex(utf8.encode(name)) +
+    vli(value.length) +
+    bytesToHex(utf8.encode(value))
+  );
+}
+
+function okResponse(fields: string[], body: string): string {
+  const section = fields.join("");
+  const content = bytesToHex(utf8.encode(body));
+  return `0140c8${vli(section.length / 2)}${section}${vli(content.length / 2)}${content}00`;
+}
+
+async function expectMalformed(hex: string, reason: string) {
+  const error = await rejection(decodeInnerResponse(hexToBytes(hex)));
+  expect(error).toBeInstanceOf(MalformedInnerResponse);
+  expect((error as MalformedInnerResponse).reason).toBe(reason);
+  if (hex.length > 0) expect((error as MalformedInnerResponse).message).not.toContain(hex);
+}
+
+describe("decodeInnerResponse", () => {
+  test("decodes RFC 9292 Figure 13 and drops its trailers", async () => {
+    const response = await decodeInnerResponse(hexToBytes(rfc9292.figure13KnownLengthResponse));
+    expect(response.status).toBe(200);
+    expect(response.contentType).toBeNull();
+    expect(new TextDecoder().decode(response.body)).toBe("This content contains CRLF.\r\n");
+  });
+
+  test.each([
+    ["empty input", ""],
+    ["RFC 9292 Figure 11", rfc9292.figure11IndeterminateResponse],
+    ["a two-byte framing indicator", `4001${rfc9292.figure13KnownLengthResponse.slice(2)}`],
+    ["RFC 9292 Figure 8", rfc9292.figure8KnownLengthRequest],
+  ])("rejects framing of %s", async (_, hex) => {
+    await expectMalformed(hex, "framing");
+  });
+
+  test.each([
+    ["102 then 200", PROCESSING_THEN_OK],
+    ["100 alone", "01406400"],
+  ])("rejects an informational response: %s", async (_, hex) => {
+    await expectMalformed(hex, "informational");
+  });
+
+  test.each([
+    ["a truncated header section", "0140c8"],
+    ["content past the end", "0140c800056869"],
+    ["non-zero padding", "0140c8000268690001"],
+    ["status 700", "0142bc000000"],
+    ["a field name with a space", "0140c8060361206201780000"],
+  ])("rejects %s", async (_, hex) => {
+    await expectMalformed(hex, "decode-failed");
+  });
+
+  test.each([
+    ["0140c800", ""],
+    ["0140c8000268690000", "hi"],
+  ])("decodes %s", async (hex, body) => {
+    const response = await decodeInnerResponse(hexToBytes(hex));
+    expect(response.status).toBe(200);
+    expect(new TextDecoder().decode(response.body)).toBe(body);
+  });
+
+  test.each([
+    [204, "0140cc0002686900"],
+    [205, "0140cd0002686900"],
+    [304, "0141300002686900"],
+  ])("returns no body for status %i", async (status, hex) => {
+    const response = await decodeInnerResponse(hexToBytes(hex));
+    expect(response.status).toBe(status);
+    expect(response.body.length).toBe(0);
+  });
+
+  test.each([
+    [["application/json", "text/plain"], "application/json, text/plain"],
+    [["text/plain", "application/json"], "text/plain, application/json"],
+  ])("keeps repeated content-type lines in order: %j", async (values, joined) => {
+    const hex = okResponse(
+      values.map((value) => field("content-type", value)),
+      "{}",
+    );
+    const response = await decodeInnerResponse(hexToBytes(hex));
+    expect(response.contentType).toBe(joined);
+    expect(new TextDecoder().decode(response.body)).toBe("{}");
+  });
+
+  test("decodes recipient replies and rejects an informational one", async () => {
+    const recipient = createRecipient(SEED);
+    const nodeKey = nodeKeyFromEd25519(recipient.ed25519PublicKey);
+    const roundTrip = async (
+      reply: (opened: Awaited<ReturnType<typeof recipient.openRequest>>) => Promise<Uint8Array>,
+    ) => {
+      const sealed = await sealRequest(
+        nodeKey,
+        await encodeInnerRequest({ method: "GET", path: "/" }),
+      );
+      const opened = await recipient.openRequest(sealed.body);
+      return decodeInnerResponse(await openResponse(sealed.opener, await reply(opened)));
+    };
+
+    const noContent = await roundTrip((opened) => opened.respond({ status: 204 }));
+    expect(noContent.status).toBe(204);
+    expect(noContent.body.length).toBe(0);
+
+    const problem = '{"type":"about:blank","title":"Not Found"}';
+    const notFound = await roundTrip((opened) =>
+      opened.respond({
+        status: 404,
+        headers: { "content-type": "application/problem+json" },
+        body: problem,
+      }),
+    );
+    expect(notFound.status).toBe(404);
+    expect(notFound.contentType).toBe("application/problem+json");
+    expect(new TextDecoder().decode(notFound.body)).toBe(problem);
+
+    const error = await rejection(
+      roundTrip((opened) => opened.sealResponse(hexToBytes(PROCESSING_THEN_OK))),
+    );
+    expect(error).toBeInstanceOf(MalformedInnerResponse);
+    expect((error as MalformedInnerResponse).reason).toBe("informational");
   });
 });
