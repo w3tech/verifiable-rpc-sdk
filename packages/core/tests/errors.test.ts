@@ -3,13 +3,18 @@ import { describe, expect, test } from "vitest";
 import {
   AttestationCorrelationError,
   AttestationNodeNotFoundError,
+  AttestationUnavailable,
   BadSignature,
+  ConfidentialSignerMismatch,
   InvalidChainId,
+  InvalidInnerRequest,
   InvalidNonce,
   MalformedAttestationResponse,
   MalformedHeader,
   MissingHeader,
   StaleTimestamp,
+  UnavailableError,
+  UnexpectedResponse,
   VerificationError,
 } from "../src/errors";
 
@@ -214,5 +219,64 @@ describe("errors", () => {
     expect(err.actualPubkey).toBe(actual);
     expect(err.message).toContain(expected);
     expect(err.message).toContain(actual);
+  });
+
+  test("unavailableErrorsAreNotVerificationErrors", () => {
+    const attestation = new AttestationUnavailable("node-id-missing");
+    const unexpected = new UnexpectedResponse(502, "node-1", "text/plain");
+    for (const err of [attestation, unexpected]) {
+      expect(err instanceof Error).toBe(true);
+      expect(err instanceof UnavailableError).toBe(true);
+      expect(err instanceof VerificationError).toBe(false);
+    }
+    expect(attestation.executed).toBe("no");
+    expect(unexpected.executed).toBe("unknown");
+    expect(attestation.name).toBe("AttestationUnavailable");
+    expect(unexpected.name).toBe("UnexpectedResponse");
+    expect(attestation.kind).toBe("AttestationUnavailable");
+    expect(unexpected.kind).toBe("UnexpectedResponse");
+  });
+
+  test("attestationUnavailableCarriesReasonAndOptionalStatus", () => {
+    const withStatus = new AttestationUnavailable("status", { status: 429 });
+    expect(withStatus.reason).toBe("status");
+    expect(withStatus.status).toBe(429);
+    expect(withStatus.message).toBe("Attestation unavailable: HTTP 429");
+
+    const cause = new Error("socket closed");
+    const withoutStatus = new AttestationUnavailable("transport", { cause });
+    expect(withoutStatus.message).toBe("Attestation unavailable: transport");
+    expect("status" in withoutStatus).toBe(false);
+    expect(withoutStatus.cause).toBe(cause);
+    expect("cause" in new AttestationUnavailable("timeout")).toBe(false);
+  });
+
+  test("unexpectedResponseCarriesStatusNodeIdAndOptionalContentType", () => {
+    const err = new UnexpectedResponse(502, "node-1", "text/plain");
+    expect(err.status).toBe(502);
+    expect(err.nodeId).toBe("node-1");
+    expect(err.contentType).toBe("text/plain");
+    expect(err.message).toBe("Unexpected confidential response: HTTP 502");
+    expect("contentType" in new UnexpectedResponse(0, "node-1")).toBe(false);
+  });
+
+  test("confidentialSignerMismatchIsAVerificationError", () => {
+    const expected = `0x${"ab".repeat(32)}`;
+    const actual = `0x${"cd".repeat(32)}`;
+    const err = new ConfidentialSignerMismatch(expected, actual);
+    expect(err instanceof VerificationError).toBe(true);
+    expect(err.kind).toBe("ConfidentialSignerMismatch");
+    expect(err.name).toBe("ConfidentialSignerMismatch");
+    expect(err.expectedPubkey).toBe(expected);
+    expect(err.actualPubkey).toBe(actual);
+  });
+
+  test("invalidInnerRequestIsAVerificationError", () => {
+    const err = new InvalidInnerRequest("content-type-required");
+    expect(err instanceof VerificationError).toBe(true);
+    expect(err.kind).toBe("InvalidInnerRequest");
+    expect(err.name).toBe("InvalidInnerRequest");
+    expect(err.reason).toBe("content-type-required");
+    expect(err.message).toBe("Inner request rejected: content-type-required");
   });
 });

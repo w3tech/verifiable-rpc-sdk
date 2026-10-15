@@ -4,8 +4,13 @@
 
 import { createCloudVerifier, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 
-import { decodeInnerResponse, encodeInnerRequest, type InnerRequest } from "./bhttp";
-import { ConfidentialSignerMismatch, UnexpectedResponse } from "./errors";
+import {
+  decodeInnerResponse,
+  InvalidInnerRequest as EncoderRejected,
+  encodeInnerRequest,
+  type InnerRequest,
+} from "./bhttp";
+import { ConfidentialSignerMismatch, InvalidInnerRequest, UnexpectedResponse } from "./errors";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
 import { attestNode, PinSlot } from "./node-session";
 import { openResponse, sealRequest } from "./ohttp";
@@ -41,6 +46,15 @@ function withoutContentType(headers: Record<string, string>): Record<string, str
   return Object.fromEntries(
     Object.entries(headers).filter(([name]) => name.toLowerCase() !== "content-type"),
   );
+}
+
+async function encode(inner: InnerRequest): Promise<Uint8Array> {
+  try {
+    return await encodeInnerRequest(inner);
+  } catch (err) {
+    if (err instanceof EncoderRejected) throw new InvalidInnerRequest(err.reason);
+    throw err;
+  }
 }
 
 function mediaType(value: string | null): string {
@@ -96,7 +110,7 @@ export class ConfidentialClient {
     inner: InnerRequest,
     options?: { signal?: AbortSignal },
   ): Promise<ConfidentialResponse> {
-    const bhttp = await encodeInnerRequest(inner);
+    const bhttp = await encode(inner);
     const pin = await this.#slot.acquire();
     const sealed = await sealRequest(pin.nodeKey, bhttp);
     const signal = options?.signal;

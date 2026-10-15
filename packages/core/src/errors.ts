@@ -24,7 +24,8 @@ export type VerificationErrorKind =
   | "AttestationNodeNotFound"
   | "AttestationCorrelation"
   | "Attestation"
-  | "ConfidentialSignerMismatch";
+  | "ConfidentialSignerMismatch"
+  | "InvalidInnerRequest";
 
 /**
  * Abstract base for all verification errors. The `kind` discriminator is set
@@ -234,6 +235,22 @@ export class ConfidentialSignerMismatch extends VerificationError {
     public readonly actualPubkey: string,
   ) {
     super(`Response signer ${actualPubkey} is not the pinned node key ${expectedPubkey}`);
+  }
+}
+
+export type InvalidInnerRequestReason =
+  | "method"
+  | "path"
+  | "header"
+  | "content-type-required"
+  | "encode-failed";
+
+/** The caller's inner request cannot be sent; rejected before any network call. */
+export class InvalidInnerRequest extends VerificationError {
+  readonly kind = "InvalidInnerRequest" as const;
+
+  constructor(public readonly reason: InvalidInnerRequestReason) {
+    super(`Inner request rejected: ${reason}`);
   }
 }
 

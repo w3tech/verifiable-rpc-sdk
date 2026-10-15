@@ -7,6 +7,8 @@ import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confi
 import {
   AttestationUnavailable,
   ConfidentialSignerMismatch,
+  InvalidChainId,
+  InvalidInnerRequest,
   UnavailableError,
   UnexpectedResponse,
   VerificationError,
@@ -169,5 +171,231 @@ describe("ConfidentialClient", () => {
     expect(mismatch.kind).toBe("ConfidentialSignerMismatch");
     expect(mismatch.expectedPubkey).toBe(node.pubkeyHex);
     expect(mismatch.actualPubkey).toBe(otherPubkey);
+  });
+});
+
+describe("ConfidentialClient call surface", () => {
+  test.each<[string, InnerRequest, string]>([
+    ["a path without a leading slash", { method: "GET", path: "x" }, "path"],
+    ["a scheme-relative path", { method: "GET", path: "//evil.example/x" }, "path"],
+    ["CONNECT", { method: "CONNECT", path: "/" }, "method"],
+    [
+      "a body without content-type",
+      { method: "POST", path: "/", body: utf8.encode(JSON_RPC_BODY) },
+      "content-type-required",
+    ],
+    [
+      "an empty body without content-type",
+      { method: "POST", path: "/", body: new Uint8Array(0) },
+      "content-type-required",
+    ],
+  ])("%s is rejected as InvalidInnerRequest before any request", async (_label, inner, reason) => {
+    const node = testNode();
+    const err = await rejectionOf(clientFor(node.transport).request(inner));
+
+    expect(err).toBeInstanceOf(InvalidInnerRequest);
+    expect(err).toBeInstanceOf(VerificationError);
+    const invalid = err as InvalidInnerRequest;
+    expect(invalid.kind).toBe("InvalidInnerRequest");
+    expect(invalid.reason).toBe(reason);
+    expect(invalid.message).not.toContain(inner.path);
+    expect(node.requests).toHaveLength(0);
+  });
+
+  test("an API key in headers goes on both legs and the caller's content-type is dropped", async () => {
+    const node = testNode();
+    const client = clientFor(node.transport, {
+      url: BASE_URL,
+      headers: { "x-api-key": KEY, "Content-Type": "application/json" },
+    });
+    await client.request(jsonRpcCall());
+
+    const [attestation, call] = node.requests;
+    expect(attestation?.url.startsWith(`${BASE_URL}/attestation?nonce=`)).toBe(true);
+    expect(attestation?.headers).toEqual({ "x-api-key": KEY });
+    expect(call?.url).toBe(`${BASE_URL}/confidential?node_id=${NODE_ID}`);
+    expect(call?.headers).toEqual({ "x-api-key": KEY, "content-type": "message/ohttp-req" });
+  });
+
+  test("an API key in the path stays in the path; the caller's query and hash are dropped", async () => {
+    const node = testNode();
+    await clientFor(node.transport, { url: `${KEYED_URL}?debug=1#top` }).request(jsonRpcCall());
+
+    const [attestation, call] = node.requests;
+    expect(attestation?.url.startsWith(`${KEYED_URL}/attestation?nonce=`)).toBe(true);
+    expect(call?.url).toBe(`${KEYED_URL}/confidential?node_id=${NODE_ID}`);
+  });
+
+  test("a client without headers sends only content-type on the POST and nothing on the GET", async () => {
+    const node = testNode();
+    await clientFor(node.transport).request(jsonRpcCall());
+
+    expect(node.requests[0]?.headers).toEqual({});
+    expect(node.requests[1]?.headers).toEqual({ "content-type": "message/ohttp-req" });
+  });
+
+  test("the node id is sent opaque and percent-encoded", async () => {
+    const nodeId = "node 1/\u00fc?&=#";
+    const node = testNode({ nodeId });
+    await clientFor(node.transport).request(jsonRpcCall());
+
+    const url = node.requests[1]?.url ?? "";
+    expect(url.endsWith("?node_id=node%201%2F%C3%BC%3F%26%3D%23")).toBe(true);
+    expect(new URL(url).searchParams.get("node_id")).toBe(nodeId);
+  });
+
+  test("a REST-shaped GET reaches the upstream with its method, path, query and accept", async () => {
+    let seen: Request | undefined;
+    const node = testNode({
+      upstream: (request) => {
+        seen = request;
+        return {
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: '{"height":16}',
+        };
+      },
+    });
+    const response = await clientFor(node.transport).request({
+      method: "GET",
+      path: "/blocks/latest?full=true",
+      accept: "application/json",
+    });
+
+    expect(seen?.method).toBe("GET");
+    const url = new URL(seen?.url ?? "https://invalid.example/");
+    expect(`${url.pathname}${url.search}`).toBe("/blocks/latest?full=true");
+    expect(seen?.headers.get("accept")).toBe("application/json");
+    expect(response.status).toBe(200);
+    expect(response.contentType).toBe("application/json");
+    expect(new TextDecoder().decode(response.body)).toBe('{"height":16}');
+  });
+
+  test("a GET without body or content-type is sealed and answered", async () => {
+    let seen: Request | undefined;
+    const node = testNode({
+      upstream: (request) => {
+        seen = request;
+        return { status: 200, headers: { "content-type": "text/plain" }, body: "ok" };
+      },
+    });
+    const response = await clientFor(node.transport).request({ method: "GET", path: "/" });
+
+    expect(seen?.headers.get("content-type")).toBeNull();
+    expect(await seen?.text()).toBe("");
+    expect(response.status).toBe(200);
+    expect(new TextDecoder().decode(response.body)).toBe("ok");
+  });
+
+  test("an inner 404 is returned, not thrown", async () => {
+    const node = testNode({
+      upstream: () => ({
+        status: 404,
+        headers: { "content-type": "text/plain" },
+        body: "not found",
+      }),
+    });
+    const outerStatuses: number[] = [];
+    const transport: ConfidentialTransport = async (request) => {
+      const response = await node.transport(request);
+      if (request.method === "POST") outerStatuses.push(response.status);
+      return response;
+    };
+    const response = await clientFor(transport).request(jsonRpcCall());
+
+    expect(outerStatuses).toEqual([404]);
+    expect(response.status).toBe(404);
+    expect(response.contentType).toBe("text/plain");
+    expect(new TextDecoder().decode(response.body)).toBe("not found");
+  });
+
+  test("no inner metadata or plaintext appears on the wire", async () => {
+    const node = testNode();
+    await clientFor(node.transport, { headers: { "x-api-key": KEY } }).request({
+      method: "POST",
+      path: "/sentinel-path?q=sentinel-query",
+      accept: "application/sentinel-accept",
+      contentType: "application/sentinel-type",
+      body: utf8.encode('{"note":"sentinel-plaintext"}'),
+    });
+
+    expect(node.requests).toHaveLength(2);
+    const needles = ["sentinel", "73656e74696e656c"];
+    for (const request of node.requests) {
+      const body = request.body ?? new Uint8Array(0);
+      const surfaces = [
+        request.url,
+        ...Object.keys(request.headers),
+        ...Object.values(request.headers),
+        new TextDecoder().decode(body),
+        bytesToHex(body),
+      ];
+      for (const surface of surfaces) {
+        for (const needle of needles) expect(surface).not.toContain(needle);
+      }
+    }
+  });
+
+  test("concurrent calls on one client each use their own sealing context", async () => {
+    const node = testNode({
+      upstream: async (request) => ({
+        status: 200,
+        headers: { "content-type": "application/json" },
+        body: new Uint8Array(await request.arrayBuffer()),
+      }),
+    });
+    const client = clientFor(node.transport);
+    await client.request(jsonRpcCall());
+    const before = node.requests.length;
+
+    const bodies = Array.from({ length: 20 }, (_, i) => `{"jsonrpc":"2.0","id":${i},"method":"m"}`);
+    const responses = await Promise.all(
+      bodies.map((body) =>
+        client.request({
+          method: "POST",
+          path: "/",
+          contentType: "application/json",
+          body: utf8.encode(body),
+        }),
+      ),
+    );
+
+    responses.forEach((response, i) => {
+      expect(new TextDecoder().decode(response.body)).toBe(bodies[i]);
+    });
+    const posts = node.requests.slice(before);
+    expect(posts).toHaveLength(20);
+    expect(posts.every((request) => request.method === "POST")).toBe(true);
+    const encs = new Set(
+      posts.map((request) => bytesToHex((request.body ?? new Uint8Array(0)).slice(7, 39))),
+    );
+    expect(encs.size).toBe(20);
+    expect(node.attestations()).toBe(1);
+  });
+
+  test("the constructor validates synchronously and sends nothing", () => {
+    const node = testNode();
+    expect(() => clientFor(node.transport, { chainId: "" })).toThrow(InvalidChainId);
+    expect(() => clientFor(node.transport, { pubkeyCacheTtlMs: 0 })).toThrow(RangeError);
+    expect(() => clientFor(node.transport, { pubkeyCacheTtlMs: -1 })).toThrow(RangeError);
+
+    let err: unknown;
+    try {
+      clientFor(node.transport, { url: "not a url with sentinel-key" });
+    } catch (caught) {
+      err = caught;
+    }
+    expect(err).toBeInstanceOf(TypeError);
+    const typeError = err as TypeError;
+    expect(typeError.message).not.toContain("sentinel-key");
+    expect(String(typeError)).not.toContain("sentinel-key");
+    expect(JSON.stringify(typeError)).not.toContain("sentinel-key");
+    for (const value of Object.values(typeError)) {
+      expect(String(value)).not.toContain("sentinel-key");
+    }
+    expect(typeError.cause).toBeUndefined();
+
+    clientFor(node.transport);
+    expect(node.requests).toHaveLength(0);
   });
 });
