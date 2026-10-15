@@ -33,6 +33,11 @@
       "types": "./src/errors.ts",
       "import": "./dist/errors.js",
       "default": "./dist/errors.js"
+    },
+    "./confidential": {
+      "types": "./src/confidential.ts",
+      "import": "./dist/confidential.js",
+      "default": "./dist/confidential.js"
     }
   },
   "files": [
@@ -61,6 +66,11 @@
         "types": "./dist/errors.d.ts",
         "import": "./dist/errors.js",
         "default": "./dist/errors.js"
+      },
+      "./confidential": {
+        "types": "./dist/confidential.d.ts",
+        "import": "./dist/confidential.js",
+        "default": "./dist/confidential.js"
       }
     }
   },

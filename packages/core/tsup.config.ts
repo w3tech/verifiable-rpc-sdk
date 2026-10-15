@@ -10,8 +10,9 @@ import { defineConfig } from "tsup";
 // of the full barrel, breaking the core<->dstack-verify ESM init cycle that
 // otherwise leaves `VerificationError` undefined at class-extends time under
 // Node. `splitting` keeps a single shared chunk so identity is preserved.
+// The third entry keeps the confidential client and its bundled crypto out of open-mode bundles.
 export default defineConfig({
-  entry: ["src/index.ts", "src/errors.ts"],
+  entry: ["src/index.ts", "src/errors.ts", "src/confidential.ts"],
   format: ["esm"],
   target: "node20",
   dts: true,

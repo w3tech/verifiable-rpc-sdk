@@ -25,6 +25,10 @@ export default defineConfig({
         replacement: src("./packages/core/src/compose.ts"),
       },
       {
+        find: "@w3tech.io/vrpc-core/confidential",
+        replacement: src("./packages/core/src/confidential.ts"),
+      },
+      {
         find: "@w3tech.io/vrpc-core",
         replacement: src("./packages/core/src/index.ts"),
       },
