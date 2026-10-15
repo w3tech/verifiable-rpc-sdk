@@ -41,6 +41,8 @@ type Manifest = {
   engines?: Record<string, string>;
   browser?: Record<string, unknown>;
   files?: string[];
+  exports?: Record<string, Record<string, string>>;
+  publishConfig?: { exports?: Record<string, Record<string, string>> };
 };
 
 const core = coreManifest as Manifest;
@@ -56,6 +58,9 @@ const distDir = join(coreDir, "dist");
 // Matches `from "x"`, `import "x"` and `import("x")`.
 const SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g;
 
+const BHTTP_REQUEST_LABEL = "message/bhttp request";
+const CLASS_DECLARATION = (name: string) => new RegExp(`class ${name}\\b|${name} = class`);
+
 function importSpecifiers(dir: string): string[] {
   const specifiers = new Set<string>();
   for (const file of readdirSync(dir).filter((name) => name.endsWith(".js"))) {
@@ -64,6 +69,20 @@ function importSpecifiers(dir: string): string[] {
     }
   }
   return [...specifiers];
+}
+
+function closure(dir: string, entry: string): string[] {
+  const seen = new Set<string>();
+  const visit = (file: string) => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    for (const match of readFileSync(join(dir, file), "utf8").matchAll(SPECIFIER)) {
+      const specifier = match[1];
+      if (specifier?.startsWith("./")) visit(specifier.slice(2));
+    }
+  };
+  visit(entry);
+  return [...seen];
 }
 
 // Walks node_modules like Node does, so packages whose exports hide package.json resolve too.
@@ -148,6 +167,29 @@ describe("core manifest", () => {
     expect(core.browser).toEqual({ crypto: false });
     expect(core.files).toContain("THIRD_PARTY_LICENSES");
   });
+
+  test("the confidential subpath is exported like the errors subpath", () => {
+    expect(core.exports?.["./errors"]).toEqual({
+      types: "./src/errors.ts",
+      import: "./dist/errors.js",
+      default: "./dist/errors.js",
+    });
+    expect(core.exports?.["./confidential"]).toEqual({
+      types: "./src/confidential.ts",
+      import: "./dist/confidential.js",
+      default: "./dist/confidential.js",
+    });
+    expect(core.publishConfig?.exports?.["./errors"]).toEqual({
+      types: "./dist/errors.d.ts",
+      import: "./dist/errors.js",
+      default: "./dist/errors.js",
+    });
+    expect(core.publishConfig?.exports?.["./confidential"]).toEqual({
+      types: "./dist/confidential.d.ts",
+      import: "./dist/confidential.js",
+      default: "./dist/confidential.js",
+    });
+  });
 });
 
 describe("bundling", () => {
@@ -160,6 +202,53 @@ describe("bundling", () => {
   test("tsup noExternal lists every bundled library", () => {
     expect(config.noExternal).toEqual(expect.arrayContaining(BUNDLED_PACKAGES));
   });
+
+  test("tsup builds the main, errors and confidential entries", () => {
+    expect(config.entry).toEqual(
+      expect.arrayContaining(["src/index.ts", "src/errors.ts", "src/confidential.ts"]),
+    );
+  });
+
+  test("the confidential code is reachable only from the confidential entry", async () => {
+    const entriesDir = mkdtempSync(join(tmpdir(), "vrpc-core-entries-"));
+    try {
+      await build({
+        ...config,
+        config: false,
+        entry: {
+          index: fileURLToPath(new URL("../src/index.ts", import.meta.url)),
+          errors: fileURLToPath(new URL("../src/errors.ts", import.meta.url)),
+          confidential: fileURLToPath(new URL("../src/confidential.ts", import.meta.url)),
+        },
+        outDir: entriesDir,
+        dts: false,
+        sourcemap: false,
+        silent: true,
+        skipNodeModulesBundle: true,
+      });
+      const read = (file: string) => readFileSync(join(entriesDir, file), "utf8");
+      for (const entry of ["index.js", "errors.js"]) {
+        for (const file of closure(entriesDir, entry)) {
+          expect(read(file), `${file} from ${entry}`).not.toContain(BHTTP_REQUEST_LABEL);
+        }
+      }
+      expect(
+        closure(entriesDir, "confidential.js").some((file) =>
+          read(file).includes(BHTTP_REQUEST_LABEL),
+        ),
+      ).toBe(true);
+      for (const specifier of importSpecifiers(entriesDir)) {
+        expect(namesBundledPackage(specifier), specifier).toBe(false);
+      }
+      const outputs = readdirSync(entriesDir).filter((name) => name.endsWith(".js"));
+      for (const name of ["VerificationError", "UnavailableError"]) {
+        const declaring = outputs.filter((file) => CLASS_DECLARATION(name).test(read(file)));
+        expect(declaring, name).toHaveLength(1);
+      }
+    } finally {
+      rmSync(entriesDir, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   test("crypto modules bundle to imports of @noble/hashes, crypto and local chunks only", async () => {
     await build({
@@ -191,6 +280,8 @@ describe("bundling", () => {
   test.skipIf(!existsSync(join(distDir, "index.js")))(
     "built dist neither imports nor declares the bundled libraries",
     () => {
+      expect(existsSync(join(distDir, "confidential.js"))).toBe(true);
+      expect(existsSync(join(distDir, "confidential.d.ts"))).toBe(true);
       for (const specifier of importSpecifiers(distDir)) {
         expect(namesBundledPackage(specifier), specifier).toBe(false);
       }
