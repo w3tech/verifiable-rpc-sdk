@@ -12,7 +12,7 @@ import {
 import { raceAbort } from "./abort";
 import { fetchAttestationWithNodeId } from "./attestation";
 import { AttestationFailed, AttestationUnavailable, MalformedAttestationResponse } from "./errors";
-import type { Logger } from "./logger";
+import { defaultLogger, type Logger } from "./logger";
 import { InvalidNodeKey, nodeKeyFromEd25519 } from "./node-key";
 import type { ConfidentialTransport } from "./transport";
 import { buildVerifyPolicy, mapAttestationToBundle } from "./trusted-verifier";
@@ -40,14 +40,49 @@ function attestedNodeKey(pubkeyHex: string): Uint8Array {
 
 export type Pin = AttestedNode & { readonly expiresAt: number; readonly generation: number };
 
-export async function attestNode(opts: {
+/** A log-safe name for a failure: the error's `kind`, else its `name`. */
+export function errorKind(err: unknown): string {
+  if (typeof err === "object" && err !== null) {
+    const { kind, name } = err as { kind?: unknown; name?: unknown };
+    if (typeof kind === "string") return kind;
+    if (typeof name === "string") return name;
+  }
+  return typeof err;
+}
+
+interface AttestOptions {
   transport: ConfidentialTransport;
   attestationUrl: string;
   headers: Record<string, string>;
   hardwareVerifier: HardwareVerifier;
   logger: Logger;
   signal?: AbortSignal;
-}): Promise<AttestedNode> {
+}
+
+export async function attestNode(opts: AttestOptions): Promise<AttestedNode> {
+  const { logger } = opts;
+  if (logger === defaultLogger) return attest(opts);
+  const started = Date.now();
+  logger.debug("confidential.attest.start");
+  try {
+    const node = await attest(opts);
+    logger.debug("confidential.attest.ok", {
+      nodeId: node.nodeId,
+      pubkey: node.pubkeyHex,
+      composeHash: node.composeHash,
+      durationMs: Date.now() - started,
+    });
+    return node;
+  } catch (err) {
+    logger.debug("confidential.attest.fail", {
+      kind: errorKind(err),
+      durationMs: Date.now() - started,
+    });
+    throw err;
+  }
+}
+
+async function attest(opts: AttestOptions): Promise<AttestedNode> {
   const nonce = crypto.getRandomValues(new Uint8Array(32));
   const { attestation, nodeId } = await fetchAttestationWithNodeId(opts.transport, {
     attestationUrl: opts.attestationUrl,

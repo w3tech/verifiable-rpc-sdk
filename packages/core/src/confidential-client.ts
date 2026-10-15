@@ -25,7 +25,7 @@ import {
 } from "./errors";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
 import { InvalidNodeKey } from "./node-key";
-import { attestNode, type Pin, PinSlot } from "./node-session";
+import { attestNode, errorKind, type Pin, PinSlot } from "./node-session";
 import {
   OhttpError,
   openResponse,
@@ -143,6 +143,7 @@ export class ConfidentialClient {
   readonly #confidentialUrl: string;
   readonly #headers: Record<string, string>;
   readonly #transport: ConfidentialTransport;
+  readonly #logger: Logger;
   readonly #slot: PinSlot;
 
   constructor(options: ConfidentialClientOptions) {
@@ -165,6 +166,7 @@ export class ConfidentialClient {
     this.#transport = transport;
     const hardwareVerifier = options.hardwareVerifier ?? createCloudVerifier();
     const logger = options.logger ? safeLogger(options.logger) : defaultLogger;
+    this.#logger = logger;
     const headers = this.#headers;
     this.#slot = new PinSlot(
       (signal) =>
@@ -206,7 +208,12 @@ export class ConfidentialClient {
     try {
       return await this.#exchange(pin, bhttp, signal);
     } catch (err) {
-      if (!(signal?.aborted && err === signal.reason)) this.#slot.evict(pin);
+      if (!(signal?.aborted && err === signal.reason)) {
+        this.#slot.evict(pin);
+        if (this.#logger !== defaultLogger) {
+          this.#logger.debug("confidential.evict", { nodeId: pin.nodeId, kind: errorKind(err) });
+        }
+      }
       throw err;
     }
   }
@@ -218,6 +225,12 @@ export class ConfidentialClient {
   ): Promise<ConfidentialResponse> {
     const sealed = await seal(pin.nodeKey, bhttp);
     if (signal?.aborted) throw signal.reason;
+    const logger = this.#logger === defaultLogger ? undefined : this.#logger;
+    const started = logger === undefined ? 0 : Date.now();
+    logger?.debug("confidential.request", {
+      nodeId: pin.nodeId,
+      requestBytes: sealed.body.byteLength,
+    });
     let response: OuterResponse;
     try {
       response = await raceAbort(
@@ -235,12 +248,19 @@ export class ConfidentialClient {
       if (cause instanceof ResponseTooLarge) throw new TransportFailed("too-large", pin.nodeId);
       throw new TransportFailed("network", pin.nodeId, { cause });
     }
+    const contentType = mediaType(getHeader(response.headers, "content-type"));
+    logger?.debug("confidential.response", {
+      nodeId: pin.nodeId,
+      status: response.status,
+      contentType,
+      responseBytes: response.body.byteLength,
+      durationMs: Date.now() - started,
+    });
     if (response.body.byteLength > MAX_RESPONSE_BYTES) {
       throw new TransportFailed("too-large", pin.nodeId);
     }
 
     const { status } = response;
-    const contentType = mediaType(getHeader(response.headers, "content-type"));
     const reported = contentType === "" ? undefined : contentType;
     if (
       !Number.isInteger(status) ||
@@ -261,6 +281,7 @@ export class ConfidentialClient {
     await verifyResponse(sealed.body, response.body, response.headers, {
       chainId: this.#chainId,
       ...(this.#replayWindowMs === undefined ? {} : { replayWindowMs: this.#replayWindowMs }),
+      ...(logger === undefined ? {} : { logger }),
     });
 
     const decoded = await open(sealed.opener, response.body);
