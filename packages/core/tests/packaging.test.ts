@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build, type Options } from "tsup";
 import { afterAll, describe, expect, test } from "vitest";
+import rootManifest from "../../../package.json";
 import dstackVerifyManifest from "../../dstack-verify/package.json";
 import proxyManifest from "../../proxy/package.json";
 import testSupportManifest from "../../test-support/package.json";
@@ -41,6 +42,7 @@ const core = coreManifest as Manifest;
 const dstackVerify = dstackVerifyManifest as Manifest;
 const proxy = proxyManifest as Manifest;
 const testSupport = testSupportManifest as Manifest;
+const root = rootManifest as Manifest;
 const config = tsupConfig as Options;
 
 const coreDir = fileURLToPath(new URL("..", import.meta.url));
@@ -85,6 +87,15 @@ describe("exact pins", () => {
       expect(version, name).toMatch(EXACT_VERSION);
       expect(coreVersions[name], name).toBe(version);
     }
+  });
+
+  test("browser test packages are exact root devDependencies matching the installed vitest", () => {
+    const vitest = JSON.parse(
+      readFileSync(new URL("../../../node_modules/vitest/package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    expect(root.devDependencies?.["@vitest/browser-playwright"]).toBe("4.1.10");
+    expect(root.devDependencies?.["@vitest/browser-playwright"]).toBe(vitest.version);
+    expect(root.devDependencies?.playwright).toBe("1.64.0");
   });
 });
 

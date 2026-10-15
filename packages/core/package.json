@@ -68,6 +68,7 @@
     "build": "tsup",
     "prepublishOnly": "tsup",
     "test": "vitest run",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:unit": "vitest run tests --exclude 'tests/integration/**'",
     "test:integration": "vitest run tests/integration",
     "typecheck": "tsc --noEmit"
