@@ -322,3 +322,21 @@ export class UnexpectedResponse extends UnavailableError {
     }
   }
 }
+
+/** A 4xx that is not an encrypted answer: the gateway or node refused this attempt. */
+export class RequestRejected extends UnavailableError {
+  readonly kind = "RequestRejected" as const;
+  readonly executed = "no" as const;
+  declare readonly contentType?: string;
+
+  constructor(
+    public readonly status: number,
+    public readonly nodeId: string,
+    contentType?: string,
+  ) {
+    super(`Confidential request rejected: HTTP ${status}`);
+    if (contentType !== undefined) {
+      this.contentType = contentType;
+    }
+  }
+}

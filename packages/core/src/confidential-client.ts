@@ -10,9 +10,14 @@ import {
   encodeInnerRequest,
   type InnerRequest,
 } from "./bhttp";
-import { ConfidentialSignerMismatch, InvalidInnerRequest, UnexpectedResponse } from "./errors";
+import {
+  ConfidentialSignerMismatch,
+  InvalidInnerRequest,
+  RequestRejected,
+  UnexpectedResponse,
+} from "./errors";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
-import { attestNode, PinSlot } from "./node-session";
+import { attestNode, type Pin, PinSlot } from "./node-session";
 import { openResponse, sealRequest } from "./ohttp";
 import { validateChainId } from "./preimage";
 import { type ConfidentialTransport, defaultTransport } from "./transport";
@@ -112,8 +117,20 @@ export class ConfidentialClient {
   ): Promise<ConfidentialResponse> {
     const bhttp = await encode(inner);
     const pin = await this.#slot.acquire();
+    try {
+      return await this.#exchange(pin, bhttp, options?.signal);
+    } catch (err) {
+      this.#slot.evict(pin);
+      throw err;
+    }
+  }
+
+  async #exchange(
+    pin: Pin,
+    bhttp: Uint8Array,
+    signal: AbortSignal | undefined,
+  ): Promise<ConfidentialResponse> {
     const sealed = await sealRequest(pin.nodeKey, bhttp);
-    const signal = options?.signal;
     const response = await this.#transport({
       method: "POST",
       url: `${this.#confidentialUrl}?node_id=${encodeURIComponent(pin.nodeId)}`,
@@ -124,11 +141,11 @@ export class ConfidentialClient {
 
     const contentType = mediaType(getHeader(response.headers, "content-type"));
     if (contentType !== OHTTP_RESPONSE) {
-      throw new UnexpectedResponse(
-        response.status,
-        pin.nodeId,
-        contentType === "" ? undefined : contentType,
-      );
+      const reported = contentType === "" ? undefined : contentType;
+      if (response.status >= 400 && response.status <= 499) {
+        throw new RequestRejected(response.status, pin.nodeId, reported);
+      }
+      throw new UnexpectedResponse(response.status, pin.nodeId, reported);
     }
     const signer = getHeader(response.headers, "vRPC-Pubkey");
     if (signer !== null && PUBKEY_HEX_RE.test(signer) && signer !== pin.pubkeyHex) {

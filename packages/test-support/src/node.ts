@@ -35,11 +35,33 @@ export interface TestNodeOptions {
   upstream?: (request: Request) => TestUpstreamResponse | Promise<TestUpstreamResponse>;
 }
 
+export interface TestSignOptions {
+  seed?: Uint8Array;
+  timestampMs?: number;
+  pubkeyHex?: string;
+}
+
+export interface ConfidentialContext {
+  readonly request: TestOuterRequest;
+  /** The standard sealed and signed answer for this request. */
+  normal(): Promise<TestOuterResponse>;
+  /** `vRPC-*` headers signing this request's body and `responseBody`. */
+  sign(responseBody: Uint8Array, options?: TestSignOptions): Record<string, string>;
+  /** Arbitrary inner bytes sealed for this request. */
+  seal(innerBhttp: Uint8Array): Promise<Uint8Array>;
+}
+
+export type ConfidentialHandler = (
+  context: ConfidentialContext,
+) => TestOuterResponse | Promise<TestOuterResponse>;
+
 export interface TestNode {
   readonly pubkeyHex: string;
   readonly requests: TestOuterRequest[];
   attestations(): number;
   transport(request: TestOuterRequest): Promise<TestOuterResponse>;
+  /** Overrides the `/confidential` answer; no argument restores the default. */
+  setConfidential(handler?: ConfidentialHandler): void;
 }
 
 const utf8 = new TextEncoder();
@@ -68,6 +90,55 @@ export function createTestNode(options: TestNodeOptions): TestNode {
   const chainHash = sha256(utf8.encode(options.chainId));
   const requests: TestOuterRequest[] = [];
   let attestationCount = 0;
+  let confidential: ConfidentialHandler = (context) => context.normal();
+
+  function sign(
+    requestBody: Uint8Array,
+    responseBody: Uint8Array,
+    signOptions: TestSignOptions = {},
+  ): Record<string, string> {
+    const seed = signOptions.seed ?? options.seed;
+    const timestamp = BigInt(signOptions.timestampMs ?? Date.now());
+    const preImage = concatBytes(
+      chainHash,
+      sha256(requestBody),
+      sha256(responseBody),
+      u64le(timestamp),
+    );
+    return {
+      "vRPC-Signature": `0x${bytesToHex(ed25519.sign(preImage, seed))}`,
+      "vRPC-Timestamp": timestamp.toString(),
+      "vRPC-Pubkey": signOptions.pubkeyHex ?? `0x${bytesToHex(ed25519.getPublicKey(seed))}`,
+      ...nodeIdHeader,
+    };
+  }
+
+  function contextFor(request: TestOuterRequest, body: Uint8Array): ConfidentialContext {
+    let opened: ReturnType<typeof recipient.openRequest> | undefined;
+    const open = () => {
+      opened ??= recipient.openRequest(body);
+      return opened;
+    };
+    return {
+      request,
+      async normal() {
+        const openedRequest = await open();
+        const answer = await upstream(openedRequest.request);
+        const sealed = await openedRequest.respond({
+          status: answer.status,
+          ...(answer.headers === undefined ? {} : { headers: answer.headers }),
+          ...(answer.body === undefined ? {} : { body: answer.body }),
+        });
+        return {
+          status: NULL_BODY_STATUSES.has(answer.status) ? 200 : answer.status,
+          headers: { "content-type": "message/ohttp-res", ...sign(body, sealed) },
+          body: sealed,
+        };
+      },
+      sign: (responseBody, signOptions) => sign(body, responseBody, signOptions),
+      seal: async (innerBhttp) => (await open()).sealResponse(innerBhttp),
+    };
+  }
 
   async function serve(request: TestOuterRequest): Promise<TestOuterResponse> {
     const url = new URL(request.url);
@@ -95,31 +166,7 @@ export function createTestNode(options: TestNodeOptions): TestNode {
       url.pathname.endsWith("/confidential") &&
       request.body !== undefined
     ) {
-      const opened = await recipient.openRequest(request.body);
-      const answer = await upstream(opened.request);
-      const sealed = await opened.respond({
-        status: answer.status,
-        ...(answer.headers === undefined ? {} : { headers: answer.headers }),
-        ...(answer.body === undefined ? {} : { body: answer.body }),
-      });
-      const timestamp = BigInt(Date.now());
-      const preImage = concatBytes(
-        chainHash,
-        sha256(request.body),
-        sha256(sealed),
-        u64le(timestamp),
-      );
-      return {
-        status: NULL_BODY_STATUSES.has(answer.status) ? 200 : answer.status,
-        headers: {
-          "content-type": "message/ohttp-res",
-          "vRPC-Signature": `0x${bytesToHex(ed25519.sign(preImage, options.seed))}`,
-          "vRPC-Timestamp": timestamp.toString(),
-          "vRPC-Pubkey": pubkeyHex,
-          ...nodeIdHeader,
-        },
-        body: sealed,
-      };
+      return confidential(contextFor(request, request.body));
     }
     return { status: 404, headers: {}, body: new Uint8Array(0) };
   }
@@ -155,5 +202,8 @@ export function createTestNode(options: TestNodeOptions): TestNode {
     requests,
     attestations: () => attestationCount,
     transport,
+    setConfidential(handler) {
+      confidential = handler ?? ((context) => context.normal());
+    },
   };
 }
