@@ -2,7 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Binary HTTP (RFC 9292) encoding of inner requests and decoding of inner responses.
 
-import { BHttpDecoder, BHttpEncoder } from "bhttp-ts";
+import { BHttpDecoder, BHttpEncoder, vliEncodedLength } from "bhttp-ts";
 
 export interface InnerRequest {
   method: string;
@@ -51,16 +51,60 @@ export class MalformedInnerResponse extends Error {
   }
 }
 
+const TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const FORBIDDEN_METHODS = new Set(["CONNECT", "TRACE", "TRACK"]);
+// Fetch uppercases these names in any case, which would change the method sent.
+const NORMALIZED_METHODS = new Set(["DELETE", "GET", "HEAD", "OPTIONS", "POST", "PUT"]);
+const FIELD_VALUE = /^[\t\x20-\x7e]+$/;
+const MAX_PATH_LENGTH = 65534;
+const MAX_HEADER_SECTION = 65536;
+
+function validMethod(method: string): boolean {
+  if (!TOKEN.test(method)) return false;
+  const upper = method.toUpperCase();
+  if (FORBIDDEN_METHODS.has(upper)) return false;
+  return !NORMALIZED_METHODS.has(upper) || method === upper;
+}
+
+function validPath(path: string): boolean {
+  if (!path.startsWith("/") || path.startsWith("//") || path.length > MAX_PATH_LENGTH) {
+    return false;
+  }
+  try {
+    const url = new URL(`https://localhost${path}`);
+    return url.host === "localhost" && url.pathname + url.search === path;
+  } catch {
+    return false;
+  }
+}
+
+function validFieldValue(value: string): boolean {
+  return FIELD_VALUE.test(value) && value.trim() === value;
+}
+
+function fieldSize(name: string, value: string): number {
+  return (
+    vliEncodedLength(name.length) + name.length + vliEncodedLength(value.length) + value.length
+  );
+}
+
 export async function encodeInnerRequest(request: InnerRequest): Promise<Uint8Array> {
-  if (!request.path.startsWith("/")) throw new InvalidInnerRequest("path");
+  if (!validMethod(request.method)) throw new InvalidInnerRequest("method");
+  if (!validPath(request.path)) throw new InvalidInnerRequest("path");
+  const fields: [string, string][] = [];
+  if (request.contentType !== undefined) fields.push(["content-type", request.contentType]);
+  if (request.accept !== undefined) fields.push(["accept", request.accept]);
+  let headerSection = 0;
+  for (const [name, value] of fields) {
+    if (!validFieldValue(value)) throw new InvalidInnerRequest("header");
+    headerSection += fieldSize(name, value);
+  }
+  if (headerSection > MAX_HEADER_SECTION) throw new InvalidInnerRequest("header");
   if (request.body !== undefined && request.contentType === undefined) {
     throw new InvalidInnerRequest("content-type-required");
   }
   try {
-    const headers = new Headers();
-    if (request.contentType !== undefined) headers.set("content-type", request.contentType);
-    if (request.accept !== undefined) headers.set("accept", request.accept);
-    const init: RequestInit = { method: request.method, headers };
+    const init: RequestInit = { method: request.method, headers: fields };
     if (request.body !== undefined) init.body = request.body;
     return await new BHttpEncoder().encodeRequest(
       new Request(`https://localhost${request.path}`, init),
