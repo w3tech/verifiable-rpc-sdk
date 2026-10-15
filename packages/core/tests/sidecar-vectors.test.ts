@@ -1,13 +1,20 @@
 import { readFileSync } from "node:fs";
 import type { SenderContext } from "@hpke/core";
+import { extract } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { bytesToHex, concatBytes, hexToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, test } from "vitest";
 import { createRecipient, x25519SecretFromSeed } from "../../test-support/src/index";
 import vectors from "../../test-support/vectors/sidecar-confidential.json";
 import { decodeInnerResponse, encodeInnerRequest, InvalidInnerRequest } from "../src/bhttp";
 import { nodeKeyFromEd25519 } from "../src/node-key";
-import { createSuite, OhttpError, openResponse, type ResponseOpener } from "../src/ohttp";
+import {
+  createSuite,
+  OhttpError,
+  openResponse,
+  type ResponseOpener,
+  sealRequest,
+} from "../src/ohttp";
 
 // w3tech/verifiable-rpc-sidecar tests/vectors/confidential.json at commit
 // 8c168dc8fd5a911a13aa049cd7d642502257fbcf, sha256 342cb863ddcf741f78a984ebbb28c2672f9c1dc9cc69084e1fba5b8e625b2075.
@@ -102,6 +109,33 @@ describe("sidecar known-answer vectors", () => {
         hexToBytes(vector.encapsulated_request),
       );
       expect(bytesToHex(opened.bhttp)).toBe(vector.bhttp_request);
+    });
+
+    test("a request sealed by the SDK opens with the sidecar's info", async () => {
+      const sealed = await sealRequest(hexToBytes(vector.pkR), hexToBytes(vector.bhttp_request));
+      const hdrLength = HDR.length / 2;
+      expect(bytesToHex(sealed.body.subarray(0, hdrLength))).toBe(vector.hdr);
+      const suite = createSuite("js");
+      const enc = sealed.body.subarray(hdrLength, hdrLength + suite.kem.encSize);
+      const recipientKey = await suite.kem.importKey("raw", hexToBytes(vector.skR).buffer, false);
+      const context = await suite.createRecipientContext({
+        recipientKey,
+        enc,
+        info: hexToBytes(vector.info),
+      });
+      const pt = await context.open(sealed.body.subarray(hdrLength + enc.length));
+      expect(bytesToHex(new Uint8Array(pt))).toBe(vector.bhttp_request);
+    });
+
+    test("derives the sidecar's response key and nonce", async () => {
+      expect(vector.encapsulated_response.startsWith(vector.response_nonce)).toBe(true);
+      const suite = createSuite("js");
+      const salt = concatBytes(hexToBytes(vector.enc), hexToBytes(vector.response_nonce));
+      const prk = extract(sha256, hexToBytes(vector.export_secret), salt);
+      const key = await suite.kdf.expand(prk, utf8.encode("key"), suite.aead.keySize);
+      const nonce = await suite.kdf.expand(prk, utf8.encode("nonce"), suite.aead.nonceSize);
+      expect(bytesToHex(new Uint8Array(key))).toBe(vector.aead_key);
+      expect(bytesToHex(new Uint8Array(nonce))).toBe(vector.aead_nonce);
     });
 
     test("exports the response secret and opens the response", async () => {
