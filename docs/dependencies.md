@@ -16,7 +16,9 @@ advisories. Every version is pinned exactly. An upgrade is a new review.
 
 `@w3tech.io/vrpc-core` bundles the code of `@hpke/core`, `@hpke/dhkem-x25519`,
 `@hpke/common`, `@noble/curves`, `bhttp-ts` and `quicvarint` into its published
-`dist` at build time, from the exact versions in this repository's lockfile. Your
+`dist` at build time, from the exact reviewed versions: the direct libraries are
+pinned in core's `package.json`, and `@hpke/common` and `quicvarint` by `overrides`
+in `pnpm-workspace.yaml`, so a lockfile update cannot change any of them. Your
 package manager therefore never resolves these packages or their version ranges:
 npm, pnpm and Yarn (classic and Berry/PnP) install the reviewed code byte for byte.
 Their MIT license texts are in `THIRD_PARTY_LICENSES` inside the package.

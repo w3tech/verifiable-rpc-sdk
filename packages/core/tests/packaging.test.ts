@@ -1,4 +1,5 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +17,10 @@ const BUNDLED_PINS: Record<string, string> = {
   "@hpke/dhkem-x25519": "1.8.0",
   "@noble/curves": "2.4.0",
   "bhttp-ts": "0.6.1",
+};
+const TRANSITIVE_PINS: Record<string, { version: string; parents: string[] }> = {
+  "@hpke/common": { version: "1.10.1", parents: ["@hpke/core", "@hpke/dhkem-x25519"] },
+  quicvarint: { version: "0.2.1", parents: ["bhttp-ts"] },
 };
 const NOBLE_HASHES = "2.4.0";
 const BUNDLED_PACKAGES = [
@@ -61,6 +66,18 @@ function importSpecifiers(dir: string): string[] {
   return [...specifiers];
 }
 
+// Walks node_modules like Node does, so packages whose exports hide package.json resolve too.
+function installedPackage(name: string, from: string): { dir: string; version: string } {
+  for (const dir of createRequire(from).resolve.paths(name) ?? []) {
+    const manifest = join(dir, name, "package.json");
+    if (existsSync(manifest)) {
+      const { version } = JSON.parse(readFileSync(manifest, "utf8")) as { version: string };
+      return { dir: realpathSync(join(dir, name)), version };
+    }
+  }
+  throw new Error(`${name} is not installed`);
+}
+
 function namesBundledPackage(specifier: string): boolean {
   return BUNDLED_PACKAGES.some((name) => specifier === name || specifier.startsWith(`${name}/`));
 }
@@ -71,6 +88,31 @@ describe("exact pins", () => {
       expect(core.devDependencies?.[name], name).toBe(version);
       expect(core.dependencies?.[name], name).toBeUndefined();
       expect(core.peerDependencies?.[name], name).toBeUndefined();
+    }
+  });
+
+  test("every bundled library is installed at its reviewed version and documented", () => {
+    const reviewed: Record<string, string> = { ...BUNDLED_PINS };
+    for (const [name, { version }] of Object.entries(TRANSITIVE_PINS)) reviewed[name] = version;
+    expect(Object.keys(reviewed).sort()).toEqual([...BUNDLED_PACKAGES].sort());
+
+    const fromCore = join(coreDir, "package.json");
+    for (const [name, version] of Object.entries(BUNDLED_PINS)) {
+      expect(installedPackage(name, fromCore).version, name).toBe(version);
+    }
+    for (const [name, { version, parents }] of Object.entries(TRANSITIVE_PINS)) {
+      for (const parent of parents) {
+        const parentDir = installedPackage(parent, fromCore).dir;
+        const installed = installedPackage(name, join(parentDir, "package.json"));
+        expect(installed.version, `${name} under ${parent}`).toBe(version);
+      }
+    }
+
+    const licenses = readFileSync(join(coreDir, "THIRD_PARTY_LICENSES"), "utf8").split("\n");
+    const dependencies = readFileSync(join(coreDir, "../../docs/dependencies.md"), "utf8");
+    for (const [name, version] of Object.entries(reviewed)) {
+      expect(licenses, name).toContain(`${name} ${version}`);
+      expect(dependencies, name).toContain(`| \`${name}\` | ${version} |`);
     }
   });
 

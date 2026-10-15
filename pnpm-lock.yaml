@@ -4,6 +4,10 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@hpke/common': 1.10.1
+  quicvarint: 0.2.1
+
 importers:
 
   .:
