@@ -20,7 +20,12 @@ import {
   MalformedAttestationResponse,
 } from "./errors";
 import type { Logger } from "./logger";
-import { type ConfidentialTransport, MAX_RESPONSE_BYTES, type OuterResponse } from "./transport";
+import {
+  type ConfidentialTransport,
+  MAX_RESPONSE_BYTES,
+  type OuterResponse,
+  ResponseTooLarge,
+} from "./transport";
 import { getHeader } from "./verify";
 
 /**
@@ -153,6 +158,7 @@ export async function fetchAttestationWithNodeId(
     });
   } catch (cause) {
     if (opts.signal?.aborted) throw opts.signal.reason;
+    if (cause instanceof ResponseTooLarge) throw new AttestationUnavailable("transport");
     throw new AttestationUnavailable("transport", { cause });
   }
   if (response.body.byteLength > MAX_RESPONSE_BYTES) {

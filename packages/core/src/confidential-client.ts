@@ -39,6 +39,7 @@ import {
   defaultTransport,
   MAX_RESPONSE_BYTES,
   type OuterResponse,
+  ResponseTooLarge,
 } from "./transport";
 import { DEFAULT_PUBKEY_CACHE_TTL_MS } from "./trusted-verifier";
 import { getHeader, PUBKEY_HEX_RE, verifyResponse } from "./verify";
@@ -231,6 +232,7 @@ export class ConfidentialClient {
       );
     } catch (cause) {
       if (signal?.aborted) throw signal.reason;
+      if (cause instanceof ResponseTooLarge) throw new TransportFailed("too-large", pin.nodeId);
       throw new TransportFailed("network", pin.nodeId, { cause });
     }
     if (response.body.byteLength > MAX_RESPONSE_BYTES) {
