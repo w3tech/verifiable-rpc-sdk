@@ -6,6 +6,10 @@ import { BHttpDecoder, BHttpEncoder, decodeVli, vliEncodedLength } from "bhttp-t
 
 export interface InnerRequest {
   method: string;
+  /**
+   * Origin-form target. The query is sent as the URL serializer writes it: `'` becomes
+   * `%27` and an empty query (`/x?`) is dropped.
+   */
   path: string;
   contentType?: string;
   accept?: string;
@@ -63,6 +67,8 @@ const UPPERCASE_ONLY_METHODS = new Set([
   "PUT",
   "PATCH",
 ]);
+// Visible ASCII except `"`, `#`, `<` and `>`.
+const QUERY = /^[!$-;=?-~]*$/;
 const FIELD_VALUE = /^[\t\x20-\x7e]+$/;
 const MAX_PATH_LENGTH = 65534;
 const MAX_HEADER_SECTION = 65536;
@@ -75,12 +81,24 @@ function validMethod(method: string): boolean {
 }
 
 function validPath(path: string): boolean {
-  if (!path.startsWith("/") || path.startsWith("//") || path.length > MAX_PATH_LENGTH) {
+  if (
+    !path.startsWith("/") ||
+    path.startsWith("//") ||
+    path.includes("#") ||
+    path.length > MAX_PATH_LENGTH
+  ) {
     return false;
   }
+  const queryStart = path.indexOf("?");
+  const pathname = queryStart === -1 ? path : path.slice(0, queryStart);
+  if (queryStart !== -1 && !QUERY.test(path.slice(queryStart + 1))) return false;
   try {
     const url = new URL(`https://localhost${path}`);
-    return url.host === "localhost" && url.pathname + url.search === path;
+    return (
+      url.host === "localhost" &&
+      url.pathname === pathname &&
+      url.pathname.length + url.search.length <= MAX_PATH_LENGTH
+    );
   } catch {
     return false;
   }

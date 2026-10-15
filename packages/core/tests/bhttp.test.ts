@@ -128,16 +128,35 @@ describe("encodeInnerRequest", () => {
       "/%2e%2e/x",
       "@evil.example/x",
       `/${"a".repeat(65534)}`,
+      '/x?a="b"',
+      "/x?a=<b>",
+      "/x?a=é",
+      "/x?a=\tb",
+      "/x?a#b",
+      `/?${"'".repeat(21845)}`,
     ]),
   )("rejects path %s", async (_, path) => {
     await expectRejected({ method: "GET", path }, "path", path);
   });
 
   test.each(
-    labelled(["/", "/x?y=%zz", "/eth?a=1&b=2", `/${"a".repeat(65533)}`]),
+    labelled(["/", "/x?y=%zz", "/eth?a=1&b=2", "/x?a=[1]|{2}^`\\/..?", `/${"a".repeat(65533)}`]),
   )("keeps path %s unchanged", async (_, path) => {
     const bytes = await encode({ method: "GET", path });
     expect(pathAndQuery(new BHttpDecoder().decodeRequest(bytes))).toBe(path);
+  });
+
+  test.each([
+    ["/x?", "/x"],
+    ["/?a='b'", "/?a=%27b%27"],
+  ])("sends path %s as the URL serializer writes it", async (path, sent) => {
+    const bytes = await encode({ method: "GET", path });
+    expect(pathAndQuery(new BHttpDecoder().decodeRequest(bytes))).toBe(sent);
+  });
+
+  test("limits the serialized path to 65534 bytes", async () => {
+    const bytes = await encode({ method: "GET", path: `/?${"'".repeat(21844)}` });
+    expect(pathAndQuery(new BHttpDecoder().decodeRequest(bytes))).toBe(`/?${"%27".repeat(21844)}`);
   });
 
   test.each([
