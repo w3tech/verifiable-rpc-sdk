@@ -10,9 +10,9 @@ import {
 } from "@w3tech.io/dstack-verify";
 
 import { fetchAttestationWithNodeId } from "./attestation";
-import { AttestationFailed } from "./errors";
+import { AttestationFailed, MalformedAttestationResponse } from "./errors";
 import type { Logger } from "./logger";
-import { nodeKeyFromEd25519 } from "./node-key";
+import { InvalidNodeKey, nodeKeyFromEd25519 } from "./node-key";
 import type { ConfidentialTransport } from "./transport";
 import { buildVerifyPolicy, mapAttestationToBundle } from "./trusted-verifier";
 
@@ -22,6 +22,19 @@ export interface AttestedNode {
   readonly nodeKey: Uint8Array;
   readonly composeHash: string;
   readonly attestedAt: number;
+}
+
+const ATTESTED_PUBKEY_RE = /^0x[0-9a-fA-F]{64}$/;
+
+function attestedNodeKey(pubkeyHex: string): Uint8Array {
+  try {
+    return nodeKeyFromEd25519(hexToBytes(pubkeyHex.slice(2)));
+  } catch (err) {
+    if (err instanceof InvalidNodeKey) {
+      throw new MalformedAttestationResponse("attested pubkey is not a usable encryption key");
+    }
+    throw err;
+  }
 }
 
 export type Pin = AttestedNode & { readonly expiresAt: number; readonly generation: number };
@@ -41,8 +54,11 @@ export async function attestNode(opts: {
     headers: opts.headers,
     ...(opts.signal === undefined ? {} : { signal: opts.signal }),
   });
+  if (!ATTESTED_PUBKEY_RE.test(attestation.pubkey)) {
+    throw new MalformedAttestationResponse("pubkey must be 0x + 64 hex chars");
+  }
   const pubkeyHex = attestation.pubkey.toLowerCase();
-  const nodeKey = nodeKeyFromEd25519(hexToBytes(pubkeyHex.slice(2)));
+  const nodeKey = attestedNodeKey(pubkeyHex);
   try {
     await verifyDstackAttestation(
       mapAttestationToBundle(attestation, pubkeyHex, nonce),

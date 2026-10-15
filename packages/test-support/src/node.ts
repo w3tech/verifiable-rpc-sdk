@@ -55,6 +55,17 @@ export type ConfidentialHandler = (
   context: ConfidentialContext,
 ) => TestOuterResponse | Promise<TestOuterResponse>;
 
+export interface AttestationContext {
+  readonly request: TestOuterRequest;
+  readonly nonceHex: string;
+  /** The standard attestation answer for this request. */
+  normal(): Promise<TestOuterResponse>;
+}
+
+export type AttestationHandler = (
+  context: AttestationContext,
+) => TestOuterResponse | Promise<TestOuterResponse>;
+
 export interface TestNode {
   readonly pubkeyHex: string;
   readonly requests: TestOuterRequest[];
@@ -62,6 +73,8 @@ export interface TestNode {
   transport(request: TestOuterRequest): Promise<TestOuterResponse>;
   /** Overrides the `/confidential` answer; no argument restores the default. */
   setConfidential(handler?: ConfidentialHandler): void;
+  /** Overrides the `/attestation` answer; no argument restores the default. */
+  setAttestation(handler?: AttestationHandler): void;
 }
 
 const utf8 = new TextEncoder();
@@ -91,6 +104,25 @@ export function createTestNode(options: TestNodeOptions): TestNode {
   const requests: TestOuterRequest[] = [];
   let attestationCount = 0;
   let confidential: ConfidentialHandler = (context) => context.normal();
+  let attestation: AttestationHandler = (context) => context.normal();
+
+  function attestationAnswer(nonceHex: string): TestOuterResponse {
+    const body = {
+      quote: {
+        quote: "00",
+        event_log: "00",
+        report_data: `${pubkeyHex.slice(2)}${nonceHex}`,
+        vm_config: "",
+      },
+      pubkey: pubkeyHex,
+      composeHash: "deadbeef",
+    };
+    return {
+      status: 200,
+      headers: { "content-type": "application/json", ...nodeIdHeader },
+      body: utf8.encode(JSON.stringify(body)),
+    };
+  }
 
   function sign(
     requestBody: Uint8Array,
@@ -145,21 +177,11 @@ export function createTestNode(options: TestNodeOptions): TestNode {
     if (request.method === "GET" && url.pathname.endsWith("/attestation")) {
       attestationCount += 1;
       const nonceHex = url.searchParams.get("nonce") ?? "";
-      const body = {
-        quote: {
-          quote: "00",
-          event_log: "00",
-          report_data: `${pubkeyHex.slice(2)}${nonceHex}`,
-          vm_config: "",
-        },
-        pubkey: pubkeyHex,
-        composeHash: "deadbeef",
-      };
-      return {
-        status: 200,
-        headers: { "content-type": "application/json", ...nodeIdHeader },
-        body: utf8.encode(JSON.stringify(body)),
-      };
+      return attestation({
+        request,
+        nonceHex,
+        normal: async () => attestationAnswer(nonceHex),
+      });
     }
     if (
       request.method === "POST" &&
@@ -204,6 +226,9 @@ export function createTestNode(options: TestNodeOptions): TestNode {
     transport,
     setConfidential(handler) {
       confidential = handler ?? ((context) => context.normal());
+    },
+    setAttestation(handler) {
+      attestation = handler ?? ((context) => context.normal());
     },
   };
 }

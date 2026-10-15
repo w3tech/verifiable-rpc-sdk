@@ -216,6 +216,7 @@ export class AttestationCorrelationError extends VerificationError {
  * the `VerificationError` family — keeping the SDK's public error contract
  * (callers catch `VerificationError`) intact. The original leaf error is attached
  * as `cause`; `chkId` records which `CHK-*` item failed.
+ * A `CHK-P1` failure can also mean the hardware verifier service was unreachable.
  */
 export class AttestationFailed extends VerificationError {
   readonly kind = "Attestation" as const;
