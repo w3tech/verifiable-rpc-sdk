@@ -96,6 +96,8 @@ describe("sealRequest", () => {
     }
     expect(encOf(first)).not.toBe(encOf(second));
     expect(bytesToHex(first.body)).not.toBe(bytesToHex(second.body));
+    // @ts-expect-error the opener only exports from its context
+    void first.opener.context.seal;
   });
 
   test("a request without a body round-trips", async () => {

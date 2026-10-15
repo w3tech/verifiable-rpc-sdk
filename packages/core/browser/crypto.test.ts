@@ -1,4 +1,4 @@
-import type { CipherSuite, SenderContext } from "@hpke/core";
+import type { CipherSuite } from "@hpke/core";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createRecipient, hideX25519 } from "../../test-support/src/index";
@@ -132,11 +132,7 @@ describe("in a browser without WebCrypto X25519", () => {
       enc: hexToBytes(vector.enc),
       info: hexToBytes(vector.info),
     });
-    const opener: ResponseOpener = {
-      suite,
-      context: context as unknown as SenderContext,
-      enc: hexToBytes(vector.enc),
-    };
+    const opener: ResponseOpener = { suite, context, enc: hexToBytes(vector.enc) };
     const secret = await opener.context.export(utf8.encode("message/bhttp response"), 32);
     expect(bytesToHex(new Uint8Array(secret))).toBe(vector.export_secret);
 

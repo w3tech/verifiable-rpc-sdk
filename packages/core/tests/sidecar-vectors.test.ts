@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import type { SenderContext } from "@hpke/core";
 import { extract } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, concatBytes, hexToBytes } from "@noble/hashes/utils.js";
@@ -53,7 +52,7 @@ async function opener(envelope: Envelope): Promise<ResponseOpener> {
     enc: hexToBytes(envelope.enc),
     info: hexToBytes(envelope.info),
   });
-  return { suite, context: context as unknown as SenderContext, enc: hexToBytes(envelope.enc) };
+  return { suite, context, enc: hexToBytes(envelope.enc) };
 }
 
 function envelope(name: string): Envelope {

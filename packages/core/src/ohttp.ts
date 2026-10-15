@@ -44,7 +44,7 @@ export class OhttpError extends Error {
 
 export interface ResponseOpener {
   readonly suite: CipherSuite;
-  readonly context: SenderContext;
+  readonly context: Pick<SenderContext, "export">;
   readonly enc: Uint8Array;
 }
 
