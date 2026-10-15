@@ -340,3 +340,19 @@ export class RequestRejected extends UnavailableError {
     }
   }
 }
+
+export type TransportFailedReason = "network" | "too-large";
+
+/** The confidential request failed in transport, or its answer exceeded the response size cap. */
+export class TransportFailed extends UnavailableError {
+  readonly kind = "TransportFailed" as const;
+  readonly executed = "unknown" as const;
+
+  constructor(
+    public readonly reason: TransportFailedReason,
+    public readonly nodeId: string,
+    options?: { cause?: unknown },
+  ) {
+    super(`Confidential request failed in transport: ${reason}`, options);
+  }
+}

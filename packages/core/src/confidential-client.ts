@@ -14,13 +14,19 @@ import {
   ConfidentialSignerMismatch,
   InvalidInnerRequest,
   RequestRejected,
+  TransportFailed,
   UnexpectedResponse,
 } from "./errors";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
 import { attestNode, type Pin, PinSlot } from "./node-session";
 import { openResponse, sealRequest } from "./ohttp";
 import { validateChainId } from "./preimage";
-import { type ConfidentialTransport, defaultTransport } from "./transport";
+import {
+  type ConfidentialTransport,
+  defaultTransport,
+  MAX_RESPONSE_BYTES,
+  type OuterResponse,
+} from "./transport";
 import { DEFAULT_PUBKEY_CACHE_TTL_MS } from "./trusted-verifier";
 import { getHeader, PUBKEY_HEX_RE, verifyResponse } from "./verify";
 import { deriveVrpcUrls, type VrpcUrls } from "./vrpc-url";
@@ -46,6 +52,7 @@ export interface ConfidentialResponse {
 
 const OHTTP_REQUEST = "message/ohttp-req";
 const OHTTP_RESPONSE = "message/ohttp-res";
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
 function withoutContentType(headers: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
@@ -131,21 +138,36 @@ export class ConfidentialClient {
     signal: AbortSignal | undefined,
   ): Promise<ConfidentialResponse> {
     const sealed = await sealRequest(pin.nodeKey, bhttp);
-    const response = await this.#transport({
-      method: "POST",
-      url: `${this.#confidentialUrl}?node_id=${encodeURIComponent(pin.nodeId)}`,
-      headers: { ...this.#headers, "content-type": OHTTP_REQUEST },
-      body: sealed.body,
-      ...(signal === undefined ? {} : { signal }),
-    });
+    let response: OuterResponse;
+    try {
+      response = await this.#transport({
+        method: "POST",
+        url: `${this.#confidentialUrl}?node_id=${encodeURIComponent(pin.nodeId)}`,
+        headers: { ...this.#headers, "content-type": OHTTP_REQUEST },
+        body: sealed.body,
+        ...(signal === undefined ? {} : { signal }),
+      });
+    } catch (cause) {
+      throw new TransportFailed("network", pin.nodeId, { cause });
+    }
+    if (response.body.byteLength > MAX_RESPONSE_BYTES) {
+      throw new TransportFailed("too-large", pin.nodeId);
+    }
 
+    const { status } = response;
     const contentType = mediaType(getHeader(response.headers, "content-type"));
+    const reported = contentType === "" ? undefined : contentType;
+    if (
+      !Number.isInteger(status) ||
+      status < 200 ||
+      status > 599 ||
+      NULL_BODY_STATUSES.has(status)
+    ) {
+      throw new UnexpectedResponse(status, pin.nodeId, reported);
+    }
     if (contentType !== OHTTP_RESPONSE) {
-      const reported = contentType === "" ? undefined : contentType;
-      if (response.status >= 400 && response.status <= 499) {
-        throw new RequestRejected(response.status, pin.nodeId, reported);
-      }
-      throw new UnexpectedResponse(response.status, pin.nodeId, reported);
+      if (status >= 400 && status <= 499) throw new RequestRejected(status, pin.nodeId, reported);
+      throw new UnexpectedResponse(status, pin.nodeId, reported);
     }
     const signer = getHeader(response.headers, "vRPC-Pubkey");
     if (signer !== null && PUBKEY_HEX_RE.test(signer) && signer !== pin.pubkeyHex) {

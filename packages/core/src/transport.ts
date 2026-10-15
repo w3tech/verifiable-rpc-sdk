@@ -4,6 +4,9 @@
 
 import type { ResponseHeaders } from "./verify";
 
+// 192 MiB: above the 160 MiB gateway response cap, so it never fires first on a relayed answer.
+export const MAX_RESPONSE_BYTES = 201_326_592;
+
 export interface OuterRequest {
   method: "GET" | "POST";
   url: string;

@@ -12,7 +12,9 @@ import {
   MalformedAttestationResponse,
   MalformedHeader,
   MissingHeader,
+  RequestRejected,
   StaleTimestamp,
+  TransportFailed,
   UnavailableError,
   UnexpectedResponse,
   VerificationError,
@@ -278,5 +280,35 @@ describe("errors", () => {
     expect(err.name).toBe("InvalidInnerRequest");
     expect(err.reason).toBe("content-type-required");
     expect(err.message).toBe("Inner request rejected: content-type-required");
+  });
+
+  test("requestRejectedAndTransportFailedAreUnavailableErrors", () => {
+    const rejected = new RequestRejected(429, "node-1", "text/plain");
+    const failed = new TransportFailed("network", "node-1");
+    for (const err of [rejected, failed]) {
+      expect(err instanceof UnavailableError).toBe(true);
+      expect(err instanceof VerificationError).toBe(false);
+      expect("body" in err).toBe(false);
+    }
+    expect(rejected.kind).toBe("RequestRejected");
+    expect(rejected.name).toBe("RequestRejected");
+    expect(rejected.executed).toBe("no");
+    expect(rejected.status).toBe(429);
+    expect(rejected.nodeId).toBe("node-1");
+    expect(rejected.contentType).toBe("text/plain");
+    expect(rejected.message).toBe("Confidential request rejected: HTTP 429");
+    expect("contentType" in new RequestRejected(413, "node-1")).toBe(false);
+
+    expect(failed.kind).toBe("TransportFailed");
+    expect(failed.name).toBe("TransportFailed");
+    expect(failed.executed).toBe("unknown");
+    expect(failed.reason).toBe("network");
+    expect(failed.message).toBe("Confidential request failed in transport: network");
+  });
+
+  test("transportFailedKeepsCauseOnlyWhenGiven", () => {
+    const cause = new TypeError("fetch failed");
+    expect(new TransportFailed("network", "node-1", { cause }).cause).toBe(cause);
+    expect("cause" in new TransportFailed("too-large", "node-1")).toBe(false);
   });
 });
