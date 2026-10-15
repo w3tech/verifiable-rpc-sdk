@@ -35,7 +35,7 @@ const PUBKEY_HEADER = "vRPC-Pubkey";
 const NODE_ID_HEADER = "vRPC-NodeId";
 
 const SIGNATURE_HEX_RE = /^0x[0-9a-f]{128}$/;
-const PUBKEY_HEX_RE = /^0x[0-9a-f]{64}$/;
+export const PUBKEY_HEX_RE = /^0x[0-9a-f]{64}$/;
 const TIMESTAMP_RE = /^\d+$/;
 
 /**
@@ -99,7 +99,7 @@ export interface VerifiedPair {
  * Case-insensitive header lookup over `Headers | Record<string, string>`.
  * Returns `null` when absent (matching `Headers.get` semantics).
  */
-function getHeader(headers: ResponseHeaders, name: string): string | null {
+export function getHeader(headers: ResponseHeaders, name: string): string | null {
   if (headers instanceof Headers) {
     return headers.get(name);
   }

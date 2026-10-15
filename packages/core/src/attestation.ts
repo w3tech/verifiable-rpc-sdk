@@ -15,10 +15,13 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import {
   AttestationCorrelationError,
   AttestationNodeNotFoundError,
+  AttestationUnavailable,
   InvalidNonce,
   MalformedAttestationResponse,
 } from "./errors";
 import type { Logger } from "./logger";
+import type { ConfidentialTransport } from "./transport";
+import { getHeader } from "./verify";
 
 /**
  * Inner `quote` object inside the attestation response. All fields are
@@ -118,6 +121,39 @@ export async function fetchAttestation(opts: FetchAttestationOptions): Promise<A
 
   const body = (await resp.json()) as unknown;
   return narrowAttestation(body);
+}
+
+/**
+ * Attest whichever node the gateway routes to: no `node_id` is sent, and the node is identified
+ * by the `vRPC-NodeId` header of the answer.
+ */
+export async function fetchAttestationWithNodeId(
+  transport: ConfidentialTransport,
+  opts: {
+    attestationUrl: string;
+    nonce: Uint8Array;
+    headers: Record<string, string>;
+    signal?: AbortSignal;
+  },
+): Promise<{ attestation: Attestation; nodeId: string }> {
+  if (opts.nonce.length !== 32) {
+    throw new InvalidNonce(`expected 32 bytes, got ${opts.nonce.length}`);
+  }
+  const response = await transport({
+    method: "GET",
+    url: `${opts.attestationUrl}?nonce=${bytesToHex(opts.nonce)}`,
+    headers: opts.headers,
+    ...(opts.signal === undefined ? {} : { signal: opts.signal }),
+  });
+  if (response.status < 200 || response.status > 299) {
+    throw new AttestationUnavailable("status", { status: response.status });
+  }
+  const nodeId = getHeader(response.headers, "vRPC-NodeId");
+  if (nodeId === null || nodeId === "") {
+    throw new AttestationUnavailable("node-id-missing", { status: response.status });
+  }
+  const body = JSON.parse(new TextDecoder().decode(response.body)) as unknown;
+  return { attestation: narrowAttestation(body), nodeId };
 }
 
 /**

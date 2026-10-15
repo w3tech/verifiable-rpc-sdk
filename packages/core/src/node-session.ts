@@ -1,0 +1,114 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
+// Attest one node and hold the pinned result for the Ankr Confidential RPC client.
+
+import { hexToBytes } from "@noble/hashes/utils.js";
+import {
+  AttestationError,
+  type HardwareVerifier,
+  verifyDstackAttestation,
+} from "@w3tech.io/dstack-verify";
+
+import { fetchAttestationWithNodeId } from "./attestation";
+import { AttestationFailed } from "./errors";
+import type { Logger } from "./logger";
+import { nodeKeyFromEd25519 } from "./node-key";
+import type { ConfidentialTransport } from "./transport";
+import { buildVerifyPolicy, mapAttestationToBundle } from "./trusted-verifier";
+
+export interface AttestedNode {
+  readonly nodeId: string;
+  readonly pubkeyHex: string;
+  readonly nodeKey: Uint8Array;
+  readonly composeHash: string;
+  readonly attestedAt: number;
+}
+
+export type Pin = AttestedNode & { readonly expiresAt: number; readonly generation: number };
+
+export async function attestNode(opts: {
+  transport: ConfidentialTransport;
+  attestationUrl: string;
+  headers: Record<string, string>;
+  hardwareVerifier: HardwareVerifier;
+  logger: Logger;
+  signal?: AbortSignal;
+}): Promise<AttestedNode> {
+  const nonce = crypto.getRandomValues(new Uint8Array(32));
+  const { attestation, nodeId } = await fetchAttestationWithNodeId(opts.transport, {
+    attestationUrl: opts.attestationUrl,
+    nonce,
+    headers: opts.headers,
+    ...(opts.signal === undefined ? {} : { signal: opts.signal }),
+  });
+  const pubkeyHex = attestation.pubkey.toLowerCase();
+  const nodeKey = nodeKeyFromEd25519(hexToBytes(pubkeyHex.slice(2)));
+  try {
+    await verifyDstackAttestation(
+      mapAttestationToBundle(attestation, pubkeyHex, nonce),
+      buildVerifyPolicy(pubkeyHex, nonce, opts.hardwareVerifier, opts.logger),
+    );
+  } catch (err) {
+    if (err instanceof AttestationError) {
+      throw new AttestationFailed(err.chkId, err.detail, { cause: err });
+    }
+    throw err;
+  }
+  return {
+    nodeId,
+    pubkeyHex,
+    nodeKey,
+    composeHash: attestation.composeHash,
+    attestedAt: Date.now(),
+  };
+}
+
+export class PinSlot {
+  readonly #attest: (signal?: AbortSignal) => Promise<AttestedNode>;
+  readonly #ttlMs: number;
+  #pin: Pin | undefined;
+  #flight: Promise<Pin> | undefined;
+  #generation = 0;
+
+  constructor(attest: (signal?: AbortSignal) => Promise<AttestedNode>, ttlMs: number) {
+    this.#attest = attest;
+    this.#ttlMs = ttlMs;
+  }
+
+  current(now = Date.now()): Pin | undefined {
+    return this.#pin !== undefined && now < this.#pin.expiresAt ? this.#pin : undefined;
+  }
+
+  acquire(): Promise<Pin> {
+    const pin = this.current();
+    if (pin !== undefined) return Promise.resolve(pin);
+    if (this.#flight === undefined) {
+      const flight: Promise<Pin> = this.#attest().then(
+        (node) => {
+          const next: Pin = Object.freeze({
+            ...node,
+            expiresAt: node.attestedAt + this.#ttlMs,
+            generation: ++this.#generation,
+          });
+          if (this.#flight === flight) {
+            this.#pin = next;
+            this.#flight = undefined;
+          }
+          return next;
+        },
+        (err: unknown) => {
+          if (this.#flight === flight) this.#flight = undefined;
+          throw err;
+        },
+      );
+      // Nobody may be waiting when the flight settles.
+      flight.catch(() => {});
+      this.#flight = flight;
+    }
+    return this.#flight;
+  }
+
+  evict(pin: Pin): void {
+    if (this.#pin?.generation === pin.generation) this.#pin = undefined;
+  }
+}

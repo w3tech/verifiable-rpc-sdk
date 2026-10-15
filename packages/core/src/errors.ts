@@ -23,7 +23,8 @@ export type VerificationErrorKind =
   | "MalformedAttestationResponse"
   | "AttestationNodeNotFound"
   | "AttestationCorrelation"
-  | "Attestation";
+  | "Attestation"
+  | "ConfidentialSignerMismatch";
 
 /**
  * Abstract base for all verification errors. The `kind` discriminator is set
@@ -220,6 +221,87 @@ export class AttestationFailed extends VerificationError {
     super(`Attestation verification failed [${chkId}]: ${detail}`);
     if (options?.cause !== undefined) {
       (this as { cause?: unknown }).cause = options.cause;
+    }
+  }
+}
+
+/** A confidential response was signed by a key other than the pinned node key. */
+export class ConfidentialSignerMismatch extends VerificationError {
+  readonly kind = "ConfidentialSignerMismatch" as const;
+
+  constructor(
+    public readonly expectedPubkey: string,
+    public readonly actualPubkey: string,
+  ) {
+    super(`Response signer ${actualPubkey} is not the pinned node key ${expectedPubkey}`);
+  }
+}
+
+export type UnavailableErrorKind =
+  | "AttestationUnavailable"
+  | "RequestRejected"
+  | "UnexpectedResponse"
+  | "TransportFailed";
+
+/** Base of the errors raised when a confidential call got no verifiable answer. */
+export abstract class UnavailableError extends Error {
+  abstract readonly kind: UnavailableErrorKind;
+  /**
+   * `"no"`: the gateway or node did not run this attempt; an edge proxy retry may have run an earlier attempt of the same call.
+   * `"unknown"`: the call may or may not have run; check state before resending a state-changing call.
+   */
+  abstract readonly executed: "no" | "unknown";
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message);
+    this.name = this.constructor.name;
+    if (options?.cause !== undefined) {
+      (this as { cause?: unknown }).cause = options.cause;
+    }
+  }
+}
+
+export type AttestationUnavailableReason = "status" | "transport" | "node-id-missing" | "timeout";
+
+/**
+ * The node could not be attested, so the call was not sent.
+ * A browser calling another origin cannot read `vRPC-NodeId` and gets `node-id-missing`.
+ */
+export class AttestationUnavailable extends UnavailableError {
+  readonly kind = "AttestationUnavailable" as const;
+  readonly executed = "no" as const;
+  declare readonly status?: number;
+
+  constructor(
+    public readonly reason: AttestationUnavailableReason,
+    options?: { status?: number; cause?: unknown },
+  ) {
+    super(
+      reason === "status"
+        ? `Attestation unavailable: HTTP ${options?.status}`
+        : `Attestation unavailable: ${reason}`,
+      options?.cause === undefined ? undefined : { cause: options.cause },
+    );
+    if (options?.status !== undefined) {
+      this.status = options.status;
+    }
+  }
+}
+
+/** The confidential endpoint answered with something other than a sealed response. */
+export class UnexpectedResponse extends UnavailableError {
+  readonly kind = "UnexpectedResponse" as const;
+  readonly executed = "unknown" as const;
+  declare readonly contentType?: string;
+
+  constructor(
+    public readonly status: number,
+    public readonly nodeId: string,
+    contentType?: string,
+  ) {
+    super(`Unexpected confidential response: HTTP ${status}`);
+    if (contentType !== undefined) {
+      this.contentType = contentType;
     }
   }
 }
