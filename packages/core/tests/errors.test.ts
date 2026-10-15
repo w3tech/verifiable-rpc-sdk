@@ -5,11 +5,13 @@ import {
   AttestationNodeNotFoundError,
   AttestationUnavailable,
   BadSignature,
+  ConfidentialDecryptFailed,
   ConfidentialSignerMismatch,
   InvalidChainId,
   InvalidInnerRequest,
   InvalidNonce,
   MalformedAttestationResponse,
+  MalformedConfidentialResponse,
   MalformedHeader,
   MissingHeader,
   RequestRejected,
@@ -310,5 +312,25 @@ describe("errors", () => {
     const cause = new TypeError("fetch failed");
     expect(new TransportFailed("network", "node-1", { cause }).cause).toBe(cause);
     expect("cause" in new TransportFailed("too-large", "node-1")).toBe(false);
+  });
+
+  test("confidentialDecryptAndMalformedResponseAreVerificationKinds", () => {
+    const decrypt = new ConfidentialDecryptFailed();
+    expect(decrypt instanceof VerificationError).toBe(true);
+    expect(decrypt.kind).toBe("ConfidentialDecryptFailed");
+    expect(decrypt.name).toBe("ConfidentialDecryptFailed");
+    expect(decrypt.message).toBe("Signed confidential response could not be decrypted");
+    expect("cause" in decrypt).toBe(false);
+
+    for (const reason of ["too-short", "framing", "informational", "decode-failed"] as const) {
+      const malformed = new MalformedConfidentialResponse(reason);
+      expect(malformed instanceof VerificationError).toBe(true);
+      expect(malformed.kind).toBe("MalformedConfidentialResponse");
+      expect(malformed.reason).toBe(reason);
+      expect(malformed.message).toBe(`Malformed confidential response: ${reason}`);
+      expect(malformed.message).not.toMatch(/[0-9a-f]{9,}/i);
+      expect("cause" in malformed).toBe(false);
+    }
+    expect(decrypt.message).not.toMatch(/[0-9a-f]{9,}/i);
   });
 });

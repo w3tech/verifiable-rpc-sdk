@@ -9,17 +9,29 @@ import {
   InvalidInnerRequest as EncoderRejected,
   encodeInnerRequest,
   type InnerRequest,
+  type InnerResponse,
+  MalformedInnerResponse,
 } from "./bhttp";
 import {
+  ConfidentialDecryptFailed,
   ConfidentialSignerMismatch,
   InvalidInnerRequest,
+  MalformedAttestationResponse,
+  MalformedConfidentialResponse,
   RequestRejected,
   TransportFailed,
   UnexpectedResponse,
 } from "./errors";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
+import { InvalidNodeKey } from "./node-key";
 import { attestNode, type Pin, PinSlot } from "./node-session";
-import { openResponse, sealRequest } from "./ohttp";
+import {
+  OhttpError,
+  openResponse,
+  type ResponseOpener,
+  type SealedRequest,
+  sealRequest,
+} from "./ohttp";
 import { validateChainId } from "./preimage";
 import {
   type ConfidentialTransport,
@@ -65,6 +77,36 @@ async function encode(inner: InnerRequest): Promise<Uint8Array> {
     return await encodeInnerRequest(inner);
   } catch (err) {
     if (err instanceof EncoderRejected) throw new InvalidInnerRequest(err.reason);
+    throw err;
+  }
+}
+
+async function seal(nodeKey: Uint8Array, bhttp: Uint8Array): Promise<SealedRequest> {
+  try {
+    return await sealRequest(nodeKey, bhttp);
+  } catch (err) {
+    if (err instanceof InvalidNodeKey) {
+      throw new MalformedAttestationResponse("attested pubkey is not a usable encryption key");
+    }
+    throw err;
+  }
+}
+
+async function open(opener: ResponseOpener, body: Uint8Array): Promise<InnerResponse> {
+  let inner: Uint8Array;
+  try {
+    inner = await openResponse(opener, body);
+  } catch (err) {
+    if (err instanceof OhttpError) {
+      if (err.reason === "response-too-short") throw new MalformedConfidentialResponse("too-short");
+      throw new ConfidentialDecryptFailed();
+    }
+    throw err;
+  }
+  try {
+    return await decodeInnerResponse(inner);
+  } catch (err) {
+    if (err instanceof MalformedInnerResponse) throw new MalformedConfidentialResponse(err.reason);
     throw err;
   }
 }
@@ -137,7 +179,7 @@ export class ConfidentialClient {
     bhttp: Uint8Array,
     signal: AbortSignal | undefined,
   ): Promise<ConfidentialResponse> {
-    const sealed = await sealRequest(pin.nodeKey, bhttp);
+    const sealed = await seal(pin.nodeKey, bhttp);
     let response: OuterResponse;
     try {
       response = await this.#transport({
@@ -178,7 +220,7 @@ export class ConfidentialClient {
       ...(this.#replayWindowMs === undefined ? {} : { replayWindowMs: this.#replayWindowMs }),
     });
 
-    const decoded = await decodeInnerResponse(await openResponse(sealed.opener, response.body));
+    const decoded = await open(sealed.opener, response.body);
     return decoded.contentType === null
       ? { status: decoded.status, body: decoded.body }
       : { status: decoded.status, contentType: decoded.contentType, body: decoded.body };

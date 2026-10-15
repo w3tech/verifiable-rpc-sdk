@@ -25,7 +25,9 @@ export type VerificationErrorKind =
   | "AttestationCorrelation"
   | "Attestation"
   | "ConfidentialSignerMismatch"
-  | "InvalidInnerRequest";
+  | "InvalidInnerRequest"
+  | "ConfidentialDecryptFailed"
+  | "MalformedConfidentialResponse";
 
 /**
  * Abstract base for all verification errors. The `kind` discriminator is set
@@ -101,6 +103,8 @@ export interface BadSignatureContext {
  * the caller can correlate the failure with sidecar-side logs. These values
  * are public — the signature was emitted in a response header, the pubkey
  * is bound into the TDX attestation quote — so logging them is safe.
+ *
+ * In Ankr Confidential RPC mode, a response cut in transit after its status was sent also fails this way.
  */
 export class BadSignature extends VerificationError {
   readonly kind = "BadSignature" as const;
@@ -132,6 +136,8 @@ export interface StaleTimestampContext {
 /**
  * Signed timestamp fell outside the replay window. The signature itself was
  * valid — the response is just too old (or too far in the future) to accept.
+ *
+ * In Ankr Confidential RPC mode, the call ran and its response was rejected.
  */
 export class StaleTimestamp extends VerificationError {
   readonly kind = "StaleTimestamp" as const;
@@ -251,6 +257,30 @@ export class InvalidInnerRequest extends VerificationError {
 
   constructor(public readonly reason: InvalidInnerRequestReason) {
     super(`Inner request rejected: ${reason}`);
+  }
+}
+
+/** A confidential response carried a valid signature but could not be decrypted. */
+export class ConfidentialDecryptFailed extends VerificationError {
+  readonly kind = "ConfidentialDecryptFailed" as const;
+
+  constructor() {
+    super("Signed confidential response could not be decrypted");
+  }
+}
+
+export type MalformedConfidentialResponseReason =
+  | "too-short"
+  | "framing"
+  | "informational"
+  | "decode-failed";
+
+/** A validly signed confidential response is too short to open or its inner response does not decode. */
+export class MalformedConfidentialResponse extends VerificationError {
+  readonly kind = "MalformedConfidentialResponse" as const;
+
+  constructor(public readonly reason: MalformedConfidentialResponseReason) {
+    super(`Malformed confidential response: ${reason}`);
   }
 }
 
