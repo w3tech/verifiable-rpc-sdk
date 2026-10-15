@@ -96,7 +96,7 @@ are no Changesets `.md` files and no conventional-commit discipline.
   produced even before the labels exist in the repo.
 - `dependabot` and the release bot are excluded; PRs labeled `ignore-for-release` are dropped.
 
-## Bootstrap-then-tokenless authentication (Phase 52)
+## Bootstrap-then-tokenless authentication
 
 The release job references `environment: prod` and sets `NODE_AUTH_TOKEN` from the temporary
 `NPMJS_TOKEN` secret. npm tries OIDC (Trusted Publishing) first — because the job has

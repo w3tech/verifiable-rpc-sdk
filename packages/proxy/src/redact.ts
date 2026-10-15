@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
 // URL secret redaction for the startup banner: mask any path segment that
-// looks like an API key (shark's key shape) and every query-string value, so
+// looks like an API key (the upstream gateway's key shape) and every query-string value, so
 // neither a key-in-path nor a key-in-query secret ever reaches logs.
 
-/** Shark API key shape: 64 hex chars or 32 alphanumerics. */
+/** Upstream gateway API key shape: 64 hex chars or 32 alphanumerics. */
 const KEY_SEGMENT = /^([a-fA-F0-9]{64}|[a-zA-Z0-9]{32})$/;
 
 /** Mask key-shaped path segments and all query values in `url` for logging. */

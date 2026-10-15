@@ -130,7 +130,7 @@ export function mapUndiciError(err: unknown): ProxyError {
 }
 
 /**
- * Shark (and any front returning it) tags every response with a trace id
+ * The upstream gateway (and any front returning it) tags every response with a trace id
  * header. Attach it to the error as a `traceId` property so a fail-closed 502
  * can be correlated with the upstream's own logs — surfaced as a separate key
  * in the error body and the log line, not glued into the message. No-op when

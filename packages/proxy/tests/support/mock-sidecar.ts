@@ -43,7 +43,7 @@ export interface MockSidecarOptions {
   status?: number;
   /** Delay before responding, for upstream-timeout tests. */
   delayMs?: number;
-  /** Extra response headers (e.g. a shark-style trace id). */
+  /** Extra response headers (e.g. an upstream gateway trace id). */
   extraHeaders?: Record<string, string>;
 }
 
