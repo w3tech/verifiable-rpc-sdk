@@ -41,8 +41,8 @@ type Manifest = {
   engines?: Record<string, string>;
   browser?: Record<string, unknown>;
   files?: string[];
-  exports?: Record<string, Record<string, string>>;
-  publishConfig?: { exports?: Record<string, Record<string, string>> };
+  exports?: Record<string, string | Record<string, string>>;
+  publishConfig?: { exports?: Record<string, string | Record<string, string>> };
 };
 
 const core = coreManifest as Manifest;
