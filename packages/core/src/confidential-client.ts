@@ -4,6 +4,7 @@
 
 import { createCloudVerifier, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 
+import { raceAbort } from "./abort";
 import {
   decodeInnerResponse,
   InvalidInnerRequest as EncoderRejected,
@@ -179,8 +180,8 @@ export class ConfidentialClient {
   }
 
   /** Attests now unless a valid pin exists, and returns the pinned node. */
-  async ready(): Promise<ConfidentialInfo> {
-    return infoOf(await this.#slot.acquire());
+  async ready(options?: { signal?: AbortSignal }): Promise<ConfidentialInfo> {
+    return infoOf(await this.#slot.acquire(options?.signal));
   }
 
   /** The pinned node, or `undefined` before the first attestation and after the pin expired or was dropped. */
@@ -189,17 +190,22 @@ export class ConfidentialClient {
     return pin === undefined ? undefined : infoOf(pin);
   }
 
-  /** Sends one inner request sealed to the pinned node; any inner status is returned, not thrown. */
+  /**
+   * Sends one inner request sealed to the pinned node; any inner status is returned, not thrown.
+   * An abort rejects with `signal.reason`; aborting after the request was sent leaves the outcome unknown.
+   */
   async request(
     inner: InnerRequest,
     options?: { signal?: AbortSignal },
   ): Promise<ConfidentialResponse> {
+    const signal = options?.signal;
+    if (signal?.aborted) throw signal.reason;
     const bhttp = await encode(inner);
-    const pin = await this.#slot.acquire();
+    const pin = await this.#slot.acquire(signal);
     try {
-      return await this.#exchange(pin, bhttp, options?.signal);
+      return await this.#exchange(pin, bhttp, signal);
     } catch (err) {
-      this.#slot.evict(pin);
+      if (!(signal?.aborted && err === signal.reason)) this.#slot.evict(pin);
       throw err;
     }
   }
@@ -210,16 +216,21 @@ export class ConfidentialClient {
     signal: AbortSignal | undefined,
   ): Promise<ConfidentialResponse> {
     const sealed = await seal(pin.nodeKey, bhttp);
+    if (signal?.aborted) throw signal.reason;
     let response: OuterResponse;
     try {
-      response = await this.#transport({
-        method: "POST",
-        url: `${this.#confidentialUrl}?node_id=${encodeURIComponent(pin.nodeId)}`,
-        headers: { ...this.#headers, "content-type": OHTTP_REQUEST },
-        body: sealed.body,
-        ...(signal === undefined ? {} : { signal }),
-      });
+      response = await raceAbort(
+        this.#transport({
+          method: "POST",
+          url: `${this.#confidentialUrl}?node_id=${encodeURIComponent(pin.nodeId)}`,
+          headers: { ...this.#headers, "content-type": OHTTP_REQUEST },
+          body: sealed.body,
+          ...(signal === undefined ? {} : { signal }),
+        }),
+        signal,
+      );
     } catch (cause) {
+      if (signal?.aborted) throw signal.reason;
       throw new TransportFailed("network", pin.nodeId, { cause });
     }
     if (response.body.byteLength > MAX_RESPONSE_BYTES) {

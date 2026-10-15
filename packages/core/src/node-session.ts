@@ -9,8 +9,9 @@ import {
   verifyDstackAttestation,
 } from "@w3tech.io/dstack-verify";
 
+import { raceAbort } from "./abort";
 import { fetchAttestationWithNodeId } from "./attestation";
-import { AttestationFailed, MalformedAttestationResponse } from "./errors";
+import { AttestationFailed, AttestationUnavailable, MalformedAttestationResponse } from "./errors";
 import type { Logger } from "./logger";
 import { InvalidNodeKey, nodeKeyFromEd25519 } from "./node-key";
 import type { ConfidentialTransport } from "./transport";
@@ -79,6 +80,9 @@ export async function attestNode(opts: {
   };
 }
 
+// Above the gateway's attestation timeout plus the hardware verifier's.
+const ATTESTATION_TIMEOUT_MS = 60_000;
+
 export class PinSlot {
   readonly #attest: (signal?: AbortSignal) => Promise<AttestedNode>;
   readonly #ttlMs: number;
@@ -95,33 +99,43 @@ export class PinSlot {
     return this.#pin !== undefined && now < this.#pin.expiresAt ? this.#pin : undefined;
   }
 
-  acquire(): Promise<Pin> {
+  acquire(signal?: AbortSignal): Promise<Pin> {
+    if (signal?.aborted) return Promise.reject(signal.reason);
     const pin = this.current();
     if (pin !== undefined) return Promise.resolve(pin);
     if (this.#flight === undefined) {
-      const flight: Promise<Pin> = this.#attest().then(
-        (node) => {
-          const next: Pin = Object.freeze({
-            ...node,
-            expiresAt: node.attestedAt + this.#ttlMs,
-            generation: ++this.#generation,
-          });
-          if (this.#flight === flight) {
-            this.#pin = next;
-            this.#flight = undefined;
-          }
-          return next;
-        },
-        (err: unknown) => {
-          if (this.#flight === flight) this.#flight = undefined;
-          throw err;
-        },
+      const deadline = new AbortController();
+      const timer = setTimeout(
+        () => deadline.abort(new AttestationUnavailable("timeout")),
+        ATTESTATION_TIMEOUT_MS,
       );
+      // The verifier takes no signal, so the deadline also settles the flight itself.
+      const flight: Promise<Pin> = raceAbort(this.#attest(deadline.signal), deadline.signal)
+        .then(
+          (node) => {
+            const next: Pin = Object.freeze({
+              ...node,
+              expiresAt: node.attestedAt + this.#ttlMs,
+              generation: ++this.#generation,
+            });
+            if (this.#flight === flight) {
+              this.#pin = next;
+              this.#flight = undefined;
+            }
+            return next;
+          },
+          (err: unknown) => {
+            if (this.#flight === flight) this.#flight = undefined;
+            throw err;
+          },
+        )
+        .finally(() => clearTimeout(timer));
       // Nobody may be waiting when the flight settles.
       flight.catch(() => {});
       this.#flight = flight;
     }
-    return this.#flight;
+    // A waiter's abort never cancels the shared flight.
+    return raceAbort(this.#flight, signal);
   }
 
   evict(pin: Pin): void {
