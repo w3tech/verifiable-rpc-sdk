@@ -61,7 +61,7 @@ export function createRecipient(seed: Uint8Array, options?: { kem?: "native" | "
     const bhttp = new Uint8Array(
       await context.open(body.subarray(HEADER_LENGTH + ENC_LENGTH), EMPTY),
     );
-    const request = new BHttpDecoder().decodeRequest(bhttp);
+    let request: Request | undefined;
 
     async function sealResponse(innerBhttp: Uint8Array): Promise<Uint8Array> {
       const secret = new Uint8Array(
@@ -90,7 +90,17 @@ export function createRecipient(seed: Uint8Array, options?: { kem?: "native" | "
       return sealResponse(inner);
     }
 
-    return { hdr, bhttp, request, sealResponse, respond };
+    return {
+      hdr,
+      bhttp,
+      // Decoded on first use, so a request that bhttp-ts cannot decode still opens.
+      get request() {
+        request ??= new BHttpDecoder().decodeRequest(bhttp);
+        return request;
+      },
+      sealResponse,
+      respond,
+    };
   }
 
   return { ed25519PublicKey: ed25519.getPublicKey(seed), openRequest };
