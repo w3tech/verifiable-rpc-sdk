@@ -139,7 +139,8 @@ function firstStatus(bytes: Uint8Array): number {
 export async function decodeInnerResponse(bytes: Uint8Array): Promise<InnerResponse> {
   if (bytes[0] !== KNOWN_LENGTH_RESPONSE) throw new MalformedInnerResponse("framing");
   // bhttp-ts skips 1xx responses silently, so the first status is checked here.
-  if (firstStatus(bytes) < 200) throw new MalformedInnerResponse("informational");
+  const status = firstStatus(bytes);
+  if (status >= 100 && status < 200) throw new MalformedInnerResponse("informational");
   try {
     const response = new BHttpDecoder().decodeResponse(bytes);
     const body =

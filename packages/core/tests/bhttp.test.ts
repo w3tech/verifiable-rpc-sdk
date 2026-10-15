@@ -253,6 +253,8 @@ describe("decodeInnerResponse", () => {
     ["content past the end", "0140c800056869"],
     ["non-zero padding", "0140c8000268690001"],
     ["status 700", "0142bc000000"],
+    ["status 0", "0100000000"],
+    ["status 99", "014063000000"],
     ["a field name with a space", "0140c8060361206201780000"],
   ])("rejects %s", async (_, hex) => {
     await expectMalformed(hex, "decode-failed");
