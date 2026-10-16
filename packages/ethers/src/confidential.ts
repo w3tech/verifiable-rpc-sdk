@@ -9,6 +9,7 @@ import type {
   ConfidentialTransport,
 } from "@w3tech.io/vrpc-core/confidential";
 import {
+  assert,
   type FetchGetUrlFunc,
   FetchRequest,
   FetchResponse,
@@ -17,6 +18,87 @@ import {
   makeError,
   toUtf8Bytes,
 } from "ethers";
+
+// The core default transport's cap: 192 MiB, above the 160 MiB gateway response cap.
+const MAX_RESPONSE_BYTES = 201_326_592;
+
+// With an encoding, content-length is the encoded size; the runtime hands over decoded bytes.
+async function readCapped(response: Response): Promise<Uint8Array> {
+  const encoding = (response.headers.get("content-encoding") ?? "identity").trim().toLowerCase();
+  const declared = Number(response.headers.get("content-length"));
+  if ((encoding === "" || encoding === "identity") && declared > MAX_RESPONSE_BYTES) {
+    await response.body?.cancel();
+    throw new Error("Response exceeds the size cap");
+  }
+  if (response.body === null) return new Uint8Array(0);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_RESPONSE_BYTES) {
+      await reader.cancel();
+      throw new Error("Response exceeds the size cap");
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
+// Replaces the ethers fetchers, which buffer the whole body (and gunzip it in Node) before returning.
+const cappedGetUrl: FetchGetUrlFunc = async (req, signal) => {
+  assert(signal == null || !signal.cancelled, "request cancelled before sending", "CANCELLED");
+  const protocol = req.url.split(":")[0]?.toLowerCase();
+  assert(
+    protocol === "http" || protocol === "https",
+    `unsupported protocol ${protocol}`,
+    "UNSUPPORTED_OPERATION",
+    { operation: "request" },
+  );
+  assert(
+    protocol === "https" || !req.credentials || req.allowInsecureAuthentication,
+    "insecure authorized connections unsupported",
+    "UNSUPPORTED_OPERATION",
+    { operation: "request" },
+  );
+  let reason: Error | undefined;
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    reason = makeError("request timeout", "TIMEOUT");
+    controller.abort();
+  }, req.timeout);
+  signal?.addListener(() => {
+    reason = makeError("request cancelled", "CANCELLED");
+    controller.abort();
+  });
+  try {
+    const response = await fetch(req.url, {
+      method: req.method,
+      headers: new Headers(Array.from(req)),
+      redirect: "manual",
+      signal: controller.signal,
+      ...(req.body === null ? {} : { body: req.body }),
+    });
+    const headers: Record<string, string> = {};
+    response.headers.forEach((value, name) => {
+      headers[name.toLowerCase()] = value;
+    });
+    const body = await readCapped(response);
+    return { statusCode: response.status, statusMessage: response.statusText, headers, body };
+  } catch (err) {
+    throw reason ?? err;
+  } finally {
+    clearTimeout(timer);
+  }
+};
 
 // `send()` clones the request per attempt and the clone turns gzip back on, so it is set here.
 function noFollowIdentity(base: FetchGetUrlFunc): FetchGetUrlFunc {
@@ -42,7 +124,9 @@ function sanitised(err: unknown): Error {
         ? source.message
         : "transport error";
   const out = new Error(message);
-  if (typeof source.code === "string") Object.assign(out, { code: source.code });
+  const cause = source.cause as { code?: unknown } | null | undefined;
+  const code = typeof source.code === "string" ? source.code : cause?.code;
+  if (typeof code === "string") Object.assign(out, { code });
   return out;
 }
 
@@ -57,10 +141,7 @@ export function fetchRequestTransport(connection: () => FetchRequest): Confident
     req.retryFunc = async () => false;
     req.processFunc = null;
     const own = req.getUrlFunc;
-    const base =
-      own === new FetchRequest("http://localhost").getUrlFunc
-        ? FetchRequest.createGetUrlFunc({ redirect: "manual" })
-        : own;
+    const base = own === new FetchRequest("http://localhost").getUrlFunc ? cappedGetUrl : own;
     req.getUrlFunc = noFollowIdentity(base);
 
     const signal = outer.signal;

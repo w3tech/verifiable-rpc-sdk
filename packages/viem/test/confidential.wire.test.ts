@@ -445,3 +445,48 @@ describe("errors carry neither the key, the params, the inner body nor body byte
     }
   });
 });
+
+describe("response size cap", () => {
+  const CAP = 201_326_592;
+  const CHUNK = new Uint8Array(16 * 1024 * 1024);
+
+  // Answers the sealed POST with an endless body, optionally declaring a length.
+  function endless(headers: Record<string, string>) {
+    const seen = { pulled: 0, cancelled: false };
+    const fetchFn: typeof fetch = async (input, init) => {
+      if (init?.method !== "POST") return fetch(input, init);
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          seen.pulled += CHUNK.byteLength;
+          controller.enqueue(CHUNK);
+        },
+        cancel() {
+          seen.cancelled = true;
+        },
+      });
+      return new Response(body, { status: 200, headers });
+    };
+    return { fetchFn, seen };
+  }
+
+  test.each([
+    { name: "a streamed body past the cap", headers: {} },
+    {
+      name: "a declared identity length past the cap",
+      headers: { "content-length": `${CAP + 1}` },
+    },
+  ])("$name is cut and the call fails without reading on", async ({ headers }) => {
+    const server = await serve();
+    const { fetchFn, seen } = endless(headers);
+    const client = createPublicClient({
+      chain: arbitrum,
+      transport: confidential(server.url, { fetchFn }),
+    });
+
+    const err = await rejection(client.request({ method: "eth_blockNumber" }));
+
+    expect(walkFind(err, TransportFailed)).toBeInstanceOf(TransportFailed);
+    expect(seen.cancelled).toBe(true);
+    expect(seen.pulled).toBeLessThanOrEqual(CAP + 2 * CHUNK.byteLength);
+  });
+});

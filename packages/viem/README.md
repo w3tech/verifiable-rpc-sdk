@@ -327,6 +327,9 @@ error is thrown as a typed error. `fallback` retries the whole request
 (`retryCount`, 3 by default): set `retryCount: 0` when you use it. A per-call
 `retryCount` you pass to `client.request` is honoured and resends the call.
 
+**Response size.** The transport stops reading an answer past 192 MiB and the
+call fails with `TransportFailed`, with your `fetchFn` too.
+
 **Errors.**
 
 - Core errors reach viem actions wrapped in viem's `UnknownRpcError`; find them

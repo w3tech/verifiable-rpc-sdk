@@ -13,6 +13,47 @@ import { HttpRequestError, RpcRequestError } from "viem";
 
 import type { VrpcHttpOptions } from "./options";
 
+// The core default transport's cap: 192 MiB, above the 160 MiB gateway response cap.
+const MAX_RESPONSE_BYTES = 201_326_592;
+
+class ResponseTooLarge extends Error {
+  constructor() {
+    super("Response exceeds the size cap");
+    this.name = "ResponseTooLarge";
+  }
+}
+
+// With an encoding, content-length is the encoded size; the runtime hands over decoded bytes.
+async function readCapped(response: Response): Promise<Uint8Array> {
+  const encoding = (response.headers.get("content-encoding") ?? "identity").trim().toLowerCase();
+  const declared = Number(response.headers.get("content-length"));
+  if ((encoding === "" || encoding === "identity") && declared > MAX_RESPONSE_BYTES) {
+    await response.body?.cancel();
+    throw new ResponseTooLarge();
+  }
+  if (response.body === null) return new Uint8Array(0);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_RESPONSE_BYTES) {
+      await reader.cancel();
+      throw new ResponseTooLarge();
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
 // A fetch error message may quote the keyed URL; keep a fixed message and the error code only.
 function sanitised(err: unknown): Error {
   const out = new Error("The request failed.");
@@ -45,10 +86,11 @@ export function fetchTransport(fetchFn: VrpcHttpOptions["fetchFn"]): Confidentia
       return {
         status: response.status,
         headers: response.headers,
-        body: new Uint8Array(await response.arrayBuffer()),
+        body: await readCapped(response),
       };
     } catch (err) {
       if (request.signal?.aborted) throw request.signal.reason;
+      if (err instanceof ResponseTooLarge) throw err;
       throw sanitised(err);
     }
   };

@@ -253,6 +253,11 @@ error. Keep `batchMaxCount` at 1000 or less (ethers' default is 100) and keep
 **No retries.** Nothing in the SDK resends a call: a 429, a redirect or a gateway
 error is thrown as a typed error. Use your own retry policy if you need one.
 
+**Response size.** Without a `getUrlFunc` of your own, both requests go through
+`fetch` and the SDK stops reading an answer past 192 MiB. A `getUrlFunc` you set
+reads the whole answer before the SDK sees it, so the limit is checked only
+after the answer is in memory.
+
 **Errors.**
 
 - An inner non-2xx answer is ethers `SERVER_ERROR`; its body is at

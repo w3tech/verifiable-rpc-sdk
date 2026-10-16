@@ -182,14 +182,17 @@ describe.each(FLAVOURS)("one request per call: %s", (flavour) => {
 });
 
 describe("base fetcher", () => {
-  test("without its own getUrlFunc the request uses a non-following fetcher", async () => {
+  test("without its own getUrlFunc the request uses a non-following fetch", async () => {
     const server = await serve();
-    const spy = vi.spyOn(FetchRequest, "createGetUrlFunc");
+    const created = vi.spyOn(FetchRequest, "createGetUrlFunc");
+    const fetched = vi.spyOn(globalThis, "fetch");
     const { provider } = build("string URL", server.url);
 
     await provider.getBlockNumber();
 
-    expect(spy).toHaveBeenCalledWith({ redirect: "manual" });
+    expect(created).not.toHaveBeenCalled();
+    expect(fetched).toHaveBeenCalledTimes(2);
+    for (const [, init] of fetched.mock.calls) expect(init?.redirect).toBe("manual");
   });
 
   test("the caller's own getUrlFunc is wrapped, not replaced", async () => {
@@ -422,5 +425,42 @@ describe("transport errors carry neither the key nor body bytes", () => {
     expect(err).toBeInstanceOf(TransportFailed);
     expect((err as TransportFailed).reason).toBe("network");
     expectSanitised(err, sent);
+  });
+});
+
+describe("response size cap", () => {
+  const CAP = 201_326_592;
+  const CHUNK = new Uint8Array(16 * 1024 * 1024);
+
+  test.each([
+    { name: "a streamed body past the cap", headers: {} },
+    {
+      name: "a declared identity length past the cap",
+      headers: { "content-length": `${CAP + 1}` },
+    },
+  ])("$name is cut and the call fails without reading on", async ({ headers }) => {
+    const server = await serve();
+    const seen = { pulled: 0, cancelled: false };
+    const original = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (init?.method !== "POST") return original(input, init);
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          seen.pulled += CHUNK.byteLength;
+          controller.enqueue(CHUNK);
+        },
+        cancel() {
+          seen.cancelled = true;
+        },
+      });
+      return new Response(body, { status: 200, headers });
+    });
+    const { provider } = build("string URL", server.url);
+
+    const err = await rejection(provider.getBlockNumber());
+
+    expect(err).toBeInstanceOf(TransportFailed);
+    expect(seen.cancelled).toBe(true);
+    expect(seen.pulled).toBeLessThanOrEqual(CAP + 2 * CHUNK.byteLength);
   });
 });
