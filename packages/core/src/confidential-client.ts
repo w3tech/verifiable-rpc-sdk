@@ -132,6 +132,13 @@ function infoOf(pin: Pin): ConfidentialInfo {
   };
 }
 
+function requirePositiveMs(name: string, value: number): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError(`${name} must be a positive integer number of milliseconds`);
+  }
+  return value;
+}
+
 function mediaType(value: string | null): string {
   return (value?.split(";", 1)[0] ?? "").trim().toLowerCase();
 }
@@ -159,7 +166,10 @@ export class ConfidentialClient {
       // The platform error echoes the URL, which may carry the API key.
       throw new TypeError("Invalid vRPC URL");
     }
-    this.#replayWindowMs = options.replayWindowMs;
+    this.#replayWindowMs =
+      options.replayWindowMs === undefined
+        ? undefined
+        : requirePositiveMs("replayWindowMs", options.replayWindowMs);
     this.#confidentialUrl = urls.confidentialUrl;
     this.#headers = withoutContentType(options.headers ?? {});
     const transport = options.transport ?? defaultTransport;

@@ -398,4 +398,16 @@ describe("ConfidentialClient call surface", () => {
     clientFor(node.transport);
     expect(node.requests).toHaveLength(0);
   });
+
+  test.each([
+    1.5,
+    Number.NaN,
+    -1,
+    0,
+    Number.POSITIVE_INFINITY,
+  ])("replayWindowMs %d throws RangeError at construction and sends nothing", (replayWindowMs) => {
+    const node = testNode();
+    expect(() => clientFor(node.transport, { replayWindowMs })).toThrow(RangeError);
+    expect(node.requests).toHaveLength(0);
+  });
 });
