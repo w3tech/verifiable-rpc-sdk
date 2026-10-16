@@ -10,6 +10,7 @@
 export type ProxyErrorKind =
   | "Config"
   | "BodyTooLarge"
+  | "UnsupportedMediaType"
   | "UpstreamTimeout"
   | "UpstreamConnect"
   | "UpstreamBodyTooLarge"
@@ -52,6 +53,15 @@ export class BodyTooLargeError extends ProxyError {
 
   constructor(public readonly maxBodyBytes: number) {
     super(`Request body exceeds the ${maxBodyBytes}-byte limit`, 413);
+  }
+}
+
+/** Client request the Ankr Confidential RPC path cannot carry: a content coding, or a body without a media type. */
+export class UnsupportedMediaTypeError extends ProxyError {
+  readonly kind = "UnsupportedMediaType" as const;
+
+  constructor(message: string) {
+    super(message, 415);
   }
 }
 
@@ -120,6 +130,18 @@ export class InternalProxyError extends ProxyError {
  * `message` are serialized — core's StaleTimestamp carries bigint fields, so
  * stringifying an error object raw would throw.
  */
-export function errorResponseBody(kind: string, message: string, traceId?: string): string {
-  return JSON.stringify({ error: { kind, message, ...(traceId ? { traceId } : {}) } });
+export function errorResponseBody(
+  kind: string,
+  message: string,
+  traceId?: string,
+  executed?: "no" | "unknown",
+): string {
+  return JSON.stringify({
+    error: {
+      kind,
+      message,
+      ...(traceId ? { traceId } : {}),
+      ...(executed ? { executed } : {}),
+    },
+  });
 }

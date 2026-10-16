@@ -4,7 +4,15 @@
 
 import type http from "node:http";
 
-import { ConfidentialSealFailed, UnavailableError, VerificationError } from "@w3tech.io/vrpc-core";
+import {
+  AttestationUnavailable,
+  ConfidentialSealFailed,
+  InvalidInnerRequest,
+  RequestRejected,
+  TransportFailed,
+  UnavailableError,
+  VerificationError,
+} from "@w3tech.io/vrpc-core";
 import type {
   ConfidentialClient,
   ConfidentialTransport,
@@ -19,6 +27,7 @@ import {
   errorResponseBody,
   ProxyError,
   UpstreamBodyTooLargeError,
+  UpstreamTimeoutError,
 } from "./errors";
 import type { ProxyLogger } from "./logger";
 import { bufferStream, mapUndiciError } from "./pipeline";
@@ -85,6 +94,24 @@ export function describeConfidentialError(err: unknown): {
   if (err instanceof ProxyError) {
     return { status: err.httpStatus, kind: err.kind, message: err.message };
   }
+  // A VerificationError subclass, so it must precede the generic verification row.
+  if (err instanceof InvalidInnerRequest) {
+    return { status: 400, kind: err.kind, message: err.message };
+  }
+  if (err instanceof AttestationUnavailable) {
+    const timedOut = err.reason === "timeout" || err.cause instanceof UpstreamTimeoutError;
+    const status = err.status === 429 ? 429 : timedOut ? 504 : 503;
+    return { status, kind: err.kind, message: err.message, executed: err.executed };
+  }
+  if (err instanceof RequestRejected) {
+    // Other 4xx would collide with the node's own relayed statuses.
+    const status = err.status === 413 || err.status === 429 ? err.status : 502;
+    return { status, kind: err.kind, message: err.message, executed: err.executed };
+  }
+  if (err instanceof TransportFailed && err.cause instanceof ProxyError) {
+    const { httpStatus, kind, message } = err.cause;
+    return { status: httpStatus, kind, message, executed: err.executed };
+  }
   if (err instanceof ConfidentialSealFailed) {
     return { status: 500, kind: err.kind, message: err.message, executed: err.executed };
   }
@@ -104,7 +131,7 @@ function renderError(res: http.ServerResponse, err: unknown, log: ProxyLogger): 
     res.destroy();
     return;
   }
-  const body = errorResponseBody(kind, message);
+  const body = errorResponseBody(kind, message, undefined, executed);
   res.writeHead(status, {
     "content-type": "application/json",
     "content-length": String(Buffer.byteLength(body)),
