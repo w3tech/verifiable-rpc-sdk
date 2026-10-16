@@ -2,7 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // viem transport in Ankr Confidential RPC mode against the real sidecar.
 
-import { createPublicClient } from "viem";
+import { BaseError, createPublicClient } from "viem";
 import { arbitrum } from "viem/chains";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -11,7 +11,7 @@ import {
   integrationEnabled,
   spawnInterop,
 } from "../../../test-support/src/interop";
-import { vrpcHttp } from "../../src/index";
+import { BadSignature, vrpcHttp } from "../../src/index";
 import { mockHardwareVerifier } from "../support/mock-hardware-verifier";
 
 if (!integrationEnabled) {
@@ -19,6 +19,8 @@ if (!integrationEnabled) {
 }
 
 const d = integrationEnabled ? describe : describe.skip;
+
+const ADDR = "0x000000000000000000000000000000000000dEaD";
 
 d("integration: viem in Ankr Confidential RPC mode against the sidecar", () => {
   let env: Interop | undefined;
@@ -39,6 +41,7 @@ d("integration: viem in Ankr Confidential RPC mode against the sidecar", () => {
   function sealedClient() {
     return createPublicClient({
       chain: arbitrum,
+      cacheTime: 0,
       transport: vrpcHttp(stack().relay.url, {
         confidential: true,
         hardwareVerifier: mockHardwareVerifier(),
@@ -49,6 +52,7 @@ d("integration: viem in Ankr Confidential RPC mode against the sidecar", () => {
   function openClient() {
     return createPublicClient({
       chain: arbitrum,
+      cacheTime: 0,
       transport: vrpcHttp(stack().relay.url, { hardwareVerifier: mockHardwareVerifier() }),
     });
   }
@@ -57,5 +61,41 @@ d("integration: viem in Ankr Confidential RPC mode against the sidecar", () => {
     const sealed = await sealedClient().getBlockNumber();
     expect(sealed).toBe(4660n);
     expect(await openClient().getBlockNumber()).toBe(sealed);
+  });
+
+  it("eth_chainId and getBalance answer the same in both modes", async () => {
+    const sealed = sealedClient();
+    const open = openClient();
+    expect(await sealed.request({ method: "eth_chainId" })).toBe("0xa4b1");
+    expect(await open.request({ method: "eth_chainId" })).toBe("0xa4b1");
+    expect(await sealed.getBalance({ address: ADDR })).toBe(5n);
+    expect(await open.getBalance({ address: ADDR })).toBe(5n);
+  });
+
+  it("transport.ready attests up front and getConfidentialInfo reports the node", async () => {
+    const client = sealedClient();
+    await client.transport.ready();
+    expect(client.transport.getConfidentialInfo()?.nodeId).toBe("interop-node-1");
+  });
+
+  it("a flipped answer rejects with BadSignature and the next call recovers", async () => {
+    const { relay } = stack();
+    const client = sealedClient();
+    await client.request({ method: "eth_chainId" });
+    relay.set({ mode: "flip" });
+    try {
+      const err = await client.getBlockNumber().then(
+        () => undefined,
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(BaseError);
+      const found = (err as BaseError).walk(
+        (e) => (e as { kind?: unknown } | undefined)?.kind === "BadSignature",
+      );
+      expect(found).toBeInstanceOf(BadSignature);
+    } finally {
+      relay.set({ mode: "pass" });
+    }
+    expect(await client.getBlockNumber()).toBe(4660n);
   });
 });
