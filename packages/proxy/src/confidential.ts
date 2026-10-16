@@ -26,6 +26,7 @@ import {
   BodyTooLargeError,
   errorResponseBody,
   ProxyError,
+  UnsupportedMediaTypeError,
   UpstreamBodyTooLargeError,
   UpstreamTimeoutError,
 } from "./errors";
@@ -150,7 +151,13 @@ export function createConfidentialHandler(ctx: ConfidentialHandlerContext): http
       config.maxBodyBytes,
       () => new BodyTooLargeError(config.maxBodyBytes),
     );
+    if (req.headers["content-encoding"] !== undefined) {
+      throw new UnsupportedMediaTypeError("Request content-encoding is not supported");
+    }
     const contentType = req.headers["content-type"];
+    if (bytes.length > 0 && contentType === undefined) {
+      throw new UnsupportedMediaTypeError("Request body requires a content-type");
+    }
     const accept = req.headers.accept;
     // The raw request-target goes in as received, so the encoder rejects what it must.
     const inner: InnerRequest = {

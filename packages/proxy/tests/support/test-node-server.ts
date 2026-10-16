@@ -41,7 +41,8 @@ export interface RunningProxy {
 export interface RawRequestOptions {
   method: string;
   path: string;
-  headers?: Record<string, string>;
+  /** An array value is sent as repeated header lines. */
+  headers?: Record<string, string | string[]>;
   body?: Buffer | string;
 }
 
@@ -74,6 +75,11 @@ async function readAll(stream: AsyncIterable<Buffer | Uint8Array>): Promise<Buff
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   return Buffer.concat(chunks);
+}
+
+/** Header names of a captured request as sent, lowercased, in wire order. */
+export function wireHeaderNames(request: WireRequest): string[] {
+  return request.rawHeaders.filter((_, i) => i % 2 === 0).map((name) => name.toLowerCase());
 }
 
 export async function startTestNodeServer(options: TestNodeOptions): Promise<TestNodeServer> {
