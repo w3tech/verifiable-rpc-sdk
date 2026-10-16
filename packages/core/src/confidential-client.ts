@@ -296,11 +296,14 @@ export class ConfidentialClient {
     if (signer !== null && PUBKEY_HEX_RE.test(signer) && signer !== pin.pubkeyHex) {
       throw new ConfidentialSignerMismatch(pin.pubkeyHex, signer);
     }
-    await verifyResponse(sealed.body, response.body, response.headers, {
+    const verified = await verifyResponse(sealed.body, response.body, response.headers, {
       chainId: this.#chainId,
       ...(this.#replayWindowMs === undefined ? {} : { replayWindowMs: this.#replayWindowMs }),
       ...(logger === undefined ? {} : { logger }),
     });
+    if (verified.verification.pubkeyHex !== pin.pubkeyHex) {
+      throw new ConfidentialSignerMismatch(pin.pubkeyHex, verified.verification.pubkeyHex);
+    }
 
     const decoded = await open(sealed.opener, response.body);
     return decoded.contentType === null
