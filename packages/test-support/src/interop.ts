@@ -533,7 +533,18 @@ async function stopProcess(proc: ChildProcess): Promise<void> {
   if (proc.exitCode !== null || proc.signalCode !== null) return;
   const exited = new Promise<void>((resolve) => proc.once("exit", () => resolve()));
   proc.kill("SIGTERM");
-  await exited;
+  let timer: NodeJS.Timeout | undefined;
+  const stuck = await Promise.race([
+    exited.then(() => false),
+    new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(true), 5_000);
+    }),
+  ]);
+  clearTimeout(timer);
+  if (stuck) {
+    proc.kill("SIGKILL");
+    await exited;
+  }
 }
 
 function sleep(ms: number): Promise<void> {
