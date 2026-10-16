@@ -42,7 +42,8 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
  * requests go to the gateway a contract names in plaintext; create the client with
  * `ccipRead: false` to keep every request encrypted. The client must declare `chain`; one
  * transport binds one chain.
- * `client.transport.ready()` attests up front and `getConfidentialInfo()` reports the pinned node.
+ * `client.transport.ready()` attests up front and `getConfidentialInfo()` reports the pinned node;
+ * both are typed only when `confidential` is the literal `true`.
  */
 export function vrpcHttp(
   url: string,
