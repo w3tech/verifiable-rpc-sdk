@@ -86,6 +86,17 @@ export function createConfidentialTransport(
   };
 }
 
+// Raised on the answer to the sealed request, so the node may have run the call.
+const AFTER_SEND_KINDS: ReadonlySet<string> = new Set([
+  "BadSignature",
+  "StaleTimestamp",
+  "MissingHeader",
+  "MalformedHeader",
+  "ConfidentialSignerMismatch",
+  "ConfidentialDecryptFailed",
+  "MalformedConfidentialResponse",
+]);
+
 /** Status, kind and message of the typed JSON error for a failed confidential request. */
 export function describeConfidentialError(err: unknown): {
   status: number;
@@ -121,7 +132,9 @@ export function describeConfidentialError(err: unknown): {
     return { status: 502, kind: err.kind, message: err.message, executed: err.executed };
   }
   if (err instanceof VerificationError) {
-    return { status: 502, kind: err.kind, message: err.message };
+    return AFTER_SEND_KINDS.has(err.kind)
+      ? { status: 502, kind: err.kind, message: err.message, executed: "unknown" }
+      : { status: 502, kind: err.kind, message: err.message };
   }
   return { status: 502, kind: "Internal", message: "Internal proxy error" };
 }

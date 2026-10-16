@@ -331,6 +331,7 @@ const postRows: Row[] = [
     },
     status: 502,
     kind: "ConfidentialSignerMismatch",
+    executed: "unknown",
   },
   {
     title: "one ciphertext byte flipped",
@@ -343,6 +344,7 @@ const postRows: Row[] = [
       }),
     status: 502,
     kind: "BadSignature",
+    executed: "unknown",
   },
 ];
 

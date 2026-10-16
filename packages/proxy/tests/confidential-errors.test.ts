@@ -44,7 +44,7 @@ function expectRow(
   const result = describeConfidentialError(err);
   expect(result.status).toBe(status);
   expect(result.kind).toBe(kind);
-  expect("executed" in result).toBe(err instanceof UnavailableError);
+  expect("executed" in result).toBe(err instanceof UnavailableError || executed !== undefined);
   if (executed !== undefined) expect(result.executed).toBe(executed);
   return result;
 }
@@ -155,6 +155,13 @@ describe("verification failures", () => {
   test.each<[string, Error]>([
     ["Attestation", new AttestationFailed("CHK-1", "detail")],
     ["MalformedAttestationResponse", new MalformedAttestationResponse("r")],
+    ["InvalidNonce", new InvalidNonce("r")],
+  ])("%s is 502 with its own kind and no executed", (kind, err) => {
+    const result = expectRow(err, 502, kind);
+    expect(result.message).toBe(err.message);
+  });
+
+  test.each<[string, Error]>([
     ["ConfidentialSignerMismatch", new ConfidentialSignerMismatch(key, key)],
     [
       "BadSignature",
@@ -168,9 +175,8 @@ describe("verification failures", () => {
     ["MalformedHeader", new MalformedHeader("vRPC-Signature", "x", "r")],
     ["ConfidentialDecryptFailed", new ConfidentialDecryptFailed()],
     ["MalformedConfidentialResponse", new MalformedConfidentialResponse("framing")],
-    ["InvalidNonce", new InvalidNonce("r")],
-  ])("%s is 502 with its own kind", (kind, err) => {
-    const result = expectRow(err, 502, kind);
+  ])("%s on the answer is 502 executed unknown", (kind, err) => {
+    const result = expectRow(err, 502, kind, "unknown");
     expect(result.message).toBe(err.message);
   });
 });

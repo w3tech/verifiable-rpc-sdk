@@ -185,7 +185,8 @@ Errors use the same JSON shape plus `executed`, and carry no `traceId`:
 | `UpstreamTimeout` | `504` | `unknown` | Upstream did not answer within the configured timeout |
 | `UpstreamConnect` / `UpstreamBodyTooLarge` / `DecodeFailed` | `502` | `unknown` | Connection failed, response over the cap, or undecodable body |
 | `TransportFailed` | `502` | `unknown` | Any other transport failure |
-| Verification kinds (`BadSignature`, `Attestation`, `ConfidentialDecryptFailed`, …) | `502` | — | The answer or the attestation failed verification |
+| `BadSignature` / `StaleTimestamp` / `MissingHeader` / `MalformedHeader` / `ConfidentialSignerMismatch` / `ConfidentialDecryptFailed` / `MalformedConfidentialResponse` | `502` | `unknown` | The answer to the sealed request failed verification |
+| `Attestation` / `MalformedAttestationResponse` and other attestation kinds | `502` | — | The attestation failed verification; the sealed request was not sent |
 | `Internal` | `502` | — | Unexpected internal failure |
 
 ## Example
