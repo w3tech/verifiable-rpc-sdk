@@ -32,6 +32,20 @@ function noFollowIdentity(base: FetchGetUrlFunc): FetchGetUrlFunc {
   };
 }
 
+// ethers and Node attach the request, the keyed URL and partial bodies; keep the message and code only.
+function sanitised(err: unknown): Error {
+  const source = typeof err === "object" && err !== null ? (err as Record<string, unknown>) : {};
+  const message =
+    typeof source.shortMessage === "string"
+      ? source.shortMessage
+      : typeof source.message === "string"
+        ? source.message
+        : "transport error";
+  const out = new Error(message);
+  if (typeof source.code === "string") Object.assign(out, { code: source.code });
+  return out;
+}
+
 /** Sends each outer request once through a clone of the provider's `FetchRequest`. */
 export function fetchRequestTransport(connection: () => FetchRequest): ConfidentialTransport {
   return async (outer) => {
@@ -57,6 +71,9 @@ export function fetchRequestTransport(connection: () => FetchRequest): Confident
     try {
       const res = await pending;
       return { status: res.statusCode, headers: res.headers, body: res.body ?? new Uint8Array(0) };
+    } catch (err) {
+      if (signal?.aborted) throw signal.reason;
+      throw sanitised(err);
     } finally {
       signal?.removeEventListener("abort", cancel);
     }
