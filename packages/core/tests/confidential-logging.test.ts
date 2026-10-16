@@ -419,14 +419,24 @@ describe("logging", () => {
 });
 
 async function listen(server: Server): Promise<string> {
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
 
-async function closedOrigin(): Promise<string> {
+// Stays bound and drops every connection, so no other process can take the port.
+async function droppingEveryConnection(): Promise<string> {
   const server = createServer();
+  server.on("connection", (socket) => socket.destroy());
   const origin = await listen(server);
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  cleanups.push(() => {
+    server.close();
+  });
   return origin;
 }
 
@@ -445,7 +455,8 @@ async function droppingOrigin(node: TestNode): Promise<string> {
         .then((answer) => {
           res.writeHead(answer.status, answer.headers);
           res.end(answer.body);
-        });
+        })
+        .catch(() => res.destroy());
     });
   });
   origin = await listen(server);
@@ -462,7 +473,8 @@ describe("real network failures through the default transport", () => {
     ["sealed request", TransportFailed],
   ] as const)("a failed %s leaks no sentinel", async (leg, expected) => {
     const logger = collectingLogger();
-    const origin = leg === "attestation" ? await closedOrigin() : await droppingOrigin(testNode());
+    const origin =
+      leg === "attestation" ? await droppingEveryConnection() : await droppingOrigin(testNode());
     for (const keyIn of ["path", "header"] as const) {
       const client = new ConfidentialClient({
         url: keyIn === "path" ? `${origin}/eth_vrpc/${API_KEY}` : `${origin}/eth_vrpc`,
