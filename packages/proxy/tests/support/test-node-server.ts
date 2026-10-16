@@ -4,6 +4,8 @@
 
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import { setTimeout as delay } from "node:timers/promises";
+import { gzipSync } from "node:zlib";
 
 import {
   createTestNode,
@@ -25,10 +27,28 @@ export interface WireRequest {
   body: Buffer;
 }
 
+/** Wire-level changes to the outer answer; `only` limits them to one method. */
+export interface WireHooks {
+  /** Gzip answers below 400. */
+  gzip?: boolean;
+  /** `content-encoding: gzip` on bytes that are not gzip. */
+  corruptGzip?: boolean;
+  /** Wait before the status line. */
+  delayMs?: number;
+  /** Close the socket without writing anything. */
+  destroyBeforeHeaders?: boolean;
+  /** Declare the full length, send this many body bytes, then close the socket. */
+  cutAfterBytes?: number;
+  extraHeaders?: Record<string, string>;
+  only?: "GET" | "POST";
+}
+
 export interface TestNodeServer {
   url: string;
   node: TestNode;
   wire: WireRequest[];
+  /** No argument restores plain answers. */
+  setWire(hooks?: WireHooks): void;
   close(): Promise<void>;
 }
 
@@ -86,6 +106,7 @@ export async function startTestNodeServer(options: TestNodeOptions): Promise<Tes
   const node = createTestNode(options);
   const wire: WireRequest[] = [];
   let url = "";
+  let wireHooks: WireHooks = {};
 
   async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const body = await readAll(req);
@@ -103,24 +124,52 @@ export async function startTestNodeServer(options: TestNodeOptions): Promise<Tes
       rawHeaders: [...req.rawHeaders],
       body,
     });
+    const hooks = wireHooks.only === undefined || wireHooks.only === req.method ? wireHooks : {};
+    if (hooks.destroyBeforeHeaders === true) {
+      req.socket.destroy();
+      return;
+    }
+    if (hooks.delayMs !== undefined) {
+      await delay(hooks.delayMs);
+      if (req.socket.destroyed) return;
+    }
     const answer = await node.transport({
       method: req.method ?? "GET",
       url: url + target,
       headers,
       ...(body.length > 0 ? { body } : {}),
     });
-    res.writeHead(answer.status, {
-      ...answer.headers,
-      "content-length": String(answer.body.byteLength),
-    });
-    res.end(answer.body);
+    let out = Buffer.from(answer.body);
+    const outHeaders: Record<string, string> = { ...answer.headers, ...hooks.extraHeaders };
+    if (hooks.gzip === true && answer.status < 400) {
+      out = gzipSync(out);
+      outHeaders["content-encoding"] = "gzip";
+    }
+    if (hooks.corruptGzip === true) {
+      out = Buffer.concat([Buffer.from("not gzip:"), out]);
+      outHeaders["content-encoding"] = "gzip";
+    }
+    res.writeHead(answer.status, { ...outHeaders, "content-length": String(out.byteLength) });
+    if (hooks.cutAfterBytes !== undefined) {
+      res.write(out.subarray(0, hooks.cutAfterBytes), () => req.socket.destroy());
+      return;
+    }
+    res.end(out);
   }
 
   const server = http.createServer((req, res) => {
     handle(req, res).catch(() => res.destroy());
   });
   url = await listen(server);
-  return { url, node, wire, close: () => closeServer(server) };
+  return {
+    url,
+    node,
+    wire,
+    setWire(hooks) {
+      wireHooks = hooks ?? {};
+    },
+    close: () => closeServer(server),
+  };
 }
 
 export async function startConfidentialProxy(

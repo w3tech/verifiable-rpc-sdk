@@ -15,6 +15,7 @@ import {
 } from "@w3tech.io/vrpc-core";
 import type {
   ConfidentialClient,
+  ConfidentialResponse,
   ConfidentialTransport,
   InnerRequest,
 } from "@w3tech.io/vrpc-core/confidential";
@@ -125,6 +126,19 @@ export function describeConfidentialError(err: unknown): {
   return { status: 502, kind: "Internal", message: "Internal proxy error" };
 }
 
+// Built from scratch: nothing from the outer answer reaches the client.
+function relayHeaders(method: string, out: ConfidentialResponse): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (out.contentType !== undefined) headers["content-type"] = out.contentType;
+  if (out.status === 205) {
+    // Without a length Node chunk-frames an empty 205.
+    headers["content-length"] = "0";
+  } else if (method !== "HEAD" && out.status !== 204 && out.status !== 304) {
+    headers["content-length"] = String(out.body.byteLength);
+  }
+  return headers;
+}
+
 function renderError(res: http.ServerResponse, err: unknown, log: ProxyLogger): void {
   const { status, kind, message, executed } = describeConfidentialError(err);
   log.error("proxy.error", { kind, status, message, ...(executed ? { executed } : {}) });
@@ -168,10 +182,7 @@ export function createConfidentialHandler(ctx: ConfidentialHandlerContext): http
       ...(bytes.length === 0 ? {} : { body: bytes }),
     };
     const out = await client.request(inner);
-    const headers: Record<string, string> = {};
-    if (out.contentType !== undefined) headers["content-type"] = out.contentType;
-    headers["content-length"] = String(out.body.byteLength);
-    res.writeHead(out.status, headers);
+    res.writeHead(out.status, relayHeaders(inner.method, out));
     res.end(out.body);
     log.debug("proxy.relay", {
       status: out.status,
