@@ -78,16 +78,21 @@ d("integration: viem in Ankr Confidential RPC mode against the sidecar", () => {
     expect(client.transport.getConfidentialInfo()?.nodeId).toBe("interop-node-1");
   });
 
-  it("a flipped answer rejects with BadSignature and the next call recovers", async () => {
+  it("a flipped answer rejects with BadSignature, is not resent and the next call recovers", async () => {
     const { relay } = stack();
     const client = sealedClient();
+    const sealedPosts = () =>
+      relay.requests().filter((r) => r.method === "POST" && r.url.startsWith("/confidential"))
+        .length;
     await client.request({ method: "eth_chainId" });
     relay.set({ mode: "flip" });
     try {
+      const before = sealedPosts();
       const err = await client.getBlockNumber().then(
         () => undefined,
         (e: unknown) => e,
       );
+      expect(sealedPosts()).toBe(before + 1);
       expect(err).toBeInstanceOf(BaseError);
       const found = (err as BaseError).walk(
         (e) => (e as { kind?: unknown } | undefined)?.kind === "BadSignature",
