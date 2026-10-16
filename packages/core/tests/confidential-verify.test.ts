@@ -130,25 +130,29 @@ describe("signed confidential answers that fail verification", () => {
 
   test("the key that verified the signature is compared with the pin, not only the header read before", async () => {
     const { node } = setup();
+    let pinnedReads = 0;
     const err = await failedCallAfterWarmup(async (context) => {
       const normal = await context.normal();
       const { "vRPC-Pubkey": otherPubkey, ...otherHeaders } = context.sign(normal.body, {
         seed: OTHER_SEED,
       });
-      const headers: Record<string, string> = { ...OHTTP_RES, ...otherHeaders };
-      // The client reads the record twice before verifying: content-type, then the signer.
-      let reads = 0;
-      Object.defineProperty(headers, "vRPC-Pubkey", {
-        enumerable: true,
-        get: () => {
-          reads += 1;
-          return reads <= 2 ? node.pubkeyHex : otherPubkey;
+      const stored = new Headers({ ...OHTTP_RES, ...otherHeaders });
+      // The pinned key is shown until verification reads the signature.
+      let signatureRead = false;
+      const headers = {
+        get(name: string): string | null {
+          const lower = name.toLowerCase();
+          if (lower === "vrpc-signature") signatureRead = true;
+          if (lower !== "vrpc-pubkey") return stored.get(name);
+          if (!signatureRead) pinnedReads += 1;
+          return signatureRead ? (otherPubkey ?? null) : node.pubkeyHex;
         },
-      });
+      } as unknown as Record<string, string>;
       return { ...normal, headers };
     });
     expect(err).toBeInstanceOf(ConfidentialSignerMismatch);
     expect((err as ConfidentialSignerMismatch).actualPubkey).not.toBe(node.pubkeyHex);
+    expect(pinnedReads).toBeGreaterThan(0);
   });
 
   test("another key's signature under the pinned vRPC-Pubkey is BadSignature", async () => {
