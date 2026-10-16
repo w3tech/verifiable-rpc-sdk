@@ -13,6 +13,7 @@ import {
   type FetchGetUrlFunc,
   FetchRequest,
   FetchResponse,
+  isError,
   type JsonRpcPayload,
   type JsonRpcResult,
   makeError,
@@ -21,6 +22,13 @@ import {
 
 // The core default transport's cap: 192 MiB, above the 160 MiB gateway response cap.
 const MAX_RESPONSE_BYTES = 201_326_592;
+
+class ResponseTooLarge extends Error {
+  constructor() {
+    super("Response exceeds the size cap");
+    this.name = "ResponseTooLarge";
+  }
+}
 
 // With an encoding, content-length is the encoded size; the runtime hands over decoded bytes.
 async function readCapped(response: Response): Promise<Uint8Array> {
@@ -31,12 +39,12 @@ async function readCapped(response: Response): Promise<Uint8Array> {
   const declared = Number(response.headers.get("content-length"));
   if ((encoding === "" || encoding === "identity") && declared > MAX_RESPONSE_BYTES) {
     await stream?.cancel();
-    throw new Error("Response exceeds the size cap");
+    throw new ResponseTooLarge();
   }
   if (body === null) return new Uint8Array(0);
   if (stream === undefined) {
     const buffered = new Uint8Array(await response.arrayBuffer());
-    if (buffered.byteLength > MAX_RESPONSE_BYTES) throw new Error("Response exceeds the size cap");
+    if (buffered.byteLength > MAX_RESPONSE_BYTES) throw new ResponseTooLarge();
     return buffered;
   }
   const reader = stream.getReader();
@@ -48,7 +56,7 @@ async function readCapped(response: Response): Promise<Uint8Array> {
     total += value.byteLength;
     if (total > MAX_RESPONSE_BYTES) {
       await reader.cancel();
-      throw new Error("Response exceeds the size cap");
+      throw new ResponseTooLarge();
     }
     chunks.push(value);
   }
@@ -122,20 +130,21 @@ function noFollowIdentity(base: FetchGetUrlFunc): FetchGetUrlFunc {
   };
 }
 
-// ethers and Node attach the request, the keyed URL and partial bodies; keep the message and code only.
+// A getUrlFunc error message may quote the keyed URL; only ethers' own timeout and cancel keep theirs.
 function sanitised(err: unknown): Error {
-  const source = typeof err === "object" && err !== null ? (err as Record<string, unknown>) : {};
-  const message =
-    typeof source.shortMessage === "string"
-      ? source.shortMessage
-      : typeof source.message === "string"
-        ? source.message
-        : "transport error";
-  const out = new Error(message);
-  const cause = source.cause as { code?: unknown } | null | undefined;
-  const code = typeof source.code === "string" ? source.code : cause?.code;
-  if (typeof code === "string") Object.assign(out, { code });
+  if (err instanceof ResponseTooLarge) return err;
+  const out = new Error(
+    isError(err, "TIMEOUT") || isError(err, "CANCELLED") ? err.shortMessage : "The request failed.",
+  );
+  const code = errorCode(err) ?? errorCode((err as { cause?: unknown } | null)?.cause);
+  if (code !== undefined) Object.assign(out, { code });
   return out;
+}
+
+function errorCode(err: unknown): string | undefined {
+  const code =
+    typeof err === "object" && err !== null ? (err as { code?: unknown }).code : undefined;
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]*$/.test(code) ? code : undefined;
 }
 
 /** Sends each outer request once through a clone of the provider's `FetchRequest`. */

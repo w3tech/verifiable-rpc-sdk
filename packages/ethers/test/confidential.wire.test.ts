@@ -408,6 +408,34 @@ describe("transport errors carry neither the key nor body bytes", () => {
     expectSanitised(err, sent, "TIMEOUT");
   });
 
+  test("a getUrlFunc that throws with the keyed URL in its message", async () => {
+    const server = await serve();
+    const req = new FetchRequest(`${server.url}/eth_vrpc/${KEY}`);
+    const base = FetchRequest.createGetUrlFunc();
+    req.getUrlFunc = async (sent, signal) => {
+      if (sent.method !== "POST") return base(sent, signal);
+      throw Object.assign(new Error(`request to ${sent.url} failed, reason: socket hang up`), {
+        code: "ECONNRESET",
+        cause: new Error(`connect to ${sent.url}`),
+      });
+    };
+    const provider = new VrpcProvider(req, 42161, {
+      confidential: true,
+      hardwareVerifier: mockHardwareVerifier(),
+      cacheTimeout: -1,
+    });
+    cleanups.push(() => provider.destroy());
+
+    const err = await rejection(provider.getBlockNumber());
+
+    expect(err).toBeInstanceOf(TransportFailed);
+    expect((err as TransportFailed).reason).toBe("network");
+    expectSanitised(err, [], "ECONNRESET");
+    for (const item of [err, ...causes(err)]) {
+      for (const form of textForms(item)) expect(form).not.toContain("/eth_vrpc/");
+    }
+  });
+
   test("a gzip-labelled answer whose body is not gzip", async () => {
     const server = await serve();
     const provider = keyedBoth(server.url);
