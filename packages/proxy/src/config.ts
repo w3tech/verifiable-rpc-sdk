@@ -217,7 +217,9 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   }
   if (upstreamParsed.search !== "") {
     config.warnings = [
-      "The upstream URL carries query parameters, which the derived attestation URL drops; prefer --api-key or a key-in-path upstream URL.",
+      config.confidential === true
+        ? "The upstream URL carries query parameters, which the derived attestation and confidential URLs drop; in Ankr Confidential RPC mode no API key is sent unless --api-key or a key-in-path upstream URL is used."
+        : "The upstream URL carries query parameters, which the derived attestation URL drops; prefer --api-key or a key-in-path upstream URL.",
     ];
   }
   return config;

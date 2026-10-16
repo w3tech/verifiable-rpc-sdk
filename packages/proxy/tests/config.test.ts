@@ -124,6 +124,21 @@ describe("parseConfig", () => {
     expect(config.warnings?.length).toBeGreaterThan(0);
   });
 
+  test("upstreamQueryWarningInConfidentialModeSaysNoKeyIsSent", () => {
+    const config = parseConfig(
+      [
+        "--upstream",
+        "https://rpc.example.com/chain?key=abc",
+        "--chain-id",
+        "test-chain",
+        "--confidential",
+      ],
+      {},
+    );
+    expect(config.warnings).toHaveLength(1);
+    expect(config.warnings?.[0]).toContain("no API key is sent unless --api-key");
+  });
+
   test("apiKeyFlagSetsConfigAndAttestationHeader", () => {
     const config = parseConfig([...BASE, "--api-key", "sekret"], {});
     expect(config.apiKey).toBe("sekret");
