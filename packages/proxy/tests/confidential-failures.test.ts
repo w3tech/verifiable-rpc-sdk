@@ -112,7 +112,8 @@ async function startHarness(options: {
   });
   cleanups.push(() => proxy.close());
   const event = options.startup === "ok" ? "confidential.attest.ok" : "confidential.attest.fail";
-  await vi.waitFor(() => expect(events).toContain(event));
+  // The failing startup attestation takes the upstream timeout; leave headroom under full load.
+  await vi.waitFor(() => expect(events).toContain(event), { timeout: 3000 });
   return { node, proxy, verifier };
 }
 
