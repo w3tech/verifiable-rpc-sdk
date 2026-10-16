@@ -93,6 +93,7 @@ d("integration: attestation", () => {
     const saved = JSON.parse(await fs.readFile(fixturePath, "utf8")) as {
       pubkey: string;
       composeHash: string;
+      app_compose: string;
       quote: {
         quote: string;
         event_log: string;
@@ -102,7 +103,7 @@ d("integration: attestation", () => {
     };
 
     // Top-level key set is fixed.
-    expect(Object.keys(saved).sort()).toEqual(["composeHash", "pubkey", "quote"]);
+    expect(Object.keys(saved).sort()).toEqual(["app_compose", "composeHash", "pubkey", "quote"]);
 
     // pubkey stable across runs against the same simulator/key path.
     if (saved.pubkey !== att.pubkey) {
