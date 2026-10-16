@@ -13,6 +13,8 @@ export interface VrpcUrls {
   rpcUrl: string;
   /** Attestation GET target, e.g. `https://rpc.ankr.com/arbitrum_vrpc/attestation`. */
   attestationUrl: string;
+  /** Sealed request POST target, e.g. `https://rpc.ankr.com/arbitrum_vrpc/confidential`. */
+  confidentialUrl: string;
 }
 
 /**
@@ -28,5 +30,9 @@ export function deriveVrpcUrls(url: string): VrpcUrls {
   const u = new URL(url);
   const segments = u.pathname.split("/").filter(Boolean);
   const rpcUrl = segments.length === 0 ? u.origin : `${u.origin}/${segments.join("/")}`;
-  return { rpcUrl, attestationUrl: `${rpcUrl}/attestation` };
+  return {
+    rpcUrl,
+    attestationUrl: `${rpcUrl}/attestation`,
+    confidentialUrl: `${rpcUrl}/confidential`,
+  };
 }

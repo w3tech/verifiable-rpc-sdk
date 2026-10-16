@@ -15,10 +15,18 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import {
   AttestationCorrelationError,
   AttestationNodeNotFoundError,
+  AttestationUnavailable,
   InvalidNonce,
   MalformedAttestationResponse,
 } from "./errors";
 import type { Logger } from "./logger";
+import {
+  type ConfidentialTransport,
+  MAX_RESPONSE_BYTES,
+  type OuterResponse,
+  ResponseTooLarge,
+} from "./transport";
+import { getHeader } from "./verify";
 
 /**
  * Inner `quote` object inside the attestation response. All fields are
@@ -91,8 +99,9 @@ export interface FetchAttestationOptions {
  *
  * A `404` is terminal (stale/unknown node id, or a gateway route miss) and throws
  * {@link AttestationNodeNotFoundError} BEFORE parsing — the SDK does NOT retry or
- * fall back to another node. This route is unsigned by contract, so no `vRPC-*`
- * verification runs here; a malformed body throws {@link MalformedAttestationResponse}.
+ * fall back to another node. Any other non-OK status, a body that is not JSON and
+ * a body of the wrong shape throw {@link MalformedAttestationResponse}. This route is
+ * unsigned by contract, so no `vRPC-*` verification runs here.
  */
 export async function fetchAttestation(opts: FetchAttestationOptions): Promise<Attestation> {
   // Synchronous fast-fail BEFORE any fetch.
@@ -116,7 +125,63 @@ export async function fetchAttestation(opts: FetchAttestationOptions): Promise<A
     throw new AttestationNodeNotFoundError(opts.nodeId ?? "(no node_id)");
   }
 
-  const body = (await resp.json()) as unknown;
+  const bytes = new Uint8Array(await resp.arrayBuffer());
+  if (!resp.ok) {
+    throw new MalformedAttestationResponse(`unexpected HTTP status ${resp.status}`);
+  }
+  return parseAttestationBody(bytes);
+}
+
+/**
+ * Attest whichever node the gateway routes to: no `node_id` is sent, and the node is identified
+ * by the `vRPC-NodeId` header of the answer.
+ */
+export async function fetchAttestationWithNodeId(
+  transport: ConfidentialTransport,
+  opts: {
+    attestationUrl: string;
+    nonce: Uint8Array;
+    headers: Record<string, string>;
+    signal?: AbortSignal;
+  },
+): Promise<{ attestation: Attestation; nodeId: string }> {
+  if (opts.nonce.length !== 32) {
+    throw new InvalidNonce(`expected 32 bytes, got ${opts.nonce.length}`);
+  }
+  let response: OuterResponse;
+  try {
+    response = await transport({
+      method: "GET",
+      url: `${opts.attestationUrl}?nonce=${bytesToHex(opts.nonce)}`,
+      headers: opts.headers,
+      ...(opts.signal === undefined ? {} : { signal: opts.signal }),
+    });
+  } catch (cause) {
+    if (opts.signal?.aborted) throw opts.signal.reason;
+    if (cause instanceof ResponseTooLarge) throw new AttestationUnavailable("transport");
+    throw new AttestationUnavailable("transport", { cause });
+  }
+  if (response.body.byteLength > MAX_RESPONSE_BYTES) {
+    throw new AttestationUnavailable("transport");
+  }
+  if (response.status < 200 || response.status > 299) {
+    throw new AttestationUnavailable("status", { status: response.status });
+  }
+  const nodeId = getHeader(response.headers, "vRPC-NodeId");
+  if (nodeId === null || nodeId === "") {
+    throw new AttestationUnavailable("node-id-missing", { status: response.status });
+  }
+  return { attestation: parseAttestationBody(response.body), nodeId };
+}
+
+function parseAttestationBody(bytes: Uint8Array): Attestation {
+  let body: unknown;
+  try {
+    body = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    // The platform parse error quotes the input.
+    throw new MalformedAttestationResponse("response is not valid JSON");
+  }
   return narrowAttestation(body);
 }
 

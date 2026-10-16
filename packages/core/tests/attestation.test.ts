@@ -372,6 +372,98 @@ function installGatewayMockFetch(body: unknown, status = 200): GatewayMockState 
   return state;
 }
 
+describe("fetchAttestation non-OK and non-JSON answers", () => {
+  let savedFetch: typeof fetch;
+
+  beforeEach(() => {
+    savedFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = savedFetch;
+  });
+
+  function installRawFetch(status: number, body: string, contentType = "text/plain"): void {
+    globalThis.fetch = (async () =>
+      new Response(body, { status, headers: { "content-type": contentType } })) as typeof fetch;
+  }
+
+  async function caughtFrom(nodeId?: string): Promise<unknown> {
+    try {
+      await fetchAttestation({
+        attestationUrl: TEST_ATTESTATION_URL,
+        nonce: new Uint8Array(32),
+        ...(nodeId === undefined ? {} : { nodeId }),
+      });
+    } catch (err) {
+      return err;
+    }
+    throw new Error("expected fetchAttestation to throw");
+  }
+
+  test.each([
+    [500, "boom", "text/plain"],
+    [503, "<html>unavailable</html>", "text/html"],
+    [300, "", "text/plain"],
+  ])("status%iThrowsMalformedWithStatus", async (status, body, contentType) => {
+    installRawFetch(status, body, contentType);
+    const caught = await caughtFrom();
+
+    expect(caught).toBeInstanceOf(MalformedAttestationResponse);
+    expect(caught).not.toBeInstanceOf(SyntaxError);
+    expect((caught as MalformedAttestationResponse).reason).toBe(
+      `unexpected HTTP status ${status}`,
+    );
+  });
+
+  test("status500ReasonIsExact", async () => {
+    installRawFetch(500, "boom");
+    const caught = await caughtFrom();
+
+    expect((caught as MalformedAttestationResponse).reason).toBe("unexpected HTTP status 500");
+  });
+
+  test("status299WithGoldenFixtureParses", async () => {
+    installRawFetch(299, JSON.stringify(GOLDEN_FIXTURE), "application/json");
+    const result = await fetchAttestation({
+      attestationUrl: TEST_ATTESTATION_URL,
+      nonce: new Uint8Array(32),
+    });
+
+    expect(result).toEqual(GOLDEN_FIXTURE);
+  });
+
+  test("nonJsonBodyThrowsMalformedWithoutEchoingIt", async () => {
+    installRawFetch(200, "<html>sentinel-body</html>", "text/html");
+    const caught = await caughtFrom();
+
+    expect(caught).toBeInstanceOf(MalformedAttestationResponse);
+    expect(caught).not.toBeInstanceOf(SyntaxError);
+    const malformed = caught as MalformedAttestationResponse;
+    expect(malformed.reason).toBe("response is not valid JSON");
+    expect(malformed.cause).toBeUndefined();
+    expect(malformed.message).not.toContain("sentinel-body");
+    expect(String(malformed)).not.toContain("sentinel-body");
+    expect(JSON.stringify(malformed)).not.toContain("sentinel-body");
+  });
+
+  test("emptyBodyThrowsMalformed", async () => {
+    installRawFetch(200, "", "application/json");
+    const caught = await caughtFrom();
+
+    expect(caught).toBeInstanceOf(MalformedAttestationResponse);
+    expect((caught as MalformedAttestationResponse).reason).toBe("response is not valid JSON");
+  });
+
+  test("status404StillThrowsNodeNotFound", async () => {
+    installRawFetch(404, "not found");
+    const caught = await caughtFrom("stale-node");
+
+    expect(caught).toBeInstanceOf(AttestationNodeNotFoundError);
+    expect((caught as AttestationNodeNotFoundError).nodeId).toBe("stale-node");
+  });
+});
+
 describe("verifyAttestationCorrelation", () => {
   const pubkey = "0x0000000000000000000000000000000000000000000000000000000000000000";
 

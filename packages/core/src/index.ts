@@ -21,18 +21,37 @@ export type {
   GetQuoteResponse,
 } from "./attestation";
 export { fetchAttestation, verifyAttestationCorrelation } from "./attestation";
-export type { BadSignatureContext, StaleTimestampContext, VerificationErrorKind } from "./errors";
+export type {
+  AttestationUnavailableReason,
+  BadSignatureContext,
+  InvalidInnerRequestReason,
+  MalformedConfidentialResponseReason,
+  StaleTimestampContext,
+  TransportFailedReason,
+  UnavailableErrorKind,
+  VerificationErrorKind,
+} from "./errors";
 export {
   AttestationCorrelationError,
   AttestationFailed,
   AttestationNodeNotFoundError,
+  AttestationUnavailable,
   BadSignature,
+  ConfidentialDecryptFailed,
+  ConfidentialSealFailed,
+  ConfidentialSignerMismatch,
   InvalidChainId,
+  InvalidInnerRequest,
   InvalidNonce,
   MalformedAttestationResponse,
+  MalformedConfidentialResponse,
   MalformedHeader,
   MissingHeader,
+  RequestRejected,
   StaleTimestamp,
+  TransportFailed,
+  UnavailableError,
+  UnexpectedResponse,
   VerificationError,
 } from "./errors";
 export { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";

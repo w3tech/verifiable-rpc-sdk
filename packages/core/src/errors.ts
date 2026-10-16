@@ -23,7 +23,11 @@ export type VerificationErrorKind =
   | "MalformedAttestationResponse"
   | "AttestationNodeNotFound"
   | "AttestationCorrelation"
-  | "Attestation";
+  | "Attestation"
+  | "ConfidentialSignerMismatch"
+  | "InvalidInnerRequest"
+  | "ConfidentialDecryptFailed"
+  | "MalformedConfidentialResponse";
 
 /**
  * Abstract base for all verification errors. The `kind` discriminator is set
@@ -99,6 +103,8 @@ export interface BadSignatureContext {
  * the caller can correlate the failure with sidecar-side logs. These values
  * are public — the signature was emitted in a response header, the pubkey
  * is bound into the TDX attestation quote — so logging them is safe.
+ *
+ * In Ankr Confidential RPC mode, a response cut in transit after its status was sent also fails this way.
  */
 export class BadSignature extends VerificationError {
   readonly kind = "BadSignature" as const;
@@ -130,6 +136,8 @@ export interface StaleTimestampContext {
 /**
  * Signed timestamp fell outside the replay window. The signature itself was
  * valid — the response is just too old (or too far in the future) to accept.
+ *
+ * In Ankr Confidential RPC mode, the call ran and its response was rejected.
  */
 export class StaleTimestamp extends VerificationError {
   readonly kind = "StaleTimestamp" as const;
@@ -208,6 +216,7 @@ export class AttestationCorrelationError extends VerificationError {
  * the `VerificationError` family — keeping the SDK's public error contract
  * (callers catch `VerificationError`) intact. The original leaf error is attached
  * as `cause`; `chkId` records which `CHK-*` item failed.
+ * A `CHK-P1` failure can also mean the hardware verifier service was unreachable.
  */
 export class AttestationFailed extends VerificationError {
   readonly kind = "Attestation" as const;
@@ -221,5 +230,171 @@ export class AttestationFailed extends VerificationError {
     if (options?.cause !== undefined) {
       (this as { cause?: unknown }).cause = options.cause;
     }
+  }
+}
+
+/** A confidential response was signed by a key other than the pinned node key. */
+export class ConfidentialSignerMismatch extends VerificationError {
+  readonly kind = "ConfidentialSignerMismatch" as const;
+
+  constructor(
+    public readonly expectedPubkey: string,
+    public readonly actualPubkey: string,
+  ) {
+    super(`Response signer ${actualPubkey} is not the pinned node key ${expectedPubkey}`);
+  }
+}
+
+export type InvalidInnerRequestReason =
+  | "method"
+  | "path"
+  | "header"
+  | "content-type-required"
+  | "encode-failed";
+
+/** The caller's inner request cannot be sent; rejected before any network call. */
+export class InvalidInnerRequest extends VerificationError {
+  readonly kind = "InvalidInnerRequest" as const;
+
+  constructor(public readonly reason: InvalidInnerRequestReason) {
+    super(`Inner request rejected: ${reason}`);
+  }
+}
+
+/** A confidential response carried a valid signature but could not be decrypted. */
+export class ConfidentialDecryptFailed extends VerificationError {
+  readonly kind = "ConfidentialDecryptFailed" as const;
+
+  constructor() {
+    super("Signed confidential response could not be decrypted");
+  }
+}
+
+export type MalformedConfidentialResponseReason =
+  | "too-short"
+  | "framing"
+  | "informational"
+  | "decode-failed";
+
+/** A validly signed confidential response is too short to open or its inner response does not decode. */
+export class MalformedConfidentialResponse extends VerificationError {
+  readonly kind = "MalformedConfidentialResponse" as const;
+
+  constructor(public readonly reason: MalformedConfidentialResponseReason) {
+    super(`Malformed confidential response: ${reason}`);
+  }
+}
+
+export type UnavailableErrorKind =
+  | "AttestationUnavailable"
+  | "RequestRejected"
+  | "UnexpectedResponse"
+  | "TransportFailed"
+  | "ConfidentialSealFailed";
+
+/** Base of the errors raised when a confidential call got no verifiable answer. */
+export abstract class UnavailableError extends Error {
+  abstract readonly kind: UnavailableErrorKind;
+  /**
+   * `"no"`: the gateway or node did not run this attempt; an edge proxy retry may have run an earlier attempt of the same call.
+   * `"unknown"`: the call may or may not have run; check state before resending a state-changing call.
+   */
+  abstract readonly executed: "no" | "unknown";
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message);
+    this.name = this.constructor.name;
+    if (options?.cause !== undefined) {
+      (this as { cause?: unknown }).cause = options.cause;
+    }
+  }
+}
+
+export type AttestationUnavailableReason = "status" | "transport" | "node-id-missing" | "timeout";
+
+/**
+ * The node could not be attested, so the call was not sent.
+ * A browser calling another origin cannot read `vRPC-NodeId` and gets `node-id-missing`.
+ */
+export class AttestationUnavailable extends UnavailableError {
+  readonly kind = "AttestationUnavailable" as const;
+  readonly executed = "no" as const;
+  declare readonly status?: number;
+
+  constructor(
+    public readonly reason: AttestationUnavailableReason,
+    options?: { status?: number; cause?: unknown },
+  ) {
+    super(
+      reason === "status"
+        ? `Attestation unavailable: HTTP ${options?.status}`
+        : `Attestation unavailable: ${reason}`,
+      options?.cause === undefined ? undefined : { cause: options.cause },
+    );
+    if (options?.status !== undefined) {
+      this.status = options.status;
+    }
+  }
+}
+
+/** The confidential endpoint answered with something other than a sealed response. */
+export class UnexpectedResponse extends UnavailableError {
+  readonly kind = "UnexpectedResponse" as const;
+  readonly executed = "unknown" as const;
+  declare readonly contentType?: string;
+
+  constructor(
+    public readonly status: number,
+    public readonly nodeId: string,
+    contentType?: string,
+  ) {
+    super(`Unexpected confidential response: HTTP ${status}`);
+    if (contentType !== undefined) {
+      this.contentType = contentType;
+    }
+  }
+}
+
+/** A 4xx that is not an encrypted answer: the gateway or node refused this attempt. */
+export class RequestRejected extends UnavailableError {
+  readonly kind = "RequestRejected" as const;
+  readonly executed = "no" as const;
+  declare readonly contentType?: string;
+
+  constructor(
+    public readonly status: number,
+    public readonly nodeId: string,
+    contentType?: string,
+  ) {
+    super(`Confidential request rejected: HTTP ${status}`);
+    if (contentType !== undefined) {
+      this.contentType = contentType;
+    }
+  }
+}
+
+export type TransportFailedReason = "network" | "too-large";
+
+/** The confidential request failed in transport, or its answer exceeded the response size cap. */
+export class TransportFailed extends UnavailableError {
+  readonly kind = "TransportFailed" as const;
+  readonly executed = "unknown" as const;
+
+  constructor(
+    public readonly reason: TransportFailedReason,
+    public readonly nodeId: string,
+    options?: { cause?: unknown },
+  ) {
+    super(`Confidential request failed in transport: ${reason}`, options);
+  }
+}
+
+/** The local crypto runtime failed while sealing the request, so nothing was sent; `cause` holds the runtime error. */
+export class ConfidentialSealFailed extends UnavailableError {
+  readonly kind = "ConfidentialSealFailed" as const;
+  readonly executed = "no" as const;
+
+  constructor(options?: { cause?: unknown }) {
+    super("Confidential request could not be sealed by the local crypto runtime", options);
   }
 }

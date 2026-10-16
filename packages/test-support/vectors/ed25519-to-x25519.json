@@ -1,0 +1,69 @@
+{
+  "source": {
+    "url": "https://github.com/jedisct1/libsodium/blob/master/test/default/ed25519_convert.c",
+    "license": "ISC",
+    "copyright": "Frank Denis",
+    "note": "Conversion vector and the three must-reject keys from the libsodium test. The extra small-order rows are well-known edwards25519 small-order encodings; the mixed-order row is the vector key plus the first order-8 point."
+  },
+  "seed": "421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee",
+  "ed25519PublicKey": "b5076a8474a832daee4dd5b4040983b6623b5f344aca57d4d6ee4baf3f259e6e",
+  "x25519PublicKey": "f1814f0e8ff1043d8a44d25babff3cedcae6c22c3edaa48f857ae70de2baae50",
+  "x25519SecretKey": "8052030376d47112be7f73ed7a019293dd12ad910b654455798b4667d73de166",
+  "reject": [
+    {
+      "name": "all zero",
+      "ed25519PublicKey": "0000000000000000000000000000000000000000000000000000000000000000",
+      "reason": "small-order"
+    },
+    {
+      "name": "not on the curve",
+      "ed25519PublicKey": "0200000000000000000000000000000000000000000000000000000000000000",
+      "reason": "malformed"
+    },
+    {
+      "name": "not in the prime-order subgroup",
+      "ed25519PublicKey": "0500000000000000000000000000000000000000000000000000000000000000",
+      "reason": "not-torsion-free"
+    },
+    {
+      "name": "identity",
+      "ed25519PublicKey": "0100000000000000000000000000000000000000000000000000000000000000",
+      "reason": "small-order"
+    },
+    {
+      "name": "order 2",
+      "ed25519PublicKey": "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "reason": "small-order"
+    },
+    {
+      "name": "order 8, first",
+      "ed25519PublicKey": "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",
+      "reason": "small-order"
+    },
+    {
+      "name": "order 8, second",
+      "ed25519PublicKey": "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
+      "reason": "small-order"
+    },
+    {
+      "name": "non-canonical y",
+      "ed25519PublicKey": "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "reason": "malformed"
+    },
+    {
+      "name": "mixed order",
+      "ed25519PublicKey": "07051c4fad3bbd163b56d53098b943b572c0467779a9200a80ca04f428aaa1ff",
+      "reason": "not-torsion-free"
+    },
+    {
+      "name": "31 bytes",
+      "ed25519PublicKey": "b5076a8474a832daee4dd5b4040983b6623b5f344aca57d4d6ee4baf3f259e",
+      "reason": "malformed"
+    },
+    {
+      "name": "33 bytes",
+      "ed25519PublicKey": "b5076a8474a832daee4dd5b4040983b6623b5f344aca57d4d6ee4baf3f259e6e00",
+      "reason": "malformed"
+    }
+  ]
+}

@@ -8,11 +8,17 @@
 
 import {
   deriveVrpcUrls,
+  InvalidChainId,
   parseChainId,
   TrustedVerifier,
   type TrustedVerifierOptions,
+  type VrpcUrls,
   validateChainId,
 } from "@w3tech.io/vrpc-core";
+import type {
+  ConfidentialClientOptions,
+  ConfidentialInfo,
+} from "@w3tech.io/vrpc-core/confidential";
 import {
   type FetchRequest,
   type JsonRpcPayload,
@@ -23,6 +29,12 @@ import {
   toUtf8String,
 } from "ethers";
 
+import {
+  ConfidentialHolder,
+  fetchRequestTransport,
+  requirePositiveMs,
+  sendConfidential,
+} from "./confidential";
 import type { VrpcOptions } from "./options";
 
 // Drop `undefined`-valued keys: `exactOptionalPropertyTypes` forbids passing an
@@ -52,6 +64,7 @@ export class VrpcProvider extends JsonRpcProvider {
   readonly #makeVerifier: (chainId: string) => TrustedVerifier;
   // ONE TrustedVerifier per provider (lifetime cache); eager on pin, lazy on auto-derive.
   #trustedVerifier: TrustedVerifier | undefined;
+  readonly #confidential: ConfidentialHolder | undefined;
 
   constructor(
     url: string | FetchRequest,
@@ -64,13 +77,25 @@ export class VrpcProvider extends JsonRpcProvider {
       fetch: attestationFetch,
       hardwareVerifier,
       logger,
+      confidential,
       ...ethersOpts
     } = options;
+
+    if (confidential !== undefined && typeof confidential !== "boolean") {
+      throw new TypeError("confidential must be a boolean");
+    }
 
     // Derive `/attestation` from the single URL (the URL is the explicit vRPC
     // route, used verbatim for RPC); for a FetchRequest, clone it so the
     // consumer's auth/headers ride along.
-    const urls = deriveVrpcUrls(typeof url === "string" ? url : url.url);
+    let urls: VrpcUrls;
+    try {
+      urls = deriveVrpcUrls(typeof url === "string" ? url : url.url);
+    } catch (err) {
+      // The platform error echoes the URL, which may carry the API key.
+      if (confidential === true) throw new TypeError("Invalid vRPC URL");
+      throw err;
+    }
     const attestationUrl = urls.attestationUrl;
     let superUrl: string | FetchRequest = urls.rpcUrl;
     if (typeof url !== "string") {
@@ -98,6 +123,20 @@ export class VrpcProvider extends JsonRpcProvider {
           ? validateChainId(chainIdArg)
           : BigInt(chainIdArg).toString(10);
     }
+    if (confidential === true) {
+      if (chainId === undefined) {
+        throw new InvalidChainId("", "Ankr Confidential RPC mode needs a pinned chain id");
+      }
+      // A non-decimal id leaves ethers without a network: it would retry detection forever.
+      if (!/^\d+$/.test(chainId)) {
+        throw new InvalidChainId(
+          chainId,
+          "Ankr Confidential RPC mode with ethers needs a decimal chain id",
+        );
+      }
+      requirePositiveMs("replayWindowMs", replayWindowMs);
+      requirePositiveMs("pubkeyCacheTtlMs", pubkeyCacheTtlMs);
+    }
 
     // staticNetwork (pin only) skips ethers' startup eth_chainId probe without
     // weakening the binding; ethersOpts spread first so a user value can't win.
@@ -123,16 +162,47 @@ export class VrpcProvider extends JsonRpcProvider {
           logger,
         }),
       );
-    // Build the verifier now if possible; auto-derive defers to the first _send.
-    if (chainId != null) {
+    if (confidential === true && chainId !== undefined) {
+      // CCIP-Read would send the call data in plaintext to a URL the contract names.
+      this.disableCcipRead = true;
+      this.#confidential = new ConfidentialHolder(
+        pruneUndefined<ConfidentialClientOptions>({
+          url: urls.rpcUrl,
+          chainId,
+          replayWindowMs,
+          pubkeyCacheTtlMs,
+          logger,
+          hardwareVerifier,
+          transport: fetchRequestTransport(() => this._getConnection()),
+        }),
+      );
+    } else if (chainId != null) {
+      // Build the verifier now if possible; auto-derive defers to the first _send.
       this.#trustedVerifier = this.#makeVerifier(chainId);
     }
+  }
+
+  /**
+   * Attests the node now in Ankr Confidential RPC mode and returns it; rejects with a `TypeError`
+   * when the mode is off. Later calls reuse the pin until it expires.
+   */
+  async confidentialReady(options?: { signal?: AbortSignal }): Promise<ConfidentialInfo> {
+    if (this.#confidential === undefined) {
+      throw new TypeError("Ankr Confidential RPC mode is not enabled on this provider");
+    }
+    return this.#confidential.ready(options);
+  }
+
+  /** The node pinned in Ankr Confidential RPC mode; `undefined` before attestation or in open mode. */
+  getConfidentialInfo(): ConfidentialInfo | undefined {
+    return this.#confidential?.info();
   }
 
   // POST, verify the raw bytes, then parse. chainId resolved lazily if unset.
   override async _send(
     payload: JsonRpcPayload | Array<JsonRpcPayload>,
   ): Promise<Array<JsonRpcResult>> {
+    if (this.#confidential !== undefined) return sendConfidential(this.#confidential, payload);
     const { requestBytes, rawResponseBytes, headers } = await this.#post(payload);
 
     const chainId = this.#chainId ?? (await this.#resolveChainId());

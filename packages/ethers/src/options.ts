@@ -30,7 +30,10 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
   replayWindowMs?: number;
   /** Verified-pubkey cache TTL (ms) for the attestation seam; default 1h (vrpc-core). */
   pubkeyCacheTtlMs?: number;
-  /** `fetch` override for the attestation leg — test injectable. Internal. */
+  /**
+   * `fetch` override for the attestation leg — test injectable. Internal. Unused in
+   * Ankr Confidential RPC mode, where both requests go through the `FetchRequest`.
+   */
   fetch?: typeof fetch;
   /**
    * Internal / advanced. Override the mandatory hardware-signature verifier
@@ -49,6 +52,13 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
    * truncated) — it is observability only, never part of the verify decision.
    */
   logger?: Logger;
+  /**
+   * Turns on Ankr Confidential RPC mode (`confidential: true`): every call is sealed to an attested
+   * node. Requires a decimal chain id; the `fetch` option is not used. CCIP-Read is turned off,
+   * since it would send call data in plaintext to a URL the contract names. A `getUrlFunc` set on
+   * the `FetchRequest` must not follow redirects or retry.
+   */
+  confidential?: boolean;
 }
 
 // NOTE (v6.0): `allowlist`/`tcb`/`pccsUrl` were removed — the mock verifier

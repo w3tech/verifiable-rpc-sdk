@@ -54,6 +54,7 @@
     "build": "tsup",
     "prepublishOnly": "tsup",
     "test": "vitest run",
+    "test:integration": "vitest run test/integration",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

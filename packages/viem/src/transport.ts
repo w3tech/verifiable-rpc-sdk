@@ -10,13 +10,25 @@
 
 import {
   deriveVrpcUrls,
+  InvalidChainId,
   isSignedVrpcResponse,
   parseChainId,
   TrustedVerifier,
   type TrustedVerifierOptions,
 } from "@w3tech.io/vrpc-core";
+import type {
+  ConfidentialClientOptions,
+  ConfidentialInfo,
+} from "@w3tech.io/vrpc-core/confidential";
 import { createTransport, HttpRequestError, RpcRequestError, type Transport } from "viem";
 
+import {
+  ConfidentialHolder,
+  fetchTransport,
+  linkSignal,
+  mapInnerResponse,
+  requirePositiveMs,
+} from "./confidential";
 import type { VrpcHttpOptions } from "./options";
 
 // Drop `undefined`-valued keys: `exactOptionalPropertyTypes` forbids passing an
@@ -25,6 +37,18 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T;
 }
 
+/**
+ * Ankr Confidential RPC mode: every JSON-RPC call is sealed to an attested node. CCIP-Read
+ * requests go to the gateway a contract names in plaintext; create the client with
+ * `ccipRead: false` to keep every request encrypted. The client must declare `chain`; one
+ * transport binds one chain.
+ * `client.transport.ready()` attests up front and `getConfidentialInfo()` reports the pinned node;
+ * both are typed only when `confidential` is the literal `true`.
+ */
+export function vrpcHttp(
+  url: string,
+  opts: VrpcHttpOptions & { confidential: true },
+): Transport<"vrpc-http", ConfidentialValue>;
 /**
  * A viem `Transport` that Ed25519-verifies every response over its raw bytes
  * before it reaches the client. Drop-in:
@@ -37,7 +61,15 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
  * `eth_chainId` response on the first request (fail-fast, no unverified fallback);
  * declaring `chain` on the client pins YOUR chain and skips the bootstrap.
  */
-export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vrpc-http"> {
+export function vrpcHttp(url: string, opts?: VrpcHttpOptions): Transport<"vrpc-http">;
+export function vrpcHttp(
+  url: string,
+  opts: VrpcHttpOptions = {},
+): Transport<"vrpc-http"> | Transport<"vrpc-http", ConfidentialValue> {
+  if (opts.confidential !== undefined && typeof opts.confidential !== "boolean") {
+    throw new TypeError("confidential must be a boolean");
+  }
+  if (opts.confidential === true) return confidentialHttp(url, opts);
   const fetchFn = opts.fetchFn ?? fetch;
 
   // Derive the `/attestation` sub-route from the single URL.
@@ -187,6 +219,93 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
         },
       },
       { url: rpcUrl },
+    );
+  };
+}
+
+const utf8 = new TextEncoder();
+
+/** Members `vrpcHttp(url, { confidential: true })` adds to `client.transport`. */
+export interface ConfidentialValue {
+  url: string;
+  /** Attests now unless a valid pin exists, and returns the pinned node. */
+  ready(options?: { signal?: AbortSignal }): Promise<ConfidentialInfo>;
+  /** The pinned node, or `undefined` before the first attestation and after the pin expired or was dropped. */
+  getConfidentialInfo(): ConfidentialInfo | undefined;
+}
+
+function confidentialHttp(
+  url: string,
+  opts: VrpcHttpOptions,
+): Transport<"vrpc-http", ConfidentialValue> {
+  let rpcUrl: string;
+  try {
+    rpcUrl = deriveVrpcUrls(url).rpcUrl;
+  } catch {
+    // The platform error echoes the URL, which may carry the API key.
+    throw new TypeError("Invalid vRPC URL");
+  }
+  requirePositiveMs("replayWindowMs", opts.replayWindowMs);
+  requirePositiveMs("pubkeyCacheTtlMs", opts.pubkeyCacheTtlMs);
+  const origin = new URL(rpcUrl).origin;
+  let holder: ConfidentialHolder | undefined;
+  let boundChainId: string | undefined;
+
+  return ({ chain, timeout: injectedTimeout }) => {
+    if (chain?.id == null) {
+      throw new InvalidChainId("", "Ankr Confidential RPC mode needs the client's chain");
+    }
+    const chainId = String(chain.id);
+    if (boundChainId !== undefined && chainId !== boundChainId) {
+      throw new InvalidChainId(chainId, `this transport is bound to chain ${boundChainId}`);
+    }
+    boundChainId = chainId;
+    holder ??= new ConfidentialHolder({
+      url: rpcUrl,
+      chainId,
+      transport: fetchTransport(opts.fetchFn),
+      ...pruneUndefined<Omit<ConfidentialClientOptions, "url" | "chainId" | "transport">>({
+        headers: opts.headers,
+        replayWindowMs: opts.replayWindowMs,
+        pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
+        logger: opts.logger,
+        hardwareVerifier: opts.hardwareVerifier,
+      }),
+    });
+    const confidential = holder;
+    const timeout = opts.timeout ?? injectedTimeout ?? 10_000;
+
+    return createTransport(
+      {
+        key: "vrpc-http",
+        name: "vRPC HTTP JSON-RPC",
+        type: "vrpc-http",
+        retryCount: 0,
+        timeout,
+        async request({ method, params }, options) {
+          const { signal, done } = linkSignal(options?.signal, timeout);
+          try {
+            const client = await confidential.client();
+            const res = await client.request(
+              {
+                method: "POST",
+                path: "/",
+                contentType: "application/json",
+                body: utf8.encode(JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })),
+              },
+              signal === undefined ? undefined : { signal },
+            );
+            return mapInnerResponse(res, origin);
+          } finally {
+            done();
+          }
+        },
+      },
+      {
+        url: rpcUrl,
+        ready: (options?: { signal?: AbortSignal }) => confidential.ready(options),
+        getConfidentialInfo: () => confidential.info(),
+      },
     );
   };
 }

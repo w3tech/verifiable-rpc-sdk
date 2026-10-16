@@ -124,6 +124,21 @@ describe("parseConfig", () => {
     expect(config.warnings?.length).toBeGreaterThan(0);
   });
 
+  test("upstreamQueryWarningInConfidentialModeSaysNoKeyIsSent", () => {
+    const config = parseConfig(
+      [
+        "--upstream",
+        "https://rpc.example.com/chain?key=abc",
+        "--chain-id",
+        "test-chain",
+        "--confidential",
+      ],
+      {},
+    );
+    expect(config.warnings).toHaveLength(1);
+    expect(config.warnings?.[0]).toContain("no API key is sent unless --api-key");
+  });
+
   test("apiKeyFlagSetsConfigAndAttestationHeader", () => {
     const config = parseConfig([...BASE, "--api-key", "sekret"], {});
     expect(config.apiKey).toBe("sekret");
@@ -140,5 +155,52 @@ describe("parseConfig", () => {
     const config = parseConfig(BASE, {});
     expect(config.apiKey).toBeUndefined();
     expect(config.attestationHeaders["x-api-key"]).toBeUndefined();
+  });
+
+  test("confidentialFlagTurnsModeOn", () => {
+    expect(parseConfig([...BASE, "--confidential"], {}).confidential).toBe(true);
+  });
+
+  test("confidentialEnvAcceptsOneAndTrueInAnyCase", () => {
+    for (const value of ["1", "true", "TRUE", "True"]) {
+      expect(parseConfig(BASE, { VRPC_PROXY_CONFIDENTIAL: value }).confidential).toBe(true);
+    }
+  });
+
+  test("confidentialEnvZeroFalseEmptyOrUnsetLeavesModeOff", () => {
+    for (const value of ["0", "false", "FALSE", ""]) {
+      expect(parseConfig(BASE, { VRPC_PROXY_CONFIDENTIAL: value }).confidential).not.toBe(true);
+    }
+    expect(parseConfig(BASE, {}).confidential).not.toBe(true);
+  });
+
+  test("confidentialEnvUnrecognisedValueThrowsConfigError", () => {
+    for (const value of ["yes", "on", "2", " 1"]) {
+      const parse = () => parseConfig(BASE, { VRPC_PROXY_CONFIDENTIAL: value });
+      expect(parse).toThrow(ConfigError);
+      expect(parse).toThrow(/--confidential/);
+      expect(parse).toThrow(/VRPC_PROXY_CONFIDENTIAL/);
+    }
+  });
+
+  test("confidentialFlagRejectsAValue", () => {
+    expect(() => parseConfig(["--confidential=true", ...BASE], {})).toThrow(ConfigError);
+  });
+
+  test("confidentialFlagWinsOverEnvOff", () => {
+    const config = parseConfig([...BASE, "--confidential"], { VRPC_PROXY_CONFIDENTIAL: "0" });
+    expect(config.confidential).toBe(true);
+  });
+
+  test("confidentialModeKeepsListenDefaultAndAddsNoWarning", () => {
+    const config = parseConfig([...BASE, "--confidential"], {});
+    expect(config.listenHost).toBe("127.0.0.1");
+    expect(config.listenPort).toBe(8969);
+    expect(config.warnings).toBeUndefined();
+  });
+
+  test("confidentialModeStillRequiresChainId", () => {
+    expect(() => parseConfig(["--upstream", UPSTREAM, "--confidential"], {})).toThrow(ConfigError);
+    expect(() => parseConfig(["--upstream", UPSTREAM, "--confidential"], {})).toThrow(/--chain-id/);
   });
 });

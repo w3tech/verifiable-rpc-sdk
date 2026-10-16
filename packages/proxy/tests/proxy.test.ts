@@ -346,7 +346,7 @@ describe("proxy pipeline", () => {
 
   test("decompressionBombFailsClosedWithDecodeFailed", async () => {
     // 8 MiB of zeros gzips to a tiny wire body — the wire cap passes, but the
-    // decode-side maxOutputLength guard trips (threat T-02-04).
+    // decode-side maxOutputLength guard trips.
     const { url } = await startProxy(
       { encoding: "gzip", plaintext: Buffer.alloc(8 * 1024 * 1024) },
       { maxBodyBytes: 1024 * 1024 },

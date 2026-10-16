@@ -2,3 +2,6 @@ packages:
   - "packages/*"
 allowBuilds:
   esbuild: true
+overrides:
+  "@hpke/common": 1.10.1
+  quicvarint: 0.2.1

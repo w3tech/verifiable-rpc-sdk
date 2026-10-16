@@ -200,8 +200,17 @@ await provider.getBalance("0x0000000000000000000000000000000000000000");
 
 For `instanceof` checks without importing core directly, the shared error family
 is re-exported: `VerificationError` (base) and `BadSignature`, `MissingHeader`,
-`MalformedHeader`, `StaleTimestamp`. This is the same family the viem adapter
-reuses — one error family across both adapters.
+`MalformedHeader`, `StaleTimestamp`, `InvalidChainId`. This is the same family
+the viem adapter reuses — one error family across both adapters.
+
+For Ankr Confidential RPC mode the adapter also re-exports the
+`VerificationError` subclasses `AttestationFailed`,
+`MalformedAttestationResponse`, `ConfidentialSignerMismatch`,
+`ConfidentialDecryptFailed`, `MalformedConfidentialResponse`,
+`InvalidInnerRequest`; the `UnavailableError` base with `AttestationUnavailable`,
+`RequestRejected`, `UnexpectedResponse`, `TransportFailed`,
+`ConfidentialSealFailed`; and the types `UnavailableErrorKind` and
+`ConfidentialInfo`. Each is the same class `@w3tech.io/vrpc-core` exports.
 
 ## Batching
 
@@ -210,6 +219,72 @@ When ethers coalesces concurrent calls into one array payload, the **entire body
 is verified once** over the raw bytes, and ethers' drain loop correlates the
 array results back to each caller by id. Set `batchMaxCount` / `batchStallTime`
 exactly as you would on a stock `JsonRpcProvider`.
+
+## Ankr Confidential RPC mode
+
+What the gateway and the node can see, the limits and the errors are described in
+the [core Ankr Confidential RPC mode section](../core/README.md#ankr-confidential-rpc-mode).
+
+`new VrpcProvider(url, chainId, { confidential: true })` sends every JSON-RPC
+call encrypted to an attested node.
+The chain id is required and must be decimal. `await provider.confidentialReady()`
+attests up front; `provider.getConfidentialInfo()` returns the pinned node. Auth
+headers, credentials and the timeout come from the `FetchRequest` you pass as the
+URL and apply to both requests; the `fetch` option is not used in this mode.
+
+**CCIP-Read is off.** CCIP-Read (EIP-3668) would send `{ sender, data }` in
+plaintext to a gateway URL the contract names, so the provider sets
+`disableCcipRead`: a call that reverts with `OffchainLookup` fails with
+`CALL_EXCEPTION`, and ENS names with off-chain resolvers do not resolve. Do not
+set it back to `false`. ENS avatar and IPFS metadata fetches are not JSON-RPC
+calls and still go out in plaintext.
+
+**Do not combine with a provider that is not in Ankr Confidential RPC mode.**
+ethers `FallbackProvider` sends calls to its other providers in plaintext: it
+sends every `broadcastTransaction` to all providers, queries all of them at
+start-up, and starts the next provider whenever one fails or takes longer than
+`stallTimeout` (400 ms by default), which includes the first call that attests
+the node. Even with confidential providers only, `FallbackProvider` can run the
+same call on more than one node.
+
+**Batches.** ethers batches concurrent calls; in Ankr Confidential RPC mode one
+batch is sent as one encrypted request. Above the node's batch limit of 1000
+calls the node answers HTTP 413 and every call in the batch fails with the same
+error. Keep `batchMaxCount` at 1000 or less (ethers' default is 100) and keep
+`batchMaxSize` at its default.
+
+**No retries.** Nothing in the SDK resends a call: a 429, a redirect or a gateway
+error is thrown as a typed error. Use your own retry policy if you need one.
+Without a `getUrlFunc` of your own the SDK never follows a redirect. A
+`getUrlFunc` you set on the `FetchRequest` must not follow redirects or retry:
+the SDK only sees the answer it returns, so a redirect it followed has already
+resent the encrypted request and the API key. In a browser build it with
+`FetchRequest.createGetUrlFunc({ redirect: "manual" })`.
+
+**Response size.** Without a `getUrlFunc` of your own, both requests go through
+`fetch` and the SDK stops reading an answer past 192 MiB. A `getUrlFunc` you set,
+or a `fetch` without a stream body (a polyfill, React Native), reads the whole
+answer first, so the limit is checked only after the answer is in memory.
+
+**Errors.**
+
+- An inner non-2xx answer is ethers `SERVER_ERROR`; its body is at
+  `err.response.body`, not in the message.
+- A call that got no verifiable answer throws an `UnavailableError`
+  (`AttestationUnavailable`, `RequestRejected`, `UnexpectedResponse`,
+  `TransportFailed`, `ConfidentialSealFailed`); its `executed` field is `"no"` or
+  `"unknown"`.
+- A failed signature, attestation or decryption check is a `VerificationError`
+  subclass.
+
+Every error class with its `executed` value, the request and response size
+limits and the timeouts are listed in the core section's
+[Limits](../core/README.md#limits) and [Errors](../core/README.md#errors)
+subsections.
+
+**Versions.** Install `@w3tech.io/vrpc-ethers` and `@w3tech.io/vrpc-core` at the
+same version, so an error class you import from core is the one the provider
+throws.
 
 ## Error handling
 

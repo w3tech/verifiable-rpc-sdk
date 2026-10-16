@@ -35,7 +35,7 @@ const PUBKEY_HEADER = "vRPC-Pubkey";
 const NODE_ID_HEADER = "vRPC-NodeId";
 
 const SIGNATURE_HEX_RE = /^0x[0-9a-f]{128}$/;
-const PUBKEY_HEX_RE = /^0x[0-9a-f]{64}$/;
+export const PUBKEY_HEX_RE = /^0x[0-9a-f]{64}$/;
 const TIMESTAMP_RE = /^\d+$/;
 
 /**
@@ -97,16 +97,18 @@ export interface VerifiedPair {
 
 /**
  * Case-insensitive header lookup over `Headers | Record<string, string>`.
- * Returns `null` when absent (matching `Headers.get` semantics).
+ * Returns `null` when absent or not a string (matching `Headers.get` semantics).
  */
-function getHeader(headers: ResponseHeaders, name: string): string | null {
-  if (headers instanceof Headers) {
-    return headers.get(name);
+export function getHeader(headers: ResponseHeaders, name: string): string | null {
+  // Duck-typed: a polyfilled or cross-realm Headers fails instanceof.
+  if (typeof (headers as { get?: unknown }).get === "function") {
+    const value: unknown = (headers as Headers).get(name);
+    return typeof value === "string" ? value : null;
   }
   const lower = name.toLowerCase();
-  for (const [key, value] of Object.entries(headers as Record<string, string>)) {
+  for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
     if (key.toLowerCase() === lower) {
-      return value;
+      return typeof value === "string" ? value : null;
     }
   }
   return null;

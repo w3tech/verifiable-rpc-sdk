@@ -33,6 +33,11 @@
       "types": "./src/errors.ts",
       "import": "./dist/errors.js",
       "default": "./dist/errors.js"
+    },
+    "./confidential": {
+      "types": "./src/confidential.ts",
+      "import": "./dist/confidential.js",
+      "default": "./dist/confidential.js"
     }
   },
   "files": [
@@ -40,9 +45,13 @@
     "src",
     "README.md",
     "LICENSE",
-    "NOTICE"
+    "NOTICE",
+    "THIRD_PARTY_LICENSES"
   ],
   "sideEffects": false,
+  "browser": {
+    "crypto": false
+  },
   "publishConfig": {
     "access": "public",
     "main": "./dist/index.js",
@@ -57,6 +66,11 @@
         "types": "./dist/errors.d.ts",
         "import": "./dist/errors.js",
         "default": "./dist/errors.js"
+      },
+      "./confidential": {
+        "types": "./dist/confidential.d.ts",
+        "import": "./dist/confidential.js",
+        "default": "./dist/confidential.js"
       }
     }
   },
@@ -64,17 +78,25 @@
     "build": "tsup",
     "prepublishOnly": "tsup",
     "test": "vitest run",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:unit": "vitest run tests --exclude 'tests/integration/**'",
     "test:integration": "vitest run tests/integration",
     "typecheck": "tsc --noEmit"
   },
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "dependencies": {
     "@w3tech.io/dstack-verify": "workspace:*",
     "@noble/ed25519": "^3.1.0",
-    "@noble/hashes": "^2.2.0",
+    "@noble/hashes": "2.4.0",
     "lru-cache": "^11.5.2"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1"
+    "@hpke/core": "1.9.0",
+    "@hpke/dhkem-x25519": "1.8.0",
+    "@noble/curves": "2.4.0",
+    "@types/node": "^26.1.1",
+    "bhttp-ts": "0.6.1"
   }
 }

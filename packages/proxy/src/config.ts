@@ -31,6 +31,11 @@ export interface ProxyConfig {
   pubkeyCacheTtlMs?: number;
   maxBodyBytes: number;
   logLevel: LogLevel;
+  /**
+   * Ankr Confidential RPC mode: every request is sealed to the attested node;
+   * nothing is sent upstream in plaintext.
+   */
+  confidential?: boolean;
   /** Non-fatal startup warnings; cli.ts prints them to stderr. */
   warnings?: string[];
 }
@@ -49,6 +54,7 @@ const PARSE_OPTIONS = {
   "attestation-cache-ttl": { type: "string" },
   "log-level": { type: "string" },
   "max-body-bytes": { type: "string" },
+  confidential: { type: "boolean" },
 } as const;
 
 function parsePositiveInt(value: string, flag: string): number {
@@ -83,6 +89,18 @@ function parseListen(value: string): { host: string; port: number } {
   return { host, port };
 }
 
+// An unrecognised value is an error, never a silent fall back to open mode.
+function parseConfidential(flag: boolean | undefined, env: string | undefined): boolean {
+  if (flag === true) return true;
+  if (env === undefined || env === "") return false;
+  const value = env.toLowerCase();
+  if (value === "1" || value === "true") return true;
+  if (value === "0" || value === "false") return false;
+  throw new ConfigError(
+    `VRPC_PROXY_CONFIDENTIAL must be 1, true, 0 or false (or pass --confidential), got ${JSON.stringify(env)}`,
+  );
+}
+
 /**
  * Parse and validate the proxy configuration from CLI argv and environment.
  * Throws ConfigError for any transport/config problem and lets core's
@@ -100,6 +118,7 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
     "attestation-cache-ttl"?: string;
     "log-level"?: string;
     "max-body-bytes"?: string;
+    confidential?: boolean;
   };
   try {
     ({ values } = parseArgs({
@@ -193,9 +212,14 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   if (apiKey !== undefined && apiKey !== "") {
     config.apiKey = apiKey;
   }
+  if (parseConfidential(values.confidential, env.VRPC_PROXY_CONFIDENTIAL)) {
+    config.confidential = true;
+  }
   if (upstreamParsed.search !== "") {
     config.warnings = [
-      "The upstream URL carries query parameters, which the derived attestation URL drops; prefer --api-key or a key-in-path upstream URL.",
+      config.confidential === true
+        ? "The upstream URL carries query parameters, which the derived attestation and confidential URLs drop; in Ankr Confidential RPC mode no API key is sent unless --api-key or a key-in-path upstream URL is used."
+        : "The upstream URL carries query parameters, which the derived attestation URL drops; prefer --api-key or a key-in-path upstream URL.",
     ];
   }
   return config;

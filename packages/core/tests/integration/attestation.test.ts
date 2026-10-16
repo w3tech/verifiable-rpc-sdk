@@ -93,6 +93,7 @@ d("integration: attestation", () => {
     const saved = JSON.parse(await fs.readFile(fixturePath, "utf8")) as {
       pubkey: string;
       composeHash: string;
+      app_compose: string;
       quote: {
         quote: string;
         event_log: string;
@@ -102,7 +103,7 @@ d("integration: attestation", () => {
     };
 
     // Top-level key set is fixed.
-    expect(Object.keys(saved).sort()).toEqual(["composeHash", "pubkey", "quote"]);
+    expect(Object.keys(saved).sort()).toEqual(["app_compose", "composeHash", "pubkey", "quote"]);
 
     // pubkey stable across runs against the same simulator/key path.
     if (saved.pubkey !== att.pubkey) {
@@ -110,6 +111,8 @@ d("integration: attestation", () => {
     }
 
     // composeHash stable under same simulator config (typically "").
+    // The simulator's attestation.bin bakes a compose hash its app-compose.json does not hash to,
+    // so the saved composeHash != sha256(app_compose) is expected; do not edit the fixture by hand.
     if (saved.composeHash !== att.composeHash) {
       throw new Error(
         `fixture mismatch at $.composeHash: saved=${saved.composeHash} live=${att.composeHash}`,

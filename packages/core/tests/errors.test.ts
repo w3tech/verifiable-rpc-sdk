@@ -3,13 +3,23 @@ import { describe, expect, test } from "vitest";
 import {
   AttestationCorrelationError,
   AttestationNodeNotFoundError,
+  AttestationUnavailable,
   BadSignature,
+  ConfidentialDecryptFailed,
+  ConfidentialSealFailed,
+  ConfidentialSignerMismatch,
   InvalidChainId,
+  InvalidInnerRequest,
   InvalidNonce,
   MalformedAttestationResponse,
+  MalformedConfidentialResponse,
   MalformedHeader,
   MissingHeader,
+  RequestRejected,
   StaleTimestamp,
+  TransportFailed,
+  UnavailableError,
+  UnexpectedResponse,
   VerificationError,
 } from "../src/errors";
 
@@ -214,5 +224,128 @@ describe("errors", () => {
     expect(err.actualPubkey).toBe(actual);
     expect(err.message).toContain(expected);
     expect(err.message).toContain(actual);
+  });
+
+  test("unavailableErrorsAreNotVerificationErrors", () => {
+    const attestation = new AttestationUnavailable("node-id-missing");
+    const unexpected = new UnexpectedResponse(502, "node-1", "text/plain");
+    for (const err of [attestation, unexpected]) {
+      expect(err instanceof Error).toBe(true);
+      expect(err instanceof UnavailableError).toBe(true);
+      expect(err instanceof VerificationError).toBe(false);
+    }
+    expect(attestation.executed).toBe("no");
+    expect(unexpected.executed).toBe("unknown");
+    expect(attestation.name).toBe("AttestationUnavailable");
+    expect(unexpected.name).toBe("UnexpectedResponse");
+    expect(attestation.kind).toBe("AttestationUnavailable");
+    expect(unexpected.kind).toBe("UnexpectedResponse");
+  });
+
+  test("attestationUnavailableCarriesReasonAndOptionalStatus", () => {
+    const withStatus = new AttestationUnavailable("status", { status: 429 });
+    expect(withStatus.reason).toBe("status");
+    expect(withStatus.status).toBe(429);
+    expect(withStatus.message).toBe("Attestation unavailable: HTTP 429");
+
+    const cause = new Error("socket closed");
+    const withoutStatus = new AttestationUnavailable("transport", { cause });
+    expect(withoutStatus.message).toBe("Attestation unavailable: transport");
+    expect("status" in withoutStatus).toBe(false);
+    expect(withoutStatus.cause).toBe(cause);
+    expect("cause" in new AttestationUnavailable("timeout")).toBe(false);
+  });
+
+  test("unexpectedResponseCarriesStatusNodeIdAndOptionalContentType", () => {
+    const err = new UnexpectedResponse(502, "node-1", "text/plain");
+    expect(err.status).toBe(502);
+    expect(err.nodeId).toBe("node-1");
+    expect(err.contentType).toBe("text/plain");
+    expect(err.message).toBe("Unexpected confidential response: HTTP 502");
+    expect("contentType" in new UnexpectedResponse(0, "node-1")).toBe(false);
+  });
+
+  test("confidentialSignerMismatchIsAVerificationError", () => {
+    const expected = `0x${"ab".repeat(32)}`;
+    const actual = `0x${"cd".repeat(32)}`;
+    const err = new ConfidentialSignerMismatch(expected, actual);
+    expect(err instanceof VerificationError).toBe(true);
+    expect(err.kind).toBe("ConfidentialSignerMismatch");
+    expect(err.name).toBe("ConfidentialSignerMismatch");
+    expect(err.expectedPubkey).toBe(expected);
+    expect(err.actualPubkey).toBe(actual);
+  });
+
+  test("invalidInnerRequestIsAVerificationError", () => {
+    const err = new InvalidInnerRequest("content-type-required");
+    expect(err instanceof VerificationError).toBe(true);
+    expect(err.kind).toBe("InvalidInnerRequest");
+    expect(err.name).toBe("InvalidInnerRequest");
+    expect(err.reason).toBe("content-type-required");
+    expect(err.message).toBe("Inner request rejected: content-type-required");
+  });
+
+  test("requestRejectedAndTransportFailedAreUnavailableErrors", () => {
+    const rejected = new RequestRejected(429, "node-1", "text/plain");
+    const failed = new TransportFailed("network", "node-1");
+    for (const err of [rejected, failed]) {
+      expect(err instanceof UnavailableError).toBe(true);
+      expect(err instanceof VerificationError).toBe(false);
+      expect("body" in err).toBe(false);
+    }
+    expect(rejected.kind).toBe("RequestRejected");
+    expect(rejected.name).toBe("RequestRejected");
+    expect(rejected.executed).toBe("no");
+    expect(rejected.status).toBe(429);
+    expect(rejected.nodeId).toBe("node-1");
+    expect(rejected.contentType).toBe("text/plain");
+    expect(rejected.message).toBe("Confidential request rejected: HTTP 429");
+    expect("contentType" in new RequestRejected(413, "node-1")).toBe(false);
+
+    expect(failed.kind).toBe("TransportFailed");
+    expect(failed.name).toBe("TransportFailed");
+    expect(failed.executed).toBe("unknown");
+    expect(failed.reason).toBe("network");
+    expect(failed.message).toBe("Confidential request failed in transport: network");
+  });
+
+  test("transportFailedKeepsCauseOnlyWhenGiven", () => {
+    const cause = new TypeError("fetch failed");
+    expect(new TransportFailed("network", "node-1", { cause }).cause).toBe(cause);
+    expect("cause" in new TransportFailed("too-large", "node-1")).toBe(false);
+  });
+
+  test("confidentialSealFailedIsUnavailableNotExecutedAndKeepsCause", () => {
+    const cause = new Error("platform crypto failure");
+    const err = new ConfidentialSealFailed({ cause });
+    expect(err instanceof UnavailableError).toBe(true);
+    expect(err instanceof VerificationError).toBe(false);
+    expect(err.kind).toBe("ConfidentialSealFailed");
+    expect(err.name).toBe("ConfidentialSealFailed");
+    expect(err.executed).toBe("no");
+    expect(err.cause).toBe(cause);
+    expect(err.message).toBe(
+      "Confidential request could not be sealed by the local crypto runtime",
+    );
+  });
+
+  test("confidentialDecryptAndMalformedResponseAreVerificationKinds", () => {
+    const decrypt = new ConfidentialDecryptFailed();
+    expect(decrypt instanceof VerificationError).toBe(true);
+    expect(decrypt.kind).toBe("ConfidentialDecryptFailed");
+    expect(decrypt.name).toBe("ConfidentialDecryptFailed");
+    expect(decrypt.message).toBe("Signed confidential response could not be decrypted");
+    expect("cause" in decrypt).toBe(false);
+
+    for (const reason of ["too-short", "framing", "informational", "decode-failed"] as const) {
+      const malformed = new MalformedConfidentialResponse(reason);
+      expect(malformed instanceof VerificationError).toBe(true);
+      expect(malformed.kind).toBe("MalformedConfidentialResponse");
+      expect(malformed.reason).toBe(reason);
+      expect(malformed.message).toBe(`Malformed confidential response: ${reason}`);
+      expect(malformed.message).not.toMatch(/[0-9a-f]{9,}/i);
+      expect("cause" in malformed).toBe(false);
+    }
+    expect(decrypt.message).not.toMatch(/[0-9a-f]{9,}/i);
   });
 });

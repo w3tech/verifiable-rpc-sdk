@@ -262,9 +262,17 @@ try {
 | Unsigned non-2xx (gateway 502 / timeout)  | viem's `HttpRequestError` **before** verify — reads as a network error, not a verify attack. |
 | Signed non-2xx with `{ error }` body      | still flows into verify; its signed error surfaces as an ordinary `RpcRequestError`. |
 
-`MissingHeader`, `MalformedHeader`, `BadSignature`, and `StaleTimestamp` all
-extend `VerificationError`, which extends `Error`. They are the identical
-classes re-exported by `@w3tech.io/vrpc-ethers` (cross-adapter parity).
+`MissingHeader`, `MalformedHeader`, `BadSignature`, `StaleTimestamp` and
+`InvalidChainId` all extend `VerificationError`, which extends `Error`.
+For Ankr Confidential RPC mode the package also re-exports the `VerificationError`
+subclasses `AttestationFailed`, `MalformedAttestationResponse`,
+`ConfidentialSignerMismatch`, `ConfidentialDecryptFailed`,
+`MalformedConfidentialResponse`, `InvalidInnerRequest`; the `UnavailableError`
+base with `AttestationUnavailable`, `RequestRejected`, `UnexpectedResponse`,
+`TransportFailed`, `ConfidentialSealFailed`; and the types
+`UnavailableErrorKind` and `ConfidentialInfo`. They are the identical classes
+`@w3tech.io/vrpc-core` and `@w3tech.io/vrpc-ethers` export (cross-adapter
+parity).
 
 ### Fail-closed
 
@@ -280,6 +288,76 @@ Batching is **OFF by default**. Every action issues a single non-batched
 `{ jsonrpc: "2.0", id: 1, method, params }` request that is verified as one
 unit. Batched-as-one-unit verification is a deferred opt-in — consistent with
 the ethers adapter's stance.
+
+---
+
+## Ankr Confidential RPC mode
+
+What the gateway and the node can see, the limits and the errors are described in
+the [core Ankr Confidential RPC mode section](../core/README.md#ankr-confidential-rpc-mode).
+
+`vrpcHttp(url, { confidential: true })` sends every JSON-RPC call encrypted to
+an attested node. The client must declare `chain`; without it
+`createPublicClient` throws. One `vrpcHttp()` instance serves one chain.
+
+**Turn off CCIP-Read.** CCIP-Read (EIP-3668) requests go to the gateway URL a
+contract names, in plaintext and outside Ankr Confidential RPC: viem sends
+`{ sender, data }` there for any `call` that reverts with `OffchainLookup`, and
+it is on by default. The transport cannot change a client option; create the
+client with `ccipRead: false` to keep every request encrypted.
+
+```ts
+const client = createPublicClient({
+  chain: arbitrum,
+  transport: vrpcHttp(url, { confidential: true }),
+  ccipRead: false,
+});
+```
+
+`await client.transport.ready()` attests up front;
+`client.transport.getConfidentialInfo()` returns the pinned node. The first call
+includes the attestation and counts against `timeout` (10 s by default), so call
+`ready()` at start-up.
+
+**Do not combine with a transport that is not in Ankr Confidential RPC mode.**
+`fallback([vrpcHttp(url, { confidential: true }), http(otherUrl)])` sends a
+failed call in plaintext to the next transport. `fallback` moves on for every
+error except user rejections and reverts, a failed signature or attestation
+check included.
+
+**Retries.** Nothing in the SDK resends a call: a 429, a redirect or a gateway
+error is thrown as a typed error. `fallback` retries the whole request
+(`retryCount`, 3 by default): set `retryCount: 0` when you use it. A per-call
+`retryCount` you pass to `client.request` is honoured and resends the call.
+A `fetchFn` of your own must pass `init.redirect` (`"manual"`) through and must
+not retry; otherwise it follows a redirect or resends the encrypted request and
+the API key itself.
+
+**Response size.** The transport stops reading an answer past 192 MiB and the
+call fails with `TransportFailed`, with your `fetchFn` too. A response without a
+web stream body (node-fetch, a fetch polyfill) is read in full first, so the
+limit is checked only after the answer is in memory.
+
+**Errors.**
+
+- Core errors reach viem actions wrapped in viem's `UnknownRpcError`; find them
+  with `err.walk()`.
+- An inner `{ error }` answer becomes `RpcRequestError`, which viem maps by code
+  exactly as with `http` (for example to `InternalRpcError`).
+- An inner non-2xx answer is `HttpRequestError`, or `RpcRequestError` when its
+  body is a JSON-RPC error.
+
+Every error class with its `executed` value, the request and response size
+limits and the timeouts are listed in the core section's
+[Limits](../core/README.md#limits) and [Errors](../core/README.md#errors)
+subsections.
+
+**No batching.** `vrpcHttp` does not batch in Ankr Confidential RPC mode either:
+each call is one JSON-RPC request sent as one encrypted request.
+
+**Versions.** Install `@w3tech.io/vrpc-viem` and `@w3tech.io/vrpc-core` at the
+same version, so an error class you import from core is the one the transport
+throws.
 
 ---
 

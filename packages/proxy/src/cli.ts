@@ -39,6 +39,7 @@ function startupBanner(config: ProxyConfig): string {
     `  attestation-cache-ttl: ${ms(config.pubkeyCacheTtlMs, DEFAULT_PUBKEY_CACHE_TTL_MS)}`,
     `  max-body-bytes:        ${config.maxBodyBytes}`,
     `  log-level:             ${config.logLevel}`,
+    `  confidential:          ${config.confidential === true ? "on" : "off"}`,
     "",
   ].join("\n");
 }
