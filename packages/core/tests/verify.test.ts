@@ -9,7 +9,7 @@ import {
   StaleTimestamp,
 } from "../src/errors";
 import { buildPreImage } from "../src/preimage";
-import { type ResponseHeaders, verifyResponse } from "../src/verify";
+import { isSignedVrpcResponse, type ResponseHeaders, verifyResponse } from "../src/verify";
 
 const TEST_SEED = new Uint8Array(32).fill(0x42);
 const CHAIN_ID = "1";
@@ -362,5 +362,29 @@ describe("verifyResponse", () => {
     });
     expect(pair.nodeId).toBeUndefined();
     expect("nodeId" in pair).toBe(false);
+  });
+});
+
+describe("header objects whose get returns undefined on a miss", () => {
+  function mapHeaders(headers: Record<string, string>): ResponseHeaders {
+    return new Map(Object.entries(headers)) as unknown as ResponseHeaders;
+  }
+
+  test("isSignedVrpcResponse is false for an unsigned response and true for a signed one", async () => {
+    const t = await signTriple(REQUEST, RESPONSE, BigInt(Date.now()));
+    expect(isSignedVrpcResponse(mapHeaders({ "content-type": "application/json" }))).toBe(false);
+    expect(isSignedVrpcResponse(mapHeaders(t.headers))).toBe(true);
+  });
+
+  test("an absent vRPC-Signature is MissingHeader", async () => {
+    const nowMs = BigInt(Date.now());
+    const t = await signTriple(REQUEST, RESPONSE, nowMs);
+    delete t.headers["vRPC-Signature"];
+    const err = await verifyResponse(t.requestBytes, t.responseBytes, mapHeaders(t.headers), {
+      chainId: CHAIN_ID,
+      nowMs,
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(MissingHeader);
+    expect((err as MissingHeader).headerName).toBe("vRPC-Signature");
   });
 });

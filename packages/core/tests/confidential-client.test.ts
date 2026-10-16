@@ -140,6 +140,23 @@ describe("ConfidentialClient", () => {
     expect(node.requests.filter((r) => r.method === "POST")).toHaveLength(0);
   });
 
+  test("a header object whose get returns undefined on a miss still reports a missing vRPC-NodeId", async () => {
+    const node = testNode({ nodeId: null });
+    const transport: ConfidentialTransport = async (request) => {
+      const answer = await node.transport(request);
+      const headers = new Map(Object.entries(answer.headers).map(([k, v]) => [k.toLowerCase(), v]));
+      const mapLike = { get: (name: string) => headers.get(name.toLowerCase()) };
+      return { ...answer, headers: mapLike as unknown as Headers };
+    };
+    const client = clientFor(transport);
+    const err = await rejectionOf(client.request(jsonRpcCall()));
+
+    expect(err).toBeInstanceOf(AttestationUnavailable);
+    expect((err as AttestationUnavailable).reason).toBe("node-id-missing");
+    expect(client.getConfidentialInfo()).toBeUndefined();
+    expect(node.requests.filter((r) => r.method === "POST")).toHaveLength(0);
+  });
+
   test("a plain-text gateway answer is UnexpectedResponse and is never opened", async () => {
     const node = testNode();
     const transport: ConfidentialTransport = async (request) =>

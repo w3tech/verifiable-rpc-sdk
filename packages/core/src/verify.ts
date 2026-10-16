@@ -97,17 +97,18 @@ export interface VerifiedPair {
 
 /**
  * Case-insensitive header lookup over `Headers | Record<string, string>`.
- * Returns `null` when absent (matching `Headers.get` semantics).
+ * Returns `null` when absent or not a string (matching `Headers.get` semantics).
  */
 export function getHeader(headers: ResponseHeaders, name: string): string | null {
   // Duck-typed: a polyfilled or cross-realm Headers fails instanceof.
   if (typeof (headers as { get?: unknown }).get === "function") {
-    return (headers as Headers).get(name);
+    const value: unknown = (headers as Headers).get(name);
+    return typeof value === "string" ? value : null;
   }
   const lower = name.toLowerCase();
-  for (const [key, value] of Object.entries(headers as Record<string, string>)) {
+  for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
     if (key.toLowerCase() === lower) {
-      return value;
+      return typeof value === "string" ? value : null;
     }
   }
   return null;
