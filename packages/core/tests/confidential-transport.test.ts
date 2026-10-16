@@ -1,3 +1,4 @@
+import { getEventListeners } from "node:events";
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 import { gzipSync } from "node:zlib";
@@ -16,7 +17,7 @@ import {
   TransportFailed,
   UnexpectedResponse,
 } from "../src/errors";
-import { defaultTransport } from "../src/transport";
+import { type ConfidentialTransport, defaultTransport } from "../src/transport";
 import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
@@ -334,30 +335,43 @@ describe("default transport over HTTP", () => {
     expect(h.log.filter((entry) => entry.method === "GET")).toHaveLength(1);
   });
 
-  test("50 warm calls sharing one signal raise no process warning", async () => {
-    const warnings: unknown[] = [];
-    const onWarning = (warning: unknown) => {
-      warnings.push(warning);
-    };
-    process.on("warning", onWarning);
-    cleanups.push(() => {
-      process.off("warning", onWarning);
-    });
+  test("50 warm calls sharing one signal hold one abort listener on it", async () => {
     const h = await harness();
-    const client = clientAt(h);
-    await client.ready();
     const controller = new AbortController();
+    const calls = 50;
+    let entered = 0;
+    const allEntered = deferred();
+    const gate = deferred();
+    const transport: ConfidentialTransport = async (request) => {
+      if (request.method === "POST") {
+        entered += 1;
+        if (entered === calls) allEntered.resolve();
+        await gate.promise;
+      }
+      return defaultTransport(request);
+    };
+    const client = new ConfidentialClient({
+      url: `${h.origin}/eth_vrpc/${KEY}`,
+      chainId: CHAIN_ID,
+      hardwareVerifier: mockHardwareVerifier(),
+      transport,
+    });
+    await client.ready();
 
-    const responses = await Promise.all(
-      Array.from({ length: 50 }, () =>
+    const pending = Promise.all(
+      Array.from({ length: calls }, () =>
         client.request(jsonRpcCall(), { signal: controller.signal }),
       ),
     );
+    await allEntered.promise;
     await new Promise((resolve) => setTimeout(resolve, 0));
+    const inFlight = getEventListeners(controller.signal, "abort").length;
+    gate.resolve();
+    const responses = await pending;
 
+    expect(inFlight).toBe(1);
     expect(responses.every((response) => response.status === 200)).toBe(true);
-    expect(posts(h)).toHaveLength(50);
-    expect(warnings).toEqual([]);
+    expect(posts(h)).toHaveLength(calls);
   });
 });
 
