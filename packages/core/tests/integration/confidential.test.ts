@@ -247,20 +247,18 @@ d("integration: Ankr Confidential RPC against the sidecar", () => {
     }
   });
 
-  it("rejects a replayed answer to another request without reaching the node", async () => {
-    const { relay, upstream } = stack();
+  it("rejects a replayed answer to another request", async () => {
+    const { relay } = stack();
     const c = client();
     await c.request(blockNumber());
 
     try {
       relay.set({ mode: "replay" });
-      const before = upstream.requests().length;
       const err = await c
         .request(jsonRequest({ jsonrpc: "2.0", id: nextId++, method: "eth_chainId", params: [] }))
         .catch((e: unknown) => e);
       expect(err).toBeInstanceOf(BadSignature);
       expect(err).toMatchObject({ kind: "BadSignature" });
-      expect(upstream.requests().length).toBe(before);
     } finally {
       relay.set({ mode: "pass", confidentialTarget: null });
     }

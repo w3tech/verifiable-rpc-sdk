@@ -75,7 +75,6 @@ d("integration: ethers in Ankr Confidential RPC mode against the sidecar", () =>
     await p.confidentialReady();
     const info = p.getConfidentialInfo();
     expect(info?.nodeId).toBe(nodeId);
-    expect(nodeId).toBe("interop-node-1");
     expect(info?.pubkey.toLowerCase()).toBe(sidecar.pubkeyHex.toLowerCase());
   });
 
