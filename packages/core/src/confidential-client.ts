@@ -97,7 +97,8 @@ async function seal(nodeKey: Uint8Array, bhttp: Uint8Array): Promise<SealedReque
   try {
     return await sealRequest(nodeKey, bhttp);
   } catch (err) {
-    if (err instanceof InvalidNodeKey) {
+    // The key shape was checked at attestation, so encap-failed is a platform crypto failure.
+    if (err instanceof InvalidNodeKey && err.reason !== "encap-failed") {
       throw new MalformedAttestationResponse("attested pubkey is not a usable encryption key");
     }
     throw err;
@@ -212,6 +213,7 @@ export class ConfidentialClient {
   /**
    * Sends one inner request sealed to the pinned node; any inner status is returned, not thrown.
    * An abort rejects with `signal.reason`; aborting after the request was sent leaves the outcome unknown.
+   * A failure of the platform crypto while sealing is rethrown as is; nothing was sent.
    */
   async request(
     inner: InnerRequest,

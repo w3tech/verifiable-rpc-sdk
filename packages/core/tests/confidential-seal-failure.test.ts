@@ -61,16 +61,35 @@ describe("sealing failures", () => {
     expect(node.attestations()).toBe(2);
   });
 
-  test("a node key rejected while sealing is MalformedAttestationResponse and drops the pin", async () => {
+  test.each([
+    "malformed",
+    "small-order",
+    "not-torsion-free",
+  ] as const)("a node key rejected while sealing (%s) is MalformedAttestationResponse and drops the pin", async (reason) => {
     const { node, client } = setup();
     await client.request(jsonRpcCall());
-    vi.mocked(sealRequest).mockRejectedValueOnce(new InvalidNodeKey("encap-failed"));
+    vi.mocked(sealRequest).mockRejectedValueOnce(new InvalidNodeKey(reason));
 
     const err = await rejectionOf(client.request(jsonRpcCall()));
     expect(err).toBeInstanceOf(MalformedAttestationResponse);
     expect((err as MalformedAttestationResponse).reason).toBe(
       "attested pubkey is not a usable encryption key",
     );
+
+    await client.request(jsonRpcCall());
+    expect(node.attestations()).toBe(2);
+  });
+
+  test("an encapsulation failure is rethrown unchanged with its cause and drops the pin", async () => {
+    const { node, client } = setup();
+    await client.request(jsonRpcCall());
+    const cause = new Error("platform crypto failure");
+    const failure = new InvalidNodeKey("encap-failed", { cause });
+    vi.mocked(sealRequest).mockRejectedValueOnce(failure);
+
+    const err = await rejectionOf(client.request(jsonRpcCall()));
+    expect(err).toBe(failure);
+    expect((err as InvalidNodeKey).cause).toBe(cause);
 
     await client.request(jsonRpcCall());
     expect(node.attestations()).toBe(2);
