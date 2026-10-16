@@ -2,8 +2,12 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode end to end against the in-test node behind a loopback server.
 
+import { setTimeout as delay } from "node:timers/promises";
+
 import { request } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
+
+import { ConfigError, createProxyServer } from "../src/index";
 
 import {
   type RunningProxy,
@@ -12,7 +16,7 @@ import {
   type TestNodeServer,
   type WireRequest,
 } from "./support/test-node-server";
-import { TEST_CHAIN_ID, TEST_SEED } from "./support/test-overrides";
+import { TEST_CHAIN_ID, TEST_SEED, testConfig } from "./support/test-overrides";
 
 const API_KEY = "test-api-key-1";
 const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
@@ -143,5 +147,78 @@ describe("confidential mode", () => {
     expect(sealed.every((r) => r.query === "node_id=proxy-node-1")).toBe(true);
     expect(gets(node.wire)).toHaveLength(1);
     expect(node.node.attestations()).toBe(1);
+  });
+});
+
+describe("confidential mode startup", () => {
+  test("failedStartupAttestationKeepsServingAndTheNextRequestAttestsAgain", async () => {
+    const node = await startNode();
+    node.node.setAttestation(() => ({
+      status: 503,
+      headers: { "content-type": "text/plain" },
+      body: new Uint8Array(0),
+    }));
+    const running = await startProxy(node);
+    await vi.waitFor(() => expect(node.node.attestations()).toBe(1));
+    await delay(20);
+    expect(running.server.listening).toBe(true);
+
+    const failed = await postRpc(running.url);
+    expect(failed.headers["content-type"]).toBe("application/json");
+    expect(JSON.parse(failed.body.toString()).error.kind).toBe("AttestationUnavailable");
+    expect(node.node.attestations()).toBe(2);
+    expect(posts(node.wire)).toHaveLength(0);
+
+    node.node.setAttestation();
+    const ok = await postRpc(running.url);
+    expect(ok.status).toBe(200);
+    expect(ok.body.toString()).toBe(RPC_ANSWER);
+    expect(node.node.attestations()).toBe(3);
+    expect(posts(node.wire)).toHaveLength(1);
+  });
+
+  test("requestDuringStartupAttestationJoinsIt", async () => {
+    const node = await startNode();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    node.node.setAttestation(async (context) => {
+      await gate;
+      return context.normal();
+    });
+    const running = await startProxy(node);
+    await vi.waitFor(() => expect(node.node.attestations()).toBe(1));
+
+    const arrived = new Promise((resolve) => running.server.once("request", resolve));
+    const pending = postRpc(running.url);
+    await arrived;
+    await delay(50);
+    release();
+
+    const res = await pending;
+    expect(res.status).toBe(200);
+    expect(gets(node.wire)).toHaveLength(1);
+    expect(posts(node.wire)).toHaveLength(1);
+  });
+
+  test("invalidClientOptionsAreAConfigErrorBeforeListen", () => {
+    const upstream = "http://127.0.0.1:1/test_vrpc";
+    const badKey = "bad\nkey";
+    const build = (overrides: Parameters<typeof testConfig>[1]) => () =>
+      createProxyServer(testConfig(upstream, { confidential: true, ...overrides }));
+
+    const badHeader = build({ attestationHeaders: { "x-api-key": badKey } });
+    expect(badHeader).toThrow(ConfigError);
+    let message = "";
+    try {
+      badHeader();
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).not.toBe("");
+    expect(message).not.toContain("bad");
+    expect(build({ replayWindowMs: 1.5 })).toThrow(ConfigError);
+    expect(build({ pubkeyCacheTtlMs: Number.POSITIVE_INFINITY })).toThrow(ConfigError);
   });
 });

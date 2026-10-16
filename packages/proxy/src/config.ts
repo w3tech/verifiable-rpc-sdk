@@ -89,6 +89,18 @@ function parseListen(value: string): { host: string; port: number } {
   return { host, port };
 }
 
+// An unrecognised value is an error, never a silent fall back to open mode.
+function parseConfidential(flag: boolean | undefined, env: string | undefined): boolean {
+  if (flag === true) return true;
+  if (env === undefined || env === "") return false;
+  const value = env.toLowerCase();
+  if (value === "1" || value === "true") return true;
+  if (value === "0" || value === "false") return false;
+  throw new ConfigError(
+    `VRPC_PROXY_CONFIDENTIAL must be 1, true, 0 or false (or pass --confidential), got ${JSON.stringify(env)}`,
+  );
+}
+
 /**
  * Parse and validate the proxy configuration from CLI argv and environment.
  * Throws ConfigError for any transport/config problem and lets core's
@@ -200,7 +212,7 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   if (apiKey !== undefined && apiKey !== "") {
     config.apiKey = apiKey;
   }
-  if (values.confidential === true) {
+  if (parseConfidential(values.confidential, env.VRPC_PROXY_CONFIDENTIAL)) {
     config.confidential = true;
   }
   if (upstreamParsed.search !== "") {
