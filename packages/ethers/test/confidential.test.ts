@@ -2,9 +2,11 @@
 // a loopback HTTP server: wire shape, results and errors equal to open mode, configuration errors,
 // eager attestation and concurrency.
 
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { UnexpectedResponse } from "@w3tech.io/vrpc-core";
 import { InvalidChainId, type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
-import { FetchRequest, isError, toUtf8String } from "ethers";
+import { AbiCoder, EnsResolver, FetchRequest, isError, toUtf8String } from "ethers";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createTestNode,
@@ -505,5 +507,75 @@ describe("concurrency", () => {
     expect(balances).toEqual(Array.from({ length: 10 }, (_, n) => BigInt(n + 1)));
     expect(server.requests.filter((r) => r.method === "GET")).toHaveLength(1);
     expect(posts(server)).toBe(10);
+  });
+});
+
+describe("CCIP-Read", () => {
+  const OFFCHAIN_LOOKUP = "0x556f1830";
+  const RESOLVER = "0x00000000000000000000000000000000c0ffee01";
+
+  async function gateway(): Promise<{ url: string; hits: string[] }> {
+    const hits: string[] = [];
+    const server = createServer((req, res) => {
+      hits.push(`${req.method} ${req.url}`);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end('{"data":"0x"}');
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
+    const { port } = server.address() as AddressInfo;
+    return { url: `http://127.0.0.1:${port}`, hits };
+  }
+
+  // Every eth_call reverts with OffchainLookup naming the gateway, as an off-chain resolver does.
+  function offchainLookup(gatewayUrl: string): Upstream {
+    return (body) => {
+      const parsed = JSON.parse(body) as RpcCall | RpcCall[];
+      const answer = (call: RpcCall) => {
+        if (call.method !== "eth_call") return { jsonrpc: "2.0", id: call.id, result: "0x10" };
+        const to = (call.params[0] as { to: string }).to;
+        const data =
+          OFFCHAIN_LOOKUP +
+          AbiCoder.defaultAbiCoder()
+            .encode(
+              ["address", "string[]", "bytes", "bytes4", "bytes"],
+              [to, [`${gatewayUrl}/{sender}/{data}.json`], "0x5e17e1a1", "0x12345678", "0x"],
+            )
+            .slice(2);
+        return {
+          jsonrpc: "2.0",
+          id: call.id,
+          error: { code: 3, message: "execution reverted", data },
+        };
+      };
+      return json(Array.isArray(parsed) ? parsed.map(answer) : answer(parsed));
+    };
+  }
+
+  test("an OffchainLookup revert fails with CALL_EXCEPTION and nothing is fetched", async () => {
+    const { url, hits } = await gateway();
+    const { server } = await harness(offchainLookup(url));
+    const provider = confidentialProvider(keyedRequest(server));
+
+    const [err] = await rejections([
+      provider.call({ to: RESOLVER, data: "0x5e17e1a1", enableCcipRead: true }),
+    ]);
+
+    expect(hits).toEqual([]);
+    expect(isError(err, "CALL_EXCEPTION")).toBe(true);
+    expect(server.requests.map((r) => r.method)).toEqual(["GET", "POST"]);
+  });
+
+  test("an ENS name with an off-chain resolver does not resolve and nothing is fetched", async () => {
+    const { url, hits } = await gateway();
+    const { server } = await harness(offchainLookup(url));
+    const provider = confidentialProvider(keyedRequest(server));
+
+    const resolver = new EnsResolver(provider, RESOLVER, "offchain.eth");
+
+    await expect(resolver.getAddress()).resolves.toBeNull();
+    expect(hits).toEqual([]);
+    expect(server.requests.every((r) => r.method === "GET" || r.method === "POST")).toBe(true);
+    expect(posts(server)).toBeGreaterThan(0);
   });
 });

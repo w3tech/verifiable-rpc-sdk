@@ -156,6 +156,8 @@ export class VrpcProvider extends JsonRpcProvider {
         }),
       );
     if (confidential === true && chainId !== undefined) {
+      // CCIP-Read would send the call data in plaintext to a URL the contract names.
+      this.disableCcipRead = true;
       this.#confidential = new ConfidentialHolder(
         pruneUndefined<ConfidentialClientOptions>({
           url: urls.rpcUrl,

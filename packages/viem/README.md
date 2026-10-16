@@ -293,10 +293,23 @@ the ethers adapter's stance.
 
 ## Ankr Confidential RPC mode
 
-`vrpcHttp(url, { confidential: true })` sends every call encrypted to an
-attested node; only the encrypted request leaves your process. The client must
-declare `chain`; without it `createPublicClient` throws. One `vrpcHttp()`
-instance serves one chain.
+`vrpcHttp(url, { confidential: true })` sends every JSON-RPC call encrypted to
+an attested node. The client must declare `chain`; without it
+`createPublicClient` throws. One `vrpcHttp()` instance serves one chain.
+
+**Turn off CCIP-Read.** CCIP-Read (EIP-3668) requests go to the gateway URL a
+contract names, in plaintext and outside Ankr Confidential RPC: viem sends
+`{ sender, data }` there for any `call` that reverts with `OffchainLookup`, and
+it is on by default. The transport cannot change a client option; create the
+client with `ccipRead: false` to keep every request encrypted.
+
+```ts
+const client = createPublicClient({
+  chain: arbitrum,
+  transport: vrpcHttp(url, { confidential: true }),
+  ccipRead: false,
+});
+```
 
 `await client.transport.ready()` attests up front;
 `client.transport.getConfidentialInfo()` returns the pinned node. The first call

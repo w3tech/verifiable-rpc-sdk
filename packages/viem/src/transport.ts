@@ -32,8 +32,10 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
 }
 
 /**
- * Ankr Confidential RPC mode: every call is sealed to an attested node and only ciphertext leaves
- * the process. The client must declare `chain`; one transport binds one chain.
+ * Ankr Confidential RPC mode: every JSON-RPC call is sealed to an attested node. CCIP-Read
+ * requests go to the gateway a contract names in plaintext; create the client with
+ * `ccipRead: false` to keep every request encrypted. The client must declare `chain`; one
+ * transport binds one chain.
  * `client.transport.ready()` attests up front and `getConfidentialInfo()` reports the pinned node.
  */
 export function vrpcHttp(

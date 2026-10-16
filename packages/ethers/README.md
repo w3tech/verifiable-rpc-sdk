@@ -222,12 +222,19 @@ exactly as you would on a stock `JsonRpcProvider`.
 
 ## Ankr Confidential RPC mode
 
-`new VrpcProvider(url, chainId, { confidential: true })` sends every call
-encrypted to an attested node; only the encrypted request leaves your process.
+`new VrpcProvider(url, chainId, { confidential: true })` sends every JSON-RPC
+call encrypted to an attested node.
 The chain id is required and must be decimal. `await provider.confidentialReady()`
 attests up front; `provider.getConfidentialInfo()` returns the pinned node. Auth
 headers, credentials and the timeout come from the `FetchRequest` you pass as the
 URL and apply to both requests; the `fetch` option is not used in this mode.
+
+**CCIP-Read is off.** CCIP-Read (EIP-3668) would send `{ sender, data }` in
+plaintext to a gateway URL the contract names, so the provider sets
+`disableCcipRead`: a call that reverts with `OffchainLookup` fails with
+`CALL_EXCEPTION`, and ENS names with off-chain resolvers do not resolve. Do not
+set it back to `false`. ENS avatar and IPFS metadata fetches are not JSON-RPC
+calls and still go out in plaintext.
 
 **Do not combine with a provider that is not in Ankr Confidential RPC mode.**
 ethers `FallbackProvider` sends calls to its other providers in plaintext: it
