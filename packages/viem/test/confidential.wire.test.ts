@@ -418,4 +418,30 @@ describe("errors carry neither the key, the params, the inner body nor body byte
     expect(walkFind(err, core)).toBeInstanceOf(core);
     expectSanitised(err, sent);
   });
+
+  test("a custom fetchFn that throws with the keyed URL in its message", async () => {
+    const server = await serve();
+    const fetchFn: typeof fetch = async (input, init) => {
+      if (init?.method !== "POST") return fetch(input, init);
+      const url = String(input);
+      throw Object.assign(new Error(`request to ${url} failed, reason: socket hang up`), {
+        code: "ECONNRESET",
+        cause: new Error(`connect to ${url}`),
+      });
+    };
+    const client = createPublicClient({
+      chain: arbitrum,
+      transport: confidential(`${server.url}/eth_vrpc/${KEY}`, { fetchFn }),
+    });
+
+    const err = await rejection(client.request(sweepRequest as never));
+
+    const failed = walkFind(err, TransportFailed);
+    expect(failed?.reason).toBe("network");
+    expect((failed?.cause as { code?: string } | undefined)?.code).toBe("ECONNRESET");
+    expectSanitised(err, []);
+    for (const item of chain(err)) {
+      for (const form of textForms(item)) expect(form).not.toContain("/eth_vrpc/");
+    }
+  });
 });

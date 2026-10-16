@@ -13,25 +13,44 @@ import { HttpRequestError, RpcRequestError } from "viem";
 
 import type { VrpcHttpOptions } from "./options";
 
+// A fetch error message may quote the keyed URL; keep a fixed message and the error code only.
+function sanitised(err: unknown): Error {
+  const out = new Error("The request failed.");
+  const code = errorCode(err) ?? errorCode((err as { cause?: unknown } | null)?.cause);
+  if (code !== undefined) Object.assign(out, { code });
+  return out;
+}
+
+function errorCode(err: unknown): string | undefined {
+  const code =
+    typeof err === "object" && err !== null ? (err as { code?: unknown }).code : undefined;
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]*$/.test(code) ? code : undefined;
+}
+
 /** Sends each outer request once through `fetchFn` (or the global fetch at call time), never following a redirect. */
 export function fetchTransport(fetchFn: VrpcHttpOptions["fetchFn"]): ConfidentialTransport {
   return async (request) => {
     const send = fetchFn ?? globalThis.fetch;
-    const response = await send(request.url, {
-      method: request.method,
-      headers: request.headers,
-      redirect: "manual",
-      ...(request.body === undefined ? {} : { body: request.body }),
-      ...(request.signal === undefined ? {} : { signal: request.signal }),
-    });
-    if (response.type === "opaqueredirect") {
-      return { status: 0, headers: new Headers(), body: new Uint8Array(0) };
+    try {
+      const response = await send(request.url, {
+        method: request.method,
+        headers: request.headers,
+        redirect: "manual",
+        ...(request.body === undefined ? {} : { body: request.body }),
+        ...(request.signal === undefined ? {} : { signal: request.signal }),
+      });
+      if (response.type === "opaqueredirect") {
+        return { status: 0, headers: new Headers(), body: new Uint8Array(0) };
+      }
+      return {
+        status: response.status,
+        headers: response.headers,
+        body: new Uint8Array(await response.arrayBuffer()),
+      };
+    } catch (err) {
+      if (request.signal?.aborted) throw request.signal.reason;
+      throw sanitised(err);
     }
-    return {
-      status: response.status,
-      headers: response.headers,
-      body: new Uint8Array(await response.arrayBuffer()),
-    };
   };
 }
 
