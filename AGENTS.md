@@ -67,9 +67,9 @@ simulator fixtures are not self-consistent); it is test code only.
 | `DSTACK_SIMULATOR_FIXTURES_DIR` | `/path/to/dstack/sdk/simulator`                                 |
 | `SIDECAR_BIN`                   | `/path/to/verifiable-rpc-sidecar/target/debug/rpc-attest-sidecar` |
 
-The simulator is built from the public `Dstack-TEE/dstack` repo with
-`cargo build --release -p dstack-guest-agent-simulator`; its fixtures are that repo's
-`sdk/simulator` directory.
+The simulator is built from the public `Dstack-TEE/dstack` repo at commit `9c50e19`
+(`git checkout 9c50e19 && cargo build --release -p dstack-guest-agent-simulator`); its fixtures
+are that commit's `sdk/simulator` directory, the source of `attestation-v0.1.0.json` (below).
 
 Build the sidecar with `cargo build` in the sibling `verifiable-rpc-sidecar`
 repo before running integration tests. The debug binary is fine — release is

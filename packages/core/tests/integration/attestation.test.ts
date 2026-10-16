@@ -111,6 +111,8 @@ d("integration: attestation", () => {
     }
 
     // composeHash stable under same simulator config (typically "").
+    // The simulator's attestation.bin bakes a compose hash its app-compose.json does not hash to,
+    // so the saved composeHash != sha256(app_compose) is expected; do not edit the fixture by hand.
     if (saved.composeHash !== att.composeHash) {
       throw new Error(
         `fixture mismatch at $.composeHash: saved=${saved.composeHash} live=${att.composeHash}`,
