@@ -29,6 +29,7 @@ import {
   ProxyError,
   UnsupportedMediaTypeError,
   UpstreamBodyTooLargeError,
+  UpstreamConnectError,
   UpstreamTimeoutError,
 } from "./errors";
 import type { ProxyLogger } from "./logger";
@@ -63,9 +64,14 @@ export function createConfidentialTransport(
     }
     // Every value is appended so core sees repeated fields and classifies them itself.
     const headers = new Headers();
-    for (const [name, value] of Object.entries(res.headers)) {
-      if (value === undefined) continue;
-      for (const v of Array.isArray(value) ? value : [value]) headers.append(name, v);
+    try {
+      for (const [name, value] of Object.entries(res.headers)) {
+        if (value === undefined) continue;
+        for (const v of Array.isArray(value) ? value : [value]) headers.append(name, v);
+      }
+    } catch {
+      res.body.destroy();
+      throw new UpstreamConnectError("Upstream sent an invalid header");
     }
     let raw: Buffer;
     try {
