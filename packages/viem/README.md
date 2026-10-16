@@ -331,7 +331,9 @@ not retry; otherwise it follows a redirect or resends the encrypted request and
 the API key itself.
 
 **Response size.** The transport stops reading an answer past 192 MiB and the
-call fails with `TransportFailed`, with your `fetchFn` too.
+call fails with `TransportFailed`, with your `fetchFn` too. A response without a
+web stream body (node-fetch, a fetch polyfill) is read in full first, so the
+limit is checked only after the answer is in memory.
 
 **Errors.**
 

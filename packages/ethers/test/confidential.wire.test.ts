@@ -464,3 +464,64 @@ describe("response size cap", () => {
     expect(seen.pulled).toBeLessThanOrEqual(CAP + 2 * CHUNK.byteLength);
   });
 });
+
+describe("responses without a web stream body", () => {
+  const CAP = 201_326_592;
+
+  // A fetch polyfill (whatwg-fetch, React Native) answers with no stream body.
+  function streamless(
+    status: number,
+    headers: Headers,
+    bytes: Uint8Array,
+    seen: { buffered: number },
+  ): Response {
+    return {
+      status,
+      statusText: "",
+      ok: status >= 200 && status < 300,
+      type: "basic",
+      headers,
+      body: undefined,
+      arrayBuffer: async () => {
+        seen.buffered += 1;
+        return bytes.slice().buffer;
+      },
+    } as unknown as Response;
+  }
+
+  test("the body is read in full", async () => {
+    const server = await serve();
+    const seen = { buffered: 0 };
+    const original = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const response = await original(input, init);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      return streamless(response.status, response.headers, bytes, seen);
+    });
+    const { provider } = build("string URL", server.url);
+
+    await expect(provider.getBlockNumber()).resolves.toBe(16);
+    expect(seen.buffered).toBe(server.requests.length);
+    expect(count(server, isPost)).toBe(1);
+  });
+
+  test.each([
+    ["declared", { "content-length": `${CAP + 1}` }, 0] as const,
+    ["read", {}, CAP + 1] as const,
+  ])("a body past the cap (%s) fails the call", async (past, headers, size) => {
+    const server = await serve();
+    const seen = { buffered: 0 };
+    const original = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (init?.method !== "POST") return original(input, init);
+      return streamless(200, new Headers(headers), new Uint8Array(size), seen);
+    });
+    const { provider } = build("string URL", server.url);
+
+    const err = await rejection(provider.getBlockNumber());
+
+    expect(err).toBeInstanceOf(TransportFailed);
+    expect((err as TransportFailed).reason).toBe("network");
+    expect(seen.buffered).toBe(past === "read" ? 1 : 0);
+  });
+});

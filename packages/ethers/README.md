@@ -259,9 +259,9 @@ resent the encrypted request and the API key. In a browser build it with
 `FetchRequest.createGetUrlFunc({ redirect: "manual" })`.
 
 **Response size.** Without a `getUrlFunc` of your own, both requests go through
-`fetch` and the SDK stops reading an answer past 192 MiB. A `getUrlFunc` you set
-reads the whole answer before the SDK sees it, so the limit is checked only
-after the answer is in memory.
+`fetch` and the SDK stops reading an answer past 192 MiB. A `getUrlFunc` you set,
+or a `fetch` without a stream body (a polyfill, React Native), reads the whole
+answer first, so the limit is checked only after the answer is in memory.
 
 **Errors.**
 

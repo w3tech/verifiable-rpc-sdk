@@ -25,14 +25,22 @@ class ResponseTooLarge extends Error {
 
 // With an encoding, content-length is the encoded size; the runtime hands over decoded bytes.
 async function readCapped(response: Response): Promise<Uint8Array> {
+  const body = response.body as ReadableStream<Uint8Array> | null | undefined;
+  // node-fetch hands over a Node Readable, whatwg-fetch and React Native no body at all.
+  const stream = typeof body?.getReader === "function" ? body : undefined;
   const encoding = (response.headers.get("content-encoding") ?? "identity").trim().toLowerCase();
   const declared = Number(response.headers.get("content-length"));
   if ((encoding === "" || encoding === "identity") && declared > MAX_RESPONSE_BYTES) {
-    await response.body?.cancel();
+    await stream?.cancel();
     throw new ResponseTooLarge();
   }
-  if (response.body === null) return new Uint8Array(0);
-  const reader = response.body.getReader();
+  if (body === null) return new Uint8Array(0);
+  if (stream === undefined) {
+    const buffered = new Uint8Array(await response.arrayBuffer());
+    if (buffered.byteLength > MAX_RESPONSE_BYTES) throw new ResponseTooLarge();
+    return buffered;
+  }
+  const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
   for (;;) {

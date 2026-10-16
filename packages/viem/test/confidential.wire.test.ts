@@ -4,6 +4,7 @@
 
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { Readable } from "node:stream";
 import {
   AttestationUnavailable,
   RequestRejected,
@@ -488,5 +489,74 @@ describe("response size cap", () => {
     expect(walkFind(err, TransportFailed)).toBeInstanceOf(TransportFailed);
     expect(seen.cancelled).toBe(true);
     expect(seen.pulled).toBeLessThanOrEqual(CAP + 2 * CHUNK.byteLength);
+  });
+});
+
+describe("responses without a web stream body", () => {
+  const CAP = 201_326_592;
+  type Shape = "a Node Readable" | "an absent";
+  const SHAPES: Shape[] = ["a Node Readable", "an absent"];
+
+  // node-fetch answers with a Node Readable body, whatwg-fetch and React Native with none.
+  function streamless(
+    shape: Shape,
+    status: number,
+    headers: Headers,
+    bytes: Uint8Array,
+    seen: { buffered: number },
+  ): Response {
+    return {
+      status,
+      statusText: "",
+      ok: status >= 200 && status < 300,
+      type: "basic",
+      headers,
+      body: shape === "an absent" ? undefined : Readable.from([bytes]),
+      arrayBuffer: async () => {
+        seen.buffered += 1;
+        return bytes.slice().buffer;
+      },
+    } as unknown as Response;
+  }
+
+  test.each(SHAPES)("%s body is read in full", async (shape) => {
+    const server = await serve();
+    const seen = { buffered: 0 };
+    const fetchFn: typeof fetch = async (input, init) => {
+      const response = await fetch(input, init);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      return streamless(shape, response.status, response.headers, bytes, seen);
+    };
+    const client = createPublicClient({
+      chain: arbitrum,
+      transport: confidential(server.url, { fetchFn }),
+    });
+
+    await expect(client.request({ method: "eth_blockNumber" })).resolves.toBe("0x10");
+    expect(seen.buffered).toBe(server.requests.length);
+    expect(count(server, isPost)).toBe(1);
+  });
+
+  test.each(
+    SHAPES.flatMap((shape) => [
+      [shape, "declared", { "content-length": `${CAP + 1}` }, 0] as const,
+      [shape, "read", {}, CAP + 1] as const,
+    ]),
+  )("%s body past the cap (%s) fails the call", async (shape, past, headers, size) => {
+    const server = await serve();
+    const seen = { buffered: 0 };
+    const fetchFn: typeof fetch = async (input, init) => {
+      if (init?.method !== "POST") return fetch(input, init);
+      return streamless(shape, 200, new Headers(headers), new Uint8Array(size), seen);
+    };
+    const client = createPublicClient({
+      chain: arbitrum,
+      transport: confidential(server.url, { fetchFn }),
+    });
+
+    const err = await rejection(client.request({ method: "eth_blockNumber" }));
+
+    expect(walkFind(err, TransportFailed)?.reason).toBe("network");
+    expect(seen.buffered).toBe(past === "read" ? 1 : 0);
   });
 });
