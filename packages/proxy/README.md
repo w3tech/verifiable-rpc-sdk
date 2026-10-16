@@ -148,7 +148,9 @@ unchanged (`127.0.0.1:8969` with npx, `0.0.0.0:8969` in the image) and the
 proxy prints no warning.
 
 Sent upstream: only the configured API key, `content-type: message/ohttp-req`
-and `accept-encoding: identity`. No client header is forwarded.
+and `accept-encoding: identity`. No client header is sent to the gateway. Only
+the request's `content-type` and `accept`, with its method, path, query and
+body, travel inside the encrypted request to the node.
 
 Relayed to the client: the node's status, `content-type`, a computed
 `content-length` and the body. No `vRPC-*` or other upstream header.
