@@ -84,8 +84,8 @@ SIDECAR_BIN=/path/to/verifiable-rpc-sidecar/target/debug/rpc-attest-sidecar \
   pnpm --filter @w3tech.io/vrpc-core --filter @w3tech.io/vrpc-ethers --filter @w3tech.io/vrpc-viem --filter @w3tech.io/vrpc-proxy test:integration
 ```
 
-`pnpm -r test` (no env vars) runs the unit suite only and emits a one-line skip
-message at module load. `pnpm -r test` with all three env vars set runs the unit
+`pnpm -r test` (no env vars) runs the unit suite only and logs a one-line skip
+message (visible with `--reporter=verbose`). `pnpm -r test` with all three env vars set runs the unit
 suite plus the integration suite.
 
 The open-mode integration suites cover the happy path and the canonical attestation
