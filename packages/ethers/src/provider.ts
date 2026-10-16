@@ -29,7 +29,12 @@ import {
   toUtf8String,
 } from "ethers";
 
-import { ConfidentialHolder, fetchRequestTransport, sendConfidential } from "./confidential";
+import {
+  ConfidentialHolder,
+  fetchRequestTransport,
+  requirePositiveMs,
+  sendConfidential,
+} from "./confidential";
 import type { VrpcOptions } from "./options";
 
 // Drop `undefined`-valued keys: `exactOptionalPropertyTypes` forbids passing an
@@ -129,6 +134,8 @@ export class VrpcProvider extends JsonRpcProvider {
           "Ankr Confidential RPC mode with ethers needs a decimal chain id",
         );
       }
+      requirePositiveMs("replayWindowMs", replayWindowMs);
+      requirePositiveMs("pubkeyCacheTtlMs", pubkeyCacheTtlMs);
     }
 
     // staticNetwork (pin only) skips ethers' startup eth_chainId probe without

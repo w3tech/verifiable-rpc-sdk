@@ -432,6 +432,11 @@ describe("configuration errors", () => {
     expect(make(-1, { confidential: true })).toThrow(InvalidChainId);
     expect(make(42161, { confidential: "true" })).toThrow(TypeError);
     expect(make(42161, { confidential: 1 })).toThrow(TypeError);
+    for (const name of ["replayWindowMs", "pubkeyCacheTtlMs"]) {
+      for (const value of [0, -1, 1.5, Number.POSITIVE_INFINITY]) {
+        expect(make(42161, { confidential: true, [name]: value })).toThrow(RangeError);
+      }
+    }
 
     let urlError: unknown;
     try {

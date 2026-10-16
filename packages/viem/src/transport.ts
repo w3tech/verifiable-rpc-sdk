@@ -22,7 +22,13 @@ import type {
 } from "@w3tech.io/vrpc-core/confidential";
 import { createTransport, HttpRequestError, RpcRequestError, type Transport } from "viem";
 
-import { ConfidentialHolder, fetchTransport, linkSignal, mapInnerResponse } from "./confidential";
+import {
+  ConfidentialHolder,
+  fetchTransport,
+  linkSignal,
+  mapInnerResponse,
+  requirePositiveMs,
+} from "./confidential";
 import type { VrpcHttpOptions } from "./options";
 
 // Drop `undefined`-valued keys: `exactOptionalPropertyTypes` forbids passing an
@@ -238,6 +244,8 @@ function confidentialHttp(
     // The platform error echoes the URL, which may carry the API key.
     throw new TypeError("Invalid vRPC URL");
   }
+  requirePositiveMs("replayWindowMs", opts.replayWindowMs);
+  requirePositiveMs("pubkeyCacheTtlMs", opts.pubkeyCacheTtlMs);
   const origin = new URL(rpcUrl).origin;
   let holder: ConfidentialHolder | undefined;
   let boundChainId: string | undefined;

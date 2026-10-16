@@ -96,6 +96,13 @@ export function fetchTransport(fetchFn: VrpcHttpOptions["fetchFn"]): Confidentia
   };
 }
 
+/** The core client's check, run in the constructor so a bad value throws before any call. */
+export function requirePositiveMs(name: string, value: number | undefined): void {
+  if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0)) {
+    throw new RangeError(`${name} must be a positive integer number of milliseconds`);
+  }
+}
+
 /** One lazily loaded client per vrpcHttp(); a failed load or construction is retried on next use. */
 export class ConfidentialHolder {
   readonly #options: ConfidentialClientOptions;

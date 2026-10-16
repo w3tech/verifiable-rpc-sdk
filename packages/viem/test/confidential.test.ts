@@ -546,6 +546,21 @@ describe("configuration errors", () => {
     expect(consoleCalls()).toBe(0);
   });
 
+  test("an invalid replay window or key cache TTL throws RangeError from vrpcHttp", async () => {
+    const { server } = await harness();
+    const consoleCalls = spyConsole();
+
+    for (const name of ["replayWindowMs", "pubkeyCacheTtlMs"]) {
+      for (const value of [0, -1, 1.5, Number.POSITIVE_INFINITY]) {
+        expect(() =>
+          vrpcHttp(`${server.url}/eth_vrpc`, { confidential: true, [name]: value }),
+        ).toThrow(RangeError);
+      }
+    }
+    expect(server.requests).toEqual([]);
+    expect(consoleCalls()).toBe(0);
+  });
+
   test("an unparsable URL throws Invalid vRPC URL without echoing it", () => {
     const consoleCalls = spyConsole();
     let caught: unknown;
