@@ -92,7 +92,7 @@ CLI flag wins over env var, env var wins over the default.
 | `--listen` | `VRPC_PROXY_LISTEN` | `127.0.0.1:8969` | Listen `host:port` |
 | `--timeout` | `VRPC_PROXY_TIMEOUT` | `30000` | Upstream timeout, ms |
 | `--replay-window` | `VRPC_PROXY_REPLAY_WINDOW` | core default (`60000`) | Replay window, ms |
-| `--attestation-cache-ttl` | `VRPC_PROXY_ATTESTATION_CACHE_TTL` | core default (`3600000`) | How long a verified attestation (per signing pubkey) is reused before re-attestation, ms |
+| `--attestation-cache-ttl` | `VRPC_PROXY_ATTESTATION_CACHE_TTL` | core default (`3600000`) | How long a verified attestation (per signing pubkey) is reused before re-attestation, ms. In Ankr Confidential RPC mode: how long the pinned node is kept |
 | `--log-level` | `VRPC_PROXY_LOG_LEVEL` | `error` | `silent` (nothing), `error` (fail-closed reasons only), or `debug` (per-request forward/verify trace) |
 | `--max-body-bytes` | `VRPC_PROXY_MAX_BODY_BYTES` | `33554432` (32 MiB) | Request/response body cap |
 | `--confidential` | `VRPC_PROXY_CONFIDENTIAL` | off | Ankr Confidential RPC mode (see below). The env var accepts `1`, `true`, `0`, `false` (any case); any other value stops the proxy at startup |
@@ -133,9 +133,11 @@ In open mode, verified responses are relayed verbatim — body bytes, `Content-E
 ## Ankr Confidential RPC mode
 
 With `--confidential`, the proxy attests one node at startup through the
-upstream's `/attestation` route and pins it for the life of the process. Every
-client request — JSON-RPC, batch or any REST path — is sealed to that node and
-sent to `<upstream>/confidential`. The answer is verified against the pinned
+upstream's `/attestation` route and pins it. The pin is kept until
+`--attestation-cache-ttl` expires or a request fails; the next request then
+attests again and may pin a different node. Every client request — JSON-RPC,
+batch or any REST path — is sealed to that node and sent to
+`<upstream>/confidential`. The answer is verified against the pinned
 node and decrypted before it is relayed. One proxy pins one node; run more
 proxies to scale.
 
