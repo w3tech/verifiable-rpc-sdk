@@ -31,6 +31,8 @@ jobs:
       - run: pnpm -r typecheck
       - run: pnpm -r build
       - run: pnpm -r test
+        env:
+          REQUIRE_DIST: '1'
 
   node-floor:
     runs-on: ubuntu-latest

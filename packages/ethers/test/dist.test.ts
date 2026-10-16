@@ -54,6 +54,11 @@ const quoted = ENTRY.replace(/[./]/g, "\\$&");
 const DYNAMIC = new RegExp(`\\bimport\\s*\\(\\s*["']${quoted}["']`);
 const STATIC = new RegExp(`(?:\\bfrom\\s*|\\bimport\\s+)["']${quoted}["']`);
 
+// CI builds before testing and sets REQUIRE_DIST, so a missing build fails there instead of skipping.
+test.runIf(process.env.REQUIRE_DIST === "1")("the package and core are built", () => {
+  expect(built).toBe(true);
+});
+
 describe.skipIf(!built)("built package", () => {
   test("the confidential entry is imported dynamically only", () => {
     const files = readdirSync(distDir).filter((name) => name.endsWith(".js"));
