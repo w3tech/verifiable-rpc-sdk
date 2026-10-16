@@ -337,7 +337,8 @@ call fails with `TransportFailed`, with your `fetchFn` too.
 
 - Core errors reach viem actions wrapped in viem's `UnknownRpcError`; find them
   with `err.walk()`.
-- An inner `{ error }` answer is `RpcRequestError`.
+- An inner `{ error }` answer becomes `RpcRequestError`, which viem maps by code
+  exactly as with `http` (for example to `InternalRpcError`).
 - An inner non-2xx answer is `HttpRequestError`, or `RpcRequestError` when its
   body is a JSON-RPC error.
 
