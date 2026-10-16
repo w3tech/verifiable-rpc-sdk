@@ -15,16 +15,15 @@ import {
 } from "./bhttp";
 import {
   ConfidentialDecryptFailed,
+  ConfidentialSealFailed,
   ConfidentialSignerMismatch,
   InvalidInnerRequest,
-  MalformedAttestationResponse,
   MalformedConfidentialResponse,
   RequestRejected,
   TransportFailed,
   UnexpectedResponse,
 } from "./errors";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
-import { InvalidNodeKey } from "./node-key";
 import { attestNode, errorKind, type Pin, PinSlot } from "./node-session";
 import {
   OhttpError,
@@ -100,12 +99,9 @@ async function encode(inner: InnerRequest): Promise<Uint8Array> {
 async function seal(nodeKey: Uint8Array, bhttp: Uint8Array): Promise<SealedRequest> {
   try {
     return await sealRequest(nodeKey, bhttp);
-  } catch (err) {
-    // The key shape was checked at attestation, so encap-failed is a platform crypto failure.
-    if (err instanceof InvalidNodeKey && err.reason !== "encap-failed") {
-      throw new MalformedAttestationResponse("attested pubkey is not a usable encryption key");
-    }
-    throw err;
+  } catch (cause) {
+    // The key was validated and derived at attestation, so any failure here is the local runtime's.
+    throw new ConfidentialSealFailed({ cause });
   }
 }
 
@@ -217,7 +213,7 @@ export class ConfidentialClient {
   /**
    * Sends one inner request sealed to the pinned node; any inner status is returned, not thrown.
    * An abort rejects with `signal.reason`; aborting after the request was sent leaves the outcome unknown.
-   * A failure of the platform crypto while sealing is rethrown as is; nothing was sent.
+   * A failure of the local crypto runtime while sealing is `ConfidentialSealFailed`; nothing was sent.
    */
   async request(
     inner: InnerRequest,

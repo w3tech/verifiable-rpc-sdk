@@ -6,6 +6,7 @@ import {
   AttestationUnavailable,
   BadSignature,
   ConfidentialDecryptFailed,
+  ConfidentialSealFailed,
   ConfidentialSignerMismatch,
   InvalidChainId,
   InvalidInnerRequest,
@@ -312,6 +313,20 @@ describe("errors", () => {
     const cause = new TypeError("fetch failed");
     expect(new TransportFailed("network", "node-1", { cause }).cause).toBe(cause);
     expect("cause" in new TransportFailed("too-large", "node-1")).toBe(false);
+  });
+
+  test("confidentialSealFailedIsUnavailableNotExecutedAndKeepsCause", () => {
+    const cause = new Error("platform crypto failure");
+    const err = new ConfidentialSealFailed({ cause });
+    expect(err instanceof UnavailableError).toBe(true);
+    expect(err instanceof VerificationError).toBe(false);
+    expect(err.kind).toBe("ConfidentialSealFailed");
+    expect(err.name).toBe("ConfidentialSealFailed");
+    expect(err.executed).toBe("no");
+    expect(err.cause).toBe(cause);
+    expect(err.message).toBe(
+      "Confidential request could not be sealed by the local crypto runtime",
+    );
   });
 
   test("confidentialDecryptAndMalformedResponseAreVerificationKinds", () => {

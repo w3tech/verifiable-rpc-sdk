@@ -289,7 +289,8 @@ export type UnavailableErrorKind =
   | "AttestationUnavailable"
   | "RequestRejected"
   | "UnexpectedResponse"
-  | "TransportFailed";
+  | "TransportFailed"
+  | "ConfidentialSealFailed";
 
 /** Base of the errors raised when a confidential call got no verifiable answer. */
 export abstract class UnavailableError extends Error {
@@ -385,5 +386,15 @@ export class TransportFailed extends UnavailableError {
     options?: { cause?: unknown },
   ) {
     super(`Confidential request failed in transport: ${reason}`, options);
+  }
+}
+
+/** The local crypto runtime failed while sealing the request, so nothing was sent; `cause` holds the runtime error. */
+export class ConfidentialSealFailed extends UnavailableError {
+  readonly kind = "ConfidentialSealFailed" as const;
+  readonly executed = "no" as const;
+
+  constructor(options?: { cause?: unknown }) {
+    super("Confidential request could not be sealed by the local crypto runtime", options);
   }
 }

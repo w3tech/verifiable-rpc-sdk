@@ -22,6 +22,7 @@ export {
   AttestationUnavailable,
   BadSignature,
   ConfidentialDecryptFailed,
+  ConfidentialSealFailed,
   ConfidentialSignerMismatch,
   InvalidChainId,
   InvalidInnerRequest,

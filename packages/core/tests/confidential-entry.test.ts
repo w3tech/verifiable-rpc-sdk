@@ -97,6 +97,7 @@ describe("@w3tech.io/vrpc-core/confidential", () => {
     expect(names).toEqual(
       expect.arrayContaining([
         "AttestationUnavailable",
+        "ConfidentialSealFailed",
         "RequestRejected",
         "TransportFailed",
         "UnexpectedResponse",
@@ -122,7 +123,11 @@ describe("@w3tech.io/vrpc-core/confidential", () => {
     expectTypeOf<ConfidentialTransport>().toBeFunction();
     expectTypeOf<InnerRequest>().toHaveProperty("path");
     expectTypeOf<UnavailableErrorKind>().toEqualTypeOf<
-      "AttestationUnavailable" | "RequestRejected" | "UnexpectedResponse" | "TransportFailed"
+      | "AttestationUnavailable"
+      | "RequestRejected"
+      | "UnexpectedResponse"
+      | "TransportFailed"
+      | "ConfidentialSealFailed"
     >();
     expectTypeOf<EntryAttestationUnavailableReason>().toEqualTypeOf<AttestationUnavailableReason>();
     expectTypeOf<EntryInvalidInnerRequestReason>().toEqualTypeOf<InvalidInnerRequestReason>();
