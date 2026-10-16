@@ -1,16 +1,32 @@
 import { hexToBytes } from "@noble/hashes/utils.js";
+import type {
+  AttestationUnavailableReason as MainAttestationUnavailableReason,
+  InvalidInnerRequestReason as MainInvalidInnerRequestReason,
+  MalformedConfidentialResponseReason as MainMalformedConfidentialResponseReason,
+  TransportFailedReason as MainTransportFailedReason,
+} from "@w3tech.io/vrpc-core";
 import * as main from "@w3tech.io/vrpc-core";
 import type {
   ConfidentialClientOptions,
   ConfidentialInfo,
   ConfidentialResponse,
   ConfidentialTransport,
+  AttestationUnavailableReason as EntryAttestationUnavailableReason,
+  InvalidInnerRequestReason as EntryInvalidInnerRequestReason,
+  MalformedConfidentialResponseReason as EntryMalformedConfidentialResponseReason,
+  TransportFailedReason as EntryTransportFailedReason,
   InnerRequest,
   OuterRequest,
   OuterResponse,
   UnavailableErrorKind,
 } from "@w3tech.io/vrpc-core/confidential";
 import * as conf from "@w3tech.io/vrpc-core/confidential";
+import type {
+  AttestationUnavailableReason,
+  InvalidInnerRequestReason,
+  MalformedConfidentialResponseReason,
+  TransportFailedReason,
+} from "@w3tech.io/vrpc-core/errors";
 import * as errors from "@w3tech.io/vrpc-core/errors";
 import { describe, expect, expectTypeOf, test } from "vitest";
 import { createTestNode } from "../../test-support/src/index";
@@ -59,9 +75,17 @@ describe("@w3tech.io/vrpc-core/confidential", () => {
     }
   });
 
-  test("the unavailable family and the confidential failures are the same values in the entry", () => {
+  test("every error the client throws is the same value in the entry", () => {
     const names = [
+      "VerificationError",
       "UnavailableError",
+      "BadSignature",
+      "StaleTimestamp",
+      "MissingHeader",
+      "MalformedHeader",
+      "AttestationFailed",
+      "MalformedAttestationResponse",
+      "InvalidChainId",
       "ConfidentialSignerMismatch",
       "ConfidentialDecryptFailed",
       "MalformedConfidentialResponse",
@@ -100,5 +124,13 @@ describe("@w3tech.io/vrpc-core/confidential", () => {
     expectTypeOf<UnavailableErrorKind>().toEqualTypeOf<
       "AttestationUnavailable" | "RequestRejected" | "UnexpectedResponse" | "TransportFailed"
     >();
+    expectTypeOf<EntryAttestationUnavailableReason>().toEqualTypeOf<AttestationUnavailableReason>();
+    expectTypeOf<EntryInvalidInnerRequestReason>().toEqualTypeOf<InvalidInnerRequestReason>();
+    expectTypeOf<EntryMalformedConfidentialResponseReason>().toEqualTypeOf<MalformedConfidentialResponseReason>();
+    expectTypeOf<EntryTransportFailedReason>().toEqualTypeOf<TransportFailedReason>();
+    expectTypeOf<MainAttestationUnavailableReason>().toEqualTypeOf<AttestationUnavailableReason>();
+    expectTypeOf<MainInvalidInnerRequestReason>().toEqualTypeOf<InvalidInnerRequestReason>();
+    expectTypeOf<MainMalformedConfidentialResponseReason>().toEqualTypeOf<MalformedConfidentialResponseReason>();
+    expectTypeOf<MainTransportFailedReason>().toEqualTypeOf<TransportFailedReason>();
   });
 });

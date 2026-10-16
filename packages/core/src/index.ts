@@ -22,8 +22,12 @@ export type {
 } from "./attestation";
 export { fetchAttestation, verifyAttestationCorrelation } from "./attestation";
 export type {
+  AttestationUnavailableReason,
   BadSignatureContext,
+  InvalidInnerRequestReason,
+  MalformedConfidentialResponseReason,
   StaleTimestampContext,
+  TransportFailedReason,
   UnavailableErrorKind,
   VerificationErrorKind,
 } from "./errors";
