@@ -19,7 +19,7 @@ compose bump.
 | Install          | `pnpm install`                                                                                       |
 | Test (whole workspace) | `pnpm -r test` (from repo root)                                                                |
 | Unit test only   | per-package: `cd packages/core && pnpm run test:unit` (or `pnpm --filter '@w3tech.io/vrpc-core' test:unit`) |
-| Integration test | per-package: `cd packages/core && DSTACK_SIMULATOR_BIN=… DSTACK_SIMULATOR_FIXTURES_DIR=… SIDECAR_BIN=… pnpm run test:integration` (or via `pnpm --filter '@w3tech.io/vrpc-core' test:integration`) |
+| Integration test | per-package: `cd packages/core && DSTACK_SIMULATOR_BIN=… DSTACK_SIMULATOR_FIXTURES_DIR=… SIDECAR_BIN=… pnpm run test:integration` (or via `pnpm --filter '@w3tech.io/vrpc-core' test:integration`); `@w3tech.io/vrpc-ethers`, `@w3tech.io/vrpc-viem` and `@w3tech.io/vrpc-proxy` have the same `test:integration` script |
 | Lint             | `pnpm run lint`                                                                                      |
 | Format check     | `pnpm run format:check`                                                                              |
 | Format fix       | `pnpm run format`                                                                                    |
@@ -51,14 +51,25 @@ by Phala's dstack simulator and an in-process mock JSON-RPC upstream. They
 prove the SDK matches the live wire contract — the unit tests pin the crypto
 with real Ed25519 keys; the integration tests pin the bytes that flow over the
 network. The two suites complement each other and intentionally do not overlap.
+The Ankr Confidential RPC suites (`packages/core/tests/integration/confidential.test.ts`,
+`packages/ethers/test/integration/confidential.test.ts`,
+`packages/viem/test/integration/confidential.test.ts`,
+`packages/proxy/tests/integration/confidential.test.ts`) share the Node-only stack in
+`packages/test-support/src/interop.ts`. Its loopback relay adds `vRPC-NodeId` (a sidecar
+reached directly does not send it) and blanks `app_compose` in attestation answers (the
+simulator fixtures are not self-consistent); it is test code only.
 
 **Required env vars (any unset → integration suite skips cleanly):**
 
-| Var                             | Default on dev box                                                            |
-| ------------------------------- | ----------------------------------------------------------------------------- |
-| `DSTACK_SIMULATOR_BIN`          | `/private/tmp/dstack-sim-test/dstack-simulator`                               |
-| `DSTACK_SIMULATOR_FIXTURES_DIR` | `/private/tmp/dstack-sim-test`                                                |
-| `SIDECAR_BIN`                   | `../verifiable-rpc-sidecar/target/debug/rpc-attest-sidecar` (sibling repo)    |
+| Var                             | Example                                                         |
+| ------------------------------- | --------------------------------------------------------------- |
+| `DSTACK_SIMULATOR_BIN`          | `/path/to/dstack-simulator`                                     |
+| `DSTACK_SIMULATOR_FIXTURES_DIR` | `/path/to/dstack/sdk/simulator`                                 |
+| `SIDECAR_BIN`                   | `/path/to/verifiable-rpc-sidecar/target/debug/rpc-attest-sidecar` |
+
+The simulator is built from the public `Dstack-TEE/dstack` repo with
+`cargo build --release -p dstack-guest-agent-simulator`; its fixtures are that repo's
+`sdk/simulator` directory.
 
 Build the sidecar with `cargo build` in the sibling `verifiable-rpc-sidecar`
 repo before running integration tests. The debug binary is fine — release is
@@ -67,26 +78,22 @@ not required.
 **Local invocation:**
 
 ```sh
-DSTACK_SIMULATOR_BIN=/private/tmp/dstack-sim-test/dstack-simulator \
-DSTACK_SIMULATOR_FIXTURES_DIR=/private/tmp/dstack-sim-test \
-SIDECAR_BIN=../verifiable-rpc-sidecar/target/debug/rpc-attest-sidecar \
-  pnpm --filter '@w3tech.io/vrpc-core' test:integration
+DSTACK_SIMULATOR_BIN=/path/to/dstack-simulator \
+DSTACK_SIMULATOR_FIXTURES_DIR=/path/to/dstack/sdk/simulator \
+SIDECAR_BIN=/path/to/verifiable-rpc-sidecar/target/debug/rpc-attest-sidecar \
+  pnpm --filter @w3tech.io/vrpc-core --filter @w3tech.io/vrpc-ethers --filter @w3tech.io/vrpc-viem --filter @w3tech.io/vrpc-proxy test:integration
 ```
 
 `pnpm -r test` (no env vars) runs the unit suite only and emits a one-line skip
 message at module load. `pnpm -r test` with all three env vars set runs the unit
 suite plus the integration suite.
 
-**Tamper and replay are unit-only.** Both code paths are already covered at
-the unit level with real Ed25519 sign+verify
-(`tamperedResponseBodyThrowsBadSignature` and the replay-window edge tests) —
-adding integration-level versions would exercise the same logic against a
-slower harness without catching anything new. Integration tests focus on the
-value adds: happy-path call, cross-endpoint pubkey consistency, and a
-real-wire canonical attestation fixture (`packages/core/tests/fixtures/attestation-v0.1.0.json`).
+The open-mode integration suites cover the happy path and the canonical attestation
+fixture (`packages/core/tests/fixtures/attestation-v0.1.0.json`); the Ankr Confidential
+RPC suites also cover tampering, replay and the batch limit against the real sidecar.
 
-**CI deferral:** CI runs the unit suite only. A dedicated integration matrix
-with the simulator binary on the runner is tracked separately.
+**CI:** CI runs the unit suites only; the integration suites run locally with the three
+variables set.
 
 ## Architecture
 
