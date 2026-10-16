@@ -75,6 +75,28 @@ describe("ConfidentialClient", () => {
     expect(new TextDecoder().decode(response.body)).toBe(DEFAULT_UPSTREAM_BODY);
   });
 
+  test("a transport answering with a Headers look-alike is read like native Headers", async () => {
+    class ForeignHeaders {
+      readonly #headers: Headers;
+      constructor(init: Record<string, string>) {
+        this.#headers = new Headers(init);
+      }
+      get(name: string): string | null {
+        return this.#headers.get(name);
+      }
+    }
+    const node = testNode();
+    const transport: ConfidentialTransport = async (request) => {
+      const answer = await node.transport(request);
+      return { ...answer, headers: new ForeignHeaders(answer.headers) as unknown as Headers };
+    };
+    const client = clientFor(transport);
+
+    const response = await client.request(jsonRpcCall());
+    expect(response.status).toBe(200);
+    expect(client.getConfidentialInfo()?.nodeId).toBe(NODE_ID);
+  });
+
   test("the first call attests then posts ciphertext; the second call only posts", async () => {
     const node = testNode();
     const client = clientFor(node.transport);

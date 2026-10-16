@@ -100,8 +100,9 @@ export interface VerifiedPair {
  * Returns `null` when absent (matching `Headers.get` semantics).
  */
 export function getHeader(headers: ResponseHeaders, name: string): string | null {
-  if (headers instanceof Headers) {
-    return headers.get(name);
+  // Duck-typed: a polyfilled or cross-realm Headers fails instanceof.
+  if (typeof (headers as { get?: unknown }).get === "function") {
+    return (headers as Headers).get(name);
   }
   const lower = name.toLowerCase();
   for (const [key, value] of Object.entries(headers as Record<string, string>)) {
