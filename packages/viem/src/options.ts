@@ -14,6 +14,11 @@ import type { HardwareVerifier, Logger } from "@w3tech.io/vrpc-core";
  */
 export interface VrpcHttpOptions {
   /**
+   * `true` turns on Ankr Confidential RPC mode; the client must then declare `chain`.
+   * `headers`, `fetchFn` and `timeout` apply to both the attestation and the sealed request.
+   */
+  confidential?: boolean;
+  /**
    * Replay window (ms) forwarded to `verifyResponse`. Omitted → vrpc-core
    * default (60s). Tests pass a wide window to neutralize static-fixture
    * staleness.

@@ -10,13 +10,16 @@
 
 import {
   deriveVrpcUrls,
+  InvalidChainId,
   isSignedVrpcResponse,
   parseChainId,
   TrustedVerifier,
   type TrustedVerifierOptions,
 } from "@w3tech.io/vrpc-core";
+import type { ConfidentialClientOptions } from "@w3tech.io/vrpc-core/confidential";
 import { createTransport, HttpRequestError, RpcRequestError, type Transport } from "viem";
 
+import { ConfidentialHolder, fetchTransport, linkSignal, mapInnerResponse } from "./confidential";
 import type { VrpcHttpOptions } from "./options";
 
 // Drop `undefined`-valued keys: `exactOptionalPropertyTypes` forbids passing an
@@ -38,6 +41,7 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
  * declaring `chain` on the client pins YOUR chain and skips the bootstrap.
  */
 export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vrpc-http"> {
+  if (opts.confidential === true) return confidentialHttp(url, opts);
   const fetchFn = opts.fetchFn ?? fetch;
 
   // Derive the `/attestation` sub-route from the single URL.
@@ -184,6 +188,64 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
             });
           }
           return parsed.result;
+        },
+      },
+      { url: rpcUrl },
+    );
+  };
+}
+
+const utf8 = new TextEncoder();
+
+function confidentialHttp(url: string, opts: VrpcHttpOptions): Transport<"vrpc-http"> {
+  const { rpcUrl } = deriveVrpcUrls(url);
+  const origin = new URL(rpcUrl).origin;
+  let holder: ConfidentialHolder | undefined;
+
+  return ({ chain, timeout: injectedTimeout }) => {
+    if (chain?.id == null) {
+      throw new InvalidChainId("", "Ankr Confidential RPC mode needs the client's chain");
+    }
+    const chainId = String(chain.id);
+    holder ??= new ConfidentialHolder({
+      url: rpcUrl,
+      chainId,
+      transport: fetchTransport(opts.fetchFn),
+      ...pruneUndefined<Omit<ConfidentialClientOptions, "url" | "chainId" | "transport">>({
+        headers: opts.headers,
+        replayWindowMs: opts.replayWindowMs,
+        pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
+        logger: opts.logger,
+        hardwareVerifier: opts.hardwareVerifier,
+      }),
+    });
+    const confidential = holder;
+    const timeout = opts.timeout ?? injectedTimeout ?? 10_000;
+
+    return createTransport(
+      {
+        key: "vrpc-http",
+        name: "vRPC HTTP JSON-RPC",
+        type: "vrpc-http",
+        retryCount: 0,
+        timeout,
+        async request({ method, params }, options) {
+          const { signal, done } = linkSignal(options?.signal, timeout);
+          try {
+            const client = await confidential.client();
+            const res = await client.request(
+              {
+                method: "POST",
+                path: "/",
+                contentType: "application/json",
+                body: utf8.encode(JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })),
+              },
+              signal === undefined ? undefined : { signal },
+            );
+            return mapInnerResponse(res, origin);
+          } finally {
+            done();
+          }
         },
       },
       { url: rpcUrl },
