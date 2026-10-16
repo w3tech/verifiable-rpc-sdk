@@ -13,6 +13,7 @@ import {
   type TrustedVerifierOptions,
   validateChainId,
 } from "@w3tech.io/vrpc-core";
+import type { ConfidentialClientOptions } from "@w3tech.io/vrpc-core/confidential";
 import {
   type FetchRequest,
   type JsonRpcPayload,
@@ -23,6 +24,7 @@ import {
   toUtf8String,
 } from "ethers";
 
+import { ConfidentialHolder, fetchRequestTransport, sendConfidential } from "./confidential";
 import type { VrpcOptions } from "./options";
 
 // Drop `undefined`-valued keys: `exactOptionalPropertyTypes` forbids passing an
@@ -52,6 +54,7 @@ export class VrpcProvider extends JsonRpcProvider {
   readonly #makeVerifier: (chainId: string) => TrustedVerifier;
   // ONE TrustedVerifier per provider (lifetime cache); eager on pin, lazy on auto-derive.
   #trustedVerifier: TrustedVerifier | undefined;
+  readonly #confidential: ConfidentialHolder | undefined;
 
   constructor(
     url: string | FetchRequest,
@@ -64,6 +67,7 @@ export class VrpcProvider extends JsonRpcProvider {
       fetch: attestationFetch,
       hardwareVerifier,
       logger,
+      confidential,
       ...ethersOpts
     } = options;
 
@@ -123,8 +127,20 @@ export class VrpcProvider extends JsonRpcProvider {
           logger,
         }),
       );
-    // Build the verifier now if possible; auto-derive defers to the first _send.
-    if (chainId != null) {
+    if (confidential === true && chainId !== undefined) {
+      this.#confidential = new ConfidentialHolder(
+        pruneUndefined<ConfidentialClientOptions>({
+          url: urls.rpcUrl,
+          chainId,
+          replayWindowMs,
+          pubkeyCacheTtlMs,
+          logger,
+          hardwareVerifier,
+          transport: fetchRequestTransport(() => this._getConnection()),
+        }),
+      );
+    } else if (chainId != null) {
+      // Build the verifier now if possible; auto-derive defers to the first _send.
       this.#trustedVerifier = this.#makeVerifier(chainId);
     }
   }
@@ -133,6 +149,7 @@ export class VrpcProvider extends JsonRpcProvider {
   override async _send(
     payload: JsonRpcPayload | Array<JsonRpcPayload>,
   ): Promise<Array<JsonRpcResult>> {
+    if (this.#confidential !== undefined) return sendConfidential(this.#confidential, payload);
     const { requestBytes, rawResponseBytes, headers } = await this.#post(payload);
 
     const chainId = this.#chainId ?? (await this.#resolveChainId());

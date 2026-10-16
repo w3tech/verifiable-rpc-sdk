@@ -5,3 +5,4 @@
 export * from "./hide-x25519";
 export * from "./node";
 export * from "./recipient";
+export * from "./server";
