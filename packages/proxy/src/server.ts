@@ -127,21 +127,25 @@ function createConfidentialServer(
   // Attest after the port is open; a failure is logged and the next request attests again.
   server.once("listening", () => {
     const started = performance.now();
-    client.ready().then(
-      (info) =>
-        proxyLogger.debug("proxy.attested", {
-          nodeId: info.nodeId,
-          durationMs: Math.round(performance.now() - started),
-        }),
-      (err: unknown) => {
-        const { kind, message, executed } = describeConfidentialError(err);
-        proxyLogger.error("proxy.attestFailed", {
-          kind,
-          message,
-          ...(executed ? { executed } : {}),
-        });
-      },
-    );
+    client
+      .ready()
+      .then(
+        (info) =>
+          proxyLogger.debug("proxy.attested", {
+            nodeId: info.nodeId,
+            durationMs: Math.round(performance.now() - started),
+          }),
+        (err: unknown) => {
+          const { kind, message, executed } = describeConfidentialError(err);
+          proxyLogger.error("proxy.attestFailed", {
+            kind,
+            message,
+            ...(executed ? { executed } : {}),
+          });
+        },
+      )
+      // A failing log sink must not end the process.
+      .catch(() => {});
   });
   server.on("close", () => {
     void dispatcher.close();
