@@ -39,7 +39,9 @@ export interface VrpcHttpOptions {
   /**
    * Injectable fetch seam (mirrors viem's `http` transport `fetchFn`). Defaults
    * to the global `fetch`. Lets tests drive the transport offline and consumers
-   * pass a routing fetch wrapper.
+   * pass a routing fetch wrapper. In Ankr Confidential RPC mode it must honour
+   * `init.redirect` (`"manual"`) and must not retry: a followed redirect or a retry
+   * resends the encrypted request and the API key.
    */
   fetchFn?: (url: string, init: RequestInit) => Promise<Response>;
   /**

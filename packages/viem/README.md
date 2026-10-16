@@ -326,6 +326,9 @@ check included.
 error is thrown as a typed error. `fallback` retries the whole request
 (`retryCount`, 3 by default): set `retryCount: 0` when you use it. A per-call
 `retryCount` you pass to `client.request` is honoured and resends the call.
+A `fetchFn` of your own must pass `init.redirect` (`"manual"`) through and must
+not retry; otherwise it follows a redirect or resends the encrypted request and
+the API key itself.
 
 **Response size.** The transport stops reading an answer past 192 MiB and the
 call fails with `TransportFailed`, with your `fetchFn` too.
