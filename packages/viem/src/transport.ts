@@ -16,7 +16,10 @@ import {
   TrustedVerifier,
   type TrustedVerifierOptions,
 } from "@w3tech.io/vrpc-core";
-import type { ConfidentialClientOptions } from "@w3tech.io/vrpc-core/confidential";
+import type {
+  ConfidentialClientOptions,
+  ConfidentialInfo,
+} from "@w3tech.io/vrpc-core/confidential";
 import { createTransport, HttpRequestError, RpcRequestError, type Transport } from "viem";
 
 import { ConfidentialHolder, fetchTransport, linkSignal, mapInnerResponse } from "./confidential";
@@ -29,6 +32,15 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
 }
 
 /**
+ * Ankr Confidential RPC mode: every call is sealed to an attested node and only ciphertext leaves
+ * the process. The client must declare `chain`; one transport binds one chain.
+ * `client.transport.ready()` attests up front and `getConfidentialInfo()` reports the pinned node.
+ */
+export function vrpcHttp(
+  url: string,
+  opts: VrpcHttpOptions & { confidential: true },
+): Transport<"vrpc-http", ConfidentialValue>;
+/**
  * A viem `Transport` that Ed25519-verifies every response over its raw bytes
  * before it reaches the client. Drop-in:
  * `createPublicClient({ transport: vrpcHttp(url) })`. The URL is the explicit
@@ -40,7 +52,14 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
  * `eth_chainId` response on the first request (fail-fast, no unverified fallback);
  * declaring `chain` on the client pins YOUR chain and skips the bootstrap.
  */
-export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vrpc-http"> {
+export function vrpcHttp(url: string, opts?: VrpcHttpOptions): Transport<"vrpc-http">;
+export function vrpcHttp(
+  url: string,
+  opts: VrpcHttpOptions = {},
+): Transport<"vrpc-http"> | Transport<"vrpc-http", ConfidentialValue> {
+  if (opts.confidential !== undefined && typeof opts.confidential !== "boolean") {
+    throw new TypeError("confidential must be a boolean");
+  }
   if (opts.confidential === true) return confidentialHttp(url, opts);
   const fetchFn = opts.fetchFn ?? fetch;
 
@@ -197,16 +216,39 @@ export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vr
 
 const utf8 = new TextEncoder();
 
-function confidentialHttp(url: string, opts: VrpcHttpOptions): Transport<"vrpc-http"> {
-  const { rpcUrl } = deriveVrpcUrls(url);
+/** Members `vrpcHttp(url, { confidential: true })` adds to `client.transport`. */
+export interface ConfidentialValue {
+  url: string;
+  /** Attests now unless a valid pin exists, and returns the pinned node. */
+  ready(options?: { signal?: AbortSignal }): Promise<ConfidentialInfo>;
+  /** The pinned node, or `undefined` before the first attestation and after the pin expired or was dropped. */
+  getConfidentialInfo(): ConfidentialInfo | undefined;
+}
+
+function confidentialHttp(
+  url: string,
+  opts: VrpcHttpOptions,
+): Transport<"vrpc-http", ConfidentialValue> {
+  let rpcUrl: string;
+  try {
+    rpcUrl = deriveVrpcUrls(url).rpcUrl;
+  } catch {
+    // The platform error echoes the URL, which may carry the API key.
+    throw new TypeError("Invalid vRPC URL");
+  }
   const origin = new URL(rpcUrl).origin;
   let holder: ConfidentialHolder | undefined;
+  let boundChainId: string | undefined;
 
   return ({ chain, timeout: injectedTimeout }) => {
     if (chain?.id == null) {
       throw new InvalidChainId("", "Ankr Confidential RPC mode needs the client's chain");
     }
     const chainId = String(chain.id);
+    if (boundChainId !== undefined && chainId !== boundChainId) {
+      throw new InvalidChainId(chainId, `this transport is bound to chain ${boundChainId}`);
+    }
+    boundChainId = chainId;
     holder ??= new ConfidentialHolder({
       url: rpcUrl,
       chainId,
@@ -248,7 +290,11 @@ function confidentialHttp(url: string, opts: VrpcHttpOptions): Transport<"vrpc-h
           }
         },
       },
-      { url: rpcUrl },
+      {
+        url: rpcUrl,
+        ready: (options?: { signal?: AbortSignal }) => confidential.ready(options),
+        getConfidentialInfo: () => confidential.info(),
+      },
     );
   };
 }

@@ -9,7 +9,7 @@ import type {
   ConfidentialResponse,
   ConfidentialTransport,
 } from "@w3tech.io/vrpc-core/confidential";
-import { RpcRequestError } from "viem";
+import { HttpRequestError, RpcRequestError } from "viem";
 
 import type { VrpcHttpOptions } from "./options";
 
@@ -125,13 +125,52 @@ export function linkSignal(
 
 const utf8 = new TextDecoder();
 
-/** The inner answer as viem's http transport would surface it, without params, body text or URL path. */
+function parse(body: Uint8Array): unknown {
+  if (body.byteLength === 0) return undefined;
+  try {
+    return JSON.parse(utf8.decode(body));
+  } catch {
+    return undefined;
+  }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isRpcError(value: unknown): value is { error: { code: number; message: string } } {
+  if (!isObject(value) || !isObject(value.error)) return false;
+  return typeof value.error.code === "number" && typeof value.error.message === "string";
+}
+
+/** The inner answer as viem's http transport surfaces it; `url` is an origin, and no error carries params or body text. */
 // biome-ignore lint/suspicious/noExplicitAny: viem request returns untyped.
 export function mapInnerResponse(response: ConfidentialResponse, url: string): any {
-  // biome-ignore lint/suspicious/noExplicitAny: parsed JSON-RPC answer.
-  const parsed: any = JSON.parse(utf8.decode(response.body));
-  if (parsed != null && "error" in parsed) {
-    throw new RpcRequestError({ body: {}, error: parsed.error, url });
+  const { status } = response;
+  const parsed = parse(response.body);
+  if (status < 200 || status > 299) {
+    if (isRpcError(parsed)) throw new RpcRequestError({ body: {}, error: parsed.error, url });
+    const contentType = response.contentType;
+    throw new HttpRequestError({
+      status,
+      url,
+      headers: new Headers(contentType === undefined ? {} : { "content-type": contentType }),
+    });
+  }
+  if (parsed === undefined) {
+    throw new HttpRequestError({ status, url, details: "The response body is not valid JSON." });
+  }
+  // An `error` member that is not an object would crash the viem error constructor.
+  if (!isObject(parsed) || ("error" in parsed && !isObject(parsed.error))) {
+    throw new HttpRequestError({
+      status,
+      url,
+      details: "The response body is not a JSON-RPC response.",
+    });
+  }
+  if ("error" in parsed) {
+    const error = parsed.error as { code: number; message: string };
+    throw new RpcRequestError({ body: {}, error, url });
   }
   return parsed.result;
 }
