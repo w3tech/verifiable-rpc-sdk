@@ -155,10 +155,10 @@ export class ConfidentialClient {
 
   constructor(options: ConfidentialClientOptions) {
     this.#chainId = validateChainId(options.chainId);
-    const ttlMs = options.pubkeyCacheTtlMs ?? DEFAULT_PUBKEY_CACHE_TTL_MS;
-    if (ttlMs <= 0) {
-      throw new RangeError("pubkeyCacheTtlMs must be a positive number of milliseconds");
-    }
+    const ttlMs = requirePositiveMs(
+      "pubkeyCacheTtlMs",
+      options.pubkeyCacheTtlMs ?? DEFAULT_PUBKEY_CACHE_TTL_MS,
+    );
     let urls: VrpcUrls;
     try {
       urls = deriveVrpcUrls(options.url);
