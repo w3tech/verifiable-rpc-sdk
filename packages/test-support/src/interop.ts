@@ -261,7 +261,7 @@ async function spawnEchoUpstream(): Promise<EchoUpstream> {
     const statusMatch = req.method === "GET" ? /^\/status\/(\d{3})$/.exec(url) : null;
     if (statusMatch) {
       const status = Number(statusMatch[1]);
-      if (status === 204 || status === 304) {
+      if (status === 204 || status === 205 || status === 304) {
         res.writeHead(status);
         res.end();
       } else {

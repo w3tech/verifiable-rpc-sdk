@@ -190,10 +190,12 @@ d("integration: Ankr Confidential RPC against the sidecar", () => {
     expect(notFound.contentType).toMatch(/^text\/plain/);
     expect(decoder.decode(notFound.body)).toBe("status 404");
 
-    const noContent = await c.request({ method: "GET", path: "/status/204" });
-    expect(noContent.status).toBe(204);
-    expect(noContent.body).toHaveLength(0);
-    expect(relay.requests().at(-1)).toMatchObject({ method: "POST", status: 200 });
+    for (const status of [204, 205, 304]) {
+      const empty = await c.request({ method: "GET", path: `/status/${status}` });
+      expect(empty.status).toBe(status);
+      expect(empty.body).toHaveLength(0);
+      expect(relay.requests().at(-1)).toMatchObject({ method: "POST", status: 200 });
+    }
   });
 
   it("sends nothing of the inner request in clear", async () => {
