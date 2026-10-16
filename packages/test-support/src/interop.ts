@@ -169,7 +169,7 @@ async function spawnSimulator(): Promise<Simulator> {
       await fs.copyFile(join(fixtures, f), join(dir, f));
     }
     proc = spawn(bin, [], { cwd: dir, stdio: "ignore" });
-    await waitForPath(join(dir, "dstack.sock"), 10_000);
+    await waitForPath(join(dir, "dstack.sock"), 10_000, bootCheck(proc, "dstack simulator"));
   } catch (err) {
     await kill(proc);
     throw err;
@@ -201,6 +201,7 @@ async function spawnSidecar(
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, SIDECAR_ALLOW_EMPTY_COMPOSE_HASH: "true", RUST_LOG: "info" },
   });
+  const check = bootCheck(proc, "sidecar");
   const captured: string[] = [];
   const capture = (chunk: Buffer) => captured.push(chunk.toString("utf8"));
   proc.stdout?.on("data", capture);
@@ -212,8 +213,9 @@ async function spawnSidecar(
       captured,
       /signing_pubkey=(?:")?(0x[0-9a-fA-F]{64})(?:")?/,
       15_000,
+      check,
     );
-    await waitForListener(port, 10_000);
+    await waitForListener(port, 10_000, check);
   } catch (err) {
     await stopProcess(proc);
     const output = captured.join("").slice(-2_000);
@@ -453,7 +455,21 @@ function freePort(): Promise<number> {
   });
 }
 
-async function waitForPath(path: string, maxMs: number): Promise<void> {
+// The returned check throws once the process failed to spawn or exited, so a boot wait ends early.
+function bootCheck(proc: ChildProcess, what: string): () => void {
+  let spawnError: Error | undefined;
+  proc.on("error", (err) => {
+    spawnError ??= err;
+  });
+  return () => {
+    if (spawnError) throw new Error(`${what} failed to start: ${spawnError.message}`);
+    if (proc.exitCode !== null || proc.signalCode !== null) {
+      throw new Error(`${what} exited early (code ${proc.exitCode}, signal ${proc.signalCode})`);
+    }
+  };
+}
+
+async function waitForPath(path: string, maxMs: number, check: () => void): Promise<void> {
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
     try {
@@ -462,21 +478,28 @@ async function waitForPath(path: string, maxMs: number): Promise<void> {
     } catch {
       await sleep(50);
     }
+    check();
   }
   throw new Error(`timeout waiting for path ${path}`);
 }
 
-async function waitForMatch(buffer: readonly string[], re: RegExp, maxMs: number): Promise<string> {
+async function waitForMatch(
+  buffer: readonly string[],
+  re: RegExp,
+  maxMs: number,
+  check: () => void,
+): Promise<string> {
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
     const match = buffer.join("").match(re);
     if (match?.[1]) return match[1];
     await sleep(50);
+    check();
   }
   throw new Error(`timeout waiting for ${re}`);
 }
 
-function waitForListener(port: number, maxMs: number): Promise<void> {
+function waitForListener(port: number, maxMs: number, check: () => void): Promise<void> {
   const deadline = Date.now() + maxMs;
   return new Promise((resolve, reject) => {
     const attempt = () => {
@@ -488,6 +511,12 @@ function waitForListener(port: number, maxMs: number): Promise<void> {
       });
       sock.once("error", () => {
         sock.destroy();
+        try {
+          check();
+        } catch (err) {
+          reject(err);
+          return;
+        }
         if (Date.now() >= deadline) {
           reject(new Error(`timeout waiting for TCP listener on 127.0.0.1:${port}`));
         } else {
