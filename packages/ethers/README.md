@@ -200,8 +200,17 @@ await provider.getBalance("0x0000000000000000000000000000000000000000");
 
 For `instanceof` checks without importing core directly, the shared error family
 is re-exported: `VerificationError` (base) and `BadSignature`, `MissingHeader`,
-`MalformedHeader`, `StaleTimestamp`. This is the same family the viem adapter
-reuses — one error family across both adapters.
+`MalformedHeader`, `StaleTimestamp`, `InvalidChainId`. This is the same family
+the viem adapter reuses — one error family across both adapters.
+
+For Ankr Confidential RPC mode the adapter also re-exports the
+`VerificationError` subclasses `AttestationFailed`,
+`MalformedAttestationResponse`, `ConfidentialSignerMismatch`,
+`ConfidentialDecryptFailed`, `MalformedConfidentialResponse`,
+`InvalidInnerRequest`; the `UnavailableError` base with `AttestationUnavailable`,
+`RequestRejected`, `UnexpectedResponse`, `TransportFailed`,
+`ConfidentialSealFailed`; and the types `UnavailableErrorKind` and
+`ConfidentialInfo`. Each is the same class `@w3tech.io/vrpc-core` exports.
 
 ## Batching
 
@@ -210,6 +219,43 @@ When ethers coalesces concurrent calls into one array payload, the **entire body
 is verified once** over the raw bytes, and ethers' drain loop correlates the
 array results back to each caller by id. Set `batchMaxCount` / `batchStallTime`
 exactly as you would on a stock `JsonRpcProvider`.
+
+## Ankr Confidential RPC mode
+
+`new VrpcProvider(url, chainId, { confidential: true })` sends every call
+encrypted to an attested node; only the encrypted request leaves your process.
+The chain id is required and must be decimal. `await provider.confidentialReady()`
+attests up front; `provider.getConfidentialInfo()` returns the pinned node. Auth
+headers, credentials and the timeout come from the `FetchRequest` you pass as the
+URL and apply to both requests; the `fetch` option is not used in this mode.
+
+**Do not combine with a provider that is not in Ankr Confidential RPC mode.**
+ethers `FallbackProvider` sends calls to its other providers in plaintext: it
+sends every `broadcastTransaction` to all providers, queries all of them at
+start-up, and starts the next provider whenever one fails or takes longer than
+`stallTimeout` (400 ms by default), which includes the first call that attests
+the node. Even with confidential providers only, `FallbackProvider` can run the
+same call on more than one node.
+
+**Batches.** ethers batches concurrent calls; in Ankr Confidential RPC mode one
+batch is sent as one encrypted request. Above the node's batch limit of 1000
+calls the node answers HTTP 413 and every call in the batch fails with the same
+error. Keep `batchMaxCount` at 1000 or less (ethers' default is 100) and keep
+`batchMaxSize` at its default.
+
+**No retries.** Nothing in the SDK resends a call: a 429, a redirect or a gateway
+error is thrown as a typed error. Use your own retry policy if you need one.
+
+**Errors.**
+
+- An inner non-2xx answer is ethers `SERVER_ERROR`; its body is at
+  `err.response.body`, not in the message.
+- A call that got no verifiable answer throws an `UnavailableError`
+  (`AttestationUnavailable`, `RequestRejected`, `UnexpectedResponse`,
+  `TransportFailed`, `ConfidentialSealFailed`); its `executed` field is `"no"` or
+  `"unknown"`.
+- A failed signature, attestation or decryption check is a `VerificationError`
+  subclass.
 
 ## Error handling
 
