@@ -415,3 +415,33 @@ describe("logging", () => {
     expect(output.warnings).toEqual([]);
   });
 });
+
+describe("invalid caller headers", () => {
+  test("a header value that fetch rejects fails at construction without echoing it", async () => {
+    const bad = `${API_KEY}\nX`;
+    let fetchError: unknown;
+    try {
+      await fetch("http://127.0.0.1:9/", { headers: { "x-api-key": bad } });
+    } catch (err) {
+      fetchError = err;
+    }
+    expect(leaks(errorTexts(fetchError).join("\n"), baseSentinels())).toContain(API_KEY);
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    let err: unknown;
+    try {
+      new ConfidentialClient({
+        url: BASE_URL,
+        headers: { "x-api-key": bad },
+        chainId: CHAIN_ID,
+        hardwareVerifier: mockHardwareVerifier(),
+      });
+    } catch (caught) {
+      err = caught;
+    }
+    expect(err).toBeInstanceOf(TypeError);
+    expect((err as TypeError).cause).toBeUndefined();
+    expect(leaks(errorTexts(err).join("\n"), baseSentinels())).toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});

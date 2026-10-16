@@ -172,6 +172,12 @@ export class ConfidentialClient {
         : requirePositiveMs("replayWindowMs", options.replayWindowMs);
     this.#confidentialUrl = urls.confidentialUrl;
     this.#headers = withoutContentType(options.headers ?? {});
+    try {
+      new Headers(this.#headers);
+    } catch {
+      // The platform error quotes the header value, which may be the API key.
+      throw new TypeError("Invalid header in ConfidentialClient options");
+    }
     const transport = options.transport ?? defaultTransport;
     this.#transport = transport;
     const hardwareVerifier = options.hardwareVerifier ?? createCloudVerifier();
