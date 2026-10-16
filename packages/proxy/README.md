@@ -159,7 +159,8 @@ Refused locally, with nothing sent upstream:
 
 - a request with `content-encoding`, or a body without `content-type` → `415`;
 - a request-target or method the encrypted request cannot carry (dot-segments,
-  `//`, absolute-form, `CONNECT`/`TRACE`, a body on `GET`/`HEAD`) → `400`.
+  `//`, absolute-form, `TRACE`, a body on `GET`/`HEAD`) → `400`. `CONNECT` is
+  closed by the HTTP server without a response.
 
 A failed startup attestation does not stop the proxy; the next request attests
 again. The proxy never retries a failed request.
