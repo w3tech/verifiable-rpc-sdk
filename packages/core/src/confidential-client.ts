@@ -63,6 +63,10 @@ export interface ConfidentialInfo {
   nodeId: string;
   /** Lowercase `0x` hex Ed25519 key the node signs with. */
   pubkey: string;
+  /**
+   * Reported by the node. The default hardware verifier checks it against the quote's `mr_config_id`;
+   * with a custom `hardwareVerifier` it is checked only if that verifier does.
+   */
   composeHash: string;
   /** Unix ms when the attestation was verified. */
   attestedAt: number;
