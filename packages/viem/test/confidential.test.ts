@@ -455,19 +455,31 @@ describe("signals", () => {
     expect(walkFind(err, DOMException)?.name).toBe("TimeoutError");
   });
 
-  test("a caller abort after the request was sent rejects the call", async () => {
+  test("a caller abort after the request was sent rejects the call with the caller's reason", async () => {
     const { server } = await harness();
     server.answer((r) => (r.method === "POST" ? new Promise(() => {}) : undefined));
     const client = createPublicClient({ chain: arbitrum, transport: confidential(server) });
     const controller = new AbortController();
+    const reason = new Error("caller abort");
 
     const pending = rejection(
       client.request({ method: "eth_blockNumber" }, { signal: controller.signal }),
     );
     await until(() => server.requests.some((r) => r.method === "POST"));
-    controller.abort();
+    const abortedAt = Date.now();
+    controller.abort(reason);
+    const err = await pending;
 
-    expect(await pending).toBeDefined();
+    expect(Date.now() - abortedAt).toBeLessThan(2_000);
+    const seen: unknown[] = [];
+    for (
+      let e: unknown = err;
+      e != null && !seen.includes(e);
+      e = (e as { cause?: unknown }).cause
+    ) {
+      seen.push(e);
+    }
+    expect(seen).toContain(reason);
   });
 
   test("concurrent calls sharing one caller signal hold one listener and warn nothing", async () => {
