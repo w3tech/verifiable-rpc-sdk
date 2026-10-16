@@ -31,6 +31,11 @@ export interface ProxyConfig {
   pubkeyCacheTtlMs?: number;
   maxBodyBytes: number;
   logLevel: LogLevel;
+  /**
+   * Ankr Confidential RPC mode: every request is sealed to the attested node;
+   * nothing is sent upstream in plaintext.
+   */
+  confidential?: boolean;
   /** Non-fatal startup warnings; cli.ts prints them to stderr. */
   warnings?: string[];
 }
@@ -49,6 +54,7 @@ const PARSE_OPTIONS = {
   "attestation-cache-ttl": { type: "string" },
   "log-level": { type: "string" },
   "max-body-bytes": { type: "string" },
+  confidential: { type: "boolean" },
 } as const;
 
 function parsePositiveInt(value: string, flag: string): number {
@@ -100,6 +106,7 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
     "attestation-cache-ttl"?: string;
     "log-level"?: string;
     "max-body-bytes"?: string;
+    confidential?: boolean;
   };
   try {
     ({ values } = parseArgs({
@@ -192,6 +199,9 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   }
   if (apiKey !== undefined && apiKey !== "") {
     config.apiKey = apiKey;
+  }
+  if (values.confidential === true) {
+    config.confidential = true;
   }
   if (upstreamParsed.search !== "") {
     config.warnings = [

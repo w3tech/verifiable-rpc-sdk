@@ -48,7 +48,7 @@ export interface RequestContext {
  * Buffer a readable stream into a single Buffer, enforcing `maxBytes`.
  * Exceeding the cap throws the error produced by `overflow()`.
  */
-async function bufferStream(
+export async function bufferStream(
   stream: AsyncIterable<Buffer | Uint8Array>,
   maxBytes: number,
   overflow: () => ProxyError,

@@ -2,28 +2,40 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Server factory: builds the logger, constructs exactly ONE TrustedVerifier
 // for the process lifetime (its LRU pubkey cache makes verification
-// network-free on cache hits), and returns an http.Server. The verifier
-// constructor is synchronous fail-fast — an invalid chain id throws
-// InvalidChainId here, before any listen socket binds.
+// network-free on cache hits), or one ConfidentialClient in Ankr Confidential
+// RPC mode, and returns an http.Server. Both constructors are synchronous
+// fail-fast — an invalid chain id throws InvalidChainId here, before any
+// listen socket binds.
 
 import http from "node:http";
 
 import {
   createConsoleLogger,
   defaultLogger,
+  type Logger,
   TrustedVerifier,
   type TrustedVerifierOptions,
 } from "@w3tech.io/vrpc-core";
+import {
+  ConfidentialClient,
+  type ConfidentialClientOptions,
+} from "@w3tech.io/vrpc-core/confidential";
 import { Agent } from "undici";
-
+import {
+  createConfidentialHandler,
+  createConfidentialTransport,
+  describeConfidentialError,
+} from "./confidential";
 import type { ProxyConfig } from "./config";
-import { createProxyLogger } from "./logger";
+import { ConfigError } from "./errors";
+import { createProxyLogger, type ProxyLogger } from "./logger";
 import { createRequestHandler } from "./pipeline";
 
 /**
  * Test seam: TrustedVerifier injectables unit tests use to keep verification
  * deterministic and offline (attestation fetch mock, hardware-verifier mock,
- * pinned nonce, attestation stub, log capture).
+ * pinned nonce, attestation stub, log capture). In confidential mode only
+ * `hardwareVerifier` and `logger` apply.
  */
 export type ProxyTestOverrides = Pick<
   TrustedVerifierOptions,
@@ -44,6 +56,15 @@ export function createProxyServer(
     overrides.logger ?? (config.logLevel === "debug" ? createConsoleLogger() : defaultLogger);
   const proxyLogger = createProxyLogger(config.logLevel);
 
+  // Dedicated upstream Agent so the TCP/TLS connect phase is bound by the
+  // configured --timeout too — per-request undici options cover only the
+  // headers/body phases. Closed with the server to release keep-alive sockets.
+  const dispatcher = new Agent({ connect: { timeout: config.upstreamTimeoutMs } });
+
+  if (config.confidential === true) {
+    return createConfidentialServer(config, overrides, verifierLogger, proxyLogger, dispatcher);
+  }
+
   // Optional keys are set conditionally rather than spread as `key: undefined`
   // (exactOptionalPropertyTypes).
   const options: TrustedVerifierOptions = {
@@ -63,14 +84,65 @@ export function createProxyServer(
 
   const verifier = new TrustedVerifier(options);
 
-  // Dedicated upstream Agent so the TCP/TLS connect phase is bound by the
-  // configured --timeout too — per-request undici options cover only the
-  // headers/body phases. Closed with the server to release keep-alive sockets.
-  const dispatcher = new Agent({ connect: { timeout: config.upstreamTimeoutMs } });
-
   const server = http.createServer(
     createRequestHandler({ config, verifier, logger: proxyLogger, dispatcher }),
   );
+  server.on("close", () => {
+    void dispatcher.close();
+  });
+  return server;
+}
+
+function createConfidentialServer(
+  config: ProxyConfig,
+  overrides: ProxyTestOverrides,
+  verifierLogger: Logger,
+  proxyLogger: ProxyLogger,
+  dispatcher: Agent,
+): http.Server {
+  const options: ConfidentialClientOptions = {
+    url: config.upstreamUrl,
+    chainId: config.chainId,
+    headers: config.attestationHeaders,
+    transport: createConfidentialTransport(config, dispatcher),
+    logger: verifierLogger,
+  };
+  if (config.replayWindowMs !== undefined) options.replayWindowMs = config.replayWindowMs;
+  if (config.pubkeyCacheTtlMs !== undefined) options.pubkeyCacheTtlMs = config.pubkeyCacheTtlMs;
+  if (overrides.hardwareVerifier !== undefined)
+    options.hardwareVerifier = overrides.hardwareVerifier;
+
+  let client: ConfidentialClient;
+  try {
+    client = new ConfidentialClient(options);
+  } catch (err) {
+    // Core's option checks throw platform errors; their messages never carry the URL or key.
+    if (err instanceof RangeError || err instanceof TypeError) throw new ConfigError(err.message);
+    throw err;
+  }
+
+  const server = http.createServer(
+    createConfidentialHandler({ config, client, logger: proxyLogger }),
+  );
+  // Attest after the port is open; a failure is logged and the next request attests again.
+  server.once("listening", () => {
+    const started = performance.now();
+    client.ready().then(
+      (info) =>
+        proxyLogger.debug("proxy.attested", {
+          nodeId: info.nodeId,
+          durationMs: Math.round(performance.now() - started),
+        }),
+      (err: unknown) => {
+        const { kind, message, executed } = describeConfidentialError(err);
+        proxyLogger.error("proxy.attestFailed", {
+          kind,
+          message,
+          ...(executed ? { executed } : {}),
+        });
+      },
+    );
+  });
   server.on("close", () => {
     void dispatcher.close();
   });
