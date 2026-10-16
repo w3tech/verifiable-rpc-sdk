@@ -4,10 +4,10 @@
 
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { setTimeout as delay } from "node:timers/promises";
 
 import { getPublicKeyAsync } from "@noble/ed25519";
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
+import { ConfidentialClient } from "@w3tech.io/vrpc-core/confidential";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import type { TestOuterResponse, TestUpstreamResponse } from "../../test-support/src/index";
@@ -415,14 +415,11 @@ describe("concurrent and interrupted requests", () => {
     node.node.setAttestation(() => gate);
     const proxy = await startConfidentialProxy(node);
     cleanups.push(() => proxy.close());
-    let arrived = 0;
-    proxy.server.on("request", () => {
-      arrived += 1;
-    });
+    const requested = vi.spyOn(ConfidentialClient.prototype, "request");
+    cleanups.push(async () => requested.mockRestore());
 
     const pending = Array.from({ length: 20 }, () => post(proxy.url));
-    await vi.waitFor(() => expect(arrived).toBe(20));
-    await delay(50);
+    await vi.waitFor(() => expect(requested).toHaveBeenCalledTimes(20));
     answerAttestation(plain(503, "text/plain", "unavailable"));
     const responses = await Promise.all(pending);
     for (const res of responses) {
@@ -439,7 +436,13 @@ describe("concurrent and interrupted requests", () => {
   });
 
   test("a client that disconnects mid-request leaves the proxy serving with its pin", async () => {
-    const h = await startHarness({ startup: "ok" });
+    const stderr: string[] = [];
+    const write = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      stderr.push(String(chunk));
+      return true;
+    });
+    cleanups.push(async () => write.mockRestore());
+    const h = await startHarness({ startup: "ok", config: { logLevel: "debug" } });
     h.node.setWire({ delayMs: 200, only: "POST" });
     const target = new URL(h.proxy.url);
     const aborted = new Promise<void>((resolve) => {
@@ -456,7 +459,9 @@ describe("concurrent and interrupted requests", () => {
       req.end(RPC_BODY);
     });
     await aborted;
-    await delay(300);
+    await vi.waitFor(() =>
+      expect(stderr.some((l) => / proxy\.(relay|clientAborted|error)\b/.test(l))).toBe(true),
+    );
     expect(posts(h.node.wire)).toBe(1);
     expect(gets(h.node.wire)).toBe(1);
 

@@ -2,12 +2,11 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode end to end against the in-test node behind a loopback server.
 
-import { setTimeout as delay } from "node:timers/promises";
-
+import { ConfidentialClient } from "@w3tech.io/vrpc-core/confidential";
 import { request } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { ConfigError, createProxyServer } from "../src/index";
+import { ConfigError, createProxyServer, type ProxyTestOverrides } from "../src/index";
 
 import {
   type RunningProxy,
@@ -33,6 +32,7 @@ let nodeServer: TestNodeServer | undefined;
 let proxy: RunningProxy | undefined;
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await proxy?.close();
   await nodeServer?.close();
   proxy = undefined;
@@ -61,11 +61,15 @@ async function startNode(seen: SeenInner[] = []): Promise<TestNodeServer> {
   return nodeServer;
 }
 
-async function startProxy(node: TestNodeServer): Promise<RunningProxy> {
-  proxy = await startConfidentialProxy(node, {
-    apiKey: API_KEY,
-    attestationHeaders: { "x-api-key": API_KEY },
-  });
+async function startProxy(
+  node: TestNodeServer,
+  overrides: ProxyTestOverrides = {},
+): Promise<RunningProxy> {
+  proxy = await startConfidentialProxy(
+    node,
+    { apiKey: API_KEY, attestationHeaders: { "x-api-key": API_KEY } },
+    overrides,
+  );
   return proxy;
 }
 
@@ -158,9 +162,12 @@ describe("confidential mode startup", () => {
       headers: { "content-type": "text/plain" },
       body: new Uint8Array(0),
     }));
-    const running = await startProxy(node);
-    await vi.waitFor(() => expect(node.node.attestations()).toBe(1));
-    await delay(20);
+    const events: string[] = [];
+    const running = await startProxy(node, {
+      logger: { debug: (event) => void events.push(event) },
+    });
+    await vi.waitFor(() => expect(events).toContain("confidential.attest.fail"));
+    expect(node.node.attestations()).toBe(1);
     expect(running.server.listening).toBe(true);
 
     const failed = await postRpc(running.url);
@@ -190,10 +197,9 @@ describe("confidential mode startup", () => {
     const running = await startProxy(node);
     await vi.waitFor(() => expect(node.node.attestations()).toBe(1));
 
-    const arrived = new Promise((resolve) => running.server.once("request", resolve));
+    const requested = vi.spyOn(ConfidentialClient.prototype, "request");
     const pending = postRpc(running.url);
-    await arrived;
-    await delay(50);
+    await vi.waitFor(() => expect(requested).toHaveBeenCalledTimes(1));
     release();
 
     const res = await pending;
