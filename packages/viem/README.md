@@ -347,6 +347,18 @@ limit is checked only after the answer is in memory.
 - An inner non-2xx answer is `HttpRequestError`, or `RpcRequestError` when its
   body is a JSON-RPC error.
 
+Every error class with its `executed` value, the request and response size
+limits and the timeouts are listed in the core section's
+[Limits](../core/README.md#limits) and [Errors](../core/README.md#errors)
+subsections.
+
+**No batching.** `vrpcHttp` does not batch in Ankr Confidential RPC mode either:
+each call is one JSON-RPC request sent as one encrypted request.
+
+**Versions.** Install `@w3tech.io/vrpc-viem` and `@w3tech.io/vrpc-core` at the
+same version, so an error class you import from core is the one the transport
+throws.
+
 ---
 
 ## Runnable example

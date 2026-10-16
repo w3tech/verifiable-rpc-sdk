@@ -158,6 +158,16 @@ body, travel inside the encrypted request to the node.
 Relayed to the client: the node's status, `content-type`, a computed
 `content-length` and the body. No `vRPC-*` or other upstream header.
 
+Any client path becomes the encrypted request: JSON-RPC, a JSON-RPC batch and
+REST paths with their query. A batch is one encrypted request; above 1000 calls
+the node answers `413` `urn:vrpc:error:batch-too-large` without running any call
+in it, and the proxy relays that answer. The node's own answers
+(`application/problem+json` with a `urn:vrpc:error:*` type) are relayed with
+their status, like any other answer.
+
+The upstream nodes need a sidecar that serves the encrypted endpoint; see
+[Runtimes and versions](../core/README.md#runtimes-and-versions).
+
 Refused locally, with nothing sent upstream:
 
 - a request with `content-encoding`, or a body without `content-type` → `415`;

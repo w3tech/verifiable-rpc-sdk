@@ -277,6 +277,15 @@ answer first, so the limit is checked only after the answer is in memory.
 - A failed signature, attestation or decryption check is a `VerificationError`
   subclass.
 
+Every error class with its `executed` value, the request and response size
+limits and the timeouts are listed in the core section's
+[Limits](../core/README.md#limits) and [Errors](../core/README.md#errors)
+subsections.
+
+**Versions.** Install `@w3tech.io/vrpc-ethers` and `@w3tech.io/vrpc-core` at the
+same version, so an error class you import from core is the one the provider
+throws.
+
 ## Error handling
 
 - **Tampered or wrong-chain response** → `BadSignature`.
