@@ -168,6 +168,10 @@ describe("refused locally", () => {
       },
     ],
     ["a body without content-type", { method: "POST", path: "/", body: JSON_BODY }],
+    [
+      "a body with an empty content-type",
+      { method: "POST", path: "/", headers: { "content-type": "" }, body: JSON_BODY },
+    ],
   ])("%s is 415 with nothing upstream", async (_name, options) => {
     const { node, url } = await setup();
     const res = await rawRequest(url, options);

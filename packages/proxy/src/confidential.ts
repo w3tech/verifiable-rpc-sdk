@@ -181,7 +181,7 @@ export function createConfidentialHandler(ctx: ConfidentialHandlerContext): http
     if (req.headers["content-encoding"] !== undefined) {
       throw new UnsupportedMediaTypeError("Request content-encoding is not supported");
     }
-    const contentType = req.headers["content-type"];
+    const contentType = req.headers["content-type"]?.trim() || undefined;
     if (bytes.length > 0 && contentType === undefined) {
       throw new UnsupportedMediaTypeError("Request body requires a content-type");
     }
