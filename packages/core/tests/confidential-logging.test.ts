@@ -1,3 +1,5 @@
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { x25519 } from "@noble/curves/ed25519.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { AttestationError } from "@w3tech.io/dstack-verify";
@@ -413,6 +415,74 @@ describe("logging", () => {
 
     expect(output.consoleCalls()).toBe(0);
     expect(output.warnings).toEqual([]);
+  });
+});
+
+async function listen(server: Server): Promise<string> {
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+}
+
+async function closedOrigin(): Promise<string> {
+  const server = createServer();
+  const origin = await listen(server);
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return origin;
+}
+
+// Answers the attestation, then drops the connection on the sealed request.
+async function droppingOrigin(node: TestNode): Promise<string> {
+  let origin = "";
+  const server = createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      if (req.method === "POST") {
+        req.socket.destroy();
+        return;
+      }
+      void node
+        .transport({ method: "GET", url: `${origin}${req.url ?? "/"}`, headers: {} })
+        .then((answer) => {
+          res.writeHead(answer.status, answer.headers);
+          res.end(answer.body);
+        });
+    });
+  });
+  origin = await listen(server);
+  cleanups.push(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  return origin;
+}
+
+describe("real network failures through the default transport", () => {
+  test.each([
+    ["attestation", AttestationUnavailable],
+    ["sealed request", TransportFailed],
+  ] as const)("a failed %s leaks no sentinel", async (leg, expected) => {
+    const logger = collectingLogger();
+    const origin = leg === "attestation" ? await closedOrigin() : await droppingOrigin(testNode());
+    for (const keyIn of ["path", "header"] as const) {
+      const client = new ConfidentialClient({
+        url: keyIn === "path" ? `${origin}/eth_vrpc/${API_KEY}` : `${origin}/eth_vrpc`,
+        ...(keyIn === "header" ? { headers: { "x-api-key": API_KEY } } : {}),
+        chainId: CHAIN_ID,
+        hardwareVerifier: mockHardwareVerifier(),
+        logger,
+      });
+      let err: unknown;
+      try {
+        await client.request(call());
+      } catch (caught) {
+        err = caught;
+      }
+
+      expect(err, keyIn).toBeInstanceOf(expected);
+      expect((err as Error).cause, keyIn).toBeInstanceOf(TypeError);
+      expect(leaks(errorTexts(err).join("\n"), baseSentinels()), keyIn).toEqual([]);
+    }
+    expect(leaks(logText(logger), baseSentinels())).toEqual([]);
   });
 });
 

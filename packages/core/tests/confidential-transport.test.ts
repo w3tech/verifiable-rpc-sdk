@@ -333,6 +333,32 @@ describe("default transport over HTTP", () => {
     expect((await client.request(jsonRpcCall())).status).toBe(200);
     expect(h.log.filter((entry) => entry.method === "GET")).toHaveLength(1);
   });
+
+  test("50 warm calls sharing one signal raise no process warning", async () => {
+    const warnings: unknown[] = [];
+    const onWarning = (warning: unknown) => {
+      warnings.push(warning);
+    };
+    process.on("warning", onWarning);
+    cleanups.push(() => {
+      process.off("warning", onWarning);
+    });
+    const h = await harness();
+    const client = clientAt(h);
+    await client.ready();
+    const controller = new AbortController();
+
+    const responses = await Promise.all(
+      Array.from({ length: 50 }, () =>
+        client.request(jsonRpcCall(), { signal: controller.signal }),
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(responses.every((response) => response.status === 200)).toBe(true);
+    expect(posts(h)).toHaveLength(50);
+    expect(warnings).toEqual([]);
+  });
 });
 
 function opaqueRedirect(): Response {
