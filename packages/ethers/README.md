@@ -222,6 +222,9 @@ exactly as you would on a stock `JsonRpcProvider`.
 
 ## Ankr Confidential RPC mode
 
+What the gateway and the node can see, the limits and the errors are described in
+the [core Ankr Confidential RPC mode section](../core/README.md#ankr-confidential-rpc-mode).
+
 `new VrpcProvider(url, chainId, { confidential: true })` sends every JSON-RPC
 call encrypted to an attested node.
 The chain id is required and must be decimal. `await provider.confidentialReady()`

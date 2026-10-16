@@ -132,6 +132,9 @@ In open mode, verified responses are relayed verbatim — body bytes, `Content-E
 
 ## Ankr Confidential RPC mode
 
+What the gateway and the node can see, the limits and the errors are described in
+the [core Ankr Confidential RPC mode section](../core/README.md#ankr-confidential-rpc-mode).
+
 With `--confidential`, the proxy attests one node at startup through the
 upstream's `/attestation` route and pins it. The pin is kept until
 `--attestation-cache-ttl` expires or a request fails; the next request then

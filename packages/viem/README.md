@@ -293,6 +293,9 @@ the ethers adapter's stance.
 
 ## Ankr Confidential RPC mode
 
+What the gateway and the node can see, the limits and the errors are described in
+the [core Ankr Confidential RPC mode section](../core/README.md#ankr-confidential-rpc-mode).
+
 `vrpcHttp(url, { confidential: true })` sends every JSON-RPC call encrypted to
 an attested node. The client must declare `chain`; without it
 `createPublicClient` throws. One `vrpcHttp()` instance serves one chain.
