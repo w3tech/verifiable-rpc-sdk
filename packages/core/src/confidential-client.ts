@@ -50,7 +50,12 @@ export interface ConfidentialClientOptions {
   chainId: string;
   /** Sent on every outer request; a `content-type` entry is ignored. */
   headers?: Record<string, string>;
+  /** Positive, finite integer milliseconds; anything else throws a `RangeError`. */
   replayWindowMs?: number;
+  /**
+   * Positive, finite integer milliseconds; anything else, `Infinity` included, throws a `RangeError`.
+   * Use a large value for a long-lived pin.
+   */
   pubkeyCacheTtlMs?: number;
   logger?: Logger;
   hardwareVerifier?: HardwareVerifier;
