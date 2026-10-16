@@ -8,12 +8,17 @@
 
 import {
   deriveVrpcUrls,
+  InvalidChainId,
   parseChainId,
   TrustedVerifier,
   type TrustedVerifierOptions,
+  type VrpcUrls,
   validateChainId,
 } from "@w3tech.io/vrpc-core";
-import type { ConfidentialClientOptions } from "@w3tech.io/vrpc-core/confidential";
+import type {
+  ConfidentialClientOptions,
+  ConfidentialInfo,
+} from "@w3tech.io/vrpc-core/confidential";
 import {
   type FetchRequest,
   type JsonRpcPayload,
@@ -71,10 +76,21 @@ export class VrpcProvider extends JsonRpcProvider {
       ...ethersOpts
     } = options;
 
+    if (confidential !== undefined && typeof confidential !== "boolean") {
+      throw new TypeError("confidential must be a boolean");
+    }
+
     // Derive `/attestation` from the single URL (the URL is the explicit vRPC
     // route, used verbatim for RPC); for a FetchRequest, clone it so the
     // consumer's auth/headers ride along.
-    const urls = deriveVrpcUrls(typeof url === "string" ? url : url.url);
+    let urls: VrpcUrls;
+    try {
+      urls = deriveVrpcUrls(typeof url === "string" ? url : url.url);
+    } catch (err) {
+      // The platform error echoes the URL, which may carry the API key.
+      if (confidential === true) throw new TypeError("Invalid vRPC URL");
+      throw err;
+    }
     const attestationUrl = urls.attestationUrl;
     let superUrl: string | FetchRequest = urls.rpcUrl;
     if (typeof url !== "string") {
@@ -101,6 +117,18 @@ export class VrpcProvider extends JsonRpcProvider {
         typeof chainIdArg === "string"
           ? validateChainId(chainIdArg)
           : BigInt(chainIdArg).toString(10);
+    }
+    if (confidential === true) {
+      if (chainId === undefined) {
+        throw new InvalidChainId("", "Ankr Confidential RPC mode needs a pinned chain id");
+      }
+      // A non-decimal id leaves ethers without a network: it would retry detection forever.
+      if (!/^\d+$/.test(chainId)) {
+        throw new InvalidChainId(
+          chainId,
+          "Ankr Confidential RPC mode with ethers needs a decimal chain id",
+        );
+      }
     }
 
     // staticNetwork (pin only) skips ethers' startup eth_chainId probe without
@@ -143,6 +171,22 @@ export class VrpcProvider extends JsonRpcProvider {
       // Build the verifier now if possible; auto-derive defers to the first _send.
       this.#trustedVerifier = this.#makeVerifier(chainId);
     }
+  }
+
+  /**
+   * Attests the node now in Ankr Confidential RPC mode and returns it; rejects with a `TypeError`
+   * when the mode is off. Later calls reuse the pin until it expires.
+   */
+  async confidentialReady(options?: { signal?: AbortSignal }): Promise<ConfidentialInfo> {
+    if (this.#confidential === undefined) {
+      throw new TypeError("Ankr Confidential RPC mode is not enabled on this provider");
+    }
+    return this.#confidential.ready(options);
+  }
+
+  /** The node pinned in Ankr Confidential RPC mode; `undefined` before attestation or in open mode. */
+  getConfidentialInfo(): ConfidentialInfo | undefined {
+    return this.#confidential?.info();
   }
 
   // POST, verify the raw bytes, then parse. chainId resolved lazily if unset.

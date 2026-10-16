@@ -14,6 +14,7 @@ import {
   FetchResponse,
   type JsonRpcPayload,
   type JsonRpcResult,
+  makeError,
   toUtf8Bytes,
 } from "ethers";
 
@@ -113,6 +114,26 @@ export async function sendConfidential(
     res.contentType === undefined ? {} : { "content-type": res.contentType },
     res.body,
   );
-  const parsed = inner.bodyJson as JsonRpcResult | Array<JsonRpcResult>;
-  return Array.isArray(parsed) ? parsed : [parsed];
+  if (!inner.ok()) {
+    // Built by hand: the ethers ok-assertion copies the decrypted body into the message.
+    const status = `${inner.statusCode} `;
+    throw makeError(`server response ${status}`, "SERVER_ERROR", {
+      request: "unknown request",
+      response: inner,
+      info: { requestUrl: null, responseStatus: status },
+    });
+  }
+  const parsed: unknown = inner.bodyJson;
+  const results = (Array.isArray(parsed) ? parsed : [parsed]) as unknown[];
+  const payloads = Array.isArray(payload) ? payload : [payload];
+  const answered = (id: number) =>
+    results.some((r) => r !== null && typeof r === "object" && (r as { id?: unknown }).id === id);
+  // ethers' own error for a missing id quotes every result and request in its message.
+  if (
+    !results.every((r) => r !== null && typeof r === "object") ||
+    !payloads.every((p) => answered(p.id))
+  ) {
+    throw makeError("missing response for request", "BAD_DATA");
+  }
+  return results as Array<JsonRpcResult>;
 }
