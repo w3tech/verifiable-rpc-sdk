@@ -8,7 +8,13 @@
 // instance); ALL verification logic is reused from @w3tech.io/vrpc-core — never
 // copied (no ethers import here, manifest isolation).
 
-export type { UnavailableErrorKind } from "@w3tech.io/vrpc-core";
+export type {
+  AttestationUnavailableReason,
+  InvalidInnerRequestReason,
+  MalformedConfidentialResponseReason,
+  TransportFailedReason,
+  UnavailableErrorKind,
+} from "@w3tech.io/vrpc-core";
 // (v6.0: the `PinnedAllowlist`/`TcbPolicy` re-export was dropped along with the
 // inert `allowlist`/`tcb` options. v7.0 reintroduces both. The types remain
 // importable from `@w3tech.io/dstack-verify` directly.)

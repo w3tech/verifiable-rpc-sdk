@@ -2,7 +2,13 @@
 
 import type { ConfidentialInfo } from "@w3tech.io/vrpc-core/confidential";
 import { createPublicClient, defineChain } from "viem";
-import { vrpcHttp } from "../src/index";
+import {
+  type AttestationUnavailableReason,
+  type InvalidInnerRequestReason,
+  type MalformedConfidentialResponseReason,
+  type TransportFailedReason,
+  vrpcHttp,
+} from "../src/index";
 
 const chain = defineChain({
   id: 42161,
@@ -27,3 +33,10 @@ export async function confidentialMembers(): Promise<void> {
   const required: ConfidentialInfo = client.transport.getConfidentialInfo();
   void [info, withSignal, pinned, required];
 }
+
+export const reasons: [
+  AttestationUnavailableReason,
+  TransportFailedReason,
+  InvalidInnerRequestReason,
+  MalformedConfidentialResponseReason,
+][] = [];
