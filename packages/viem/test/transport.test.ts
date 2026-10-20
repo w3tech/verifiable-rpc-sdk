@@ -337,6 +337,45 @@ describe("vrpcHttp transport wiring", () => {
     await expect(right.config.request(getBalance)).rejects.toBeInstanceOf(InvalidChainId);
   });
 
+  test("a chain pinned while the bootstrap is in flight is not overwritten by it", async () => {
+    const node = autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX));
+    let bootstrapStarted!: () => void;
+    const started = new Promise<void>((resolve) => (bootstrapStarted = resolve));
+    let releaseBootstrap!: () => void;
+    const bootstrapGate = new Promise<void>((resolve) => (releaseBootstrap = resolve));
+    let releaseSecondRead!: () => void;
+    const secondReadGate = new Promise<void>((resolve) => (releaseSecondRead = resolve));
+    let reads = 0;
+    const fetchFn = async (url: string, init: RequestInit) => {
+      if (!url.includes("/attestation")) {
+        if (String(init.body).includes('"eth_chainId"')) {
+          bootstrapStarted();
+          await bootstrapGate;
+        } else if (++reads === 2) {
+          await secondReadGate;
+        }
+      }
+      return node(url, init);
+    };
+    const t = vrpcHttp(URL, { fetchFn, replayWindowMs: WIDE_WINDOW, hardwareVerifier: MOCK_HV });
+    const getBalance = { method: "eth_getBalance", params: [ADDR, "latest"] } as const;
+
+    const noChain = t({} as never).config.request(getBalance);
+    noChain.catch(() => {});
+    await started;
+    const otherChain = t({ chain: defineChain({ ...TEST_CHAIN, id: 1 }) } as never);
+    const otherChainRead = otherChain.config.request(getBalance);
+    releaseBootstrap();
+    await noChain.then(
+      () => {},
+      () => {},
+    );
+    releaseSecondRead();
+
+    await expect(otherChainRead).rejects.toBeInstanceOf(BadSignature);
+    await expect(noChain).rejects.toBeInstanceOf(InvalidChainId);
+  });
+
   // a uint256 view eth_call → ABI-encoded result verifies + decodes.
   test("verified readContract returns the decoded value", async () => {
     const abi = parseAbi(["function totalSupply() view returns (uint256)"]);

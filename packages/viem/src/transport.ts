@@ -139,8 +139,15 @@ export function vrpcHttp(
           const verifier = makeVerifier(chainId);
           await verifier.verify(requestBytes, rawResponseBytes, res.headers);
 
-          trustedVerifier = verifier;
-          chainIdResolved = chainId;
+          // A client with a chain may have pinned the transport while this was in flight.
+          chainIdResolved ??= chainId;
+          if (chainIdResolved !== chainId) {
+            throw new InvalidChainId(
+              chainId,
+              `this transport is bound to chain ${chainIdResolved}`,
+            );
+          }
+          trustedVerifier ??= verifier;
           return chainId;
         } catch (err) {
           chainIdPromise = null;
