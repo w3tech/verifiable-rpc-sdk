@@ -30,16 +30,12 @@ const TEST_SEED = new Uint8Array(32).fill(0x42);
  */
 export const CHAIN_ID = "42161";
 
-/**
- * Fixed signing timestamp (unix ms) so fixtures are byte-stable across runs.
- * 31-02 neutralizes staleness by passing `nowMs: FIXTURE_TIMESTAMP_MS` (or a
- * wide `replayWindowMs`) to `verifyResponse`.
- */
+/** Fixed signing timestamp (unix ms) so fixtures are byte-stable across runs. */
 const FIXTURE_TIMESTAMP_MS = 1_700_000_000_000n;
 
 /**
  * Known decoded balance a signed `eth_getBalance` fixture carries —
- * `0x1bc16d674ec80000` = 2 ETH (wei). 31-02 asserts a read returns this.
+ * `0x1bc16d674ec80000` = 2 ETH (wei).
  */
 export const SINGLE_RESULT_BALANCE_HEX = "0x1bc16d674ec80000";
 

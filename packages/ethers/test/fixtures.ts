@@ -28,11 +28,7 @@ export const TEST_SEED = new Uint8Array(32).fill(0x42);
  */
 export const CHAIN_ID = "42161";
 
-/**
- * Fixed signing timestamp (unix ms) so fixtures are byte-stable across runs.
- * 30-02 neutralizes staleness by passing `nowMs: FIXTURE_TIMESTAMP_MS` (or a
- * wide `replayWindowMs`) to `verifyResponse`.
- */
+/** Fixed signing timestamp (unix ms) so fixtures are byte-stable across runs. */
 const FIXTURE_TIMESTAMP_MS = 1_700_000_000_000n;
 
 /** Lowercase hex encode, no `0x` prefix. */
@@ -146,10 +142,7 @@ export async function signResponseBytes(
 // matching pubkey is deterministic. Synthesized eagerly at module load.
 // ---------------------------------------------------------------------------
 
-/**
- * Known decoded balance carried by SINGLE_RESULT — 30-02 asserts
- * `getBalance(...)` returns this quantity. `0x1bc16d674ec80000` = 2 ETH (wei).
- */
+/** Known decoded balance carried by SINGLE_RESULT. `0x1bc16d674ec80000` = 2 ETH (wei). */
 export const SINGLE_RESULT_BALANCE_HEX = "0x1bc16d674ec80000";
 
 /** Single signed `eth_getBalance` result. */
