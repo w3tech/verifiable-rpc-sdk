@@ -6,4 +6,5 @@ export * from "./hide-x25519";
 export * from "./mocks";
 export * from "./node";
 export * from "./recipient";
+export * from "./rejection";
 export * from "./server";

@@ -15,6 +15,7 @@ import { type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
 import {
   createTestNode,
   mockHardwareVerifier,
+  rejectionOf,
   type ServedAnswer,
   type ServedRequest,
   serveTestNode,
@@ -111,15 +112,6 @@ function build(flavour: Flavour, origin: string, options: VrpcOptions = {}): Bui
   return { provider, fetches };
 }
 
-async function rejection(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected a rejection");
-}
-
 const count = (server: TestNodeServer, match: (r: ServedRequest) => boolean) =>
   server.requests.filter(match).length;
 const isPost = (r: ServedRequest) => r.method === "POST";
@@ -147,7 +139,7 @@ describe.each(FLAVOURS)("one request per call: %s", (flavour) => {
     fetches.n = 0;
     server.answer((request) => (isPost(request) ? answerFor(server, status) : undefined));
 
-    const err = await rejection(provider.getBlockNumber());
+    const err = await rejectionOf(provider.getBlockNumber());
 
     expect(count(server, isPost)).toBe(1);
     expect(count(server, isElsewhere)).toBe(0);
@@ -170,7 +162,7 @@ describe.each(FLAVOURS)("one request per call: %s", (flavour) => {
     const { provider, fetches } = build(flavour, server.url);
     server.answer((request) => (isGet(request) ? answerFor(server, status) : undefined));
 
-    const err = await rejection(provider.getBlockNumber());
+    const err = await rejectionOf(provider.getBlockNumber());
 
     expect(count(server, isGet)).toBe(1);
     expect(count(server, isPost)).toBe(0);
@@ -386,7 +378,7 @@ describe("transport errors carry neither the key nor body bytes", () => {
   test("a dropped connection on the cold attestation", async () => {
     const provider = keyedBoth(await droppingEveryConnection());
 
-    const err = await rejection(provider.getBlockNumber());
+    const err = await rejectionOf(provider.getBlockNumber());
 
     expect(err).toBeInstanceOf(AttestationUnavailable);
     expect((err as AttestationUnavailable).reason).toBe("transport");
@@ -406,7 +398,7 @@ describe("transport errors carry neither the key nor body bytes", () => {
       return { ...answer, cutAfter: answer.body.byteLength >> 1 };
     });
 
-    const err = await rejection(provider.getBlockNumber());
+    const err = await rejectionOf(provider.getBlockNumber());
 
     expect(err).toBeInstanceOf(TransportFailed);
     expect((err as TransportFailed).reason).toBe("network");
@@ -424,7 +416,7 @@ describe("transport errors carry neither the key nor body bytes", () => {
       return new Promise<undefined>(() => {});
     });
 
-    const err = await rejection(provider.getBlockNumber());
+    const err = await rejectionOf(provider.getBlockNumber());
 
     expect(err).toBeInstanceOf(TransportFailed);
     expect((err as TransportFailed).reason).toBe("network");
@@ -449,7 +441,7 @@ describe("transport errors carry neither the key nor body bytes", () => {
     });
     cleanups.push(() => provider.destroy());
 
-    const err = await rejection(provider.getBlockNumber());
+    const err = await rejectionOf(provider.getBlockNumber());
 
     expect(err).toBeInstanceOf(TransportFailed);
     expect((err as TransportFailed).reason).toBe("network");
@@ -471,7 +463,7 @@ describe("transport errors carry neither the key nor body bytes", () => {
       return { ...answer, headers: { ...answer.headers, "content-encoding": "gzip" } };
     });
 
-    const err = await rejection(provider.getBlockNumber());
+    const err = await rejectionOf(provider.getBlockNumber());
 
     expect(err).toBeInstanceOf(TransportFailed);
     expect((err as TransportFailed).reason).toBe("network");
@@ -508,7 +500,7 @@ describe("response size cap", () => {
     });
     const { provider } = build("string URL", server.url);
 
-    const err = await rejection(provider.getBlockNumber());
+    const err = await rejectionOf(provider.getBlockNumber());
 
     expect(err).toBeInstanceOf(TransportFailed);
     expect((err as TransportFailed).reason).toBe("too-large");
@@ -570,7 +562,7 @@ describe("responses without a web stream body", () => {
     });
     const { provider } = build("string URL", server.url);
 
-    const err = await rejection(provider.getBlockNumber());
+    const err = await rejectionOf(provider.getBlockNumber());
 
     expect(err).toBeInstanceOf(TransportFailed);
     expect((err as TransportFailed).reason).toBe("too-large");
@@ -593,7 +585,7 @@ describe("hardware verifier", () => {
     });
     cleanups.push(() => provider.destroy());
 
-    await rejection(provider.getBlockNumber());
+    await rejectionOf(provider.getBlockNumber());
 
     expect(seen).toEqual([DEFAULT_PHALA_VERIFY_ENDPOINT]);
     expect(count(server, isPost)).toBe(0);

@@ -9,6 +9,7 @@ import { RequestRejected } from "@w3tech.io/vrpc-core";
 import {
   createTestNode,
   mockHardwareVerifier,
+  rejectionOf,
   serveTestNode,
   type TestNode,
   type TestNodeServer,
@@ -224,15 +225,6 @@ function texts(err: unknown): string[] {
   return out;
 }
 
-function rejection(promise: Promise<unknown>): Promise<unknown> {
-  return promise.then(
-    () => {
-      throw new Error("expected a rejection");
-    },
-    (err: unknown) => err,
-  );
-}
-
 function walkFind<T>(err: unknown, type: abstract new (...args: never[]) => T): T | undefined {
   if (err instanceof type) return err;
   if (!(err instanceof BaseError)) return undefined;
@@ -382,7 +374,7 @@ describe("errors", () => {
     const { server } = await harness(row.upstream);
     const { config } = confidential(server)({ chain: arbitrum });
 
-    const err = await rejection(config.request(request));
+    const err = await rejectionOf(config.request(request));
     expect(err).toBeInstanceOf(row.type);
     if (row.code !== undefined) expect((err as RpcRequestError).code).toBe(row.code);
     if (row.status !== undefined) expect((err as HttpRequestError).status).toBe(row.status);
@@ -393,7 +385,7 @@ describe("errors", () => {
     const { server } = await harness(row.upstream);
     const client = createPublicClient({ chain: arbitrum, transport: confidential(server) });
 
-    const err = await rejection(client.request(request as never));
+    const err = await rejectionOf(client.request(request as never));
     const found = walkFind(err, row.type);
     expect(found).toBeInstanceOf(row.type);
     if (row.code !== undefined) expect((found as RpcRequestError).code).toBe(row.code);
@@ -410,11 +402,11 @@ describe("errors", () => {
     );
     const transport = confidential(server);
 
-    const direct = await rejection(transport({ chain: arbitrum }).config.request(request));
+    const direct = await rejectionOf(transport({ chain: arbitrum }).config.request(request));
     expect(direct).toBeInstanceOf(RequestRejected);
 
     const client = createPublicClient({ chain: arbitrum, transport });
-    const walked = walkFind(await rejection(client.request(request as never)), RequestRejected);
+    const walked = walkFind(await rejectionOf(client.request(request as never)), RequestRejected);
     expect(walked).toBeInstanceOf(RequestRejected);
     expect(walked?.status).toBe(429);
     expect(walked?.executed).toBe("no");
@@ -449,7 +441,7 @@ describe("signals", () => {
       transport: confidential(server, { timeout: 200 }),
     });
 
-    const err = await rejection(client.getBlockNumber({ cacheTime: 0 }));
+    const err = await rejectionOf(client.getBlockNumber({ cacheTime: 0 }));
     expect(walkFind(err, DOMException)?.name).toBe("TimeoutError");
   });
 
@@ -460,7 +452,7 @@ describe("signals", () => {
     const controller = new AbortController();
     const reason = new Error("caller abort");
 
-    const pending = rejection(
+    const pending = rejectionOf(
       client.request({ method: "eth_blockNumber" }, { signal: controller.signal }),
     );
     await until(() => server.requests.some((r) => r.method === "POST"));

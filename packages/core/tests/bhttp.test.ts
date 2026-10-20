@@ -1,5 +1,5 @@
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { createRecipient } from "@w3tech.io/vrpc-test-support";
+import { createRecipient, rejectionOf } from "@w3tech.io/vrpc-test-support";
 import rfc9292 from "@w3tech.io/vrpc-test-support/vectors/rfc9292-section5.json";
 import { BHttpDecoder, decodeVli } from "bhttp-ts";
 import { describe, expect, test } from "vitest";
@@ -20,12 +20,6 @@ const PROCESSING_THEN_OK = "0140660040c80002686900";
 const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const utf8 = new TextEncoder();
 
-async function rejection(promise: Promise<unknown>): Promise<unknown> {
-  const [result] = await Promise.allSettled([promise]);
-  if (result?.status !== "rejected") throw new Error("expected a rejection");
-  return result.reason;
-}
-
 async function encode(request: InnerRequest): Promise<Uint8Array> {
   const bytes = await encodeInnerRequest(request);
   expect(bytes[0]).toBe(0x00);
@@ -33,7 +27,7 @@ async function encode(request: InnerRequest): Promise<Uint8Array> {
 }
 
 async function expectRejected(request: InnerRequest, reason: string, secret?: string) {
-  const error = await rejection(encodeInnerRequest(request));
+  const error = await rejectionOf(encodeInnerRequest(request));
   expect(error).toBeInstanceOf(InvalidInnerRequest);
   expect((error as InvalidInnerRequest).reason).toBe(reason);
   if (secret !== undefined && secret.length > 1) {
@@ -244,7 +238,7 @@ function okResponse(fields: string[], body: string): string {
 }
 
 async function expectMalformed(hex: string, reason: string) {
-  const error = await rejection(decodeInnerResponse(hexToBytes(hex)));
+  const error = await rejectionOf(decodeInnerResponse(hexToBytes(hex)));
   expect(error).toBeInstanceOf(MalformedInnerResponse);
   expect((error as MalformedInnerResponse).reason).toBe(reason);
   if (hex.length > 0) expect((error as MalformedInnerResponse).message).not.toContain(hex);
@@ -348,7 +342,7 @@ describe("decodeInnerResponse", () => {
     expect(notFound.contentType).toBe("application/problem+json");
     expect(new TextDecoder().decode(notFound.body)).toBe(problem);
 
-    const error = await rejection(
+    const error = await rejectionOf(
       roundTrip((opened) => opened.sealResponse(hexToBytes(PROCESSING_THEN_OK))),
     );
     expect(error).toBeInstanceOf(MalformedInnerResponse);

@@ -1,5 +1,5 @@
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { createRecipient } from "@w3tech.io/vrpc-test-support";
+import { createRecipient, rejectionOf } from "@w3tech.io/vrpc-test-support";
 import appendixA from "@w3tech.io/vrpc-test-support/vectors/rfc9458-appendix-a.json";
 import { describe, expect, test } from "vitest";
 import { decodeInnerResponse, encodeInnerRequest } from "../src/bhttp";
@@ -39,12 +39,6 @@ function encOf(sealed: SealedRequest): string {
 async function replyTo(sealed: SealedRequest, body = RESPONSE_BODY): Promise<Uint8Array> {
   const opened = await recipient.openRequest(sealed.body);
   return opened.respond({ status: 200, headers: { "content-type": "application/json" }, body });
-}
-
-async function rejection(promise: Promise<unknown>): Promise<unknown> {
-  const [result] = await Promise.allSettled([promise]);
-  if (result?.status !== "rejected") throw new Error("expected a rejection");
-  return result.reason;
 }
 
 function expectTypedError(
@@ -140,7 +134,7 @@ describe("sealRequest", () => {
     if (first === undefined || second === undefined || firstReply === undefined) {
       throw new Error("missing request");
     }
-    const error = await rejection(openResponse(second.opener, firstReply));
+    const error = await rejectionOf(openResponse(second.opener, firstReply));
     expectTypedError(error, OhttpError, "open-failed", [firstReply, inner]);
   });
 });
@@ -151,7 +145,7 @@ describe("openResponse rejects", () => {
     const reply = await replyTo(sealed);
     const tampered = reply.slice();
     tampered[32] = (tampered[32] ?? 0) ^ 0x01;
-    const error = await rejection(openResponse(sealed.opener, tampered));
+    const error = await rejectionOf(openResponse(sealed.opener, tampered));
     expectTypedError(error, OhttpError, "open-failed", [reply, tampered]);
   });
 
@@ -160,14 +154,14 @@ describe("openResponse rejects", () => {
     const sealed = await sealRequest(nodeKey, inner);
     const other = await sealRequest(nodeKey, inner);
     const substituted = await replyTo(other);
-    const error = await rejection(openResponse(sealed.opener, substituted));
+    const error = await rejectionOf(openResponse(sealed.opener, substituted));
     expectTypedError(error, OhttpError, "open-failed", [substituted, inner]);
   });
 
   test("a reply shorter than the nonce and tag", async () => {
     const sealed = await sealRequest(nodeKey, await jsonRpcRequest());
     const reply = (await replyTo(sealed)).subarray(0, 47);
-    const error = await rejection(openResponse(sealed.opener, reply));
+    const error = await rejectionOf(openResponse(sealed.opener, reply));
     expectTypedError(error, OhttpError, "response-too-short", [reply]);
   });
 });
@@ -180,14 +174,14 @@ describe("sealing to an unusable node key", () => {
 
   test.each(cases)("sealRequest rejects $name", async ({ key, reason }) => {
     const inner = await jsonRpcRequest();
-    const error = await rejection(sealRequest(key, inner));
+    const error = await rejectionOf(sealRequest(key, inner));
     expectTypedError(error, InvalidNodeKey, reason, [key, inner]);
   });
 
   describe.each(KEMS)("with the %s KEM", (kem) => {
     test.each(cases)("seal rejects $name", async ({ key, reason }) => {
       const inner = await jsonRpcRequest();
-      const error = await rejection(seal(createSuite(kem), 0x00, key, inner));
+      const error = await rejectionOf(seal(createSuite(kem), 0x00, key, inner));
       expectTypedError(error, InvalidNodeKey, reason, [key, inner]);
     });
   });

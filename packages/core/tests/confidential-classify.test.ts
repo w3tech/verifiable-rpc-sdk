@@ -3,6 +3,7 @@ import {
   type ConfidentialContext,
   createTestNode,
   mockHardwareVerifier,
+  rejectionOf,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
 import sidecarVectors from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
@@ -88,15 +89,6 @@ function setup(upstream?: Parameters<typeof createTestNode>[0]["upstream"]) {
     transport: node.transport,
   });
   return { node, client };
-}
-
-async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected the promise to reject");
 }
 
 describe("confidential answer classification", () => {

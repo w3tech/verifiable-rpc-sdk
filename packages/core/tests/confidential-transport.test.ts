@@ -6,6 +6,7 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 import {
   createTestNode,
   mockHardwareVerifier,
+  rejectionOf,
   type TestNode,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
@@ -71,15 +72,6 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
     resolve = done;
   });
   return { promise, resolve };
-}
-
-async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected the promise to reject");
 }
 
 function flatten(headers: IncomingHttpHeaders): Record<string, string> {

@@ -3,6 +3,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import {
   createTestNode,
   mockHardwareVerifier,
+  rejectionOf,
   type TestNodeOptions,
 } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
@@ -57,15 +58,6 @@ function clientFor(
     transport,
     ...overrides,
   });
-}
-
-async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected the promise to reject");
 }
 
 describe("ConfidentialClient", () => {

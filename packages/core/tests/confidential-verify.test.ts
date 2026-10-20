@@ -3,6 +3,7 @@ import {
   type ConfidentialContext,
   createTestNode,
   mockHardwareVerifier,
+  rejectionOf,
   type TestOuterResponse,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
@@ -54,15 +55,6 @@ function setup(upstream?: () => TestUpstreamResponse) {
     transport: node.transport,
   });
   return { node, client };
-}
-
-async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected the promise to reject");
 }
 
 function expectPublicFamily(err: unknown): void {

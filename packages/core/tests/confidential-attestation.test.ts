@@ -4,6 +4,7 @@ import {
   type AttestationContext,
   createTestNode,
   mockHardwareVerifier,
+  rejectionOf,
   type TestNode,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
@@ -64,15 +65,6 @@ function clientFor(
     transport,
     ...overrides,
   });
-}
-
-async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected the promise to reject");
 }
 
 function posts(node: TestNode): number {

@@ -15,6 +15,7 @@ import {
 import {
   createTestNode,
   mockHardwareVerifier,
+  rejectionOf,
   type ServedAnswer,
   type ServedRequest,
   serveTestNode,
@@ -101,15 +102,6 @@ function build(mode: Mode, url: string, options: Parameters<typeof vrpcHttp>[1] 
   return { client, ready: () => inner.ready() };
 }
 
-async function rejection(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected a rejection");
-}
-
 function walkFind<T>(err: unknown, type: abstract new (...args: never[]) => T): T | undefined {
   if (err instanceof type) return err;
   if (!(err instanceof BaseError)) return undefined;
@@ -142,7 +134,7 @@ describe.each(MODES)("one request per call through %s", (mode) => {
     server.requests.splice(0);
     server.answer((request) => (isPost(request) ? answerFor(server, status) : undefined));
 
-    const err = await rejection(client.getBlockNumber({ cacheTime: 0 }));
+    const err = await rejectionOf(client.getBlockNumber({ cacheTime: 0 }));
 
     expect(count(server, isPost)).toBe(1);
     expect(count(server, isElsewhere)).toBe(0);
@@ -166,7 +158,7 @@ describe.each(MODES)("one request per call through %s", (mode) => {
     const { client } = build(mode, `${server.url}/eth_vrpc`);
     server.answer((request) => (isGet(request) ? answerFor(server, status) : undefined));
 
-    const err = await rejection(client.getBlockNumber({ cacheTime: 0 }));
+    const err = await rejectionOf(client.getBlockNumber({ cacheTime: 0 }));
 
     expect(count(server, isGet)).toBe(1);
     expect(count(server, isPost)).toBe(0);
@@ -322,7 +314,7 @@ describe("errors carry neither the key, the params, the inner body nor body byte
   test("a dropped connection on the cold attestation", async () => {
     const client = keyed(await droppingEveryConnection());
 
-    const err = await rejection(client.request(sweepRequest as never));
+    const err = await rejectionOf(client.request(sweepRequest as never));
 
     expect(walkFind(err, AttestationUnavailable)?.reason).toBe("transport");
     expectSanitised(err, []);
@@ -340,7 +332,7 @@ describe("errors carry neither the key, the params, the inner body nor body byte
       return { ...answer, cutAfter: answer.body.byteLength >> 1 };
     });
 
-    const err = await rejection(client.request(sweepRequest as never));
+    const err = await rejectionOf(client.request(sweepRequest as never));
 
     expect(walkFind(err, TransportFailed)?.reason).toBe("network");
     expectSanitised(err, sent);
@@ -357,7 +349,7 @@ describe("errors carry neither the key, the params, the inner body nor body byte
       return new Promise<undefined>(() => {});
     });
 
-    const err = await rejection(client.request(sweepRequest as never));
+    const err = await rejectionOf(client.request(sweepRequest as never));
 
     expect(walkFind(err, DOMException)?.name).toBe("TimeoutError");
     expectSanitised(err, sent);
@@ -373,7 +365,7 @@ describe("errors carry neither the key, the params, the inner body nor body byte
     const sent: Uint8Array[] = [];
     recordBodies(server, sent);
 
-    const err = await rejection(client.request(sweepRequest as never));
+    const err = await rejectionOf(client.request(sweepRequest as never));
 
     expect((walkFind(err, BaseError) as { status?: number } | undefined)?.status).toBe(status);
     expectSanitised(err, sent);
@@ -393,7 +385,7 @@ describe("errors carry neither the key, the params, the inner body nor body byte
     const sent: Uint8Array[] = [];
     recordBodies(server, sent);
 
-    const err = await rejection(client.request(sweepRequest as never));
+    const err = await rejectionOf(client.request(sweepRequest as never));
 
     expect((err as { code?: number }).code).toBe(-32000);
     expectSanitised(err, sent);
@@ -414,7 +406,7 @@ describe("errors carry neither the key, the params, the inner body nor body byte
       };
     });
 
-    const err = await rejection(client.request(sweepRequest as never));
+    const err = await rejectionOf(client.request(sweepRequest as never));
 
     const core = status === 429 ? RequestRejected : UnexpectedResponse;
     expect(walkFind<Error>(err, core)).toBeInstanceOf(core);
@@ -436,7 +428,7 @@ describe("errors carry neither the key, the params, the inner body nor body byte
       transport: confidential(`${server.url}/eth_vrpc/${KEY}`, { fetchFn }),
     });
 
-    const err = await rejection(client.request(sweepRequest as never));
+    const err = await rejectionOf(client.request(sweepRequest as never));
 
     const failed = walkFind(err, TransportFailed);
     expect(failed?.reason).toBe("network");
@@ -485,7 +477,7 @@ describe("response size cap", () => {
       transport: confidential(server.url, { fetchFn }),
     });
 
-    const err = await rejection(client.request({ method: "eth_blockNumber" }));
+    const err = await rejectionOf(client.request({ method: "eth_blockNumber" }));
 
     expect(walkFind(err, TransportFailed)?.reason).toBe("too-large");
     expect(seen.cancelled).toBe(true);
@@ -555,7 +547,7 @@ describe("responses without a web stream body", () => {
       transport: confidential(server.url, { fetchFn }),
     });
 
-    const err = await rejection(client.request({ method: "eth_blockNumber" }));
+    const err = await rejectionOf(client.request({ method: "eth_blockNumber" }));
 
     expect(walkFind(err, TransportFailed)?.reason).toBe("too-large");
     expect(seen.buffered).toBe(past === "read" ? 1 : 0);
@@ -580,7 +572,7 @@ describe("hardware verifier", () => {
       }),
     });
 
-    await rejection(client.request({ method: "eth_blockNumber" }));
+    await rejectionOf(client.request({ method: "eth_blockNumber" }));
 
     expect(seen).toContain(DEFAULT_PHALA_VERIFY_ENDPOINT);
     expect(count(server, isPost)).toBe(0);

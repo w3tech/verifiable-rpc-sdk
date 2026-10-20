@@ -1,5 +1,5 @@
 import { hexToBytes } from "@noble/hashes/utils.js";
-import { createTestNode, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import { createTestNode, mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test, vi } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
@@ -35,15 +35,6 @@ function setup() {
     transport: node.transport,
   });
   return { node, client };
-}
-
-async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected the promise to reject");
 }
 
 describe("sealing failures", () => {

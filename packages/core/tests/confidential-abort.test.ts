@@ -3,6 +3,7 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 import {
   createTestNode,
   mockHardwareVerifier,
+  rejectionOf,
   type TestOuterRequest,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
@@ -55,15 +56,6 @@ function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => voi
 
 function plain(status: number): TestOuterResponse {
   return { status, headers: { "content-type": "text/plain" }, body: new Uint8Array(0) };
-}
-
-async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected the promise to reject");
 }
 
 const cleanups: Array<() => void> = [];

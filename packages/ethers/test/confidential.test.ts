@@ -9,6 +9,7 @@ import { InvalidChainId, type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-
 import {
   createTestNode,
   mockHardwareVerifier,
+  rejectionOf,
   serveTestNode,
   type TestNode,
   type TestNodeServer,
@@ -210,14 +211,6 @@ function openProvider(upstream: Upstream): VrpcProvider {
   return provider;
 }
 
-async function rejections(promises: Array<Promise<unknown>>): Promise<unknown[]> {
-  const settled = await Promise.allSettled(promises);
-  return settled.map((outcome) => {
-    if (outcome.status === "fulfilled") throw new Error("expected a rejection");
-    return outcome.reason;
-  });
-}
-
 function textForms(err: unknown): string[] {
   return [
     (err as Error).message,
@@ -334,7 +327,9 @@ describe("errors", () => {
     }));
     const provider = confidentialProvider(keyedRequest(server));
 
-    const errors = await rejections([1, 2, 3].map((n) => provider.getBalance(address(n))));
+    const errors = await Promise.all(
+      [1, 2, 3].map((n) => provider.getBalance(address(n))).map(rejectionOf),
+    );
 
     const [first] = errors;
     for (const err of errors) expect(err).toBe(first);
@@ -363,17 +358,16 @@ describe("errors", () => {
     });
     const provider = confidentialProvider(keyedRequest(server));
 
-    const batch = await rejections([
-      provider.getBalance(sentinelAddress),
-      provider.getBalance(address(9)),
-    ]);
+    const batch = await Promise.all(
+      [provider.getBalance(sentinelAddress), provider.getBalance(address(9))].map(rejectionOf),
+    );
     answerId = () => ({ jsonrpc: "2.0", id: 999, result: "0x7e57ab1e" });
-    const single = await rejections([provider.getBalance(sentinelAddress)]);
+    const single = await rejectionOf(provider.getBalance(sentinelAddress));
     answerId = () => [null];
-    const nullElement = await rejections([provider.getBalance(sentinelAddress)]);
+    const nullElement = await rejectionOf(provider.getBalance(sentinelAddress));
 
     expect(batch[0]).toBe(batch[1]);
-    for (const err of [...batch, ...single, ...nullElement]) {
+    for (const err of [...batch, single, nullElement]) {
       expect(isError(err, "BAD_DATA")).toBe(true);
       expect((err as { shortMessage: string }).shortMessage).toBe("missing response for request");
       for (const form of textForms(err)) {
@@ -390,7 +384,7 @@ describe("errors", () => {
     const { server } = await harness(() => ({ status: 200, body }));
     const provider = confidentialProvider(keyedRequest(server));
 
-    const [err] = await rejections([provider.getBlockNumber()]);
+    const err = await rejectionOf(provider.getBlockNumber());
 
     expect(isError(err, "UNSUPPORTED_OPERATION")).toBe(true);
     for (const form of textForms(err)) expect(form).not.toContain("sentinel-reply");
@@ -406,7 +400,9 @@ describe("errors", () => {
         : undefined,
     );
 
-    const errors = await rejections([provider.getBalance(address(1)), provider.getBlockNumber()]);
+    const errors = await Promise.all(
+      [provider.getBalance(address(1)), provider.getBlockNumber()].map(rejectionOf),
+    );
 
     expect(errors[0]).toBe(errors[1]);
     expect(errors[0]).toBeInstanceOf(UnexpectedResponse);
@@ -562,9 +558,9 @@ describe("CCIP-Read", () => {
     const { server } = await harness(offchainLookup(url));
     const provider = confidentialProvider(keyedRequest(server));
 
-    const [err] = await rejections([
+    const err = await rejectionOf(
       provider.call({ to: RESOLVER, data: "0x5e17e1a1", enableCcipRead: true }),
-    ]);
+    );
 
     expect(hits).toEqual([]);
     expect(isError(err, "CALL_EXCEPTION")).toBe(true);

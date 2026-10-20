@@ -5,6 +5,7 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 import {
   createTestNode,
   mockHardwareVerifier,
+  rejectionOf,
   type ServedAnswer,
   type ServedRequest,
   serveTestNode,
@@ -64,15 +65,6 @@ function jsonRpcCall(): InnerRequest {
   };
 }
 
-async function rejection(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected a rejection");
-}
-
 const count = (server: TestNodeServer, match: (r: ServedRequest) => boolean) =>
   server.requests.filter(match).length;
 const isPost = (r: ServedRequest) => r.method === "POST";
@@ -99,7 +91,7 @@ describe("one request per call with the default transport", () => {
     server.requests.splice(0);
     server.answer((request) => (isPost(request) ? answerFor(server, status) : undefined));
 
-    const err = await rejection(client.request(jsonRpcCall()));
+    const err = await rejectionOf(client.request(jsonRpcCall()));
 
     expect(server.requests).toHaveLength(1);
     expect(count(server, isPost)).toBe(1);
@@ -129,7 +121,7 @@ describe("one request per call with the default transport", () => {
     const client = clientAt(server);
     server.answer((request) => (isGet(request) ? answerFor(server, status) : undefined));
 
-    const err = await rejection(client.request(jsonRpcCall()));
+    const err = await rejectionOf(client.request(jsonRpcCall()));
 
     expect(count(server, isGet)).toBe(1);
     expect(count(server, isPost)).toBe(0);
