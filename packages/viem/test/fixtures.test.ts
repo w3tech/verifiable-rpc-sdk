@@ -36,7 +36,7 @@ describe("offline fixture scaffold (viem)", () => {
 
   test("wrong signing chain id rejects with BadSignature", async () => {
     const headers = await signResponseBytes(REQUEST_BYTES, RESPONSE_BYTES, {
-      signingChainId: 1n,
+      signingChainId: "1",
     });
     await expect(
       verifyResponse(REQUEST_BYTES, RESPONSE_BYTES, headers, {

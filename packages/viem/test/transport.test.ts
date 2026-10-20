@@ -431,7 +431,7 @@ describe("vrpcHttp transport wiring", () => {
     const c = client(signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { bodies }));
     await c.getBalance({ address: ADDR });
     expect(bodies).toHaveLength(1);
-    const parsed = JSON.parse(bodies[0]);
+    const parsed = JSON.parse(bodies[0] ?? "");
     expect(Array.isArray(parsed)).toBe(false);
     expect(parsed.method).toBe("eth_getBalance");
   });

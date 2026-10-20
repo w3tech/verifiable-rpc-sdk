@@ -55,7 +55,7 @@
     "prepublishOnly": "tsup",
     "test": "vitest run",
     "test:integration": "vitest run test/integration",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@w3tech.io/dstack-verify": "workspace:*",

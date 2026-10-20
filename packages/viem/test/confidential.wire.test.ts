@@ -417,7 +417,7 @@ describe("errors carry neither the key, the params, the inner body nor body byte
     const err = await rejection(client.request(sweepRequest as never));
 
     const core = status === 429 ? RequestRejected : UnexpectedResponse;
-    expect(walkFind(err, core)).toBeInstanceOf(core);
+    expect(walkFind<Error>(err, core)).toBeInstanceOf(core);
     expectSanitised(err, sent);
   });
 
@@ -573,7 +573,11 @@ describe("hardware verifier", () => {
     };
     const client = createPublicClient({
       chain: arbitrum,
-      transport: confidential(server.url, { fetchFn, hardwareVerifier: undefined }),
+      transport: vrpcHttp(server.url, {
+        headers: { "x-api-key": KEY },
+        fetchFn,
+        confidential: true,
+      }),
     });
 
     await rejection(client.request({ method: "eth_blockNumber" }));

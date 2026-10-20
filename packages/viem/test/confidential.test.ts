@@ -259,7 +259,7 @@ describe("results equal open mode", () => {
       }),
     });
 
-    const run = (client: typeof sealed) =>
+    const run = (client: typeof open) =>
       Promise.all([
         client.getBlockNumber({ cacheTime: 0 }),
         client.getBalance({ address: ADDRESS }),
