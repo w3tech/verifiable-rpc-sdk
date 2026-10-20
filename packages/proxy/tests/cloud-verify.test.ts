@@ -1,0 +1,101 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Web3 Technologies, Inc.
+// Without test overrides the proxy verifies attestations over the network:
+// these tests pin that the attestation GET and the Phala cloud verify POST go
+// through undici fetch on the proxy's Agent, never through global fetch.
+
+import type http from "node:http";
+import type { AddressInfo } from "node:net";
+
+import { getPublicKeyAsync } from "@noble/ed25519";
+import { DEFAULT_PHALA_VERIFY_ENDPOINT } from "@w3tech.io/vrpc-core";
+import * as undici from "undici";
+import { afterEach, describe, expect, test, vi } from "vitest";
+
+import { createProxyServer } from "../src/index";
+import { startMockSidecar } from "./support/mock-sidecar";
+import { rawRequest, startTestNodeServer } from "./support/test-node-server";
+import { TEST_CHAIN_ID, TEST_SEED, testConfig, toHex } from "./support/test-overrides";
+
+vi.mock("undici", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("undici")>();
+  return { ...actual, fetch: vi.fn(actual.fetch) };
+});
+
+const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
+
+const cleanups: (() => Promise<void>)[] = [];
+
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+});
+
+/** Mock the network: global fetch fails, undici fetch answers attestation and refuses Phala. */
+function mockNetwork() {
+  const globalFetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("global fetch"));
+  cleanups.push(async () => globalFetch.mockRestore());
+  const calls: { url: string; dispatcher: unknown }[] = [];
+  vi.mocked(undici.fetch).mockImplementation(async (input, init) => {
+    const url = String(input);
+    calls.push({ url, dispatcher: init?.dispatcher });
+    if (!url.includes("/attestation")) return new undici.Response("unavailable", { status: 503 });
+    const pubkey = toHex(await getPublicKeyAsync(TEST_SEED));
+    const nonce = new URL(url).searchParams.get("nonce") ?? "";
+    const body = {
+      quote: { quote: "00", event_log: "00", report_data: `${pubkey}${nonce}`, vm_config: "" },
+      pubkey: `0x${pubkey}`,
+      composeHash: "deadbeef",
+    };
+    return new undici.Response(JSON.stringify(body), {
+      headers: { "content-type": "application/json" },
+    });
+  });
+  return { globalFetch, calls };
+}
+
+async function serve(server: http.Server): Promise<string> {
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  cleanups.push(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+}
+
+async function postRpc(url: string): Promise<string> {
+  const res = await rawRequest(url, {
+    method: "POST",
+    path: "/",
+    headers: { "content-type": "application/json" },
+    body: RPC_BODY,
+  });
+  return (JSON.parse(res.body.toString()) as { error: { kind: string } }).error.kind;
+}
+
+describe("cloud verify egress", () => {
+  test("open mode verifies the attestation through the proxy Agent", async () => {
+    const { globalFetch, calls } = mockNetwork();
+    const mock = await startMockSidecar();
+    cleanups.push(() => mock.close());
+    const url = await serve(createProxyServer(testConfig(mock.url)));
+
+    const kind = await postRpc(url);
+    expect(globalFetch).not.toHaveBeenCalled();
+    expect(kind).toBe("Attestation");
+    const phala = calls.find((c) => c.url === DEFAULT_PHALA_VERIFY_ENDPOINT);
+    expect(phala?.dispatcher).toBeInstanceOf(undici.Agent);
+  });
+
+  test("Ankr Confidential RPC verifies the attestation through the proxy Agent", async () => {
+    const { globalFetch, calls } = mockNetwork();
+    const node = await startTestNodeServer({ seed: TEST_SEED, chainId: TEST_CHAIN_ID });
+    cleanups.push(() => node.close());
+    const config = testConfig(`${node.url}/test_vrpc`, { confidential: true });
+    const url = await serve(createProxyServer(config));
+
+    await postRpc(url);
+    expect(globalFetch).not.toHaveBeenCalled();
+    const phala = calls.find((c) => c.url === DEFAULT_PHALA_VERIFY_ENDPOINT);
+    expect(phala?.dispatcher).toBeInstanceOf(undici.Agent);
+  });
+});

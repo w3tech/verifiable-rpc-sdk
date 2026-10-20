@@ -10,6 +10,7 @@
 import http from "node:http";
 
 import {
+  createCloudVerifier,
   createConsoleLogger,
   defaultLogger,
   type Logger,
@@ -20,7 +21,7 @@ import {
   ConfidentialClient,
   type ConfidentialClientOptions,
 } from "@w3tech.io/vrpc-core/confidential";
-import { Agent } from "undici";
+import { Agent, type RequestInit, fetch as undiciFetch } from "undici";
 import {
   createConfidentialHandler,
   createConfidentialTransport,
@@ -42,6 +43,12 @@ export type ProxyTestOverrides = Pick<
   "fetch" | "hardwareVerifier" | "nonceSource" | "verifyAttestation" | "logger"
 >;
 
+// Core calls fetch with a string URL only; the cast bridges undici's and the DOM's fetch types.
+function agentFetch(dispatcher: Agent): typeof fetch {
+  return ((url: string, init?: RequestInit) =>
+    undiciFetch(url, { ...init, dispatcher })) as unknown as typeof fetch;
+}
+
 /**
  * Create the verifying proxy server. `listen()` is the caller's job — the CLI
  * binds the configured host:port; tests bind an ephemeral port.
@@ -56,10 +63,13 @@ export function createProxyServer(
     overrides.logger ?? (config.logLevel === "debug" ? createConsoleLogger() : defaultLogger);
   const proxyLogger = createProxyLogger(config.logLevel);
 
-  // Dedicated upstream Agent so the TCP/TLS connect phase is bound by the
-  // configured --timeout too — per-request undici options cover only the
-  // headers/body phases. Closed with the server to release keep-alive sockets.
-  const dispatcher = new Agent({ connect: { timeout: config.upstreamTimeoutMs } });
+  // One Agent bounds connect, headers and body of upstream requests and of the
+  // attestation fetches by --timeout. Closed with the server.
+  const dispatcher = new Agent({
+    connect: { timeout: config.upstreamTimeoutMs },
+    headersTimeout: config.upstreamTimeoutMs,
+    bodyTimeout: config.upstreamTimeoutMs,
+  });
 
   if (config.confidential === true) {
     return createConfidentialServer(config, overrides, verifierLogger, proxyLogger, dispatcher);
@@ -72,10 +82,10 @@ export function createProxyServer(
     attestationUrl: config.attestationUrl,
     headers: config.attestationHeaders,
     logger: verifierLogger,
+    fetch: overrides.fetch ?? agentFetch(dispatcher),
   };
   if (config.replayWindowMs !== undefined) options.replayWindowMs = config.replayWindowMs;
   if (config.pubkeyCacheTtlMs !== undefined) options.pubkeyCacheTtlMs = config.pubkeyCacheTtlMs;
-  if (overrides.fetch !== undefined) options.fetch = overrides.fetch;
   if (overrides.hardwareVerifier !== undefined)
     options.hardwareVerifier = overrides.hardwareVerifier;
   if (overrides.nonceSource !== undefined) options.nonceSource = overrides.nonceSource;
@@ -119,11 +129,11 @@ function createConfidentialServer(
     headers: config.attestationHeaders,
     transport: createConfidentialTransport(config, dispatcher),
     logger: verifierLogger,
+    hardwareVerifier:
+      overrides.hardwareVerifier ?? createCloudVerifier({ fetch: agentFetch(dispatcher) }),
   };
   if (config.replayWindowMs !== undefined) options.replayWindowMs = config.replayWindowMs;
   if (config.pubkeyCacheTtlMs !== undefined) options.pubkeyCacheTtlMs = config.pubkeyCacheTtlMs;
-  if (overrides.hardwareVerifier !== undefined)
-    options.hardwareVerifier = overrides.hardwareVerifier;
 
   let client: ConfidentialClient;
   try {

@@ -6,8 +6,8 @@
 // (constants, attestation-fetch mock, options factory) — repo convention is a
 // local copy per package, never a cross-package test import. Every proxy test
 // MUST pass `testOverrides()` into `createProxyServer`; without it the
-// TrustedVerifier hits `globalThis.fetch` and the Phala CloudVerifier on a
-// pubkey-cache miss.
+// TrustedVerifier hits the network through the proxy's Agent (attestation GET
+// and the Phala CloudVerifier) on a pubkey-cache miss.
 
 import { getPublicKeyAsync } from "@noble/ed25519";
 
