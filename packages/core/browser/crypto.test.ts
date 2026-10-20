@@ -1,7 +1,8 @@
 import type { CipherSuite } from "@hpke/core";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { createRecipient, hideX25519 } from "../../test-support/src/index";
+import { hideX25519 } from "../../test-support/src/hide-x25519";
+import { createRecipient } from "../../test-support/src/recipient";
 import libsodium from "../../test-support/vectors/ed25519-to-x25519.json";
 import cfrg from "../../test-support/vectors/hpke-cfrg-mode0-x25519-sha256-aes256gcm.json";
 import rfc9292 from "../../test-support/vectors/rfc9292-section5.json";
