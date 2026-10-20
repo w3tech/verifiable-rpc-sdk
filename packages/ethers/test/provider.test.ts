@@ -451,6 +451,33 @@ describe("VrpcProvider._send wiring", () => {
     await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
   });
 
+  test("auto-derive retry: a failed bootstrap is retried and the next call verifies with the honest chainId", async () => {
+    const answer = jsonResult(1, SINGLE_RESULT_BALANCE_HEX);
+    const lying = autoDeriveRequest(answer, {
+      bootstrapChainId: "1",
+      bootstrapSigningChainId: CHAIN_ID,
+    });
+    const honest = autoDeriveRequest(answer);
+    const req = new FetchRequest("http://test.invalid");
+    let bootstraps = 0;
+    req.getUrlFunc = (sentReq, signal) => {
+      const body = new TextDecoder().decode(sentReq.body ?? new Uint8Array());
+      if ((JSON.parse(body) as { method?: string }).method === "eth_chainId") {
+        bootstraps += 1;
+        if (bootstraps === 1) return lying.getUrlFunc(sentReq, signal);
+      }
+      return honest.getUrlFunc(sentReq, signal);
+    };
+    const provider = new VrpcProvider(req, undefined, WIDE_WINDOW);
+    try {
+      await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
+      await expect(provider.getBalance(ADDR)).resolves.toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
+      expect(bootstraps).toBeGreaterThanOrEqual(2);
+    } finally {
+      provider.destroy();
+    }
+  });
+
   test("auto-derive FAIL-FAST: a tampered bootstrap response → BadSignature AT BOOTSTRAP", async () => {
     const provider = new VrpcProvider(
       autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapTamper: true }),

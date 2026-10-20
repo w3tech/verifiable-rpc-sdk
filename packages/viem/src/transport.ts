@@ -85,25 +85,23 @@ export function vrpcHttp(
   // ONE TrustedVerifier per transport (lifetime pubkey cache); built lazily once
   // chainId is known. (v6.0: the verifier defaults the trust policy internally.)
   let trustedVerifier: TrustedVerifier | undefined;
-  const getTrustedVerifier = (chainId: string): TrustedVerifier => {
-    if (trustedVerifier === undefined) {
-      trustedVerifier = new TrustedVerifier(
-        pruneUndefined<TrustedVerifierOptions>({
-          chainId,
-          attestationUrl,
-          replayWindowMs: opts.replayWindowMs,
-          pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
-          headers: opts.headers,
-          // fetchFn's (url, init) => Promise<Response> aligns with the verifier's
-          // `fetch` for the attestation GET leg.
-          fetch: opts.fetchFn as typeof fetch | undefined,
-          hardwareVerifier: opts.hardwareVerifier,
-          logger: opts.logger,
-        }),
-      );
-    }
-    return trustedVerifier;
-  };
+  const makeVerifier = (chainId: string): TrustedVerifier =>
+    new TrustedVerifier(
+      pruneUndefined<TrustedVerifierOptions>({
+        chainId,
+        attestationUrl,
+        replayWindowMs: opts.replayWindowMs,
+        pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
+        headers: opts.headers,
+        // fetchFn's (url, init) => Promise<Response> aligns with the verifier's
+        // `fetch` for the attestation GET leg.
+        fetch: opts.fetchFn as typeof fetch | undefined,
+        hardwareVerifier: opts.hardwareVerifier,
+        logger: opts.logger,
+      }),
+    );
+  const getTrustedVerifier = (chainId: string): TrustedVerifier =>
+    (trustedVerifier ??= makeVerifier(chainId));
 
   return ({ chain, timeout: injectedTimeout }) => {
     // viem injects the client's `chain`; its id is the pin source (chainId left
@@ -119,8 +117,9 @@ export function vrpcHttp(
 
     // Derive chainId from a self-consistently verified `eth_chainId` response (its
     // own `result` IS the chainId, so the signature only verifies for the chain
-    // the node really signed). Memoized; reuses the in-scope fetch/headers/timeout;
-    // on verify failure chainIdResolved is NOT set (fail-fast, no fallback).
+    // the node really signed). Memoized; reuses the in-scope fetch/headers/timeout.
+    // A failed bootstrap fails its own call and leaves neither the memo nor a
+    // verifier, so the next call bootstraps again (no unverified fallback).
     const resolveChainId = (): Promise<string> => {
       if (chainIdResolved != null) {
         return Promise.resolve(chainIdResolved);
@@ -129,18 +128,25 @@ export function vrpcHttp(
         return chainIdPromise;
       }
       chainIdPromise = (async () => {
-        const { requestBytes, rawResponseBytes, res } = await post({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "eth_chainId",
-          params: [],
-        });
+        try {
+          const { requestBytes, rawResponseBytes, res } = await post({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "eth_chainId",
+            params: [],
+          });
 
-        const chainId = parseChainId(rawResponseBytes);
-        await getTrustedVerifier(chainId).verify(requestBytes, rawResponseBytes, res.headers);
+          const chainId = parseChainId(rawResponseBytes);
+          const verifier = makeVerifier(chainId);
+          await verifier.verify(requestBytes, rawResponseBytes, res.headers);
 
-        chainIdResolved = chainId;
-        return chainId;
+          trustedVerifier = verifier;
+          chainIdResolved = chainId;
+          return chainId;
+        } catch (err) {
+          chainIdPromise = null;
+          throw err;
+        }
       })();
       return chainIdPromise;
     };

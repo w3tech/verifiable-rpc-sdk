@@ -569,6 +569,32 @@ describe("vrpcHttp transport wiring", () => {
     ).rejects.toBeInstanceOf(BadSignature);
   });
 
+  test("auto-derive retry: a failed bootstrap is retried and the next call verifies with the honest chainId", async () => {
+    const answer = jsonResult(SINGLE_RESULT_BALANCE_HEX);
+    const lying = autoDeriveFetch(answer, {
+      bootstrapChainId: "1",
+      bootstrapSigningChainId: CHAIN_ID,
+    });
+    const honest = autoDeriveFetch(answer);
+    let bootstraps = 0;
+    const fetchFn = (url: string, init: RequestInit) => {
+      if (!url.includes("/attestation") && String(init.body).includes('"eth_chainId"')) {
+        bootstraps += 1;
+        if (bootstraps === 1) return lying(url, init);
+      }
+      return honest(url, init);
+    };
+    const transport = vrpcHttp(URL, {
+      fetchFn,
+      replayWindowMs: WIDE_WINDOW,
+      hardwareVerifier: MOCK_HV,
+    })({} as never);
+    const getBalance = { method: "eth_getBalance", params: [ADDR, "latest"] } as const;
+    await expect(transport.config.request(getBalance)).rejects.toBeInstanceOf(BadSignature);
+    await expect(transport.config.request(getBalance)).resolves.toBe(SINGLE_RESULT_BALANCE_HEX);
+    expect(bootstraps).toBe(2);
+  });
+
   test("auto-derive FAIL-FAST: a tampered bootstrap response → BadSignature AT BOOTSTRAP", async () => {
     const transport = vrpcHttp(URL, {
       fetchFn: autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { bootstrapTamper: true }),

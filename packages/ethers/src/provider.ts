@@ -243,8 +243,9 @@ export class VrpcProvider extends JsonRpcProvider {
 
   // Derive chainId from a self-consistently verified `eth_chainId` response (its
   // own `result` IS the chainId, so the signature only verifies for the chain the
-  // node really signed). Memoized; own request, never via _send; on verify failure
-  // chainId is NOT set (fail-fast, no unverified fallback).
+  // node really signed). Memoized; own request, never via _send. A failed
+  // bootstrap fails its own call and leaves neither the memo nor a verifier, so
+  // the next call bootstraps again (no unverified fallback).
   #resolveChainId(): Promise<string> {
     if (this.#chainId != null) {
       return Promise.resolve(this.#chainId);
@@ -253,18 +254,25 @@ export class VrpcProvider extends JsonRpcProvider {
       return this.#chainIdPromise;
     }
     this.#chainIdPromise = (async () => {
-      const { requestBytes, rawResponseBytes, headers } = await this.#post({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "eth_chainId",
-        params: [],
-      });
+      try {
+        const { requestBytes, rawResponseBytes, headers } = await this.#post({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "eth_chainId",
+          params: [],
+        });
 
-      const chainId = parseChainId(rawResponseBytes);
-      await this.#getTrustedVerifier(chainId).verify(requestBytes, rawResponseBytes, headers);
+        const chainId = parseChainId(rawResponseBytes);
+        const verifier = this.#makeVerifier(chainId);
+        await verifier.verify(requestBytes, rawResponseBytes, headers);
 
-      this.#chainId = chainId;
-      return chainId;
+        this.#trustedVerifier = verifier;
+        this.#chainId = chainId;
+        return chainId;
+      } catch (err) {
+        this.#chainIdPromise = null;
+        throw err;
+      }
     })();
     return this.#chainIdPromise;
   }
