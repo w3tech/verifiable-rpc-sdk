@@ -36,7 +36,7 @@ const NODE_ID_HEADER = "vRPC-NodeId";
 
 const SIGNATURE_HEX_RE = /^0x[0-9a-f]{128}$/;
 const PUBKEY_HEX_RE = /^0x[0-9a-f]{64}$/;
-const TIMESTAMP_RE = /^\d+$/;
+const TIMESTAMP_RE = /^\d{1,20}$/;
 const U64_MAX = (1n << 64n) - 1n;
 
 /**
@@ -188,10 +188,10 @@ export async function verifyResponse(
   if (!PUBKEY_HEX_RE.test(pubkeyHex)) {
     throw new MalformedHeader(PUBKEY_HEADER, pubkeyHex, "expected 0x + 64 lowercase hex chars");
   }
-  if (!TIMESTAMP_RE.test(tsRaw) || BigInt(tsRaw) > U64_MAX) {
+  const timestampMs = TIMESTAMP_RE.test(tsRaw) ? BigInt(tsRaw) : null;
+  if (timestampMs === null || timestampMs > U64_MAX) {
     throw new MalformedHeader(TIMESTAMP_HEADER, tsRaw, "expected decimal u64 ms");
   }
-  const timestampMs = BigInt(tsRaw);
 
   // 6. Pre-image reconstruct.
   const preImage = buildPreImage(chainId, requestBytes, rawResponseBytes, timestampMs);
