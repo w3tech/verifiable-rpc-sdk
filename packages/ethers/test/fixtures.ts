@@ -45,7 +45,7 @@ export interface Fixture {
   requestBytes: Uint8Array;
   /** Response body bytes, exactly as signed. */
   responseBytes: Uint8Array;
-  /** Signed `vRPC-*` triple (+ `content-type`); unsigned fixture omits the triple. */
+  /** Signed `vRPC-*` triple plus `content-type`. */
   headers: Record<string, string>;
   /** The exact `timestampMs` the triple was signed over. */
   timestampMs: bigint;
