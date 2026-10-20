@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    "packages/core": {
+      "vitest": ["vitest.browser.config.ts", "../../vitest.config.ts"]
+    },
+    "packages/viem": {
+      "entry": ["test/confidential.types.ts"]
+    }
+  }
+}
