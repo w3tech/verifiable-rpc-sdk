@@ -23,12 +23,13 @@ import {
 } from "@w3tech.io/vrpc-ethers";
 import {
   attestationStub,
+  CHAIN_ID,
   mockHardwareVerifier,
   signedJsonHeaders,
 } from "@w3tech.io/vrpc-test-support";
 import { Contract, FetchRequest, Interface, toBeHex } from "ethers";
 import { describe, expect, test } from "vitest";
-import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX } from "./fixtures";
+import { SINGLE_RESULT_BALANCE_HEX } from "./fixtures";
 import { flipFirstDigit, signingRequest } from "./helpers";
 
 // Always-on verify seam: the FIRST verified read per pubkey lazily fetches the

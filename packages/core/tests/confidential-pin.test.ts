@@ -1,13 +1,15 @@
-import { hexToBytes } from "@noble/hashes/utils.js";
 import {
+  CHAIN_ID,
   type ConfidentialHandler,
   createTestNode,
+  jsonRpcCall,
   mockHardwareVerifier,
+  NODE_ID,
+  NODE_SEED,
   type TestNodeOptions,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
 import {
   AttestationUnavailable,
@@ -18,26 +20,12 @@ import {
 } from "../src/errors";
 import type { ConfidentialTransport } from "../src/transport";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
-const CHAIN_ID = "42161";
-const NODE_ID = "alpha-vrpc-1";
 const KEYED_URL = "https://rpc.example/eth_vrpc/0123456789abcdefghijABCDEFGHIJkl";
-const utf8 = new TextEncoder();
-
-function jsonRpcCall(): InnerRequest {
-  return {
-    method: "POST",
-    path: "/",
-    contentType: "application/json",
-    accept: "application/json",
-    body: utf8.encode('{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'),
-  };
-}
 
 const T0 = 1_800_000_000_000;
 
 function testNode(overrides: Partial<TestNodeOptions> = {}) {
-  return createTestNode({ seed: SEED, chainId: CHAIN_ID, nodeId: NODE_ID, ...overrides });
+  return createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID, ...overrides });
 }
 
 function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => void } {

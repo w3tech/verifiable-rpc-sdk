@@ -6,8 +6,11 @@ import { getEventListeners } from "node:events";
 import { RequestRejected } from "@w3tech.io/vrpc-core";
 import {
   attestationAnswer,
+  CHAIN_ID,
   createTestNode,
+  KEY,
   mockHardwareVerifier,
+  NODE_ID,
   rejectionOf,
   signedJsonHeaders,
   TEST_SEED,
@@ -25,10 +28,6 @@ import {
   RpcRequestError,
 } from "viem";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { CHAIN_ID } from "./fixtures";
-
-const NODE_ID = "alpha-vrpc-1";
-const KEY = "0123456789abcdefghijABCDEFGHIJkl";
 
 const arbitrum = defineChain({
   id: 42161,

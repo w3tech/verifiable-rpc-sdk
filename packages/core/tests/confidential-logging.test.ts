@@ -4,10 +4,13 @@ import { x25519 } from "@noble/curves/ed25519.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { AttestationError } from "@w3tech.io/dstack-verify";
 import {
+  CHAIN_ID,
   type CollectingLogger,
   collectingLogger,
   createTestNode,
   mockHardwareVerifier,
+  NODE_ID,
+  NODE_SEED,
   type TestNode,
   type TestOuterResponse,
   x25519SecretFromSeed,
@@ -32,11 +35,7 @@ import {
 import type { Logger } from "../src/logger";
 import type { ConfidentialTransport } from "../src/transport";
 
-const SEED_HEX = "421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee";
 const OTHER_SEED_HEX = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
-const SEED = hexToBytes(SEED_HEX);
-const CHAIN_ID = "42161";
-const NODE_ID = "alpha-vrpc-1";
 const BASE_URL = "https://rpc.example/eth_vrpc";
 const API_KEY = "Sentinelkey0123456789abcdefghijk";
 const INNER_PATH = "/sentinel-path?q=sentinel-query";
@@ -200,7 +199,7 @@ const SCENARIOS: Scenario[] = [
 ];
 
 function baseSentinels(): Set<string> {
-  const secret = x25519SecretFromSeed(SEED);
+  const secret = x25519SecretFromSeed(NODE_SEED);
   return new Set([
     API_KEY,
     "Sentinelkey",
@@ -209,7 +208,7 @@ function baseSentinels(): Set<string> {
     "sentinel-plaintext",
     "sentinel-reply",
     "sentinel-body",
-    SEED_HEX,
+    bytesToHex(NODE_SEED),
     bytesToHex(secret),
     bytesToHex(x25519.getPublicKey(secret)),
   ]);
@@ -222,7 +221,7 @@ function addWindows(sentinels: Set<string>, body: Uint8Array): void {
 
 function testNode(): TestNode {
   return createTestNode({
-    seed: SEED,
+    seed: NODE_SEED,
     chainId: CHAIN_ID,
     nodeId: NODE_ID,
     upstream: () => ({

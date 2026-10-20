@@ -1,8 +1,13 @@
 import { getPublicKeyAsync } from "@noble/ed25519";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import {
+  CHAIN_ID,
   createTestNode,
+  jsonRpcCall,
+  KEY,
   mockHardwareVerifier,
+  NODE_ID,
+  NODE_SEED,
   rejectionOf,
   signResponse,
   type TestNodeOptions,
@@ -21,30 +26,15 @@ import {
 } from "../src/errors";
 import type { ConfidentialTransport } from "../src/transport";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const OTHER_SEED = new Uint8Array(32).fill(0x42);
-const CHAIN_ID = "42161";
 const BASE_URL = "https://rpc.example/eth_vrpc";
-// Fake key literal, never a real key.
-const KEY = "0123456789abcdefghijABCDEFGHIJkl";
 const KEYED_URL = `${BASE_URL}/${KEY}`;
-const NODE_ID = "alpha-vrpc-1";
 const utf8 = new TextEncoder();
 const JSON_RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const DEFAULT_UPSTREAM_BODY = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 
-function jsonRpcCall(): InnerRequest {
-  return {
-    method: "POST",
-    path: "/",
-    contentType: "application/json",
-    accept: "application/json",
-    body: utf8.encode(JSON_RPC_BODY),
-  };
-}
-
 function testNode(overrides: Partial<TestNodeOptions> = {}) {
-  return createTestNode({ seed: SEED, chainId: CHAIN_ID, nodeId: NODE_ID, ...overrides });
+  return createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID, ...overrides });
 }
 
 function clientFor(

@@ -2,16 +2,19 @@ import { getEventListeners } from "node:events";
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 import { gzipSync } from "node:zlib";
-import { hexToBytes } from "@noble/hashes/utils.js";
 import {
+  CHAIN_ID,
   createTestNode,
+  jsonRpcCall,
+  KEY,
   mockHardwareVerifier,
+  NODE_ID,
+  NODE_SEED,
   rejectionOf,
   type TestNode,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
 import {
   AttestationUnavailable,
@@ -21,14 +24,9 @@ import {
 } from "../src/errors";
 import { type ConfidentialTransport, defaultTransport } from "../src/transport";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
-const CHAIN_ID = "42161";
-const NODE_ID = "alpha-vrpc-1";
-const KEY = "0123456789abcdefghijABCDEFGHIJkl";
 const UPSTREAM_BODY = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 const OVER_CAP = 201326593;
 const MIB = 1024 * 1024;
-const utf8 = new TextEncoder();
 const text = new TextDecoder();
 
 type Mode =
@@ -54,16 +52,6 @@ interface Harness {
   log: Seen[];
   setMode(mode: Mode): void;
   partialWritten: Promise<void>;
-}
-
-function jsonRpcCall(): InnerRequest {
-  return {
-    method: "POST",
-    path: "/",
-    contentType: "application/json",
-    accept: "application/json",
-    body: utf8.encode('{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'),
-  };
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -154,7 +142,7 @@ function answerWith(mode: Mode, isPost: boolean, answer: TestOuterResponse, res:
 }
 
 async function harness(): Promise<Harness> {
-  const node = createTestNode({ seed: SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
+  const node = createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
   const log: Seen[] = [];
   const partial = deferred();
   const sockets = new Set<Socket>();
@@ -389,7 +377,7 @@ describe("default transport fetch contract", () => {
   });
 
   test("an opaque redirect on the confidential request is an unexpected response", async () => {
-    const node = createTestNode({ seed: SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
+    const node = createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
     vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
       if (init.method === "POST") return opaqueRedirect();
       const answer = await node.transport({

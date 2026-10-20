@@ -2,16 +2,20 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 import {
   bhttpField,
   bhttpOkResponse,
+  CHAIN_ID,
   type ConfidentialContext,
   createTestNode,
+  jsonRpcCall,
   mockHardwareVerifier,
+  NODE_ID,
+  NODE_SEED,
   rejectionOf,
   type TestOuterResponse,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
 import vectors from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { type InnerRequest, MalformedInnerResponse } from "../src/bhttp";
+import { MalformedInnerResponse } from "../src/bhttp";
 import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
 import {
   BadSignature,
@@ -26,26 +30,13 @@ import {
 import { InvalidNodeKey } from "../src/node-key";
 import { OhttpError } from "../src/ohttp";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const OTHER_SEED = new Uint8Array(32).fill(0x42);
-const CHAIN_ID = "42161";
-const NODE_ID = "alpha-vrpc-1";
 const OHTTP_RES = { "content-type": "message/ohttp-res" };
-const utf8 = new TextEncoder();
 const text = new TextDecoder();
-
-function jsonRpcCall(): InnerRequest {
-  return {
-    method: "POST",
-    path: "/",
-    contentType: "application/json",
-    body: utf8.encode('{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'),
-  };
-}
 
 function setup(upstream?: () => TestUpstreamResponse) {
   const node = createTestNode({
-    seed: SEED,
+    seed: NODE_SEED,
     chainId: CHAIN_ID,
     nodeId: NODE_ID,
     ...(upstream === undefined ? {} : { upstream }),

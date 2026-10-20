@@ -13,8 +13,11 @@ import {
 } from "@w3tech.io/vrpc-core";
 import { type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
 import {
+  CHAIN_ID,
   createTestNode,
+  KEY,
   mockHardwareVerifier,
+  NODE_ID,
   rejectionOf,
   TEST_SEED,
   type TestUpstreamResponse,
@@ -28,10 +31,7 @@ import {
 } from "@w3tech.io/vrpc-test-support/server";
 import { FetchRequest } from "ethers";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { CHAIN_ID } from "./fixtures";
 
-const NODE_ID = "alpha-vrpc-1";
-const KEY = "0123456789abcdefghijABCDEFGHIJkl";
 const SENTINEL = "5e17e1a1";
 
 type Flavour =

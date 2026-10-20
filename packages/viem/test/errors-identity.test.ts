@@ -5,8 +5,11 @@ import * as core from "@w3tech.io/vrpc-core";
 import * as conf from "@w3tech.io/vrpc-core/confidential";
 import * as errors from "@w3tech.io/vrpc-core/errors";
 import {
+  CHAIN_ID,
   createTestNode,
+  KEY,
   mockHardwareVerifier,
+  NODE_ID,
   rejectionOf,
   TEST_SEED,
   type TestUpstreamResponse,
@@ -16,9 +19,6 @@ import { serveTestNode } from "@w3tech.io/vrpc-test-support/server";
 import * as adapter from "@w3tech.io/vrpc-viem";
 import { BaseError, createPublicClient, defineChain } from "viem";
 import { afterEach, describe, expect, test } from "vitest";
-import { CHAIN_ID } from "./fixtures";
-
-const KEY = "0123456789abcdefghijABCDEFGHIJkl";
 
 const arbitrum = defineChain({
   id: 42161,
@@ -40,7 +40,7 @@ describe("an error from a live call", () => {
     const node = createTestNode({
       seed: TEST_SEED,
       chainId: CHAIN_ID,
-      nodeId: "alpha-vrpc-1",
+      nodeId: NODE_ID,
       upstream: async (request): Promise<TestUpstreamResponse> => {
         const call = JSON.parse(await request.text()) as { id: number };
         return {

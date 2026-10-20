@@ -1,4 +1,3 @@
-import { hexToBytes } from "@noble/hashes/utils.js";
 import type {
   AttestationUnavailableReason as MainAttestationUnavailableReason,
   InvalidInnerRequestReason as MainInvalidInnerRequestReason,
@@ -28,11 +27,15 @@ import type {
   TransportFailedReason,
 } from "@w3tech.io/vrpc-core/errors";
 import * as errors from "@w3tech.io/vrpc-core/errors";
-import { createTestNode, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import {
+  CHAIN_ID,
+  createTestNode,
+  mockHardwareVerifier,
+  NODE_ID,
+  NODE_SEED,
+} from "@w3tech.io/vrpc-test-support";
 import { describe, expect, expectTypeOf, test } from "vitest";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
-const CHAIN_ID = "42161";
 const utf8 = new TextEncoder();
 
 function errorClasses(): [string, unknown][] {
@@ -48,7 +51,7 @@ function extendsUnavailableError(value: unknown): boolean {
 
 describe("@w3tech.io/vrpc-core/confidential", () => {
   test("a JSON-RPC call through the entry succeeds", async () => {
-    const node = createTestNode({ seed: SEED, chainId: CHAIN_ID, nodeId: "alpha-vrpc-1" });
+    const node = createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
     const client = new conf.ConfidentialClient({
       url: "https://rpc.example/eth_vrpc/0123456789abcdefghijABCDEFGHIJkl",
       chainId: CHAIN_ID,

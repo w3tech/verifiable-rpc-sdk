@@ -1,8 +1,16 @@
 // The client with its default transport puts exactly one request on the wire per call whatever
 // the gateway answers, follows no redirect, and only re-attests on the next call.
 
-import { hexToBytes } from "@noble/hashes/utils.js";
-import { createTestNode, mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
+import {
+  CHAIN_ID,
+  createTestNode,
+  jsonRpcCall,
+  KEY,
+  mockHardwareVerifier,
+  NODE_ID,
+  NODE_SEED,
+  rejectionOf,
+} from "@w3tech.io/vrpc-test-support";
 import {
   type ServedAnswer,
   type ServedRequest,
@@ -11,16 +19,10 @@ import {
   type TestNodeServerOptions,
 } from "@w3tech.io/vrpc-test-support/server";
 import { afterEach, describe, expect, test } from "vitest";
-import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
 import { AttestationUnavailable, RequestRejected, UnexpectedResponse } from "../src/errors";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
-const CHAIN_ID = "42161";
-const NODE_ID = "alpha-vrpc-1";
-const KEY = "0123456789abcdefghijABCDEFGHIJkl";
 const UPSTREAM_BODY = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
-const utf8 = new TextEncoder();
 const text = new TextDecoder();
 
 const cleanups: Array<() => unknown> = [];
@@ -31,7 +33,7 @@ afterEach(async () => {
 
 async function serve(options: TestNodeServerOptions = {}): Promise<TestNodeServer> {
   const node = createTestNode({
-    seed: SEED,
+    seed: NODE_SEED,
     chainId: CHAIN_ID,
     nodeId: NODE_ID,
     upstream: () => ({
@@ -51,16 +53,6 @@ function clientAt(server: TestNodeServer): ConfidentialClient {
     chainId: CHAIN_ID,
     hardwareVerifier: mockHardwareVerifier(),
   });
-}
-
-function jsonRpcCall(): InnerRequest {
-  return {
-    method: "POST",
-    path: "/",
-    contentType: "application/json",
-    accept: "application/json",
-    body: utf8.encode('{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'),
-  };
 }
 
 const count = (server: TestNodeServer, match: (r: ServedRequest) => boolean) =>

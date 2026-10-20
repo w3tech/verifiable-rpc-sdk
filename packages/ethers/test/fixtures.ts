@@ -1,14 +1,6 @@
 // Signed-response fixtures for the vrpc-ethers adapter tests.
 
-import { FIXTURE_TIMESTAMP_MS, signedJsonHeaders } from "@w3tech.io/vrpc-test-support";
-
-/**
- * Chain id bound into every fixture's pre-image (arbitrum — matches
- * `examples/shared.ts` conventions). Exported so tests pass it to
- * `verifyResponse({ chainId: CHAIN_ID })`. Decimal string — the exact value the
- * sidecar is configured with and hashes into the pre-image.
- */
-export const CHAIN_ID = "42161";
+import { CHAIN_ID, FIXTURE_TIMESTAMP_MS, signedJsonHeaders } from "@w3tech.io/vrpc-test-support";
 
 export interface Fixture {
   /** Request body bytes, exactly as signed (= `buildPreImage` request input). */

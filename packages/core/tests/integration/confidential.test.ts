@@ -2,7 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC client against the real sidecar and the dstack simulator.
 
-import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import { CHAIN_ID, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import {
   INTEROP_SKIP_MESSAGE,
   type Interop,
@@ -25,7 +25,6 @@ if (!integrationEnabled) {
 
 const d = integrationEnabled ? describe : describe.skip;
 
-const CHAIN_ID = "42161";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 

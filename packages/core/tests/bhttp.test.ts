@@ -3,6 +3,7 @@ import {
   bhttpField,
   bhttpOkResponse,
   createRecipient,
+  NODE_SEED,
   rejectionOf,
 } from "@w3tech.io/vrpc-test-support";
 import rfc9292 from "@w3tech.io/vrpc-test-support/vectors/rfc9292-section5.json";
@@ -22,7 +23,6 @@ const PINNED_REQUEST =
   "0004504f5354056874747073096c6f63616c686f7374052f3f783d313606616363657074106170706c69636174696f6e2f6a736f6e0c636f6e74656e742d74797065106170706c69636174696f6e2f6a736f6e027b7d00";
 const JSON_TYPE = "application/json";
 const PROCESSING_THEN_OK = "0140660040c80002686900";
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const utf8 = new TextEncoder();
 
 async function encode(request: InnerRequest): Promise<Uint8Array> {
@@ -299,7 +299,7 @@ describe("decodeInnerResponse", () => {
   });
 
   test("decodes recipient replies and rejects an informational one", async () => {
-    const recipient = createRecipient(SEED);
+    const recipient = createRecipient(NODE_SEED);
     const nodeKey = nodeKeyFromEd25519(recipient.ed25519PublicKey);
     const roundTrip = async (
       reply: (opened: Awaited<ReturnType<typeof recipient.openRequest>>) => Promise<Uint8Array>,

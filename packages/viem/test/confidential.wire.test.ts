@@ -13,8 +13,11 @@ import {
   UnexpectedResponse,
 } from "@w3tech.io/vrpc-core";
 import {
+  CHAIN_ID,
   createTestNode,
+  KEY,
   mockHardwareVerifier,
+  NODE_ID,
   rejectionOf,
   TEST_SEED,
   type TestUpstreamResponse,
@@ -29,10 +32,7 @@ import {
 import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 import { BaseError, createPublicClient, defineChain, fallback } from "viem";
 import { afterEach, describe, expect, test } from "vitest";
-import { CHAIN_ID } from "./fixtures";
 
-const NODE_ID = "alpha-vrpc-1";
-const KEY = "0123456789abcdefghijABCDEFGHIJkl";
 const SENTINEL = "5e17e1a1";
 
 const arbitrum = defineChain({

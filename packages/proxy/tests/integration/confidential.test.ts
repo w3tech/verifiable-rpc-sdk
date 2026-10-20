@@ -4,7 +4,7 @@
 
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mockHardwareVerifier, toHex } from "@w3tech.io/vrpc-test-support";
+import { CHAIN_ID, mockHardwareVerifier, toHex } from "@w3tech.io/vrpc-test-support";
 import {
   INTEROP_SKIP_MESSAGE,
   type Interop,
@@ -21,7 +21,6 @@ if (!integrationEnabled) {
 
 const d = integrationEnabled ? describe : describe.skip;
 
-const CHAIN_ID = "42161";
 const BLOCK_NUMBER = { jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] };
 
 function batch(size: number): (typeof BLOCK_NUMBER)[] {

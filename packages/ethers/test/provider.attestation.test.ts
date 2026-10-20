@@ -23,10 +23,11 @@ import {
   type AttestationStub,
   attestationAnswer,
   attestationStub,
+  CHAIN_ID,
   mockHardwareVerifier,
 } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
-import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX } from "./fixtures";
+import { SINGLE_RESULT_BALANCE_HEX } from "./fixtures";
 import { signingRequest } from "./helpers";
 
 const CHAIN_ID_NUMBER = Number(CHAIN_ID); // 42161 (arbitrum)

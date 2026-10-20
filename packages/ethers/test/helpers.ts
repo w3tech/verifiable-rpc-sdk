@@ -2,10 +2,8 @@
 // without touching the network. `provider.test.ts` feeds the
 // signed fixtures from `fixtures.ts` through `VrpcProvider._send` via this seam.
 
-import { signedJsonHeaders } from "@w3tech.io/vrpc-test-support";
+import { CHAIN_ID, signedJsonHeaders } from "@w3tech.io/vrpc-test-support";
 import { FetchRequest } from "ethers";
-
-import { CHAIN_ID } from "./fixtures";
 
 /**
  * Build a `FetchRequest` that resolves to a synthetic response carrying the

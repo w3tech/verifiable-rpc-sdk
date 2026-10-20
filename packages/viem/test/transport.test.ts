@@ -19,6 +19,7 @@
 import { VerificationError as CoreVerificationError } from "@w3tech.io/vrpc-core";
 import {
   attestationAnswer,
+  CHAIN_ID,
   mockHardwareVerifier,
   signedJsonHeaders,
 } from "@w3tech.io/vrpc-test-support";
@@ -39,7 +40,7 @@ import {
   parseAbi,
 } from "viem";
 import { describe, expect, test } from "vitest";
-import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX } from "./fixtures";
+import { SINGLE_RESULT_BALANCE_HEX } from "./fixtures";
 
 const URL = "http://test.invalid";
 const ADDR = "0x1111111111111111111111111111111111111111" as const;

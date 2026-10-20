@@ -1,7 +1,13 @@
-import { hexToBytes } from "@noble/hashes/utils.js";
-import { createTestNode, mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
+import {
+  CHAIN_ID,
+  createTestNode,
+  jsonRpcCall,
+  mockHardwareVerifier,
+  NODE_ID,
+  NODE_SEED,
+  rejectionOf,
+} from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test, vi } from "vitest";
-import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
 import { ConfidentialSealFailed, UnavailableError } from "../src/errors";
 import { InvalidNodeKey } from "../src/node-key";
@@ -12,22 +18,8 @@ vi.mock("../src/ohttp", async (importOriginal) => {
   return { ...actual, sealRequest: vi.fn(actual.sealRequest) };
 });
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
-const CHAIN_ID = "42161";
-
-function jsonRpcCall(): InnerRequest {
-  return {
-    method: "POST",
-    path: "/",
-    contentType: "application/json",
-    body: new TextEncoder().encode(
-      '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}',
-    ),
-  };
-}
-
 function setup() {
-  const node = createTestNode({ seed: SEED, chainId: CHAIN_ID, nodeId: "alpha-vrpc-1" });
+  const node = createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
   const client = new ConfidentialClient({
     url: "https://rpc.example/eth_vrpc",
     chainId: CHAIN_ID,

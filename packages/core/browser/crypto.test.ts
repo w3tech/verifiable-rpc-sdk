@@ -1,6 +1,6 @@
 import type { CipherSuite } from "@hpke/core";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { createRecipient, hideX25519 } from "@w3tech.io/vrpc-test-support";
+import { createRecipient, hideX25519, NODE_SEED } from "@w3tech.io/vrpc-test-support";
 import libsodium from "@w3tech.io/vrpc-test-support/vectors/ed25519-to-x25519.json";
 import cfrg from "@w3tech.io/vrpc-test-support/vectors/hpke-cfrg-mode0-x25519-sha256-aes256gcm.json";
 import rfc9292 from "@w3tech.io/vrpc-test-support/vectors/rfc9292-section5.json";
@@ -19,7 +19,6 @@ import {
   selectKem,
 } from "../src/ohttp";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const REQUEST_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const RESPONSE_BODY = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 const utf8 = new TextEncoder();
@@ -145,7 +144,7 @@ describe("in a browser without WebCrypto X25519", () => {
   });
 
   test("a sealed JSON-RPC POST opens at the recipient and its sealed reply decodes", async () => {
-    const recipient = createRecipient(SEED);
+    const recipient = createRecipient(NODE_SEED);
     const nodeKey = nodeKeyFromEd25519(recipient.ed25519PublicKey);
     const inner = await encodeInnerRequest({
       method: "POST",

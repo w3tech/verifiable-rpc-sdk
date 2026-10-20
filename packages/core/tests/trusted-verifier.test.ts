@@ -1,6 +1,7 @@
 import { AttestationError, EMPTY_ALLOWLIST } from "@w3tech.io/dstack-verify";
 import {
   attestationStub,
+  CHAIN_ID,
   collectingLogger,
   mockHardwareVerifier,
   signResponse,
@@ -26,7 +27,6 @@ import type { ResponseHeaders } from "../src/verify";
 
 const RPC_BASE = "https://rpc.ankr.com";
 const CHAIN = "arbitrum";
-const CHAIN_ID = "42161";
 const NONCE = new Uint8Array(32).fill(0x07);
 
 /**

@@ -8,8 +8,11 @@ import { UnexpectedResponse } from "@w3tech.io/vrpc-core";
 import { InvalidChainId, type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
 import {
   attestationStub,
+  CHAIN_ID,
   createTestNode,
+  KEY,
   mockHardwareVerifier,
+  NODE_ID,
   rejectionOf,
   signedJsonHeaders,
   TEST_SEED,
@@ -19,10 +22,6 @@ import {
 import { serveTestNode, type TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
 import { AbiCoder, EnsResolver, FetchRequest, isError, toUtf8String } from "ethers";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { CHAIN_ID } from "./fixtures";
-
-const NODE_ID = "alpha-vrpc-1";
-const KEY = "0123456789abcdefghijABCDEFGHIJkl";
 
 interface RpcCall {
   jsonrpc: string;

@@ -5,6 +5,7 @@
 
 export * from "./attestation";
 export * from "./bhttp";
+export * from "./fixtures";
 export * from "./hide-x25519";
 export * from "./mocks";
 export * from "./node";

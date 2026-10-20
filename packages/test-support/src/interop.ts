@@ -15,6 +15,7 @@ import {
 import { type AddressInfo, createServer as createNetServer, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CHAIN_ID } from "./fixtures";
 
 export const integrationEnabled: boolean =
   !!process.env.DSTACK_SIMULATOR_BIN &&
@@ -106,7 +107,7 @@ const RPC_RESULTS: Record<string, string> = {
 };
 
 export async function spawnInterop(options: InteropOptions = {}): Promise<Interop> {
-  const chainId = options.chainId ?? "42161";
+  const chainId = options.chainId ?? CHAIN_ID;
   const nodeId = options.nodeId ?? "interop-node-1";
   const started: { kill(): Promise<void> }[] = [];
   try {

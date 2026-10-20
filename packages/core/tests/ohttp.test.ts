@@ -1,5 +1,5 @@
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { createRecipient, rejectionOf } from "@w3tech.io/vrpc-test-support";
+import { createRecipient, NODE_SEED, rejectionOf } from "@w3tech.io/vrpc-test-support";
 import appendixA from "@w3tech.io/vrpc-test-support/vectors/rfc9458-appendix-a.json";
 import { describe, expect, test } from "vitest";
 import { decodeInnerResponse, encodeInnerRequest } from "../src/bhttp";
@@ -14,12 +14,11 @@ import {
   sealRequest,
 } from "../src/ohttp";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const REQUEST_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const RESPONSE_BODY = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 const KEMS: readonly KemChoice[] = ["js", "native"];
 
-const recipient = createRecipient(SEED);
+const recipient = createRecipient(NODE_SEED);
 const nodeKey = nodeKeyFromEd25519(recipient.ed25519PublicKey);
 
 function jsonRpcRequest(): Promise<Uint8Array> {

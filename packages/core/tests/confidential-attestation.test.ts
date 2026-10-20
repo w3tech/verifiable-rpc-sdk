@@ -1,16 +1,19 @@
-import { hexToBytes } from "@noble/hashes/utils.js";
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 import {
   type AttestationContext,
+  CHAIN_ID,
   createTestNode,
+  jsonRpcCall,
+  KEY,
   mockHardwareVerifier,
+  NODE_ID,
+  NODE_SEED,
   rejectionOf,
   type TestNode,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
 import ed25519ToX25519 from "@w3tech.io/vrpc-test-support/vectors/ed25519-to-x25519.json";
 import { describe, expect, test } from "vitest";
-import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
 import {
   AttestationFailed,
@@ -20,12 +23,7 @@ import {
 } from "../src/errors";
 import type { ConfidentialTransport } from "../src/transport";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
-const CHAIN_ID = "42161";
 const BASE_URL = "https://rpc.example/eth_vrpc";
-const NODE_ID = "alpha-vrpc-1";
-// Fake key literal, never a real key.
-const KEY = "0123456789abcdefghijABCDEFGHIJkl";
 const utf8 = new TextEncoder();
 
 interface RejectRow {
@@ -40,18 +38,8 @@ const unusableKeys = keyVectors.reject.filter(
   (row) => row.reason === "small-order" || row.reason === "not-torsion-free",
 );
 
-function jsonRpcCall(): InnerRequest {
-  return {
-    method: "POST",
-    path: "/",
-    contentType: "application/json",
-    accept: "application/json",
-    body: utf8.encode('{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'),
-  };
-}
-
 function testNode(): TestNode {
-  return createTestNode({ seed: SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
+  return createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
 }
 
 function clientFor(

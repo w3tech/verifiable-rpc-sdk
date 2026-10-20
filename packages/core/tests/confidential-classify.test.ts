@@ -1,14 +1,17 @@
 import { hexToBytes } from "@noble/hashes/utils.js";
 import {
+  CHAIN_ID,
   type ConfidentialContext,
   createTestNode,
+  jsonRpcCall,
   mockHardwareVerifier,
+  NODE_ID,
+  NODE_SEED,
   rejectionOf,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
 import sidecarVectors from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
 import { describe, expect, test } from "vitest";
-import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
 import {
   MissingHeader,
@@ -19,9 +22,6 @@ import {
   VerificationError,
 } from "../src/errors";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
-const CHAIN_ID = "42161";
-const NODE_ID = "alpha-vrpc-1";
 const utf8 = new TextEncoder();
 const EMPTY = new Uint8Array(0);
 
@@ -66,18 +66,9 @@ async function withContentType(
   };
 }
 
-function jsonRpcCall(): InnerRequest {
-  return {
-    method: "POST",
-    path: "/",
-    contentType: "application/json",
-    body: utf8.encode('{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'),
-  };
-}
-
 function setup(upstream?: Parameters<typeof createTestNode>[0]["upstream"]) {
   const node = createTestNode({
-    seed: SEED,
+    seed: NODE_SEED,
     chainId: CHAIN_ID,
     nodeId: NODE_ID,
     ...(upstream === undefined ? {} : { upstream }),
