@@ -15,8 +15,8 @@ import {
   sealRequest,
 } from "../src/ohttp";
 
-// w3tech/verifiable-rpc-sidecar tests/vectors/confidential.json at commit
-// 8c168dc8fd5a911a13aa049cd7d642502257fbcf, sha256 342cb863ddcf741f78a984ebbb28c2672f9c1dc9cc69084e1fba5b8e625b2075.
+// w3tech/verifiable-rpc-sidecar tests/vectors/confidential.json at main merge
+// 8a9a4f482326fcdae5fe9b342d45399e5f996f7d, sha256 342cb863ddcf741f78a984ebbb28c2672f9c1dc9cc69084e1fba5b8e625b2075.
 const VECTORS_SHA256 = "342cb863ddcf741f78a984ebbb28c2672f9c1dc9cc69084e1fba5b8e625b2075";
 const VECTORS_FILE = new URL(
   "../../test-support/vectors/sidecar-confidential.json",
