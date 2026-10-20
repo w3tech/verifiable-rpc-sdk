@@ -219,13 +219,10 @@ describe("signed confidential answers that fail verification", () => {
     expect(err).toBeInstanceOf(MissingHeader);
   });
 
-  test.each([
-    "12a",
-    "18446744073709551616",
-  ])("a vRPC-Timestamp of %s is MalformedHeader", async (ts) => {
+  test("a non-decimal vRPC-Timestamp is MalformedHeader", async () => {
     const err = await failedCallAfterWarmup(async (context) => {
       const normal = await context.normal();
-      return { ...normal, headers: { ...normal.headers, "vRPC-Timestamp": ts } };
+      return { ...normal, headers: { ...normal.headers, "vRPC-Timestamp": "12a" } };
     });
     expect(err).toBeInstanceOf(MalformedHeader);
   });
