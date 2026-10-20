@@ -23,6 +23,7 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "check:pack": "rm -rf .pack && pnpm -r --filter './packages/*' pack --pack-destination .pack && for f in .pack/*.tgz; do publint run --strict $f && attw $f --profile esm-only || exit 1; done",
+    "check:dup": "jscpd packages/core/src packages/dstack-verify/src packages/ethers/src packages/viem/src packages/proxy/src --min-tokens 50 --threshold 1.95",
     "check:api": "for c in packages/*/api-extractor*.json; do api-extractor run -c $c || exit 1; done",
     "api:update": "for c in packages/*/api-extractor*.json; do api-extractor run --local -c $c || exit 1; done",
     "example:01-ethers-client": "tsx examples/01-ethers-client.ts",
