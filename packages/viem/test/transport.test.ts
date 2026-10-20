@@ -267,6 +267,8 @@ const TEST_CHAIN = defineChain({
 // Inject TEST_CHAIN into a directly-invoked transport factory (what
 // createPublicClient does under the hood for `client()`).
 const PINNED = { chain: TEST_CHAIN } as never;
+const OTHER_CHAIN = { chain: defineChain({ ...TEST_CHAIN, id: 1 }) } as never;
+const GET_BALANCE = { method: "eth_getBalance", params: [ADDR, "latest"] } as const;
 
 // Hardware verification is mandatory + defaults to a network cloud POST; inject
 // the no-network mock so transport-wiring tests verify offline.
@@ -300,12 +302,9 @@ describe("vrpcHttp transport wiring", () => {
       const headers = await signResponseBytes(requestBytes, body, { nodeId: NODE_ID });
       return new Response(body, { status: 200, headers });
     };
-    await expect(
-      pinnedTransport(fetchFn).config.request({
-        method: "eth_getBalance",
-        params: [ADDR, "latest"],
-      }),
-    ).resolves.toBe(SINGLE_RESULT_BALANCE_HEX);
+    await expect(pinnedTransport(fetchFn).config.request(GET_BALANCE)).resolves.toBe(
+      SINGLE_RESULT_BALANCE_HEX,
+    );
   });
 
   test("a client on another chain gets InvalidChainId and sends nothing", async () => {
@@ -316,10 +315,9 @@ describe("vrpcHttp transport wiring", () => {
       hardwareVerifier: MOCK_HV,
     });
     const a = t(PINNED);
-    const b = t({ chain: defineChain({ ...TEST_CHAIN, id: 1 }) } as never);
-    const getBalance = { method: "eth_getBalance", params: [ADDR, "latest"] } as const;
-    await expect(a.config.request(getBalance)).resolves.toBe(SINGLE_RESULT_BALANCE_HEX);
-    await expect(b.config.request(getBalance)).rejects.toBeInstanceOf(InvalidChainId);
+    const b = t(OTHER_CHAIN);
+    await expect(a.config.request(GET_BALANCE)).resolves.toBe(SINGLE_RESULT_BALANCE_HEX);
+    await expect(b.config.request(GET_BALANCE)).rejects.toBeInstanceOf(InvalidChainId);
     expect(counter.n).toBe(1);
   });
 
@@ -329,11 +327,10 @@ describe("vrpcHttp transport wiring", () => {
       replayWindowMs: WIDE_WINDOW,
       hardwareVerifier: MOCK_HV,
     });
-    const wrong = t({ chain: defineChain({ ...TEST_CHAIN, id: 1 }) } as never);
+    const wrong = t(OTHER_CHAIN);
     const right = t(PINNED);
-    const getBalance = { method: "eth_getBalance", params: [ADDR, "latest"] } as const;
-    await expect(wrong.config.request(getBalance)).rejects.toBeInstanceOf(BadSignature);
-    await expect(right.config.request(getBalance)).rejects.toBeInstanceOf(InvalidChainId);
+    await expect(wrong.config.request(GET_BALANCE)).rejects.toBeInstanceOf(BadSignature);
+    await expect(right.config.request(GET_BALANCE)).rejects.toBeInstanceOf(InvalidChainId);
   });
 
   test("a chain pinned while the bootstrap is in flight is not overwritten by it", async () => {
@@ -357,18 +354,14 @@ describe("vrpcHttp transport wiring", () => {
       return node(url, init);
     };
     const t = vrpcHttp(URL, { fetchFn, replayWindowMs: WIDE_WINDOW, hardwareVerifier: MOCK_HV });
-    const getBalance = { method: "eth_getBalance", params: [ADDR, "latest"] } as const;
 
-    const noChain = t({} as never).config.request(getBalance);
-    noChain.catch(() => {});
+    const noChain = t({} as never).config.request(GET_BALANCE);
+    const noChainSettled = noChain.catch(() => {});
     await started;
-    const otherChain = t({ chain: defineChain({ ...TEST_CHAIN, id: 1 }) } as never);
-    const otherChainRead = otherChain.config.request(getBalance);
+    const otherChain = t(OTHER_CHAIN);
+    const otherChainRead = otherChain.config.request(GET_BALANCE);
     releaseBootstrap();
-    await noChain.then(
-      () => {},
-      () => {},
-    );
+    await noChainSettled;
     releaseSecondRead();
 
     await expect(otherChainRead).rejects.toBeInstanceOf(BadSignature);
@@ -411,9 +404,7 @@ describe("vrpcHttp transport wiring", () => {
     const transport = pinnedTransport(
       signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { tamper: true }),
     );
-    await expect(
-      transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
-    ).rejects.toBeInstanceOf(BadSignature);
+    await expect(transport.config.request(GET_BALANCE)).rejects.toBeInstanceOf(BadSignature);
   });
 
   // wrong-chain signature (signed for chain 1, verified
@@ -422,9 +413,7 @@ describe("vrpcHttp transport wiring", () => {
     const transport = pinnedTransport(
       signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { signingChainId: "1" }),
     );
-    await expect(
-      transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
-    ).rejects.toBeInstanceOf(BadSignature);
+    await expect(transport.config.request(GET_BALANCE)).rejects.toBeInstanceOf(BadSignature);
   });
 
   // a chain id beyond Number.MAX_SAFE_INTEGER round-trips exactly through
@@ -454,9 +443,7 @@ describe("vrpcHttp transport wiring", () => {
     const transport = pinnedTransport(
       signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { unsigned: true }),
     );
-    await expect(
-      transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
-    ).rejects.toBeInstanceOf(MissingHeader);
+    await expect(transport.config.request(GET_BALANCE)).rejects.toBeInstanceOf(MissingHeader);
   });
 
   // a signed JSON-RPC {error} body is an ordinary RPC error, NOT a
@@ -471,14 +458,12 @@ describe("vrpcHttp transport wiring", () => {
         }),
       ),
     );
-    const err = await transport.config
-      .request({ method: "eth_getBalance", params: [ADDR, "latest"] })
-      .then(
-        () => {
-          throw new Error("expected rejection");
-        },
-        (e) => e,
-      );
+    const err = await transport.config.request(GET_BALANCE).then(
+      () => {
+        throw new Error("expected rejection");
+      },
+      (e) => e,
+    );
     expect(err).not.toBeInstanceOf(VerificationError);
   });
 
@@ -501,9 +486,7 @@ describe("vrpcHttp transport wiring", () => {
     const transport = pinnedTransport(
       signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { tamper: true, counter }),
     );
-    await transport.config
-      .request({ method: "eth_getBalance", params: [ADDR, "latest"] })
-      .catch(() => {});
+    await transport.config.request(GET_BALANCE).catch(() => {});
     expect(counter.n).toBe(1);
   });
 
@@ -528,14 +511,12 @@ describe("vrpcHttp transport wiring", () => {
     const transport = pinnedTransport(
       signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { unsigned: true }),
     );
-    const err = await transport.config
-      .request({ method: "eth_getBalance", params: [ADDR, "latest"] })
-      .then(
-        () => {
-          throw new Error("expected rejection");
-        },
-        (e) => e,
-      );
+    const err = await transport.config.request(GET_BALANCE).then(
+      () => {
+        throw new Error("expected rejection");
+      },
+      (e) => e,
+    );
     // Instance of the viem-re-exported family AND the core class identity — the
     // same identity vrpc-ethers re-exports.
     expect(err).toBeInstanceOf(MissingHeader);
@@ -551,14 +532,12 @@ describe("vrpcHttp transport wiring", () => {
     const transport = pinnedTransport(
       signingFetch("upstream unavailable", { unsigned: true, status: 502 }),
     );
-    const err = await transport.config
-      .request({ method: "eth_getBalance", params: [ADDR, "latest"] })
-      .then(
-        () => {
-          throw new Error("expected rejection");
-        },
-        (e) => e,
-      );
+    const err = await transport.config.request(GET_BALANCE).then(
+      () => {
+        throw new Error("expected rejection");
+      },
+      (e) => e,
+    );
     expect(err).toBeInstanceOf(HttpRequestError);
     expect(err).not.toBeInstanceOf(VerificationError);
   });
@@ -578,14 +557,12 @@ describe("vrpcHttp transport wiring", () => {
         { status: 500 },
       ),
     );
-    const err = await transport.config
-      .request({ method: "eth_getBalance", params: [ADDR, "latest"] })
-      .then(
-        () => {
-          throw new Error("expected rejection");
-        },
-        (e) => e,
-      );
+    const err = await transport.config.request(GET_BALANCE).then(
+      () => {
+        throw new Error("expected rejection");
+      },
+      (e) => e,
+    );
     expect(err).not.toBeInstanceOf(HttpRequestError);
     expect(err).not.toBeInstanceOf(VerificationError);
   });
@@ -626,10 +603,10 @@ describe("vrpcHttp transport wiring", () => {
       hardwareVerifier: MOCK_HV,
     })({} as never);
     await Promise.all([
-      transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
-      transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
-      transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
-      transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
+      transport.config.request(GET_BALANCE),
+      transport.config.request(GET_BALANCE),
+      transport.config.request(GET_BALANCE),
+      transport.config.request(GET_BALANCE),
     ]);
     expect(bootstrapHits.n).toBe(1);
   });
@@ -648,9 +625,7 @@ describe("vrpcHttp transport wiring", () => {
       }),
       replayWindowMs: WIDE_WINDOW,
     })({} as never);
-    await expect(
-      transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
-    ).rejects.toBeInstanceOf(BadSignature);
+    await expect(transport.config.request(GET_BALANCE)).rejects.toBeInstanceOf(BadSignature);
   });
 
   test("auto-derive retry: a failed bootstrap is retried and the next call verifies with the honest chainId", async () => {
@@ -673,9 +648,8 @@ describe("vrpcHttp transport wiring", () => {
       replayWindowMs: WIDE_WINDOW,
       hardwareVerifier: MOCK_HV,
     })({} as never);
-    const getBalance = { method: "eth_getBalance", params: [ADDR, "latest"] } as const;
-    await expect(transport.config.request(getBalance)).rejects.toBeInstanceOf(BadSignature);
-    await expect(transport.config.request(getBalance)).resolves.toBe(SINGLE_RESULT_BALANCE_HEX);
+    await expect(transport.config.request(GET_BALANCE)).rejects.toBeInstanceOf(BadSignature);
+    await expect(transport.config.request(GET_BALANCE)).resolves.toBe(SINGLE_RESULT_BALANCE_HEX);
     expect(bootstraps).toBe(2);
   });
 
@@ -684,9 +658,7 @@ describe("vrpcHttp transport wiring", () => {
       fetchFn: autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { bootstrapTamper: true }),
       replayWindowMs: WIDE_WINDOW,
     })({} as never);
-    await expect(
-      transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
-    ).rejects.toBeInstanceOf(BadSignature);
+    await expect(transport.config.request(GET_BALANCE)).rejects.toBeInstanceOf(BadSignature);
   });
 
   test("auto-derive FAIL-FAST: an UNSIGNED bootstrap response → MissingHeader AT BOOTSTRAP", async () => {
@@ -694,9 +666,7 @@ describe("vrpcHttp transport wiring", () => {
       fetchFn: autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { bootstrapUnsigned: true }),
       replayWindowMs: WIDE_WINDOW,
     })({} as never);
-    await expect(
-      transport.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
-    ).rejects.toBeInstanceOf(MissingHeader);
+    await expect(transport.config.request(GET_BALANCE)).rejects.toBeInstanceOf(MissingHeader);
   });
 
   test("auto-derive FAIL-FAST: a malformed bootstrap body → typed MalformedHeader (not raw SyntaxError/TypeError) AT BOOTSTRAP", async () => {
@@ -709,9 +679,7 @@ describe("vrpcHttp transport wiring", () => {
       }),
       replayWindowMs: WIDE_WINDOW,
     })({} as never);
-    await expect(
-      badJson.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
-    ).rejects.toBeInstanceOf(MalformedHeader);
+    await expect(badJson.config.request(GET_BALANCE)).rejects.toBeInstanceOf(MalformedHeader);
 
     // Missing `result` → would throw a raw TypeError from BigInt(undefined);
     // coerced to MalformedHeader.
@@ -721,9 +689,7 @@ describe("vrpcHttp transport wiring", () => {
       }),
       replayWindowMs: WIDE_WINDOW,
     })({} as never);
-    await expect(
-      missingResult.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
-    ).rejects.toBeInstanceOf(MalformedHeader);
+    await expect(missingResult.config.request(GET_BALANCE)).rejects.toBeInstanceOf(MalformedHeader);
 
     // Non-hex `result` → would throw a raw SyntaxError from BigInt("0xZZ");
     // coerced to MalformedHeader.
@@ -733,9 +699,7 @@ describe("vrpcHttp transport wiring", () => {
       }),
       replayWindowMs: WIDE_WINDOW,
     })({} as never);
-    await expect(
-      nonHex.config.request({ method: "eth_getBalance", params: [ADDR, "latest"] }),
-    ).rejects.toBeInstanceOf(MalformedHeader);
+    await expect(nonHex.config.request(GET_BALANCE)).rejects.toBeInstanceOf(MalformedHeader);
   });
 
   test("explicit-pin → ZERO bootstrap fetch (eth_chainId is never issued)", async () => {
@@ -743,10 +707,7 @@ describe("vrpcHttp transport wiring", () => {
     const transport = pinnedTransport(
       autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
     );
-    const result = await transport.config.request({
-      method: "eth_getBalance",
-      params: [ADDR, "latest"],
-    });
+    const result = await transport.config.request(GET_BALANCE);
     expect(result).toBe(SINGLE_RESULT_BALANCE_HEX);
     expect(bootstrapHits.n).toBe(0);
   });
