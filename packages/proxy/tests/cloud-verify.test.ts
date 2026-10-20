@@ -82,6 +82,8 @@ describe("cloud verify egress", () => {
     const kind = await postRpc(url);
     expect(globalFetch).not.toHaveBeenCalled();
     expect(kind).toBe("Attestation");
+    const attestation = calls.find((c) => c.url.includes("/attestation"));
+    expect(attestation?.dispatcher).toBeInstanceOf(undici.Agent);
     const phala = calls.find((c) => c.url === DEFAULT_PHALA_VERIFY_ENDPOINT);
     expect(phala?.dispatcher).toBeInstanceOf(undici.Agent);
   });

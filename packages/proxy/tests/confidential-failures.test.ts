@@ -489,9 +489,7 @@ describe("concurrent and interrupted requests", () => {
 
   test("a client disconnect aborts the upstream request", async () => {
     const h = await startHarness({ startup: "ok" });
-    const requested = vi.spyOn(ConfidentialClient.prototype, "request");
-    cleanups.push(async () => requested.mockRestore());
-    h.node.setWire({ delayMs: 300, only: "POST" });
+    h.node.setWire({ hang: true, only: "POST" });
     const target = new URL(h.proxy.url);
     const req = http.request({
       host: target.hostname,
@@ -503,11 +501,9 @@ describe("concurrent and interrupted requests", () => {
     req.on("error", () => {});
     req.end(RPC_BODY);
     await vi.waitFor(() => expect(posts(h.node.wire)).toBe(1));
+    const upstream = h.node.wire.find((r) => r.method === "POST");
     req.destroy();
 
-    await vi.waitFor(() => expect(requested.mock.calls[0]?.[1]?.signal?.aborted).toBe(true));
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    expect(h.node.node.requests.filter((r) => r.method === "POST")).toHaveLength(0);
-    h.node.setWire();
+    await vi.waitFor(() => expect(upstream?.socket.destroyed).toBe(true));
   });
 });

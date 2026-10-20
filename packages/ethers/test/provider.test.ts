@@ -472,7 +472,7 @@ describe("VrpcProvider._send wiring", () => {
     try {
       await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
       await expect(provider.getBalance(ADDR)).resolves.toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
-      expect(bootstraps).toBeGreaterThanOrEqual(2);
+      expect(bootstraps).toBe(2);
     } finally {
       provider.destroy();
     }

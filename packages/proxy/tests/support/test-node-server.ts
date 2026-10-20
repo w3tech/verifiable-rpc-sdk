@@ -3,7 +3,7 @@
 // Loopback HTTP server around the in-test node, with wire capture, plus proxy and raw request helpers.
 
 import http from "node:http";
-import type { AddressInfo } from "node:net";
+import type { AddressInfo, Socket } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { gzipSync } from "node:zlib";
 
@@ -25,6 +25,7 @@ export interface WireRequest {
   headers: Record<string, string>;
   rawHeaders: string[];
   body: Buffer;
+  socket: Socket;
 }
 
 /** Wire-level changes to the outer answer; `only` limits them to one method. */
@@ -35,6 +36,8 @@ interface WireHooks {
   corruptGzip?: boolean;
   /** Wait before the status line. */
   delayMs?: number;
+  /** Never answer; the request ends when the client closes the socket. */
+  hang?: boolean;
   /** Close the socket without writing anything. */
   destroyBeforeHeaders?: boolean;
   /** Declare the full length, send this many body bytes, then close the socket. */
@@ -123,8 +126,10 @@ export async function startTestNodeServer(options: TestNodeOptions): Promise<Tes
       headers,
       rawHeaders: [...req.rawHeaders],
       body,
+      socket: req.socket,
     });
     const hooks = wireHooks.only === undefined || wireHooks.only === req.method ? wireHooks : {};
+    if (hooks.hang === true) return;
     if (hooks.destroyBeforeHeaders === true) {
       req.socket.destroy();
       return;
