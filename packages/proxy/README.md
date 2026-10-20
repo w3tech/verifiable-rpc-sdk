@@ -90,7 +90,7 @@ CLI flag wins over env var, env var wins over the default.
 | `--chain-id` (required) | `VRPC_PROXY_CHAIN_ID` | — | Chain id (opaque string, validated at startup) |
 | `--api-key` | `VRPC_PROXY_API_KEY` | — | Optional API key sent as `x-api-key` to both the upstream and the attestation endpoint; a client-supplied `x-api-key` header takes precedence. In Ankr Confidential RPC mode a client-supplied `x-api-key` is ignored and only this key (or the key in the `--upstream` path) is used |
 | `--listen` | `VRPC_PROXY_LISTEN` | `127.0.0.1:8969` | Listen `host:port` |
-| `--timeout` | `VRPC_PROXY_TIMEOUT` | `30000` | Upstream timeout, ms |
+| `--timeout` | `VRPC_PROXY_TIMEOUT` | `30000` | Timeout of each upstream request, attestation fetch and cloud (Phala) attestation verify call, ms |
 | `--replay-window` | `VRPC_PROXY_REPLAY_WINDOW` | core default (`60000`) | Replay window, ms |
 | `--attestation-cache-ttl` | `VRPC_PROXY_ATTESTATION_CACHE_TTL` | core default (`3600000`) | How long a verified attestation (per signing pubkey) is reused before re-attestation, ms. In Ankr Confidential RPC mode: how long the pinned node is kept |
 | `--log-level` | `VRPC_PROXY_LOG_LEVEL` | `error` | `silent` (nothing), `error` (fail-closed reasons only), or `debug` (per-request forward/verify trace) |
