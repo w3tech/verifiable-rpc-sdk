@@ -220,7 +220,9 @@ A call that got no verifiable answer throws an `UnavailableError`; its
 `executed` field says whether the call may have run:
 
 - `"no"`: the gateway or node did not run this attempt; an edge retry may have
-  run an earlier attempt of the same call.
+  run an earlier attempt of the same call. The answer is unsigned, so this is
+  the gateway's word; a hostile gateway can as well replay the encrypted
+  request itself.
 - `"unknown"`: the call may or may not have run; check state before resending a
   state-changing call.
 
