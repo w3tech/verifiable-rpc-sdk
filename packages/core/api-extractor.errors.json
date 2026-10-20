@@ -1,0 +1,5 @@
+{
+  "extends": "./api-extractor.json",
+  "mainEntryPointFilePath": "<projectFolder>/dist/errors.d.ts",
+  "apiReport": { "enabled": true, "reportFileName": "vrpc-core-errors" }
+}

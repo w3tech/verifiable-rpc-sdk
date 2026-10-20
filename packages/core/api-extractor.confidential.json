@@ -1,0 +1,5 @@
+{
+  "extends": "./api-extractor.json",
+  "mainEntryPointFilePath": "<projectFolder>/dist/confidential.d.ts",
+  "apiReport": { "enabled": true, "reportFileName": "vrpc-core-confidential" }
+}
