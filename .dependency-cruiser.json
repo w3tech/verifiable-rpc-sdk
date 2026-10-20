@@ -5,7 +5,7 @@
       "name": "dstack-verify-no-core",
       "severity": "error",
       "from": { "path": "^packages/dstack-verify/" },
-      "to": { "path": "^(packages/core/|@w3tech\\.io/vrpc-core)" }
+      "to": { "path": "^packages/core/" }
     },
     {
       "name": "core-public-entries-only",
