@@ -1,5 +1,10 @@
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { createRecipient, rejectionOf } from "@w3tech.io/vrpc-test-support";
+import {
+  bhttpField,
+  bhttpOkResponse,
+  createRecipient,
+  rejectionOf,
+} from "@w3tech.io/vrpc-test-support";
 import rfc9292 from "@w3tech.io/vrpc-test-support/vectors/rfc9292-section5.json";
 import { BHttpDecoder, decodeVli } from "bhttp-ts";
 import { describe, expect, test } from "vitest";
@@ -218,25 +223,6 @@ describe("encodeInnerRequest", () => {
   });
 });
 
-function vli(length: number): string {
-  return length < 64 ? length.toString(16).padStart(2, "0") : (0x4000 | length).toString(16);
-}
-
-function field(name: string, value: string): string {
-  return (
-    vli(name.length) +
-    bytesToHex(utf8.encode(name)) +
-    vli(value.length) +
-    bytesToHex(utf8.encode(value))
-  );
-}
-
-function okResponse(fields: string[], body: string): string {
-  const section = fields.join("");
-  const content = bytesToHex(utf8.encode(body));
-  return `0140c8${vli(section.length / 2)}${section}${vli(content.length / 2)}${content}00`;
-}
-
 async function expectMalformed(hex: string, reason: string) {
   const error = await rejectionOf(decodeInnerResponse(hexToBytes(hex)));
   expect(error).toBeInstanceOf(MalformedInnerResponse);
@@ -303,8 +289,8 @@ describe("decodeInnerResponse", () => {
     [["application/json", "text/plain"], "application/json, text/plain"],
     [["text/plain", "application/json"], "text/plain, application/json"],
   ])("keeps repeated content-type lines in order: %j", async (values, joined) => {
-    const hex = okResponse(
-      values.map((value) => field("content-type", value)),
+    const hex = bhttpOkResponse(
+      values.map((value) => bhttpField("content-type", value)),
       "{}",
     );
     const response = await decodeInnerResponse(hexToBytes(hex));

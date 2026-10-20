@@ -1,5 +1,7 @@
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { hexToBytes } from "@noble/hashes/utils.js";
 import {
+  bhttpField,
+  bhttpOkResponse,
   type ConfidentialContext,
   createTestNode,
   mockHardwareVerifier,
@@ -87,25 +89,6 @@ function signed(context: ConfidentialContext, body: Uint8Array): TestOuterRespon
 
 function random(length: number): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(length));
-}
-
-function vli(length: number): string {
-  return length < 64 ? length.toString(16).padStart(2, "0") : (0x4000 | length).toString(16);
-}
-
-function field(name: string, value: string): string {
-  return (
-    vli(name.length) +
-    bytesToHex(utf8.encode(name)) +
-    vli(value.length) +
-    bytesToHex(utf8.encode(value))
-  );
-}
-
-function okResponse(fields: string[], body: string): string {
-  const section = fields.join("");
-  const content = bytesToHex(utf8.encode(body));
-  return `0140c8${vli(section.length / 2)}${section}${vli(content.length / 2)}${content}00`;
 }
 
 describe("signed confidential answers that fail verification", () => {
@@ -298,8 +281,11 @@ describe("delivered inner responses", () => {
         context,
         await context.seal(
           hexToBytes(
-            okResponse(
-              [field("content-type", "application/json"), field("content-type", "text/plain")],
+            bhttpOkResponse(
+              [
+                bhttpField("content-type", "application/json"),
+                bhttpField("content-type", "text/plain"),
+              ],
               "{}",
             ),
           ),

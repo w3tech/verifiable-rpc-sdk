@@ -2,7 +2,11 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode: what the client receives from a verified, decrypted node answer.
 
-import type { TestUpstreamResponse } from "@w3tech.io/vrpc-test-support";
+import {
+  bhttpField,
+  bhttpOkResponse,
+  type TestUpstreamResponse,
+} from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -100,26 +104,6 @@ function headerCount(res: RawResponse, name: string): number {
 }
 
 const gets = (wire: WireRequest[]) => wire.filter((r) => r.method === "GET").length;
-
-// Known-length BHTTP response with two content-type field lines.
-function vli(length: number): string {
-  return length < 64 ? length.toString(16).padStart(2, "0") : (0x4000 | length).toString(16);
-}
-
-function field(name: string, value: string): string {
-  return (
-    vli(name.length) +
-    Buffer.from(name).toString("hex") +
-    vli(value.length) +
-    Buffer.from(value).toString("hex")
-  );
-}
-
-function okResponse(fields: string[], body: string): string {
-  const section = fields.join("");
-  const content = Buffer.from(body).toString("hex");
-  return `0140c8${vli(section.length / 2)}${section}${vli(content.length / 2)}${content}00`;
-}
 
 describe("relayed answers", () => {
   test("a JSON-RPC batch reaches the node unchanged and its array answer is relayed byte for byte", async () => {
@@ -239,8 +223,11 @@ describe("relay framing", () => {
     const { node, url } = await setup();
     node.node.setConfidential(async (context) => {
       const inner = Buffer.from(
-        okResponse(
-          [field("content-type", "application/json"), field("content-type", "text/plain")],
+        bhttpOkResponse(
+          [
+            bhttpField("content-type", "application/json"),
+            bhttpField("content-type", "text/plain"),
+          ],
           "{}",
         ),
         "hex",
