@@ -179,6 +179,8 @@ export function createConfidentialHandler(ctx: ConfidentialHandlerContext): http
 
   async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const started = performance.now();
+    const disconnected = new AbortController();
+    res.once("close", () => disconnected.abort());
     const bytes = await bufferStream(
       req,
       config.maxBodyBytes,
@@ -200,7 +202,7 @@ export function createConfidentialHandler(ctx: ConfidentialHandlerContext): http
       ...(accept === undefined ? {} : { accept }),
       ...(bytes.length === 0 ? {} : { body: bytes }),
     };
-    const out = await client.request(inner);
+    const out = await client.request(inner, { signal: disconnected.signal });
     res.writeHead(out.status, relayHeaders(inner.method, out));
     res.end(out.body);
     log.debug("proxy.relay", {
