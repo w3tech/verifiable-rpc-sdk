@@ -10,11 +10,11 @@
 import { createServer, type IncomingHttpHeaders } from "node:http";
 import type { AddressInfo } from "node:net";
 import * as zlib from "node:zlib";
-
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 import { buildPreImage } from "@w3tech.io/vrpc-core";
+import { TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
 
-import { TEST_CHAIN_ID, TEST_SEED, toHex } from "./test-overrides";
+import { TEST_CHAIN_ID } from "./test-overrides";
 
 /**
  * Wire encoding applied AFTER signing. `{ rawToken }` sets an arbitrary

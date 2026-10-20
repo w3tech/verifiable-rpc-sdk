@@ -11,9 +11,11 @@ import {
   mockHardwareVerifier,
   rejectionOf,
   serveTestNode,
+  TEST_SEED,
   type TestNode,
   type TestNodeServer,
   type TestUpstreamResponse,
+  toHex,
 } from "@w3tech.io/vrpc-test-support";
 import { InvalidChainId, vrpcHttp } from "@w3tech.io/vrpc-viem";
 import {
@@ -29,7 +31,6 @@ import { CHAIN_ID, signResponseBytes } from "./fixtures";
 
 const NODE_ID = "alpha-vrpc-1";
 const KEY = "0123456789abcdefghijABCDEFGHIJkl";
-const TEST_SEED = new Uint8Array(32).fill(0x42);
 
 const arbitrum = defineChain({
   id: 42161,
@@ -174,12 +175,8 @@ const parityUpstream = rpc((call) => {
   }
 });
 
-function hex(bytes: Uint8Array): string {
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 async function attestationResponse(url: string): Promise<Response> {
-  const pubkey = hex(await getPublicKeyAsync(TEST_SEED));
+  const pubkey = toHex(await getPublicKeyAsync(TEST_SEED));
   const nonceHex = url.match(/[?&]nonce=([0-9a-fA-F]+)/)?.[1] ?? "";
   const appCompose = '{"manifest_version":2,"name":"demo"}';
   return Response.json({

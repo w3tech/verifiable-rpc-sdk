@@ -8,6 +8,7 @@ import {
   createTestNode,
   mockHardwareVerifier,
   serveTestNode,
+  TEST_SEED,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
 import * as adapter from "@w3tech.io/vrpc-viem";
@@ -52,7 +53,6 @@ const CONFIDENTIAL_CLASSES = [
 type Namespace = Record<string, unknown>;
 
 const KEY = "0123456789abcdefghijABCDEFGHIJkl";
-const TEST_SEED = new Uint8Array(32).fill(0x42);
 
 const arbitrum = defineChain({
   id: 42161,

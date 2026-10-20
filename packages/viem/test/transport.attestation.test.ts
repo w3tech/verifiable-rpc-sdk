@@ -19,7 +19,7 @@
 // network.
 
 import { getPublicKeyAsync } from "@noble/ed25519";
-import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import { mockHardwareVerifier, TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
 import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 import { createPublicClient, defineChain } from "viem";
 import { describe, expect, test } from "vitest";
@@ -29,9 +29,6 @@ import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtur
 // leg is `${URL}/attestation`.
 const URL = "http://test.invalid/arbitrum_vrpc";
 const ADDR = "0x1111111111111111111111111111111111111111" as const;
-// Fixed seed used by the fixture signer — its pubkey is what the attestation
-// body must correlate to.
-const TEST_SEED = new Uint8Array(32).fill(0x42);
 const NODE_ID = "node-abc";
 // Wide window neutralizes the static FIXTURE_TIMESTAMP_MS staleness.
 const WIDE_WINDOW = Number.MAX_SAFE_INTEGER;
@@ -46,14 +43,6 @@ const TEST_CHAIN = defineChain({
 
 function jsonResult(result: unknown): string {
   return JSON.stringify({ jsonrpc: "2.0", id: 1, result });
-}
-
-function toHex(bytes: Uint8Array): string {
-  let out = "";
-  for (const b of bytes) {
-    out += b.toString(16).padStart(2, "0");
-  }
-  return out;
 }
 
 interface SeamFetch {

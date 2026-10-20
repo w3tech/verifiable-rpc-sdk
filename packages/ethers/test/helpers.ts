@@ -3,9 +3,10 @@
 // signed fixtures from `fixtures.ts` through `VrpcProvider._send` via this seam.
 
 import { getPublicKeyAsync } from "@noble/ed25519";
+import { TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
 import { FetchRequest } from "ethers";
 
-import { type SignFixtureOptions, signResponseBytes, TEST_SEED } from "./fixtures";
+import { type SignFixtureOptions, signResponseBytes } from "./fixtures";
 
 /**
  * Build a `FetchRequest` that resolves to a synthetic response carrying the
@@ -91,15 +92,6 @@ export function flipFirstDigit(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
       out[i] = b === 0x39 ? 0x30 : b + 1;
       break;
     }
-  }
-  return out;
-}
-
-/** Local lowercase-hex encode (no `0x` prefix). */
-function toHex(bytes: Uint8Array): string {
-  let out = "";
-  for (const b of bytes) {
-    out += b.toString(16).padStart(2, "0");
   }
   return out;
 }

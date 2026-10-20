@@ -10,21 +10,12 @@
 // and the Phala CloudVerifier) on a pubkey-cache miss.
 
 import { getPublicKeyAsync } from "@noble/ed25519";
-import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import { mockHardwareVerifier, TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
 import type { ProxyConfig } from "../../src/config";
 import type { ProxyTestOverrides } from "../../src/server";
 
 export const TEST_CHAIN_ID = "proxy-test-chain";
-export const TEST_SEED = new Uint8Array(32).fill(0x42);
 const NONCE = new Uint8Array(32).fill(0x07);
-
-export function toHex(bytes: Uint8Array): string {
-  let out = "";
-  for (const b of bytes) {
-    out += b.toString(16).padStart(2, "0");
-  }
-  return out;
-}
 
 /**
  * The sidecar attestation JSON for `TEST_SEED` (core's installAttestationMock

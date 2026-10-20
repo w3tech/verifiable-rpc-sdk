@@ -11,13 +11,14 @@ import {
   mockHardwareVerifier,
   rejectionOf,
   serveTestNode,
+  TEST_SEED,
   type TestNode,
   type TestNodeServer,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { AbiCoder, EnsResolver, FetchRequest, isError, toUtf8String } from "ethers";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { CHAIN_ID, signResponseBytes, TEST_SEED } from "./fixtures";
+import { CHAIN_ID, signResponseBytes } from "./fixtures";
 import { installAttestationMock } from "./helpers";
 
 const NODE_ID = "alpha-vrpc-1";

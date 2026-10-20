@@ -2,6 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode: what the node receives, what is refused locally, and the outer wire headers.
 
+import { TEST_SEED } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -14,7 +15,7 @@ import {
   type WireRequest,
   wireHeaderNames,
 } from "./support/test-node-server";
-import { TEST_CHAIN_ID, TEST_SEED } from "./support/test-overrides";
+import { TEST_CHAIN_ID } from "./support/test-overrides";
 
 const API_KEY = "configured-key-1";
 const NODE_ID = "request-node-1";

@@ -1,5 +1,5 @@
+import { toHex } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
-
 import { InvalidChainId } from "../src/errors";
 import {
   buildPreImage,
@@ -8,18 +8,6 @@ import {
   u64LE,
   validateChainId,
 } from "../src/preimage";
-
-/**
- * Hex-encode a Uint8Array to lowercase hex (no 0x prefix).
- * Kept local to tests to avoid pulling a util into src/.
- */
-function toHex(bytes: Uint8Array): string {
-  let out = "";
-  for (const b of bytes) {
-    out += b.toString(16).padStart(2, "0");
-  }
-  return out;
-}
 
 const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
 

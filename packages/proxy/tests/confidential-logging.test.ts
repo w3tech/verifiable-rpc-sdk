@@ -4,6 +4,7 @@
 
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 import type { TestOuterResponse } from "@w3tech.io/vrpc-test-support";
+import { TEST_SEED } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { LogLevel } from "../src/logger";
 import {
@@ -12,7 +13,7 @@ import {
   startConfidentialProxy,
   startTestNodeServer,
 } from "./support/test-node-server";
-import { TEST_CHAIN_ID, TEST_SEED } from "./support/test-overrides";
+import { TEST_CHAIN_ID } from "./support/test-overrides";
 
 const API_KEY = "abcdef0123456789".repeat(4);
 const PLAINTEXT_HEX = "73656e74696e656c2d706c61696e74657874";

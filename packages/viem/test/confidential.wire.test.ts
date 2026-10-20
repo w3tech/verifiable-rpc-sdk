@@ -19,6 +19,7 @@ import {
   type ServedAnswer,
   type ServedRequest,
   serveTestNode,
+  TEST_SEED,
   type TestNodeServer,
   type TestNodeServerOptions,
   type TestUpstreamResponse,
@@ -30,7 +31,6 @@ import { CHAIN_ID } from "./fixtures";
 
 const NODE_ID = "alpha-vrpc-1";
 const KEY = "0123456789abcdefghijABCDEFGHIJkl";
-const TEST_SEED = new Uint8Array(32).fill(0x42);
 const SENTINEL = "5e17e1a1";
 
 const arbitrum = defineChain({

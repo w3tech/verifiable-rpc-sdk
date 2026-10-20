@@ -3,6 +3,7 @@
 // Ankr Confidential RPC mode end to end against the in-test node behind a loopback server.
 
 import { ConfidentialClient } from "@w3tech.io/vrpc-core/confidential";
+import { TEST_SEED } from "@w3tech.io/vrpc-test-support";
 import { request } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -15,7 +16,7 @@ import {
   type TestNodeServer,
   type WireRequest,
 } from "./support/test-node-server";
-import { TEST_CHAIN_ID, TEST_SEED, testConfig } from "./support/test-overrides";
+import { TEST_CHAIN_ID, testConfig } from "./support/test-overrides";
 
 const API_KEY = "test-api-key-1";
 const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';

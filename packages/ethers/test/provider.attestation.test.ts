@@ -20,9 +20,9 @@
 
 import { getPublicKeyAsync } from "@noble/ed25519";
 import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
-import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import { mockHardwareVerifier, TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
-import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, TEST_SEED } from "./fixtures";
+import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX } from "./fixtures";
 import { type AttMockState, installAttestationMock, signingRequest } from "./helpers";
 
 const CHAIN_ID_NUMBER = Number(CHAIN_ID); // 42161 (arbitrum)
@@ -89,7 +89,7 @@ describe("VrpcProvider always-on attestation E2E", () => {
     // it. Capture the headers the attestation fetch receives and assert the key.
     let attHeaders: Headers | undefined;
     const attPubkey = await getPublicKeyAsync(TEST_SEED);
-    const pubkeyHex = `0x${Array.from(attPubkey, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+    const pubkeyHex = `0x${toHex(attPubkey)}`;
     const capturingFetch = (async (input: string | URL | Request, init?: RequestInit) => {
       if (String(input).includes("/attestation")) {
         attHeaders = new Headers(init?.headers);

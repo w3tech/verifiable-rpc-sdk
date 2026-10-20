@@ -10,9 +10,9 @@
 import { createServer, request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import * as zlib from "node:zlib";
-
 import { getPublicKeyAsync, verifyAsync } from "@noble/ed25519";
 import { buildPreImage } from "@w3tech.io/vrpc-core";
+import { TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
 import { request } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -22,13 +22,7 @@ import {
   type MockSidecarOptions,
   startMockSidecar,
 } from "./support/mock-sidecar";
-import {
-  TEST_CHAIN_ID,
-  TEST_SEED,
-  testConfig,
-  testOverrides,
-  toHex,
-} from "./support/test-overrides";
+import { TEST_CHAIN_ID, testConfig, testOverrides } from "./support/test-overrides";
 
 interface RawResponse {
   status: number;

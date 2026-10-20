@@ -15,12 +15,7 @@
 
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 import { buildPreImage } from "@w3tech.io/vrpc-core";
-
-/**
- * Fixed 32-byte Ed25519 seed — the literal seed used in core's `verify.test.ts`
- * so the derived pubkey is stable and recognizable across test suites.
- */
-const TEST_SEED = new Uint8Array(32).fill(0x42);
+import { TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
 
 /**
  * Chain id bound into every fixture's pre-image (arbitrum — matches
@@ -38,15 +33,6 @@ const FIXTURE_TIMESTAMP_MS = 1_700_000_000_000n;
  * `0x1bc16d674ec80000` = 2 ETH (wei).
  */
 export const SINGLE_RESULT_BALANCE_HEX = "0x1bc16d674ec80000";
-
-/** Lowercase hex encode, no `0x` prefix. */
-function toHex(bytes: Uint8Array): string {
-  let out = "";
-  for (const b of bytes) {
-    out += b.toString(16).padStart(2, "0");
-  }
-  return out;
-}
 
 export interface SignFixtureOptions {
   /** Chain id bound into the pre-image AND used for signing. Defaults to `CHAIN_ID`. */

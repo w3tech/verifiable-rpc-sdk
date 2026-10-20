@@ -4,7 +4,7 @@
 
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import { mockHardwareVerifier, toHex } from "@w3tech.io/vrpc-test-support";
 import {
   INTEROP_SKIP_MESSAGE,
   type Interop,
@@ -30,10 +30,6 @@ function batch(size: number): (typeof BLOCK_NUMBER)[] {
 
 function relayedHeaderNames(res: Response): string[] {
   return [...res.headers.keys()].filter((n) => n.startsWith("vrpc-") || n === "content-encoding");
-}
-
-function toHex(bytes: Uint8Array): string {
-  return Buffer.from(bytes).toString("hex");
 }
 
 async function waitFor(check: () => boolean, maxMs: number): Promise<void> {

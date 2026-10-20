@@ -19,13 +19,14 @@ import {
   type ServedAnswer,
   type ServedRequest,
   serveTestNode,
+  TEST_SEED,
   type TestNodeServer,
   type TestNodeServerOptions,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { FetchRequest } from "ethers";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { CHAIN_ID, TEST_SEED } from "./fixtures";
+import { CHAIN_ID } from "./fixtures";
 
 const NODE_ID = "alpha-vrpc-1";
 const KEY = "0123456789abcdefghijABCDEFGHIJkl";

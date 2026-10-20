@@ -19,7 +19,7 @@ import { getPublicKeyAsync } from "@noble/ed25519";
 // tell the two adapters apart by error shape (cross-adapter parity).
 import { computeComposeHash } from "@w3tech.io/dstack-verify";
 import { VerificationError as CoreVerificationError } from "@w3tech.io/vrpc-core";
-import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import { mockHardwareVerifier, TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
 import {
   BadSignature,
   InvalidChainId,
@@ -43,22 +43,10 @@ const ADDR = "0x1111111111111111111111111111111111111111" as const;
 // Wide window neutralizes the static FIXTURE_TIMESTAMP_MS staleness; production
 // keeps the vrpc-core default (60s).
 const WIDE_WINDOW = Number.MAX_SAFE_INTEGER;
-// Fixed seed used by the fixture signer — its pubkey is what the always-on
-// TrustedVerifier's attestation leg must correlate to (same shape as the core
-// trust mock). The signed responses carry `vRPC-NodeId` so the verifier's
-// attestation GET routes by node id.
-const TEST_SEED = new Uint8Array(32).fill(0x42);
+// Signed responses carry `vRPC-NodeId`, so the verifier's attestation GET routes by node id.
 const NODE_ID = "node-abc";
 
 const sentText = (init: RequestInit): string => new TextDecoder().decode(init.body as Uint8Array);
-
-function hex(bytes: Uint8Array): string {
-  let out = "";
-  for (const b of bytes) {
-    out += b.toString(16).padStart(2, "0");
-  }
-  return out;
-}
 
 /**
  * Answer the verifier's attestation GET with a body whose `pubkey` correlates to
@@ -72,13 +60,13 @@ async function attestationResponse(url: string): Promise<Response> {
   // query so the binding + 128-hex shape gate pass (nonceSource is random).
   // Regex-extract (not `new URL`) — viem shadows the global URL constructor here.
   const nonceHex = url.match(/[?&]nonce=([0-9a-fA-F]+)/)?.[1] ?? "";
-  const reportData = `${hex(attPubkey)}${nonceHex}`;
+  const reportData = `${toHex(attPubkey)}${nonceHex}`;
   // Self-consistent app_compose + composeHash (served verbatim in /attestation),
   // so CHK-A2 ACTIVATES and passes at the viem integration layer.
   const appCompose = '{"manifest_version":2,"name":"demo"}';
   const body = {
     quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
-    pubkey: `0x${hex(attPubkey)}`,
+    pubkey: `0x${toHex(attPubkey)}`,
     composeHash: computeComposeHash(appCompose),
     app_compose: appCompose,
   };

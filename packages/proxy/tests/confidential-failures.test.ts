@@ -4,11 +4,11 @@
 
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-
 import { getPublicKeyAsync } from "@noble/ed25519";
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 import { ConfidentialClient } from "@w3tech.io/vrpc-core/confidential";
 import type { TestOuterResponse, TestUpstreamResponse } from "@w3tech.io/vrpc-test-support";
+import { TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { ProxyConfig } from "../src/config";
 
@@ -21,7 +21,7 @@ import {
   type TestNodeServer,
   type WireRequest,
 } from "./support/test-node-server";
-import { TEST_CHAIN_ID, TEST_SEED, toHex } from "./support/test-overrides";
+import { TEST_CHAIN_ID } from "./support/test-overrides";
 
 const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const RPC_ANSWER = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';

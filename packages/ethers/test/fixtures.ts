@@ -11,14 +11,7 @@
 
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 import { buildPreImage } from "@w3tech.io/vrpc-core";
-
-/**
- * Fixed 32-byte Ed25519 seed — the literal seed used in core's `verify.test.ts`
- * so the derived pubkey is stable and recognizable across both test suites.
- * Exported so the attestation-fetch mock can derive the SAME pubkey the RPC
- * responses are signed with (pubkey correlation in the always-on verify seam).
- */
-export const TEST_SEED = new Uint8Array(32).fill(0x42);
+import { TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
 
 /**
  * Chain id bound into every fixture's pre-image (arbitrum — matches
@@ -30,15 +23,6 @@ export const CHAIN_ID = "42161";
 
 /** Fixed signing timestamp (unix ms) so fixtures are byte-stable across runs. */
 const FIXTURE_TIMESTAMP_MS = 1_700_000_000_000n;
-
-/** Lowercase hex encode, no `0x` prefix. */
-function toHex(bytes: Uint8Array): string {
-  let out = "";
-  for (const b of bytes) {
-    out += b.toString(16).padStart(2, "0");
-  }
-  return out;
-}
 
 export interface Fixture {
   /** Request body bytes, exactly as signed (= `buildPreImage` request input). */

@@ -1,4 +1,5 @@
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
+import { TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -11,16 +12,7 @@ import {
 import { buildPreImage } from "../src/preimage";
 import { isSignedVrpcResponse, type ResponseHeaders, verifyResponse } from "../src/verify";
 
-const TEST_SEED = new Uint8Array(32).fill(0x42);
 const CHAIN_ID = "1";
-
-function toHex(bytes: Uint8Array): string {
-  let out = "";
-  for (const b of bytes) {
-    out += b.toString(16).padStart(2, "0");
-  }
-  return out;
-}
 
 interface SignedTriple {
   requestBytes: Uint8Array;

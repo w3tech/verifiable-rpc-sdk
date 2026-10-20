@@ -1,6 +1,11 @@
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 import { AttestationError, EMPTY_ALLOWLIST } from "@w3tech.io/dstack-verify";
-import { collectingLogger, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import {
+  collectingLogger,
+  mockHardwareVerifier,
+  TEST_SEED,
+  toHex,
+} from "@w3tech.io/vrpc-test-support";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   AttestationFailed,
@@ -21,16 +26,7 @@ import type { ResponseHeaders } from "../src/verify";
 const RPC_BASE = "https://rpc.ankr.com";
 const CHAIN = "arbitrum";
 const CHAIN_ID = "42161";
-const TEST_SEED = new Uint8Array(32).fill(0x42);
 const NONCE = new Uint8Array(32).fill(0x07);
-
-function toHex(bytes: Uint8Array): string {
-  let out = "";
-  for (const b of bytes) {
-    out += b.toString(16).padStart(2, "0");
-  }
-  return out;
-}
 
 /**
  * Real-clock sleep. The TTL tests use a small real ttl + a real wait rather than

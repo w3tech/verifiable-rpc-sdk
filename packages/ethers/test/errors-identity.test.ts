@@ -9,10 +9,11 @@ import {
   createTestNode,
   mockHardwareVerifier,
   serveTestNode,
+  TEST_SEED,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test } from "vitest";
-import { CHAIN_ID, TEST_SEED } from "./fixtures";
+import { CHAIN_ID } from "./fixtures";
 
 const ERROR_CLASSES = [
   "AttestationFailed",

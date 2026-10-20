@@ -5,6 +5,7 @@
 import {
   bhttpField,
   bhttpOkResponse,
+  TEST_SEED,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -18,7 +19,7 @@ import {
   type TestNodeServer,
   type WireRequest,
 } from "./support/test-node-server";
-import { TEST_CHAIN_ID, TEST_SEED } from "./support/test-overrides";
+import { TEST_CHAIN_ID } from "./support/test-overrides";
 
 const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const RPC_ANSWER = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
