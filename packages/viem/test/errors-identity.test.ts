@@ -5,7 +5,9 @@ import * as core from "@w3tech.io/vrpc-core";
 import * as conf from "@w3tech.io/vrpc-core/confidential";
 import * as errors from "@w3tech.io/vrpc-core/errors";
 import {
+  CONFIDENTIAL_CLASSES,
   createTestNode,
+  ERROR_CLASSES,
   mockHardwareVerifier,
   serveTestNode,
   TEST_SEED,
@@ -15,40 +17,6 @@ import * as adapter from "@w3tech.io/vrpc-viem";
 import { BaseError, createPublicClient, defineChain } from "viem";
 import { afterEach, describe, expect, test } from "vitest";
 import { CHAIN_ID } from "./fixtures";
-
-const ERROR_CLASSES = [
-  "AttestationFailed",
-  "AttestationUnavailable",
-  "BadSignature",
-  "ConfidentialDecryptFailed",
-  "ConfidentialSealFailed",
-  "ConfidentialSignerMismatch",
-  "InvalidChainId",
-  "InvalidInnerRequest",
-  "MalformedAttestationResponse",
-  "MalformedConfidentialResponse",
-  "MalformedHeader",
-  "MissingHeader",
-  "RequestRejected",
-  "StaleTimestamp",
-  "TransportFailed",
-  "UnavailableError",
-  "UnexpectedResponse",
-  "VerificationError",
-] as const;
-
-const CONFIDENTIAL_CLASSES = [
-  "AttestationUnavailable",
-  "ConfidentialDecryptFailed",
-  "ConfidentialSealFailed",
-  "ConfidentialSignerMismatch",
-  "InvalidInnerRequest",
-  "MalformedConfidentialResponse",
-  "RequestRejected",
-  "TransportFailed",
-  "UnavailableError",
-  "UnexpectedResponse",
-] as const;
 
 type Namespace = Record<string, unknown>;
 
