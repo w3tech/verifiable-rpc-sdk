@@ -44,3 +44,22 @@ export function signResponse(
     ...(options.nodeId === undefined ? {} : { "vRPC-NodeId": options.nodeId }),
   };
 }
+
+// Long past: a response signed at it verifies only under a replay window wider than the default.
+export const FIXTURE_TIMESTAMP_MS = 1_700_000_000_000n;
+
+// JSON content type plus signResponse headers, signed at FIXTURE_TIMESTAMP_MS by default.
+export function signedJsonHeaders(
+  chainId: string,
+  request: Uint8Array,
+  response: Uint8Array,
+  options: SignOptions = {},
+): Record<string, string> {
+  return {
+    "content-type": "application/json",
+    ...signResponse(chainId, request, response, {
+      ...options,
+      timestampMs: options.timestampMs ?? FIXTURE_TIMESTAMP_MS,
+    }),
+  };
+}

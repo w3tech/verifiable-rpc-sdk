@@ -8,7 +8,7 @@
 //
 // It does NOT re-test Ed25519 / pre-image / replay-window correctness — that is
 // core's verify.test.ts. The request-aware fetch seam signs over the
-// EXACT bytes the transport POSTs (via signResponseBytes), so a real
+// EXACT bytes the transport POSTs (via signedJsonHeaders), so a real
 // getBalance / readContract / getBlock payload verifies without the test
 // predicting viem's internal body encoding. No `ethers` import (manifest
 // isolation) — cross-adapter parity is proved against the vrpc-core class
@@ -17,12 +17,17 @@
 // Same family identity the ethers adapter re-exports — proves a caller cannot
 // tell the two adapters apart by error shape (cross-adapter parity).
 import { VerificationError as CoreVerificationError } from "@w3tech.io/vrpc-core";
-import { attestationAnswer, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import {
+  attestationAnswer,
+  mockHardwareVerifier,
+  signedJsonHeaders,
+} from "@w3tech.io/vrpc-test-support";
 import {
   BadSignature,
   InvalidChainId,
   MalformedHeader,
   MissingHeader,
+  StaleTimestamp,
   VerificationError,
   vrpcHttp,
 } from "@w3tech.io/vrpc-viem";
@@ -34,7 +39,7 @@ import {
   parseAbi,
 } from "viem";
 import { describe, expect, test } from "vitest";
-import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
+import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX } from "./fixtures";
 
 const URL = "http://test.invalid";
 const ADDR = "0x1111111111111111111111111111111111111111" as const;
@@ -54,8 +59,6 @@ interface SeamOptions {
   tamper?: boolean;
   /** Chain id used ONLY for signing (forge a chain-id-mismatch fixture). */
   signingChainId?: string;
-  /** Chain id bound into the pre-image AND signed (large-id round-trip). */
-  chainId?: string;
   /** Increment on every call — proves retryCount:0 (no retry of a failure). */
   counter?: { n: number };
   /** Capture the raw POST body of each call (batch-default assertion). */
@@ -103,11 +106,8 @@ function signingFetch(
       });
     }
 
-    const headers = await signResponseBytes(requestBytes, responseBytes, {
-      nodeId: NODE_ID,
-      ...(seam.chainId !== undefined ? { chainId: seam.chainId } : {}),
-      ...(seam.signingChainId !== undefined ? { signingChainId: seam.signingChainId } : {}),
-    });
+    const chainId = seam.signingChainId ?? CHAIN_ID;
+    const headers = signedJsonHeaders(chainId, requestBytes, responseBytes, { nodeId: NODE_ID });
 
     // Tamper AFTER signing: flip one ASCII digit in the body so it stays valid
     // UTF-8 / JSON but the signed bytes no longer match → BadSignature.
@@ -191,9 +191,11 @@ function autoDeriveFetch(
       // SIGNED bootstrap: by default signed over the SAME chain it claims
       // (self-consistent → verifies). `bootstrapSigningChainId` forges a
       // mismatch (signed for a chain != claimed result) → BadSignature.
-      const headers = await signResponseBytes(requestBytes, responseBytes, {
-        signingChainId: seam.bootstrapSigningChainId ?? bootstrapChainId,
-      });
+      const headers = signedJsonHeaders(
+        seam.bootstrapSigningChainId ?? bootstrapChainId,
+        requestBytes,
+        responseBytes,
+      );
       let outBody = bootstrapBody;
       if (seam.bootstrapTamper) {
         // Flip the first ASCII digit AFTER signing → BadSignature (body stays
@@ -206,10 +208,8 @@ function autoDeriveFetch(
       return new Response(outBody, { status: 200, headers });
     }
     const responseBytes = new TextEncoder().encode(responseBody);
-    const headers = await signResponseBytes(requestBytes, responseBytes, {
-      nodeId: NODE_ID,
-      ...(seam.signingChainId !== undefined ? { signingChainId: seam.signingChainId } : {}),
-    });
+    const chainId = seam.signingChainId ?? CHAIN_ID;
+    const headers = signedJsonHeaders(chainId, requestBytes, responseBytes, { nodeId: NODE_ID });
     return new Response(responseBody, { status: 200, headers });
   };
 }
@@ -257,7 +257,7 @@ describe("vrpcHttp transport wiring", () => {
     const fetchFn = async (url: string, init: RequestInit) => {
       if (url.includes("/attestation")) return attestationAnswer(url, { appCompose: APP_COMPOSE });
       const requestBytes = init.body as Uint8Array;
-      const headers = await signResponseBytes(requestBytes, body, { nodeId: NODE_ID });
+      const headers = signedJsonHeaders(CHAIN_ID, requestBytes, body, { nodeId: NODE_ID });
       return new Response(body, { status: 200, headers });
     };
     await expect(pinnedTransport(fetchFn).config.request(GET_BALANCE)).resolves.toBe(
@@ -402,6 +402,14 @@ describe("vrpcHttp transport wiring", () => {
       signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { unsigned: true }),
     );
     await expect(transport.config.request(GET_BALANCE)).rejects.toBeInstanceOf(MissingHeader);
+  });
+
+  test("without WIDE_WINDOW the default replay window rejects the response → StaleTimestamp", async () => {
+    const transport = vrpcHttp(URL, {
+      fetchFn: signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX)),
+      hardwareVerifier: MOCK_HV,
+    })(PINNED);
+    await expect(transport.config.request(GET_BALANCE)).rejects.toBeInstanceOf(StaleTimestamp);
   });
 
   // a signed JSON-RPC {error} body is an ordinary RPC error, NOT a

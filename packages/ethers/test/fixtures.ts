@@ -1,6 +1,6 @@
 // Signed-response fixtures for the vrpc-ethers adapter tests.
 
-import { signResponse } from "@w3tech.io/vrpc-test-support";
+import { FIXTURE_TIMESTAMP_MS, signedJsonHeaders } from "@w3tech.io/vrpc-test-support";
 
 /**
  * Chain id bound into every fixture's pre-image (arbitrum — matches
@@ -9,9 +9,6 @@ import { signResponse } from "@w3tech.io/vrpc-test-support";
  * sidecar is configured with and hashes into the pre-image.
  */
 export const CHAIN_ID = "42161";
-
-/** Fixed signing timestamp (unix ms) so fixtures are byte-stable across runs. */
-const FIXTURE_TIMESTAMP_MS = 1_700_000_000_000n;
 
 export interface Fixture {
   /** Request body bytes, exactly as signed (= `buildPreImage` request input). */
@@ -22,28 +19,6 @@ export interface Fixture {
   headers: Record<string, string>;
   /** The exact `timestampMs` the triple was signed over. */
   timestampMs: bigint;
-}
-
-export interface SignFixtureOptions {
-  chainId?: string;
-  timestampMs?: bigint;
-  signingChainId?: string;
-  nodeId?: string;
-}
-
-/** `vRPC-*` headers plus `content-type` signing the pair with `TEST_SEED`. */
-export async function signResponseBytes(
-  requestBytes: Uint8Array,
-  responseBytes: Uint8Array,
-  opts: SignFixtureOptions = {},
-): Promise<Record<string, string>> {
-  return {
-    "content-type": "application/json",
-    ...signResponse(opts.signingChainId ?? opts.chainId ?? CHAIN_ID, requestBytes, responseBytes, {
-      timestampMs: opts.timestampMs,
-      nodeId: opts.nodeId,
-    }),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -70,8 +45,6 @@ const singleResponseBytes = new TextEncoder().encode(
 export const SINGLE_RESULT: Fixture = {
   requestBytes: singleRequestBytes,
   responseBytes: singleResponseBytes,
-  headers: await signResponseBytes(singleRequestBytes, singleResponseBytes, {
-    timestampMs: FIXTURE_TIMESTAMP_MS,
-  }),
+  headers: signedJsonHeaders(CHAIN_ID, singleRequestBytes, singleResponseBytes),
   timestampMs: FIXTURE_TIMESTAMP_MS,
 };

@@ -10,6 +10,7 @@ import {
   mockHardwareVerifier,
   rejectionOf,
   serveTestNode,
+  signedJsonHeaders,
   TEST_SEED,
   type TestNode,
   type TestNodeServer,
@@ -25,7 +26,7 @@ import {
   RpcRequestError,
 } from "viem";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { CHAIN_ID, signResponseBytes } from "./fixtures";
+import { CHAIN_ID } from "./fixtures";
 
 const NODE_ID = "alpha-vrpc-1";
 const KEY = "0123456789abcdefghijABCDEFGHIJkl";
@@ -182,9 +183,8 @@ function openFetch(upstream: Upstream) {
     const requestBytes = init.body as Uint8Array;
     const answer = upstream(JSON.parse(new TextDecoder().decode(requestBytes)) as RpcCall);
     const responseBody = String(answer.body);
-    const headers = await signResponseBytes(requestBytes, new TextEncoder().encode(responseBody), {
-      nodeId: NODE_ID,
-    });
+    const responseBytes = new TextEncoder().encode(responseBody);
+    const headers = signedJsonHeaders(CHAIN_ID, requestBytes, responseBytes, { nodeId: NODE_ID });
     return new Response(responseBody, { status: answer.status, headers });
   };
 }

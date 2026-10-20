@@ -1,14 +1,14 @@
-// Scaffold self-check: proves the mirrored request-aware signer in
-// `fixtures.ts` produces `vRPC-*` headers that `@w3tech.io/vrpc-core`
-// `verifyResponse` ACCEPTS for the happy path, and that the fail-closed paths
-// (wrong-chain signature, unsigned) reject as expected. This guards the offline
-// test harness itself — NOT core crypto, which `packages/core/tests/verify.test.ts`
+// Scaffold self-check: proves the kit signer `signedJsonHeaders` produces
+// `vRPC-*` headers that `@w3tech.io/vrpc-core` `verifyResponse` ACCEPTS for the
+// happy path, and that the fail-closed paths (wrong-chain signature, unsigned)
+// reject as expected. This guards the offline test harness itself — NOT core crypto, which `packages/core/tests/verify.test.ts`
 // already covers. The adapter WIRING proper is covered by the transport suite.
 
 import { BadSignature, MissingHeader, verifyResponse } from "@w3tech.io/vrpc-core";
+import { signedJsonHeaders } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 
-import { CHAIN_ID, signResponseBytes } from "./fixtures";
+import { CHAIN_ID } from "./fixtures";
 
 const REQUEST_BYTES = new TextEncoder().encode(
   JSON.stringify({
@@ -23,8 +23,8 @@ const RESPONSE_BYTES = new TextEncoder().encode(
 );
 
 describe("offline fixture scaffold (viem)", () => {
-  test("signResponseBytes output verifies under vrpc-core", async () => {
-    const headers = await signResponseBytes(REQUEST_BYTES, RESPONSE_BYTES);
+  test("signedJsonHeaders output verifies under vrpc-core", async () => {
+    const headers = signedJsonHeaders(CHAIN_ID, REQUEST_BYTES, RESPONSE_BYTES);
     const pair = await verifyResponse(REQUEST_BYTES, RESPONSE_BYTES, headers, {
       chainId: CHAIN_ID,
       replayWindowMs: Number.MAX_SAFE_INTEGER,
@@ -35,9 +35,7 @@ describe("offline fixture scaffold (viem)", () => {
   });
 
   test("wrong signing chain id rejects with BadSignature", async () => {
-    const headers = await signResponseBytes(REQUEST_BYTES, RESPONSE_BYTES, {
-      signingChainId: "1",
-    });
+    const headers = signedJsonHeaders("1", REQUEST_BYTES, RESPONSE_BYTES);
     await expect(
       verifyResponse(REQUEST_BYTES, RESPONSE_BYTES, headers, {
         chainId: CHAIN_ID,

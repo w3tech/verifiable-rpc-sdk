@@ -2,9 +2,10 @@
 // without touching the network. `provider.test.ts` feeds the
 // signed fixtures from `fixtures.ts` through `VrpcProvider._send` via this seam.
 
+import { signedJsonHeaders } from "@w3tech.io/vrpc-test-support";
 import { FetchRequest } from "ethers";
 
-import { type SignFixtureOptions, signResponseBytes } from "./fixtures";
+import { CHAIN_ID } from "./fixtures";
 
 /**
  * Build a `FetchRequest` that resolves to a synthetic response carrying the
@@ -34,7 +35,10 @@ export function fixtureRequest(
 /**
  * Options for {@link signingRequest}.
  */
-export interface SigningRequestOptions extends SignFixtureOptions {
+export interface SigningRequestOptions {
+  /** Chain id the response is signed for. Defaults to `CHAIN_ID`. */
+  signingChainId?: string;
+  nodeId?: string;
   /**
    * If true, emit ONLY `content-type` (no `vRPC-*` triple) — drives the
    * strict-mode `MissingHeader` fail-closed path.
@@ -56,9 +60,9 @@ export interface SigningRequestOptions extends SignFixtureOptions {
  * resolved blockTag). This suite asserts adapter WIRING, not pre-image bytes.
  *
  * `tamper` flips a response byte AFTER signing → `BadSignature`. `unsigned`
- * strips the `vRPC-*` triple → `MissingHeader`. `signingChainId` (via
- * SigningRequestOptions) forges a valid signature bound to a different chain →
- * `BadSignature` when verified against the provider's chainId.
+ * strips the `vRPC-*` triple → `MissingHeader`. `signingChainId` forges a valid
+ * signature bound to a different chain → `BadSignature` when verified against
+ * the provider's chainId.
  */
 export function signingRequest(
   responseBody: string,
@@ -71,7 +75,9 @@ export function signingRequest(
     const requestBytes = sentReq.body ?? new Uint8Array();
     const headers = opts.unsigned
       ? { "content-type": "application/json" }
-      : await signResponseBytes(requestBytes, responseBytes, opts);
+      : signedJsonHeaders(opts.signingChainId ?? CHAIN_ID, requestBytes, responseBytes, {
+          nodeId: opts.nodeId,
+        });
     const body = opts.tamper ? flipFirstDigit(responseBytes) : responseBytes;
     return { statusCode: 200, statusMessage: "OK", headers, body };
   };

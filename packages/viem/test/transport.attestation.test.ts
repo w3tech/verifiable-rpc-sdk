@@ -21,11 +21,12 @@ import {
   type AttestationStub,
   attestationStub,
   mockHardwareVerifier,
+  signedJsonHeaders,
 } from "@w3tech.io/vrpc-test-support";
 import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 import { createPublicClient, defineChain } from "viem";
 import { describe, expect, test } from "vitest";
-import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
+import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX } from "./fixtures";
 
 // Path-ful URL (vRPC route): used verbatim as the rpc route; the attestation
 // leg is `${URL}/attestation`.
@@ -66,7 +67,7 @@ function seamFetch(opts: { withNodeId?: boolean } = {}): SeamFetch {
     const requestBytes = init.body as Uint8Array;
     const responseBody = jsonResult(SINGLE_RESULT_BALANCE_HEX);
     const responseBytes = new TextEncoder().encode(responseBody);
-    const headers = await signResponseBytes(requestBytes, responseBytes, {
+    const headers = signedJsonHeaders(CHAIN_ID, requestBytes, responseBytes, {
       ...(withNodeId ? { nodeId: NODE_ID } : {}),
     });
     return new Response(responseBody, { status: 200, headers });

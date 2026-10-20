@@ -17,13 +17,18 @@ import {
   InvalidChainId,
   MalformedHeader,
   MissingHeader,
+  StaleTimestamp,
   VerificationError,
   VrpcProvider,
 } from "@w3tech.io/vrpc-ethers";
-import { attestationStub, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import {
+  attestationStub,
+  mockHardwareVerifier,
+  signedJsonHeaders,
+} from "@w3tech.io/vrpc-test-support";
 import { Contract, FetchRequest, Interface, toBeHex } from "ethers";
 import { describe, expect, test } from "vitest";
-import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
+import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX } from "./fixtures";
 import { flipFirstDigit, signingRequest } from "./helpers";
 
 // Always-on verify seam: the FIRST verified read per pubkey lazily fetches the
@@ -103,9 +108,11 @@ function autoDeriveRequest(
       // SIGNED bootstrap: by default signed over the SAME chain it claims
       // (self-consistent → verifies). `bootstrapSigningChainId` forges a
       // mismatch (signed for a chain != claimed result) → BadSignature.
-      const headers = await signResponseBytes(requestBytes, body, {
-        signingChainId: opts.bootstrapSigningChainId ?? bootstrapChainId,
-      });
+      const headers = signedJsonHeaders(
+        opts.bootstrapSigningChainId ?? bootstrapChainId,
+        requestBytes,
+        body,
+      );
       if (opts.bootstrapTamper) {
         // Flip the first ASCII digit AFTER signing → BadSignature (body stays
         // valid JSON so the parse before verify still succeeds).
@@ -113,10 +120,8 @@ function autoDeriveRequest(
       }
       return { statusCode: 200, statusMessage: "OK", headers, body };
     }
-    const headers = await signResponseBytes(requestBytes, responseBytes, {
-      nodeId: NODE_ID,
-      ...(opts.signingChainId !== undefined ? { signingChainId: opts.signingChainId } : {}),
-    });
+    const chainId = opts.signingChainId ?? CHAIN_ID;
+    const headers = signedJsonHeaders(chainId, requestBytes, responseBytes, { nodeId: NODE_ID });
     return { statusCode: 200, statusMessage: "OK", headers, body: responseBytes };
   };
   return req;
@@ -193,6 +198,15 @@ describe("VrpcProvider._send wiring", () => {
       WIDE_WINDOW,
     );
     await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(MissingHeader);
+  });
+
+  test("without WIDE_WINDOW the default replay window rejects the response → StaleTimestamp", async () => {
+    const provider = new VrpcProvider(
+      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID }),
+      CHAIN_ID_NUMBER,
+      { fetch: ATT.fetch, hardwareVerifier: mockHardwareVerifier() },
+    );
+    await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(StaleTimestamp);
   });
 
   test("signed JSON-RPC {error} → ordinary ethers RPC error, NOT a VerificationError", async () => {
@@ -344,7 +358,7 @@ describe("VrpcProvider._send wiring", () => {
   test("large chainId > 2^53−1 round-trips exactly (bigint, no precision loss)", async () => {
     const provider = new VrpcProvider(
       signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
-        chainId: LARGE_CHAIN_ID.toString(10),
+        signingChainId: LARGE_CHAIN_ID.toString(10),
         nodeId: NODE_ID,
       }),
       LARGE_CHAIN_ID,
@@ -383,7 +397,7 @@ describe("VrpcProvider._send wiring", () => {
         return { jsonrpc: "2.0", id: p.id, result: SINGLE_RESULT_BALANCE_HEX };
       });
       const responseBytes = new TextEncoder().encode(JSON.stringify(results));
-      const headers = await signResponseBytes(requestBytes, responseBytes, { nodeId: NODE_ID });
+      const headers = signedJsonHeaders(CHAIN_ID, requestBytes, responseBytes, { nodeId: NODE_ID });
       return { statusCode: 200, statusMessage: "OK", headers, body: responseBytes };
     };
 

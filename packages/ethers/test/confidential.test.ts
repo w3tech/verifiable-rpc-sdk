@@ -12,6 +12,7 @@ import {
   mockHardwareVerifier,
   rejectionOf,
   serveTestNode,
+  signedJsonHeaders,
   TEST_SEED,
   type TestNode,
   type TestNodeServer,
@@ -19,7 +20,7 @@ import {
 } from "@w3tech.io/vrpc-test-support";
 import { AbiCoder, EnsResolver, FetchRequest, isError, toUtf8String } from "ethers";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { CHAIN_ID, signResponseBytes } from "./fixtures";
+import { CHAIN_ID } from "./fixtures";
 
 const NODE_ID = "alpha-vrpc-1";
 const KEY = "0123456789abcdefghijABCDEFGHIJkl";
@@ -197,9 +198,9 @@ function openProvider(upstream: Upstream): VrpcProvider {
     const answer = upstream(new TextDecoder().decode(requestBytes));
     const body = answer.body ?? new Uint8Array();
     const responseBytes = typeof body === "string" ? utf8.encode(body) : body;
-    const headers = await signResponseBytes(requestBytes, responseBytes, {
+    const headers = signedJsonHeaders(CHAIN_ID, requestBytes, responseBytes, {
       nodeId: "node-abc",
-      timestampMs: BigInt(Date.now()),
+      timestampMs: Date.now(),
     });
     return { statusCode: answer.status, statusMessage: "OK", headers, body: responseBytes };
   };
