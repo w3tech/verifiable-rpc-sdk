@@ -7,9 +7,9 @@ import {
   decodeInnerResponse,
   encodeInnerRequest,
   type InnerRequest,
-  InvalidInnerRequest,
   MalformedInnerResponse,
 } from "../src/bhttp";
+import { InvalidInnerRequest } from "../src/errors";
 import { nodeKeyFromEd25519 } from "../src/node-key";
 import { openResponse, sealRequest } from "../src/ohttp";
 
@@ -254,7 +254,7 @@ describe("decodeInnerResponse", () => {
   test("decodes RFC 9292 Figure 13 and drops its trailers", async () => {
     const response = await decodeInnerResponse(hexToBytes(rfc9292.figure13KnownLengthResponse));
     expect(response.status).toBe(200);
-    expect(response.contentType).toBeNull();
+    expect(response).not.toHaveProperty("contentType");
     expect(new TextDecoder().decode(response.body)).toBe("This content contains CRLF.\r\n");
   });
 

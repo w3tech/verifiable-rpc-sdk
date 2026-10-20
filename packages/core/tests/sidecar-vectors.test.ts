@@ -5,7 +5,8 @@ import { bytesToHex, concatBytes, hexToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, test } from "vitest";
 import { createRecipient, x25519SecretFromSeed } from "../../test-support/src/index";
 import vectors from "../../test-support/vectors/sidecar-confidential.json";
-import { decodeInnerResponse, encodeInnerRequest, InvalidInnerRequest } from "../src/bhttp";
+import { decodeInnerResponse, encodeInnerRequest } from "../src/bhttp";
+import { InvalidInnerRequest } from "../src/errors";
 import { nodeKeyFromEd25519 } from "../src/node-key";
 import {
   createSuite,
@@ -147,7 +148,7 @@ describe("sidecar known-answer vectors", () => {
 
       const response = await decodeInnerResponse(bhttp);
       expect(response.status).toBe(vector.response.status);
-      expect(response.contentType).toBe(contentType(vector.response.fields) ?? null);
+      expect(response.contentType).toBe(contentType(vector.response.fields));
       expect(new TextDecoder().decode(response.body)).toBe(vector.response.body);
     });
 

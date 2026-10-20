@@ -4,6 +4,8 @@
 
 import { BHttpDecoder, BHttpEncoder, decodeVli, vliEncodedLength } from "bhttp-ts";
 
+import { InvalidInnerRequest } from "./errors";
+
 export interface InnerRequest {
   method: string;
   /**
@@ -18,27 +20,8 @@ export interface InnerRequest {
 
 export interface InnerResponse {
   status: number;
-  contentType: string | null;
+  contentType?: string;
   body: Uint8Array;
-}
-
-export type InvalidInnerRequestReason =
-  | "method"
-  | "path"
-  | "header"
-  | "content-type-required"
-  | "encode-failed";
-
-export class InvalidInnerRequest extends Error {
-  readonly kind = "InvalidInnerRequest" as const;
-
-  constructor(
-    readonly reason: InvalidInnerRequestReason,
-    options?: { cause?: unknown },
-  ) {
-    super(`Inner request rejected: ${reason}`, options);
-    this.name = "InvalidInnerRequest";
-  }
 }
 
 export type MalformedInnerResponseReason = "framing" | "informational" | "decode-failed";
@@ -138,13 +121,14 @@ export async function encodeInnerRequest(request: InnerRequest): Promise<Uint8Ar
     return await new BHttpEncoder().encodeRequest(
       new Request(`https://localhost${request.path}`, init),
     );
-  } catch (cause) {
-    throw new InvalidInnerRequest("encode-failed", { cause });
+  } catch {
+    // The platform error may quote the path.
+    throw new InvalidInnerRequest("encode-failed");
   }
 }
 
 const KNOWN_LENGTH_RESPONSE = 0x01;
-const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+export const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
 function firstStatus(bytes: Uint8Array): number {
   let status: ReturnType<typeof decodeVli>;
@@ -168,7 +152,10 @@ export async function decodeInnerResponse(bytes: Uint8Array): Promise<InnerRespo
       NULL_BODY_STATUSES.has(response.status) || response.body === null
         ? new Uint8Array(0)
         : new Uint8Array(await response.arrayBuffer());
-    return { status: response.status, contentType: response.headers.get("content-type"), body };
+    const contentType = response.headers.get("content-type");
+    return contentType === null
+      ? { status: response.status, body }
+      : { status: response.status, contentType, body };
   } catch (cause) {
     throw new MalformedInnerResponse("decode-failed", { cause });
   }

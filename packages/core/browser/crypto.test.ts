@@ -104,7 +104,7 @@ describe("in a browser without WebCrypto X25519", () => {
   test("decodes RFC 9292 Figure 13 and rejects Figure 11", async () => {
     const response = await decodeInnerResponse(hexToBytes(rfc9292.figure13KnownLengthResponse));
     expect(response.status).toBe(200);
-    expect(response.contentType).toBeNull();
+    expect(response).not.toHaveProperty("contentType");
     expect(new TextDecoder().decode(response.body)).toBe("This content contains CRLF.\r\n");
 
     const [result] = await Promise.allSettled([

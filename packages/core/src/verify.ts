@@ -35,7 +35,7 @@ const PUBKEY_HEADER = "vRPC-Pubkey";
 const NODE_ID_HEADER = "vRPC-NodeId";
 
 const SIGNATURE_HEX_RE = /^0x[0-9a-f]{128}$/;
-export const PUBKEY_HEX_RE = /^0x[0-9a-f]{64}$/;
+const PUBKEY_HEX_RE = /^0x[0-9a-f]{64}$/;
 const TIMESTAMP_RE = /^\d+$/;
 
 /**

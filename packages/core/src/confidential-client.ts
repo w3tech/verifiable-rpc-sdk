@@ -7,17 +7,16 @@ import { createCloudVerifier, type HardwareVerifier } from "@w3tech.io/dstack-ve
 import { raceAbort } from "./abort";
 import {
   decodeInnerResponse,
-  InvalidInnerRequest as EncoderRejected,
   encodeInnerRequest,
   type InnerRequest,
   type InnerResponse,
   MalformedInnerResponse,
+  NULL_BODY_STATUSES,
 } from "./bhttp";
 import {
   ConfidentialDecryptFailed,
   ConfidentialSealFailed,
   ConfidentialSignerMismatch,
-  InvalidInnerRequest,
   MalformedConfidentialResponse,
   RequestRejected,
   TransportFailed,
@@ -41,7 +40,7 @@ import {
   ResponseTooLarge,
 } from "./transport";
 import { DEFAULT_PUBKEY_CACHE_TTL_MS } from "./trusted-verifier";
-import { getHeader, PUBKEY_HEX_RE, verifyResponse } from "./verify";
+import { getHeader, verifyResponse } from "./verify";
 import { deriveVrpcUrls, type VrpcUrls } from "./vrpc-url";
 
 export interface ConfidentialClientOptions {
@@ -76,29 +75,15 @@ export interface ConfidentialInfo {
   attestedAt: number;
 }
 
-export interface ConfidentialResponse {
-  status: number;
-  contentType?: string;
-  body: Uint8Array;
-}
+export type ConfidentialResponse = InnerResponse;
 
 const OHTTP_REQUEST = "message/ohttp-req";
 const OHTTP_RESPONSE = "message/ohttp-res";
-const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
 function withoutContentType(headers: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
     Object.entries(headers).filter(([name]) => name.toLowerCase() !== "content-type"),
   );
-}
-
-async function encode(inner: InnerRequest): Promise<Uint8Array> {
-  try {
-    return await encodeInnerRequest(inner);
-  } catch (err) {
-    if (err instanceof EncoderRejected) throw new InvalidInnerRequest(err.reason);
-    throw err;
-  }
 }
 
 async function seal(nodeKey: Uint8Array, bhttp: Uint8Array): Promise<SealedRequest> {
@@ -226,7 +211,7 @@ export class ConfidentialClient {
   ): Promise<ConfidentialResponse> {
     const signal = options?.signal;
     if (signal?.aborted) throw signal.reason;
-    const bhttp = await encode(inner);
+    const bhttp = await encodeInnerRequest(inner);
     const pin = await this.#slot.acquire(signal);
     try {
       return await this.#exchange(pin, bhttp, signal);
@@ -297,10 +282,6 @@ export class ConfidentialClient {
       if (status >= 400 && status <= 499) throw new RequestRejected(status, pin.nodeId, reported);
       throw new UnexpectedResponse(status, pin.nodeId, reported);
     }
-    const signer = getHeader(response.headers, "vRPC-Pubkey");
-    if (signer !== null && PUBKEY_HEX_RE.test(signer) && signer !== pin.pubkeyHex) {
-      throw new ConfidentialSignerMismatch(pin.pubkeyHex, signer);
-    }
     const verified = await verifyResponse(sealed.body, response.body, response.headers, {
       chainId: this.#chainId,
       ...(this.#replayWindowMs === undefined ? {} : { replayWindowMs: this.#replayWindowMs }),
@@ -310,9 +291,6 @@ export class ConfidentialClient {
       throw new ConfidentialSignerMismatch(pin.pubkeyHex, verified.verification.pubkeyHex);
     }
 
-    const decoded = await open(sealed.opener, response.body);
-    return decoded.contentType === null
-      ? { status: decoded.status, body: decoded.body }
-      : { status: decoded.status, contentType: decoded.contentType, body: decoded.body };
+    return open(sealed.opener, response.body);
   }
 }
