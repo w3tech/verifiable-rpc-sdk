@@ -11,13 +11,12 @@ import {
   createTestNode,
   mockHardwareVerifier,
   rejectionOf,
-  serveTestNode,
   signedJsonHeaders,
   TEST_SEED,
   type TestNode,
-  type TestNodeServer,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
+import { serveTestNode, type TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
 import { AbiCoder, EnsResolver, FetchRequest, isError, toUtf8String } from "ethers";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { CHAIN_ID } from "./fixtures";

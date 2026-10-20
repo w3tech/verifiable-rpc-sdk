@@ -2,16 +2,14 @@
 // the gateway answers, follows no redirect, and only re-attests on the next call.
 
 import { hexToBytes } from "@noble/hashes/utils.js";
+import { createTestNode, mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
 import {
-  createTestNode,
-  mockHardwareVerifier,
-  rejectionOf,
   type ServedAnswer,
   type ServedRequest,
   serveTestNode,
   type TestNodeServer,
   type TestNodeServerOptions,
-} from "@w3tech.io/vrpc-test-support";
+} from "@w3tech.io/vrpc-test-support/server";
 import { afterEach, describe, expect, test } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";

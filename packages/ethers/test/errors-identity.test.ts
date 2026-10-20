@@ -6,14 +6,13 @@ import * as conf from "@w3tech.io/vrpc-core/confidential";
 import * as errors from "@w3tech.io/vrpc-core/errors";
 import * as adapter from "@w3tech.io/vrpc-ethers";
 import {
-  CONFIDENTIAL_CLASSES,
   createTestNode,
-  ERROR_CLASSES,
   mockHardwareVerifier,
-  serveTestNode,
   TEST_SEED,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
+import { CONFIDENTIAL_CLASSES, ERROR_CLASSES } from "@w3tech.io/vrpc-test-support/adapter";
+import { serveTestNode } from "@w3tech.io/vrpc-test-support/server";
 import { afterEach, describe, expect, test } from "vitest";
 import { CHAIN_ID } from "./fixtures";
 

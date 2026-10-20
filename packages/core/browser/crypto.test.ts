@@ -1,7 +1,6 @@
 import type { CipherSuite } from "@hpke/core";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { hideX25519 } from "@w3tech.io/vrpc-test-support/hide-x25519";
-import { createRecipient } from "@w3tech.io/vrpc-test-support/recipient";
+import { createRecipient, hideX25519 } from "@w3tech.io/vrpc-test-support";
 import libsodium from "@w3tech.io/vrpc-test-support/vectors/ed25519-to-x25519.json";
 import cfrg from "@w3tech.io/vrpc-test-support/vectors/hpke-cfrg-mode0-x25519-sha256-aes256gcm.json";
 import rfc9292 from "@w3tech.io/vrpc-test-support/vectors/rfc9292-section5.json";

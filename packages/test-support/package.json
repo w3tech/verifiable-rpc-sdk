@@ -5,9 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./adapter": "./src/adapter.ts",
     "./interop": "./src/interop.ts",
-    "./recipient": "./src/recipient.ts",
-    "./hide-x25519": "./src/hide-x25519.ts",
+    "./server": "./src/server.ts",
     "./vectors/*": "./vectors/*",
     "./package.json": "./package.json"
   },
@@ -20,5 +20,9 @@
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "bhttp-ts": "0.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "vitest": "^4.1.10"
   }
 }

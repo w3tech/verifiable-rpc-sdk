@@ -9,13 +9,12 @@ import {
   createTestNode,
   mockHardwareVerifier,
   rejectionOf,
-  serveTestNode,
   signedJsonHeaders,
   TEST_SEED,
   type TestNode,
-  type TestNodeServer,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
+import { serveTestNode, type TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
 import { InvalidChainId, vrpcHttp } from "@w3tech.io/vrpc-viem";
 import {
   BaseError,

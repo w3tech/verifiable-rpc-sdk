@@ -16,14 +16,16 @@ import {
   createTestNode,
   mockHardwareVerifier,
   rejectionOf,
+  TEST_SEED,
+  type TestUpstreamResponse,
+} from "@w3tech.io/vrpc-test-support";
+import {
   type ServedAnswer,
   type ServedRequest,
   serveTestNode,
-  TEST_SEED,
   type TestNodeServer,
   type TestNodeServerOptions,
-  type TestUpstreamResponse,
-} from "@w3tech.io/vrpc-test-support";
+} from "@w3tech.io/vrpc-test-support/server";
 import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 import { BaseError, createPublicClient, defineChain, fallback } from "viem";
 import { afterEach, describe, expect, test } from "vitest";
