@@ -10,6 +10,7 @@
 
 import {
   deriveVrpcUrls,
+  fetchTransport,
   InvalidChainId,
   isSignedVrpcResponse,
   parseChainId,
@@ -24,7 +25,6 @@ import { createTransport, HttpRequestError, RpcRequestError, type Transport } fr
 
 import {
   ConfidentialHolder,
-  fetchTransport,
   linkSignal,
   mapInnerResponse,
   requirePositiveMs,

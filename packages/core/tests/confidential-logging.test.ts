@@ -491,10 +491,46 @@ describe("real network failures through the default transport", () => {
       }
 
       expect(err, keyIn).toBeInstanceOf(expected);
-      expect((err as Error).cause, keyIn).toBeInstanceOf(TypeError);
+      expect(((err as Error).cause as Error).message, keyIn).toBe("The request failed.");
       expect(leaks(errorTexts(err).join("\n"), baseSentinels()), keyIn).toEqual([]);
     }
     expect(leaks(logText(logger), baseSentinels())).toEqual([]);
+  });
+
+  test.each([
+    ["attestation", AttestationUnavailable],
+    ["sealed request", TransportFailed],
+  ] as const)("a fetch error quoting the keyed URL on the %s keeps only its code", async (leg, expected) => {
+    const node = testNode();
+    const original = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if ((init?.method === "GET") === (leg === "attestation")) {
+        throw Object.assign(new Error(`request to ${url} failed, reason: socket hang up`), {
+          code: "ECONNRESET",
+        });
+      }
+      return original(input, init);
+    });
+    const origin = await droppingOrigin(node);
+    const client = new ConfidentialClient({
+      url: `${origin}/eth_vrpc/${API_KEY}`,
+      chainId: CHAIN_ID,
+      hardwareVerifier: mockHardwareVerifier(),
+    });
+    let err: unknown;
+    try {
+      await client.request(call());
+    } catch (caught) {
+      err = caught;
+    }
+
+    expect(err).toBeInstanceOf(expected);
+    expect((err as Error).cause).toMatchObject({
+      message: "The request failed.",
+      code: "ECONNRESET",
+    });
+    expect(leaks(errorTexts(err).join("\n"), baseSentinels())).toEqual([]);
   });
 });
 
