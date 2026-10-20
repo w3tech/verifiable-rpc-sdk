@@ -259,7 +259,10 @@ Without a `getUrlFunc` of your own the SDK never follows a redirect. A
 `getUrlFunc` you set on the `FetchRequest` must not follow redirects or retry:
 the SDK only sees the answer it returns, so a redirect it followed has already
 resent the encrypted request and the API key. In a browser build it with
-`FetchRequest.createGetUrlFunc({ redirect: "manual" })`.
+`FetchRequest.createGetUrlFunc({ redirect: "manual" })`. A function passed to
+`FetchRequest.registerGetUrl()` counts as your own only when it is registered
+after `@w3tech.io/vrpc-ethers` is imported; one registered before that import is
+replaced by the SDK's fetch.
 
 **Response size.** Without a `getUrlFunc` of your own, both requests go through
 `fetch` and the SDK stops reading an answer past 192 MiB. A `getUrlFunc` you set,
