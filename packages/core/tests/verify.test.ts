@@ -1,4 +1,4 @@
-import { signResponse } from "@w3tech.io/vrpc-test-support";
+import { rejectionOf, signResponse } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -63,12 +63,9 @@ describe("verifyResponse", () => {
     const tampered = new TextEncoder().encode(
       JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0xdeadbeef" }),
     );
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, tampered, t.headers, { chainId: CHAIN_ID, nowMs });
-    } catch (err) {
-      caught = err;
-    }
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, tampered, t.headers, { chainId: CHAIN_ID, nowMs }),
+    );
     expect(caught).toBeInstanceOf(BadSignature);
     if (caught instanceof BadSignature) {
       expect(caught.kind).toBe("BadSignature");
@@ -81,12 +78,9 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     // Signed with chain id "137", verified expecting "1" -> wrong pre-image.
     const t = await signTriple(REQUEST, RESPONSE, nowMs, { signingChainId: "137" });
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, { chainId: "1", nowMs });
-    } catch (err) {
-      caught = err;
-    }
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, { chainId: "1", nowMs }),
+    );
     expect(caught).toBeInstanceOf(BadSignature);
   });
 
@@ -107,15 +101,12 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const t = await signTriple(REQUEST, RESPONSE, nowMs);
     delete t.headers["vRPC-Signature"];
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(MissingHeader);
     if (caught instanceof MissingHeader) {
       expect(caught.headerName).toBe("vRPC-Signature");
@@ -126,15 +117,12 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const t = await signTriple(REQUEST, RESPONSE, nowMs);
     delete t.headers["vRPC-Timestamp"];
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(MissingHeader);
     if (caught instanceof MissingHeader) {
       expect(caught.headerName).toBe("vRPC-Timestamp");
@@ -145,15 +133,12 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const t = await signTriple(REQUEST, RESPONSE, nowMs);
     delete t.headers["vRPC-Pubkey"];
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(MissingHeader);
     if (caught instanceof MissingHeader) {
       expect(caught.headerName).toBe("vRPC-Pubkey");
@@ -164,15 +149,12 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const t = await signTriple(REQUEST, RESPONSE, nowMs);
     t.headers["vRPC-Signature"] = "0xnotcorrectlength";
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(MalformedHeader);
     if (caught instanceof MalformedHeader) {
       expect(caught.headerName).toBe("vRPC-Signature");
@@ -183,15 +165,12 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const t = await signTriple(REQUEST, RESPONSE, nowMs);
     t.headers["vRPC-Pubkey"] = "deadbeef";
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(MalformedHeader);
     if (caught instanceof MalformedHeader) {
       expect(caught.headerName).toBe("vRPC-Pubkey");
@@ -202,15 +181,12 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const t = await signTriple(REQUEST, RESPONSE, nowMs);
     t.headers["vRPC-Timestamp"] = "nope";
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(MalformedHeader);
     if (caught instanceof MalformedHeader) {
       expect(caught.headerName).toBe("vRPC-Timestamp");
@@ -221,15 +197,12 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const t = await signTriple(REQUEST, RESPONSE, nowMs);
     t.headers["vRPC-Timestamp"] = (1n << 64n).toString();
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(MalformedHeader);
     if (caught instanceof MalformedHeader) {
       expect(caught.headerName).toBe("vRPC-Timestamp");
@@ -249,15 +222,12 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const staleMs = nowMs - 120_000n;
     const t = await signTriple(REQUEST, RESPONSE, staleMs);
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(StaleTimestamp);
     if (caught instanceof StaleTimestamp) {
       expect(caught.allowedWindowMs).toBe(60_000);
@@ -270,15 +240,12 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const futureMs = nowMs + 120_000n;
     const t = await signTriple(REQUEST, RESPONSE, futureMs);
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(StaleTimestamp);
     if (caught instanceof StaleTimestamp) {
       expect(caught.skewMs).toBe(120_000n);
@@ -289,16 +256,13 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const slightlyOldMs = nowMs - 1n;
     const t = await signTriple(REQUEST, RESPONSE, slightlyOldMs);
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         replayWindowMs: 0,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(StaleTimestamp);
     if (caught instanceof StaleTimestamp) {
       expect(caught.allowedWindowMs).toBe(0);

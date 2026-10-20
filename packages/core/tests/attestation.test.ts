@@ -1,4 +1,5 @@
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { rejectionOf } from "@w3tech.io/vrpc-test-support";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { fetchAttestation, verifyAttestationCorrelation } from "../src/attestation";
@@ -65,15 +66,12 @@ describe("fetchAttestation", () => {
     }) as unknown as typeof fetch;
 
     for (const len of [0, 31, 33]) {
-      let caught: unknown;
-      try {
-        await fetchAttestation({
+      const caught = await rejectionOf(
+        fetchAttestation({
           attestationUrl: TEST_ATTESTATION_URL,
           nonce: new Uint8Array(len),
-        });
-      } catch (err) {
-        caught = err;
-      }
+        }),
+      );
       expect(caught).toBeInstanceOf(InvalidNonce);
       if (caught instanceof InvalidNonce) {
         expect(caught.reason).toContain("32 bytes");
@@ -145,12 +143,9 @@ describe("fetchAttestation", () => {
       pubkey: "0x00",
       composeHash: "feed",
     });
-    let caught: unknown;
-    try {
-      await fetchAttestation({ attestationUrl: TEST_ATTESTATION_URL, nonce: new Uint8Array(32) });
-    } catch (err) {
-      caught = err;
-    }
+    const caught = await rejectionOf(
+      fetchAttestation({ attestationUrl: TEST_ATTESTATION_URL, nonce: new Uint8Array(32) }),
+    );
     expect(caught).toBeInstanceOf(MalformedAttestationResponse);
     if (caught instanceof MalformedAttestationResponse) {
       expect(caught.reason).toContain("quote");
@@ -190,12 +185,9 @@ describe("fetchAttestation", () => {
 
     for (const { body, fieldPath } of cases) {
       installMockFetch(body);
-      let caught: unknown;
-      try {
-        await fetchAttestation({ attestationUrl: TEST_ATTESTATION_URL, nonce: new Uint8Array(32) });
-      } catch (err) {
-        caught = err;
-      }
+      const caught = await rejectionOf(
+        fetchAttestation({ attestationUrl: TEST_ATTESTATION_URL, nonce: new Uint8Array(32) }),
+      );
       expect(caught).toBeInstanceOf(MalformedAttestationResponse);
       if (caught instanceof MalformedAttestationResponse) {
         expect(caught.reason).toContain(fieldPath);
@@ -235,16 +227,13 @@ describe("fetchAttestation", () => {
       globalThis.fetch = ((): Response => {
         throw new Error("fetch called — synchronous validation failed");
       }) as unknown as typeof fetch;
-      let caught: unknown;
-      try {
-        await fetchAttestation({
+      const caught = await rejectionOf(
+        fetchAttestation({
           attestationUrl: gatewayAttestationUrl,
           nodeId: "node-1",
           nonce: new Uint8Array(31),
-        });
-      } catch (err) {
-        caught = err;
-      }
+        }),
+      );
       expect(caught).toBeInstanceOf(InvalidNonce);
     });
 
@@ -304,16 +293,13 @@ describe("fetchAttestation", () => {
 
     test("status404ThrowsNodeNotFoundWithNoRetry", async () => {
       const state = installGatewayMockFetch({}, 404);
-      let caught: unknown;
-      try {
-        await fetchAttestation({
+      const caught = await rejectionOf(
+        fetchAttestation({
           attestationUrl: gatewayAttestationUrl,
           nodeId: "stale-node",
           nonce: new Uint8Array(32),
-        });
-      } catch (err) {
-        caught = err;
-      }
+        }),
+      );
       expect(caught).toBeInstanceOf(AttestationNodeNotFoundError);
       if (caught instanceof AttestationNodeNotFoundError) {
         expect(caught.nodeId).toBe("stale-node");
@@ -335,16 +321,13 @@ describe("fetchAttestation", () => {
 
     test("reusesNarrowAttestationOnMalformedBody", async () => {
       installGatewayMockFetch({ quote: "abcdef", pubkey: "0x00", composeHash: "feed" });
-      let caught: unknown;
-      try {
-        await fetchAttestation({
+      const caught = await rejectionOf(
+        fetchAttestation({
           attestationUrl: gatewayAttestationUrl,
           nodeId: "node-1",
           nonce: new Uint8Array(32),
-        });
-      } catch (err) {
-        caught = err;
-      }
+        }),
+      );
       expect(caught).toBeInstanceOf(MalformedAttestationResponse);
     });
   });
@@ -388,17 +371,14 @@ describe("fetchAttestation non-OK and non-JSON answers", () => {
       new Response(body, { status, headers: { "content-type": contentType } })) as typeof fetch;
   }
 
-  async function caughtFrom(nodeId?: string): Promise<unknown> {
-    try {
-      await fetchAttestation({
+  function caughtFrom(nodeId?: string): Promise<unknown> {
+    return rejectionOf(
+      fetchAttestation({
         attestationUrl: TEST_ATTESTATION_URL,
         nonce: new Uint8Array(32),
         ...(nodeId === undefined ? {} : { nodeId }),
-      });
-    } catch (err) {
-      return err;
-    }
-    throw new Error("expected fetchAttestation to throw");
+      }),
+    );
   }
 
   test.each([
