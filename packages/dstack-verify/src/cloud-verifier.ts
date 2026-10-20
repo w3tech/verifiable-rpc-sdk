@@ -20,8 +20,7 @@
 // the egress. See README. No new runtime dependency — raw globalThis.fetch only.
 
 import { AttestationError } from "./errors";
-import type { HardwareVerifier } from "./hardware-verifier";
-import type { AttestationBundle, VerifyPolicy } from "./types";
+import type { AttestationBundle, HardwareVerifier, VerifyPolicy } from "./types";
 
 /** Default Phala-hosted DCAP-quote verify endpoint. */
 export const DEFAULT_PHALA_VERIFY_ENDPOINT =

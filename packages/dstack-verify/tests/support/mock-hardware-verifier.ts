@@ -13,7 +13,7 @@
 // keep a byte-identical local copy when their tsconfig/vitest resolver makes
 // importing across package boundaries awkward — keep all copies in sync.
 
-import type { HardwareVerifier } from "../../src/hardware-verifier";
+import type { HardwareVerifier } from "../../src/types";
 
 /**
  * Build a no-network {@link HardwareVerifier} for tests. `verifyHardware`

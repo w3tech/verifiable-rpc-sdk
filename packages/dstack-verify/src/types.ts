@@ -8,8 +8,6 @@
 // helper/verifier bodies WITHOUT changing any exported type. Optional fields use `field?: T`
 // (NOT `| undefined`) to stay compatible with exactOptionalPropertyTypes.
 
-import type { HardwareVerifier } from "./hardware-verifier";
-
 /**
  * Minimal opt-in debug logger. Declared locally (NOT imported from
  * @w3tech.io/vrpc-core) so this package stays a dependency-free leaf. It is
@@ -179,4 +177,19 @@ export interface VerifyPolicy {
    * into the verify steps without changing the frozen `(bundle, policy)` seam.
    */
   logger?: Logger;
+}
+
+/**
+ * Pluggable hardware-signature verifier. A configured implementation IS the
+ * hardware root of trust for a verifyDstackAttestation call: on success the
+ * verifier resolves `void` and the CHK-MOCK gate is bypassed; on any failure it
+ * throws `AttestationError` (fail-closed). Implementations MUST NOT print.
+ */
+export interface HardwareVerifier {
+  /**
+   * Verify the hardware signature of `bundle.quote.quote` and (optionally) bind
+   * the verified quote body to `policy` values. Resolves on success, throws
+   * `AttestationError` on failure.
+   */
+  verifyHardware(bundle: AttestationBundle, policy: VerifyPolicy): Promise<void>;
 }

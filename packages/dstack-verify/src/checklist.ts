@@ -68,7 +68,7 @@ export const CHK = Object.freeze({
     disposition: "pinned",
   },
   // CHK-P1 is the hardware-signature verdict. It is now reachable via a
-  // configured HardwareVerifier (see ./hardware-verifier): the CloudVerifier
+  // configured HardwareVerifier (see ./types): the CloudVerifier
   // path asserts the cloud verdict AND binds the cloud-extracted reportdata /
   // composeHash to our values (B+). A future LocalDcapVerifier verifies the
   // quote locally against Intel root certs under this same id. No new ChkId.
