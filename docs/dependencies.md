@@ -57,9 +57,6 @@ Why these libraries:
 
 Development-only packages used to run the tests in a headless browser
 (`@vitest/browser-playwright`, `playwright`) are not part of any published package.
-The static-check tools (`knip`, `jscpd`, `dependency-cruiser`, `publint`,
-`@arethetypeswrong/cli`, `@microsoft/api-extractor`, `@vitest/coverage-v8`) are
-development-only root packages too and are not part of any published package.
 
 ### Development-only packages
 

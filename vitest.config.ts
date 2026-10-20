@@ -4,15 +4,7 @@ import { defineConfig } from "vitest/config";
 // Resolve the absolute path of a workspace source file from this config's dir.
 const src = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 
-// Dev source-resolution (option a — vitest resolve.alias).
-//
-// Under the old bun toolchain the `"bun"` export condition made in-repo imports
-// of `@w3tech.io/*` resolve to `./src/*.ts`. That dev-only condition is removed
-// (the published `exports`/`publishConfig` → ./dist are untouched). To keep
-// tests resolving workspace packages to SOURCE (not built dist), we alias core
-// (with its `/errors` and `/confidential` subpaths), dstack-verify, ethers and
-// viem to their `src` entry. Longest-prefix subpath alias listed first so
-// `/errors` wins over the bare package alias.
+// Alias each `@w3tech.io/*` specifier (subpaths first) to its `src` entry so tests run on source.
 export default defineConfig({
   resolve: {
     alias: [
