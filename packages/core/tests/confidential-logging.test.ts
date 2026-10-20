@@ -4,6 +4,8 @@ import { x25519 } from "@noble/curves/ed25519.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { AttestationError } from "@w3tech.io/dstack-verify";
 import {
+  type CollectingLogger,
+  collectingLogger,
   createTestNode,
   mockHardwareVerifier,
   type TestNode,
@@ -29,7 +31,6 @@ import {
 } from "../src/errors";
 import type { Logger } from "../src/logger";
 import type { ConfidentialTransport } from "../src/transport";
-import { type CollectingLogger, collectingLogger } from "./support/collecting-logger";
 
 const SEED_HEX = "421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee";
 const OTHER_SEED_HEX = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";

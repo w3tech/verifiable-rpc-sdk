@@ -12,7 +12,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import { collectingLogger, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 import { AttestationError, parseReportData, verifyDstackAttestation } from "../src/index";
 import type {
@@ -64,19 +64,6 @@ function makePolicy(p: {
     ...(hv === undefined ? {} : { hardwareVerifier: hv }),
     ...(p.logger === undefined ? {} : { logger: p.logger }),
   } as unknown as VerifyPolicy;
-}
-
-/** Inline collecting Logger — records each debug(event, data) call. */
-function collectingLogger(): Logger & {
-  calls: Array<[string, Record<string, unknown> | undefined]>;
-} {
-  const calls: Array<[string, Record<string, unknown> | undefined]> = [];
-  return {
-    calls,
-    debug(event, data) {
-      calls.push([event, data]);
-    },
-  };
 }
 
 const validBundle = makeBundle(fixture.report_data);

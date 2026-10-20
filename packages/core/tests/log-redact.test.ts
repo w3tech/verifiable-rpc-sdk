@@ -4,11 +4,10 @@
 // helpers (log-redact.ts): truncation shape, byte-length, header allowlist
 // redaction, the no-op default, and the never-throw safe wrapper.
 
+import { collectingLogger } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, it } from "vitest";
-
 import { byteLen, pickVrpcHeaders, truncateHex } from "../src/log-redact";
 import { defaultLogger, safeLogger } from "../src/logger";
-import { collectingLogger } from "./support/collecting-logger";
 
 describe("truncateHex", () => {
   it("keeps exactly keepBytes*2 hex chars then … then a (NB) byte-count suffix", () => {

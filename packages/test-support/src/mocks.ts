@@ -12,3 +12,19 @@ export function mockHardwareVerifier(options: { fail?: Error } = {}): {
     },
   };
 }
+
+export interface CollectingLogger {
+  readonly calls: Array<[string, Record<string, unknown> | undefined]>;
+  debug(event: string, data?: Record<string, unknown>): void;
+}
+
+// Records each debug call.
+export function collectingLogger(): CollectingLogger {
+  const calls: Array<[string, Record<string, unknown> | undefined]> = [];
+  return {
+    calls,
+    debug(event, data) {
+      calls.push([event, data]);
+    },
+  };
+}
