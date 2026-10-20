@@ -5,7 +5,7 @@
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { attestationBody } from "./attestation";
 import { createRecipient } from "./recipient";
-import { signResponse } from "./sign";
+import { type SignOptions, signResponse } from "./sign";
 
 export interface TestOuterRequest {
   method: string;
@@ -35,11 +35,7 @@ export interface TestNodeOptions {
   upstream?: (request: Request) => TestUpstreamResponse | Promise<TestUpstreamResponse>;
 }
 
-interface TestSignOptions {
-  seed?: Uint8Array;
-  timestampMs?: number;
-  pubkeyHex?: string;
-}
+type TestSignOptions = Omit<SignOptions, "nodeId">;
 
 export interface ConfidentialContext {
   readonly request: TestOuterRequest;
@@ -99,7 +95,7 @@ export function createTestNode(options: TestNodeOptions): TestNode {
   let confidential: ConfidentialHandler = (context) => context.normal();
   let attestation: AttestationHandler = (context) => context.normal();
 
-  function attestationAnswer(nonceHex: string): TestOuterResponse {
+  function attestationResponse(nonceHex: string): TestOuterResponse {
     return {
       status: 200,
       headers: { "content-type": "application/json", ...nodeIdHeader },
@@ -155,7 +151,7 @@ export function createTestNode(options: TestNodeOptions): TestNode {
       return attestation({
         request,
         nonceHex,
-        normal: async () => attestationAnswer(nonceHex),
+        normal: async () => attestationResponse(nonceHex),
       });
     }
     if (

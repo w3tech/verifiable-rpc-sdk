@@ -86,8 +86,8 @@ const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
 // The built adapter in a plain node process, where no test alias maps a package to its source:
 // one class identity with the built core, and the confidential entry loaded only on demand.
-export function describeBuiltAdapter(adapter: string, distUrl: URL): void {
-  const distDir = fileURLToPath(distUrl);
+export function describeBuiltAdapter(adapter: string): void {
+  const distDir = join(repoRoot, "packages", adapter.replace("@w3tech.io/vrpc-", ""), "dist");
   const built =
     existsSync(join(distDir, "index.js")) &&
     existsSync(join(repoRoot, "packages/core/dist/confidential.js"));

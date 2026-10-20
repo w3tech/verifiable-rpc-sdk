@@ -33,7 +33,7 @@ interface OpenedRequest {
   }): Promise<Uint8Array>;
 }
 
-export interface Recipient {
+interface Recipient {
   ed25519PublicKey: Uint8Array;
   openRequest(body: Uint8Array): Promise<OpenedRequest>;
 }

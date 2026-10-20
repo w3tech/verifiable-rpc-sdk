@@ -65,10 +65,12 @@ describe("VrpcProvider always-on attestation E2E", () => {
     // Gateway route requires `node_id`; the signed response carries none → the
     // attestation fetch lacks `node_id` → 404 → AttestationNodeNotFoundError
     // propagates (fail-closed; no unverified data returned).
-    const mock = attestationStub({ requireNodeId: true });
+    const mock = attestationStub();
+    mock.failNext = 404;
     const provider = vrpcProviderWith(mock, {});
     await expect(provider.getBalance(ADDR)).rejects.toThrow();
     expect(mock.urls.length).toBe(1); // the fetch WAS attempted (the route 404'd)
+    expect(mock.urls[0]).not.toContain("node_id=");
   });
 
   test("missingNodeIdDirectNode: signed response without vRPC-NodeId against a direct node still verifies", async () => {

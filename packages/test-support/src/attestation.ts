@@ -7,7 +7,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { TEST_PUBKEY_HEX, TEST_SEED } from "./sign";
 
-export interface AttestationOptions {
+interface AttestationOptions {
   seed?: Uint8Array | undefined;
   appCompose?: string | undefined;
 }
@@ -47,7 +47,7 @@ export interface AttestationStub {
 }
 
 // fetch answering only `/attestation`; failNext answers once with that status.
-export function attestationStub(options: { requireNodeId?: boolean } = {}): AttestationStub {
+export function attestationStub(): AttestationStub {
   const urls: string[] = [];
   const stub: AttestationStub = {
     fetch: (async (input: string | URL | Request) => {
@@ -61,9 +61,6 @@ export function attestationStub(options: { requireNodeId?: boolean } = {}): Atte
           status,
           headers: { "content-type": "text/plain" },
         });
-      }
-      if (options.requireNodeId === true && !url.includes("node_id=")) {
-        return new Response("not found", { status: 404 });
       }
       return attestationAnswer(url, { seed: stub.seed });
     }) as typeof fetch,
