@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 import {
@@ -8,6 +7,7 @@ import {
   type TestNode,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
+import ed25519ToX25519 from "@w3tech.io/vrpc-test-support/vectors/ed25519-to-x25519.json";
 import { describe, expect, test } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
@@ -33,12 +33,7 @@ interface RejectRow {
   reason: string;
 }
 
-const keyVectors = JSON.parse(
-  readFileSync(
-    new URL("../../test-support/vectors/ed25519-to-x25519.json", import.meta.url),
-    "utf8",
-  ),
-) as { reject: RejectRow[] };
+const keyVectors = ed25519ToX25519 as { reject: RejectRow[] };
 
 const unusableKeys = keyVectors.reject.filter(
   (row) => row.reason === "small-order" || row.reason === "not-torsion-free",

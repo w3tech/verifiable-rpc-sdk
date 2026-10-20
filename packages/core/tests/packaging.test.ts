@@ -3,12 +3,12 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import testSupportManifest from "@w3tech.io/vrpc-test-support/package.json";
 import { build, type Options } from "tsup";
 import { afterAll, describe, expect, test } from "vitest";
 import rootManifest from "../../../package.json";
 import dstackVerifyManifest from "../../dstack-verify/package.json";
 import proxyManifest from "../../proxy/package.json";
-import testSupportManifest from "../../test-support/package.json";
 import coreManifest from "../package.json";
 import tsupConfig from "../tsup.config";
 

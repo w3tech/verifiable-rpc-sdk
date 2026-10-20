@@ -1,8 +1,8 @@
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { createRecipient } from "@w3tech.io/vrpc-test-support";
+import rfc9292 from "@w3tech.io/vrpc-test-support/vectors/rfc9292-section5.json";
 import { BHttpDecoder, decodeVli } from "bhttp-ts";
 import { describe, expect, test } from "vitest";
-import rfc9292 from "../../test-support/vectors/rfc9292-section5.json";
 import {
   decodeInnerResponse,
   encodeInnerRequest,

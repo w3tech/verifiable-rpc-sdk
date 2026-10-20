@@ -1,8 +1,8 @@
 import type { CipherSuite } from "@hpke/core";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { hideX25519 } from "@w3tech.io/vrpc-test-support";
+import vector from "@w3tech.io/vrpc-test-support/vectors/hpke-cfrg-mode0-x25519-sha256-aes256gcm.json";
 import { afterEach, describe, expect, test } from "vitest";
-import vector from "../../test-support/vectors/hpke-cfrg-mode0-x25519-sha256-aes256gcm.json";
 import {
   createSuite,
   type KemChoice,

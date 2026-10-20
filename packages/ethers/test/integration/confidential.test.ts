@@ -3,14 +3,14 @@
 // ethers provider in Ankr Confidential RPC mode against the real sidecar.
 
 import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
-import { isError, toUtf8String } from "ethers";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   INTEROP_SKIP_MESSAGE,
   type Interop,
   integrationEnabled,
   spawnInterop,
-} from "../../../test-support/src/interop";
+} from "@w3tech.io/vrpc-test-support/interop";
+import { isError, toUtf8String } from "ethers";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BadSignature, type VrpcOptions, VrpcProvider } from "../../src/index";
 
 if (!integrationEnabled) {

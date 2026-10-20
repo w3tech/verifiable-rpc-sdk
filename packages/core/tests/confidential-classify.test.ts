@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import {
   type ConfidentialContext,
@@ -6,6 +5,7 @@ import {
   mockHardwareVerifier,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
+import sidecarVectors from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
 import { describe, expect, test } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
@@ -31,12 +31,7 @@ interface PreDecapsulationError {
   body: string;
 }
 
-const vectors = JSON.parse(
-  readFileSync(
-    new URL("../../test-support/vectors/sidecar-confidential.json", import.meta.url),
-    "utf8",
-  ),
-) as { pre_decapsulation_errors: PreDecapsulationError[] };
+const vectors = sidecarVectors as { pre_decapsulation_errors: PreDecapsulationError[] };
 
 function vector(name: string): PreDecapsulationError {
   const entry = vectors.pre_decapsulation_errors.find((candidate) => candidate.name === name);

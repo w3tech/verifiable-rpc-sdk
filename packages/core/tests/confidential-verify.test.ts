@@ -6,8 +6,8 @@ import {
   type TestOuterResponse,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
+import vectors from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
 import { describe, expect, expectTypeOf, test } from "vitest";
-import vectors from "../../test-support/vectors/sidecar-confidential.json";
 import { type InnerRequest, MalformedInnerResponse } from "../src/bhttp";
 import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
 import {

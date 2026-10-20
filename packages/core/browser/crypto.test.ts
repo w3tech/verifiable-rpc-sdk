@@ -1,13 +1,13 @@
 import type { CipherSuite } from "@hpke/core";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { hideX25519 } from "@w3tech.io/vrpc-test-support/hide-x25519";
+import { createRecipient } from "@w3tech.io/vrpc-test-support/recipient";
+import libsodium from "@w3tech.io/vrpc-test-support/vectors/ed25519-to-x25519.json";
+import cfrg from "@w3tech.io/vrpc-test-support/vectors/hpke-cfrg-mode0-x25519-sha256-aes256gcm.json";
+import rfc9292 from "@w3tech.io/vrpc-test-support/vectors/rfc9292-section5.json";
+import appendixA from "@w3tech.io/vrpc-test-support/vectors/rfc9458-appendix-a.json";
+import sidecar from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { hideX25519 } from "../../test-support/src/hide-x25519";
-import { createRecipient } from "../../test-support/src/recipient";
-import libsodium from "../../test-support/vectors/ed25519-to-x25519.json";
-import cfrg from "../../test-support/vectors/hpke-cfrg-mode0-x25519-sha256-aes256gcm.json";
-import rfc9292 from "../../test-support/vectors/rfc9292-section5.json";
-import appendixA from "../../test-support/vectors/rfc9458-appendix-a.json";
-import sidecar from "../../test-support/vectors/sidecar-confidential.json";
 import { decodeInnerResponse, encodeInnerRequest, MalformedInnerResponse } from "../src/bhttp";
 import { nodeKeyFromEd25519 } from "../src/node-key";
 import {

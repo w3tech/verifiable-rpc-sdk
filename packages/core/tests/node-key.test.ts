@@ -1,8 +1,8 @@
 import { x25519 } from "@noble/curves/ed25519.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { x25519SecretFromSeed } from "@w3tech.io/vrpc-test-support";
+import vector from "@w3tech.io/vrpc-test-support/vectors/ed25519-to-x25519.json";
 import { describe, expect, test } from "vitest";
-import vector from "../../test-support/vectors/ed25519-to-x25519.json";
 import { InvalidNodeKey, nodeKeyFromEd25519 } from "../src/node-key";
 
 describe("nodeKeyFromEd25519", () => {

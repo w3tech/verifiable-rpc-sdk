@@ -3,8 +3,8 @@ import { extract } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, concatBytes, hexToBytes } from "@noble/hashes/utils.js";
 import { createRecipient, x25519SecretFromSeed } from "@w3tech.io/vrpc-test-support";
+import vectors from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
 import { describe, expect, test } from "vitest";
-import vectors from "../../test-support/vectors/sidecar-confidential.json";
 import { decodeInnerResponse, encodeInnerRequest } from "../src/bhttp";
 import { InvalidInnerRequest } from "../src/errors";
 import { nodeKeyFromEd25519 } from "../src/node-key";
@@ -20,8 +20,7 @@ import {
 // 8a9a4f482326fcdae5fe9b342d45399e5f996f7d, sha256 342cb863ddcf741f78a984ebbb28c2672f9c1dc9cc69084e1fba5b8e625b2075.
 const VECTORS_SHA256 = "342cb863ddcf741f78a984ebbb28c2672f9c1dc9cc69084e1fba5b8e625b2075";
 const VECTORS_FILE = new URL(
-  "../../test-support/vectors/sidecar-confidential.json",
-  import.meta.url,
+  import.meta.resolve("@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json"),
 );
 const HDR = "00002000010002";
 const utf8 = new TextEncoder();

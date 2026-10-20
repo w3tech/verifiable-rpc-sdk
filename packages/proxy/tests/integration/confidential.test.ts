@@ -5,13 +5,13 @@
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   INTEROP_SKIP_MESSAGE,
   type Interop,
   integrationEnabled,
   spawnInterop,
-} from "../../../test-support/src/interop";
+} from "@w3tech.io/vrpc-test-support/interop";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createProxyServer } from "../../src/index";
 import { testConfig } from "../support/test-overrides";
 
