@@ -10,6 +10,7 @@ export { bytesToHex as toHex } from "@noble/hashes/utils.js";
 
 // Ed25519 seed of the test node key.
 export const TEST_SEED = new Uint8Array(32).fill(0x42);
+export const TEST_PUBKEY_HEX = `0x${bytesToHex(ed25519.getPublicKey(TEST_SEED))}`;
 
 export interface SignOptions {
   seed?: Uint8Array | undefined;
@@ -28,6 +29,8 @@ export function signResponse(
   options: SignOptions = {},
 ): Record<string, string> {
   const seed = options.seed ?? TEST_SEED;
+  const pubkeyHex =
+    options.seed === undefined ? TEST_PUBKEY_HEX : `0x${bytesToHex(ed25519.getPublicKey(seed))}`;
   const timestamp = BigInt(options.timestampMs ?? Date.now());
   const timestampBytes = new Uint8Array(8);
   new DataView(timestampBytes.buffer).setBigUint64(0, timestamp, true);
@@ -40,7 +43,7 @@ export function signResponse(
   return {
     "vRPC-Signature": `0x${bytesToHex(ed25519.sign(preImage, seed))}`,
     "vRPC-Timestamp": timestamp.toString(),
-    "vRPC-Pubkey": options.pubkeyHex ?? `0x${bytesToHex(ed25519.getPublicKey(seed))}`,
+    "vRPC-Pubkey": options.pubkeyHex ?? pubkeyHex,
     ...(options.nodeId === undefined ? {} : { "vRPC-NodeId": options.nodeId }),
   };
 }

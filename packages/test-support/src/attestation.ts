@@ -5,7 +5,7 @@
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { TEST_SEED } from "./sign";
+import { TEST_PUBKEY_HEX, TEST_SEED } from "./sign";
 
 export interface AttestationOptions {
   seed?: Uint8Array | undefined;
@@ -14,7 +14,10 @@ export interface AttestationOptions {
 
 // JSON body binding the seed's pubkey and the nonce; appCompose also sets its composeHash.
 export function attestationBody(nonceHex: string, options: AttestationOptions = {}): string {
-  const pubkey = bytesToHex(ed25519.getPublicKey(options.seed ?? TEST_SEED));
+  const pubkey =
+    options.seed === undefined
+      ? TEST_PUBKEY_HEX.slice(2)
+      : bytesToHex(ed25519.getPublicKey(options.seed));
   const appCompose = options.appCompose;
   return JSON.stringify({
     quote: { quote: "00", event_log: "00", report_data: `${pubkey}${nonceHex}`, vm_config: "" },

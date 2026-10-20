@@ -1,10 +1,10 @@
-import { getPublicKeyAsync } from "@noble/ed25519";
 import { AttestationError, EMPTY_ALLOWLIST } from "@w3tech.io/dstack-verify";
 import {
   attestationStub,
   collectingLogger,
   mockHardwareVerifier,
   signResponse,
+  TEST_PUBKEY_HEX,
   TEST_SEED,
   toHex,
 } from "@w3tech.io/vrpc-test-support";
@@ -109,12 +109,11 @@ describe("TrustedVerifier / trust seam", () => {
     globalThis.fetch = savedFetch;
   });
 
-  test("buildsPolicy", async () => {
-    const pubkeyHex = `0x${toHex(await getPublicKeyAsync(TEST_SEED))}`;
-    const policy = buildVerifyPolicy(pubkeyHex, NONCE);
+  test("buildsPolicy", () => {
+    const policy = buildVerifyPolicy(TEST_PUBKEY_HEX, NONCE);
     expect(policy.hardwareVerifier).toBeDefined();
     expect(policy.allowInsecureMock).toBeUndefined();
-    expect(policy.binding.expectedPubkey).toBe(pubkeyHex);
+    expect(policy.binding.expectedPubkey).toBe(TEST_PUBKEY_HEX);
     expect(policy.binding.expectedNonce).toBe(toHex(NONCE));
     expect(policy.allowlist).toBe(EMPTY_ALLOWLIST);
   });
@@ -170,7 +169,7 @@ describe("TrustedVerifier / trust seam", () => {
     expect(mock.urls.length).toBe(1);
 
     const verified = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(verified.verification.pubkeyHex).toBe(`0x${toHex(await getPublicKeyAsync(TEST_SEED))}`);
+    expect(verified.verification.pubkeyHex).toBe(TEST_PUBKEY_HEX);
     expect(mock.urls.length).toBe(2);
   });
 
@@ -182,8 +181,7 @@ describe("TrustedVerifier / trust seam", () => {
 
     const verified = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
 
-    const expectedPubkey = `0x${toHex(await getPublicKeyAsync(TEST_SEED))}`;
-    expect(verified.verification.pubkeyHex).toBe(expectedPubkey);
+    expect(verified.verification.pubkeyHex).toBe(TEST_PUBKEY_HEX);
     expect(mock.urls.length).toBe(1);
   });
 
@@ -196,8 +194,7 @@ describe("TrustedVerifier / trust seam", () => {
 
     const verified = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
 
-    const expectedPubkey = `0x${toHex(await getPublicKeyAsync(TEST_SEED))}`;
-    expect(verified.verification.pubkeyHex).toBe(expectedPubkey);
+    expect(verified.verification.pubkeyHex).toBe(TEST_PUBKEY_HEX);
     expect(mock.urls.length).toBe(1);
     // Fetched WITHOUT node_id.
     expect(mock.urls.at(-1)).toContain("?nonce=");
@@ -221,7 +218,7 @@ describe("TrustedVerifier / trust seam", () => {
     // Reset the counter; a second verify within TTL must NOT fetch.
     mock.urls.length = 0;
     const second = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(second.verification.pubkeyHex).toBe(`0x${toHex(await getPublicKeyAsync(TEST_SEED))}`);
+    expect(second.verification.pubkeyHex).toBe(TEST_PUBKEY_HEX);
     expect(mock.urls.length).toBe(0);
   });
 
@@ -471,6 +468,6 @@ describe("TrustedVerifier / opt-in logger narration", () => {
 
     // Verify must still resolve despite the throwing logger (safeLogger wrap).
     const verified = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(verified.verification.pubkeyHex).toBe(`0x${toHex(await getPublicKeyAsync(TEST_SEED))}`);
+    expect(verified.verification.pubkeyHex).toBe(TEST_PUBKEY_HEX);
   });
 });

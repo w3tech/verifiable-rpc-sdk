@@ -10,9 +10,9 @@
 import { createServer, request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import * as zlib from "node:zlib";
-import { getPublicKeyAsync, verifyAsync } from "@noble/ed25519";
+import { verifyAsync } from "@noble/ed25519";
 import { buildPreImage } from "@w3tech.io/vrpc-core";
-import { TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
+import { TEST_PUBKEY_HEX } from "@w3tech.io/vrpc-test-support";
 import { request } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -111,8 +111,7 @@ describe("proxy pipeline", () => {
 
     // vRPC-* passthrough (R4): pubkey/nodeid exact, signature re-verifiable
     // client-side over the relayed headers + body.
-    const pubkeyHex = `0x${toHex(await getPublicKeyAsync(TEST_SEED))}`;
-    expect(res.headers["vrpc-pubkey"]).toBe(pubkeyHex);
+    expect(res.headers["vrpc-pubkey"]).toBe(TEST_PUBKEY_HEX);
     expect(res.headers["vrpc-nodeid"]).toBe("node-test");
     const sigHeader = res.headers["vrpc-signature"] as string;
     const tsHeader = res.headers["vrpc-timestamp"] as string;
@@ -125,7 +124,7 @@ describe("proxy pipeline", () => {
     );
     const signature = Uint8Array.from(Buffer.from(sigHeader.slice(2), "hex"));
     await expect(
-      verifyAsync(signature, preImage, await getPublicKeyAsync(TEST_SEED)),
+      verifyAsync(signature, preImage, Buffer.from(TEST_PUBKEY_HEX.slice(2), "hex")),
     ).resolves.toBe(true);
   });
 

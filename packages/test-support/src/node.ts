@@ -113,8 +113,9 @@ export function createTestNode(options: TestNodeOptions): TestNode {
     signOptions: TestSignOptions = {},
   ): Record<string, string> {
     return signResponse(options.chainId, requestBody, responseBody, {
-      seed: options.seed,
-      ...signOptions,
+      seed: signOptions.seed ?? options.seed,
+      timestampMs: signOptions.timestampMs,
+      pubkeyHex: signOptions.pubkeyHex ?? (signOptions.seed === undefined ? pubkeyHex : undefined),
       nodeId: nodeId ?? undefined,
     });
   }
