@@ -6,14 +6,14 @@
 
 import type http from "node:http";
 import { DEFAULT_PHALA_VERIFY_ENDPOINT } from "@w3tech.io/vrpc-core";
-import { TEST_SEED } from "@w3tech.io/vrpc-test-support";
+import { attestationBody, TEST_SEED } from "@w3tech.io/vrpc-test-support";
 import * as undici from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createProxyServer } from "../src/index";
 import { startMockSidecar } from "./support/mock-sidecar";
 import { closeServer, listen, rawRequest, startTestNodeServer } from "./support/test-node-server";
-import { attestationBody, TEST_CHAIN_ID, testConfig } from "./support/test-overrides";
+import { TEST_CHAIN_ID, testConfig } from "./support/test-overrides";
 
 vi.mock("undici", async (importOriginal) => {
   const actual = await importOriginal<typeof import("undici")>();
@@ -38,7 +38,7 @@ function mockNetwork() {
     calls.push({ url, dispatcher: init?.dispatcher });
     if (!url.includes("/attestation")) return new undici.Response("unavailable", { status: 503 });
     const nonce = new URL(url).searchParams.get("nonce") ?? "";
-    return new undici.Response(await attestationBody(nonce), {
+    return new undici.Response(attestationBody(nonce), {
       headers: { "content-type": "application/json" },
     });
   });

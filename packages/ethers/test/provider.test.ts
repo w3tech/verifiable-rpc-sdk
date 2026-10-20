@@ -20,11 +20,11 @@ import {
   VerificationError,
   VrpcProvider,
 } from "@w3tech.io/vrpc-ethers";
-import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import { attestationStub, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { Contract, FetchRequest, Interface, toBeHex } from "ethers";
 import { describe, expect, test } from "vitest";
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
-import { flipFirstDigit, installAttestationMock, signingRequest } from "./helpers";
+import { flipFirstDigit, signingRequest } from "./helpers";
 
 // Always-on verify seam: the FIRST verified read per pubkey lazily fetches the
 // node attestation. These adapter-WIRING tests are offline — the RPC POST leg is
@@ -35,7 +35,7 @@ import { flipFirstDigit, installAttestationMock, signingRequest } from "./helper
 // assertion. Each VrpcProvider below threads `fetch: ATT.fetch`; signed RPC
 // responses carry a `vRPC-NodeId` so the seam routes the attestation fetch with
 // `node_id` (the no-node_id path is exercised in provider.attestation.test.ts).
-const ATT = installAttestationMock();
+const ATT = attestationStub();
 const NODE_ID = "node-abc";
 
 /**

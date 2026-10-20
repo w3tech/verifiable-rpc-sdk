@@ -14,12 +14,10 @@
 // isolation) — cross-adapter parity is proved against the vrpc-core class
 // identity that BOTH adapters re-export.
 
-import { getPublicKeyAsync } from "@noble/ed25519";
 // Same family identity the ethers adapter re-exports — proves a caller cannot
 // tell the two adapters apart by error shape (cross-adapter parity).
-import { computeComposeHash } from "@w3tech.io/dstack-verify";
 import { VerificationError as CoreVerificationError } from "@w3tech.io/vrpc-core";
-import { mockHardwareVerifier, TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
+import { attestationAnswer, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import {
   BadSignature,
   InvalidChainId,
@@ -48,33 +46,8 @@ const NODE_ID = "node-abc";
 
 const sentText = (init: RequestInit): string => new TextDecoder().decode(init.body as Uint8Array);
 
-/**
- * Answer the verifier's attestation GET with a body whose `pubkey` correlates to
- * TEST_SEED (same shape as core/tests/trusted-verifier.test.ts). The always-on
- * TrustedVerifier fetches this once per unknown pubkey; the mock verifier then
- * resolves and the verified read proceeds.
- */
-async function attestationResponse(url: string): Promise<Response> {
-  const attPubkey = await getPublicKeyAsync(TEST_SEED);
-  // CHK-A1: report_data = pubkey(bare) ‖ nonce(bare); echo the seam's `?nonce=`
-  // query so the binding + 128-hex shape gate pass (nonceSource is random).
-  // Regex-extract (not `new URL`) — viem shadows the global URL constructor here.
-  const nonceHex = url.match(/[?&]nonce=([0-9a-fA-F]+)/)?.[1] ?? "";
-  const reportData = `${toHex(attPubkey)}${nonceHex}`;
-  // Self-consistent app_compose + composeHash (served verbatim in /attestation),
-  // so CHK-A2 ACTIVATES and passes at the viem integration layer.
-  const appCompose = '{"manifest_version":2,"name":"demo"}';
-  const body = {
-    quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
-    pubkey: `0x${toHex(attPubkey)}`,
-    composeHash: computeComposeHash(appCompose),
-    app_compose: appCompose,
-  };
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-}
+// Served verbatim in /attestation with its composeHash, so CHK-A2 activates and passes.
+const APP_COMPOSE = '{"manifest_version":2,"name":"demo"}';
 
 interface SeamOptions {
   /** Strip the vRPC-* headers entirely (downgrade attack) → MissingHeader. */
@@ -111,7 +84,7 @@ function signingFetch(
     // Attestation GET leg (no body): serve the correlated-pubkey attestation so
     // the verifier resolves the unknown pubkey. Do NOT bump the RPC capture hooks.
     if (url.includes("/attestation")) {
-      return attestationResponse(url);
+      return attestationAnswer(url, { appCompose: APP_COMPOSE });
     }
     if (seam.counter) {
       seam.counter.n += 1;
@@ -188,7 +161,7 @@ function autoDeriveFetch(
     // Attestation GET leg: served for the always-on verifier's lazy attest of the
     // (post-bootstrap) read's unknown signing pubkey.
     if (url.includes("/attestation")) {
-      return attestationResponse(url);
+      return attestationAnswer(url, { appCompose: APP_COMPOSE });
     }
     const requestBytes = init.body as Uint8Array;
     const payload = JSON.parse(sentText(init)) as { method?: string };
@@ -284,7 +257,7 @@ describe("vrpcHttp transport wiring", () => {
     const json = new TextEncoder().encode(jsonResult(SINGLE_RESULT_BALANCE_HEX));
     const body = new Uint8Array([0xef, 0xbb, 0xbf, ...json]);
     const fetchFn = async (url: string, init: RequestInit) => {
-      if (url.includes("/attestation")) return attestationResponse(url);
+      if (url.includes("/attestation")) return attestationAnswer(url, { appCompose: APP_COMPOSE });
       const requestBytes = init.body as Uint8Array;
       const headers = await signResponseBytes(requestBytes, body, { nodeId: NODE_ID });
       return new Response(body, { status: 200, headers });

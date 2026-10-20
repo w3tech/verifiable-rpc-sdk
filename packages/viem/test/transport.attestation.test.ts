@@ -14,12 +14,14 @@
 //
 // A single injected `fetchFn` serves BOTH legs: it signs the RPC POST over the
 // EXACT bytes the transport emits (reusing the request-aware fixture signer) and
-// answers the attestation GET with a correlated-pubkey body (the same shape as
-// core/tests/trusted-verifier.test.ts installAttestationMock). Offline, no live
-// network.
+// answers the attestation GET through the kit's attestation stub. Offline, no
+// live network.
 
-import { getPublicKeyAsync } from "@noble/ed25519";
-import { mockHardwareVerifier, TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
+import {
+  type AttestationStub,
+  attestationStub,
+  mockHardwareVerifier,
+} from "@w3tech.io/vrpc-test-support";
 import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 import { createPublicClient, defineChain } from "viem";
 import { describe, expect, test } from "vitest";
@@ -47,44 +49,20 @@ function jsonResult(result: unknown): string {
 
 interface SeamFetch {
   fetchFn: (url: string, init: RequestInit) => Promise<Response>;
-  attGetCount: number;
-  /** Last attestation GET URL — asserts the derived `/attestation` route. */
-  lastAttUrl: string | undefined;
+  attestation: AttestationStub;
 }
 
 /**
- * Build a single `fetchFn` that branches on the URL: the attestation GET returns
- * a body whose `pubkey` correlates to TEST_SEED (same shape as the core mock);
- * every other (POST) call signs `init.body` with TEST_SEED and attaches the
- * `vRPC-*` headers (optionally omitting `vRPC-NodeId` to drive the no-node_id
- * path). Counts attestation GETs for the cache proof and records the last GET URL.
+ * Build a single `fetchFn` that branches on the URL: the attestation GET goes to
+ * the attestation stub; every other (POST) call signs `init.body` with TEST_SEED
+ * and attaches the `vRPC-*` headers (optionally omitting `vRPC-NodeId` to drive
+ * the no-node_id path).
  */
 function seamFetch(opts: { withNodeId?: boolean } = {}): SeamFetch {
   const withNodeId = opts.withNodeId ?? true;
-  const state: SeamFetch = {
-    fetchFn: (() => {}) as unknown as SeamFetch["fetchFn"],
-    attGetCount: 0,
-    lastAttUrl: undefined,
-  };
-  state.fetchFn = async (url, init) => {
-    if (url.includes("/attestation")) {
-      state.attGetCount += 1;
-      state.lastAttUrl = url;
-      const attPubkey = await getPublicKeyAsync(TEST_SEED);
-      // CHK-A1: report_data = pubkey(bare) ‖ nonce(bare); echo the `?nonce=` query.
-      // Regex-extract (not `new URL`) — viem shadows the global URL constructor here.
-      const nonceHex = url.match(/[?&]nonce=([0-9a-fA-F]+)/)?.[1] ?? "";
-      const reportData = `${toHex(attPubkey)}${nonceHex}`;
-      const body = {
-        quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
-        pubkey: `0x${toHex(attPubkey)}`,
-        composeHash: "deadbeef",
-      };
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
+  const attestation = attestationStub();
+  const fetchFn = async (url: string, init: RequestInit): Promise<Response> => {
+    if (url.includes("/attestation")) return attestation.fetch(url);
     // RPC POST leg: sign over the EXACT bytes the transport POSTed.
     const requestBytes = init.body as Uint8Array;
     const responseBody = jsonResult(SINGLE_RESULT_BALANCE_HEX);
@@ -94,7 +72,7 @@ function seamFetch(opts: { withNodeId?: boolean } = {}): SeamFetch {
     });
     return new Response(responseBody, { status: 200, headers });
   };
-  return state;
+  return { fetchFn, attestation };
 }
 
 describe("vrpcHttp always-on attestation (viem half)", () => {
@@ -112,12 +90,12 @@ describe("vrpcHttp always-on attestation (viem half)", () => {
     // First verified read: mock verifier runs (attestation GET once) + decodes.
     const first = await c.getBalance({ address: ADDR });
     expect(first).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
-    expect(seam.attGetCount).toBe(1);
+    expect(seam.attestation.urls.length).toBe(1);
 
     // Second read within TTL: pubkey is cached → NO further attestation GET.
     const second = await c.getBalance({ address: ADDR });
     expect(second).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
-    expect(seam.attGetCount).toBe(1);
+    expect(seam.attestation.urls.length).toBe(1);
   });
 
   test("noNodeIdFetchesWithoutRouting: a signed response without vRPC-NodeId verifies (attestation GET carries no node_id)", async () => {
@@ -133,8 +111,8 @@ describe("vrpcHttp always-on attestation (viem half)", () => {
     });
     expect(result).toBe(SINGLE_RESULT_BALANCE_HEX);
     // The verifier attested without a serving node id → no `node_id` query param.
-    expect(seam.attGetCount).toBe(1);
-    expect(seam.lastAttUrl).not.toContain("node_id");
+    expect(seam.attestation.urls.length).toBe(1);
+    expect(seam.attestation.urls.at(-1)).not.toContain("node_id");
   });
 
   test("derivedAttestationRoute: the attestation GET targets the `/attestation` route from the single URL", async () => {
@@ -148,8 +126,8 @@ describe("vrpcHttp always-on attestation (viem half)", () => {
       }),
     });
     await c.getBalance({ address: ADDR });
-    expect(seam.attGetCount).toBe(1);
-    expect(seam.lastAttUrl).toContain(`${URL}/attestation`);
-    expect(seam.lastAttUrl).toContain(`node_id=${NODE_ID}`);
+    expect(seam.attestation.urls.length).toBe(1);
+    expect(seam.attestation.urls.at(-1)).toContain(`${URL}/attestation`);
+    expect(seam.attestation.urls.at(-1)).toContain(`node_id=${NODE_ID}`);
   });
 });

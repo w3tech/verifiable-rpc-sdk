@@ -3,6 +3,7 @@
 // In-test node that attests and answers sealed requests with signed, sealed responses.
 
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { attestationBody } from "./attestation";
 import { createRecipient } from "./recipient";
 import { signResponse } from "./sign";
 
@@ -99,20 +100,10 @@ export function createTestNode(options: TestNodeOptions): TestNode {
   let attestation: AttestationHandler = (context) => context.normal();
 
   function attestationAnswer(nonceHex: string): TestOuterResponse {
-    const body = {
-      quote: {
-        quote: "00",
-        event_log: "00",
-        report_data: `${pubkeyHex.slice(2)}${nonceHex}`,
-        vm_config: "",
-      },
-      pubkey: pubkeyHex,
-      composeHash: "deadbeef",
-    };
     return {
       status: 200,
       headers: { "content-type": "application/json", ...nodeIdHeader },
-      body: utf8.encode(JSON.stringify(body)),
+      body: utf8.encode(attestationBody(nonceHex, { seed: options.seed })),
     };
   }
 

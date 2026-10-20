@@ -2,6 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Test helpers shared by the workspace packages; never published.
 
+export * from "./attestation";
 export * from "./bhttp";
 export * from "./hide-x25519";
 export * from "./mocks";

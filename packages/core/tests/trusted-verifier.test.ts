@@ -1,6 +1,7 @@
 import { getPublicKeyAsync } from "@noble/ed25519";
 import { AttestationError, EMPTY_ALLOWLIST } from "@w3tech.io/dstack-verify";
 import {
+  attestationStub,
   collectingLogger,
   mockHardwareVerifier,
   signResponse,
@@ -78,60 +79,6 @@ async function signedPairNoNodeId(): Promise<{
   return { requestBytes, responseBytes, headers: rest };
 }
 
-interface AttMockState {
-  fetch: typeof fetch;
-  attGetCount: number;
-  lastUrl: string | undefined;
-  /** Seed whose pubkey the mock echoes — set per request so correlation passes. */
-  activeSeed: Uint8Array;
-  /** Answer the next attestation GET with this status and a text body. */
-  failNextWithStatus: number | undefined;
-}
-
-/** Mock only the attestation GET leg; count how many times it is hit. */
-function installAttestationMock(): AttMockState {
-  const state: AttMockState = {
-    fetch: (() => {}) as unknown as typeof fetch,
-    attGetCount: 0,
-    lastUrl: undefined,
-    activeSeed: TEST_SEED,
-    failNextWithStatus: undefined,
-  };
-  const impl = async (input: string | URL | Request): Promise<Response> => {
-    const url = typeof input === "string" ? input : input.toString();
-    if (url.includes("/attestation")) {
-      state.attGetCount += 1;
-      state.lastUrl = url;
-      if (state.failNextWithStatus !== undefined) {
-        const status = state.failNextWithStatus;
-        state.failNextWithStatus = undefined;
-        return new Response("internal error", {
-          status,
-          headers: { "content-type": "text/plain" },
-        });
-      }
-      const attPubkey = await getPublicKeyAsync(state.activeSeed);
-      // report_data is the 64-byte CHK-A1 pre-image pubkey(bare) ‖ nonce(bare):
-      // the seam binds report_data[0:32]==pubkey and [32:64]==the fetch nonce
-      // (baseOpts hard-sets nonceSource -> NONCE = 0x07*32). A bare "00" stub
-      // fails CHK-A1's 128-hex shape gate.
-      const reportData = `${toHex(attPubkey)}${toHex(NONCE)}`;
-      const body = {
-        quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
-        pubkey: `0x${toHex(attPubkey)}`,
-        composeHash: "deadbeef",
-      };
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
-    throw new Error(`unexpected fetch: ${url}`);
-  };
-  state.fetch = impl as typeof fetch;
-  return state;
-}
-
 function baseOpts(overrides: Partial<TrustedVerifierOptions> = {}): TrustedVerifierOptions {
   return {
     chainId: CHAIN_ID,
@@ -173,7 +120,7 @@ describe("TrustedVerifier / trust seam", () => {
   });
 
   test("failClosedNotCached", async () => {
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const pair = await signedPair();
     const tv = new TrustedVerifier(
       baseOpts({
@@ -205,31 +152,31 @@ describe("TrustedVerifier / trust seam", () => {
       caught2 = err;
     }
     expect(caught2).toBeInstanceOf(AttestationFailed);
-    expect(mock.attGetCount).toBeGreaterThanOrEqual(2);
+    expect(mock.urls.length).toBeGreaterThanOrEqual(2);
   });
 
   // ── Happy-path suite: real mock verifyDstackAttestation (allowInsecureMock
   // hard-set true by buildVerifyPolicy) → no verifyAttestation override. ──────
 
   test("attestationStatus500IsMalformedAndNotCached", async () => {
-    const mock = installAttestationMock();
-    mock.failNextWithStatus = 500;
+    const mock = attestationStub();
+    mock.failNext = 500;
     const pair = await signedPair();
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
 
     await expect(tv.verify(pair.requestBytes, pair.responseBytes, pair.headers)).rejects.toThrow(
       MalformedAttestationResponse,
     );
-    expect(mock.attGetCount).toBe(1);
+    expect(mock.urls.length).toBe(1);
 
     const verified = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
     expect(verified.verification.pubkeyHex).toBe(`0x${toHex(await getPublicKeyAsync(TEST_SEED))}`);
-    expect(mock.attGetCount).toBe(2);
+    expect(mock.urls.length).toBe(2);
   });
 
   test("cacheMissFetchesAndVerifies", async () => {
     // Unknown pubkey → attestation fetched + verified → VerifiedPair.
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const pair = await signedPair();
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
 
@@ -237,13 +184,13 @@ describe("TrustedVerifier / trust seam", () => {
 
     const expectedPubkey = `0x${toHex(await getPublicKeyAsync(TEST_SEED))}`;
     expect(verified.verification.pubkeyHex).toBe(expectedPubkey);
-    expect(mock.attGetCount).toBe(1);
+    expect(mock.urls.length).toBe(1);
   });
 
   test("absentNodeIdFetchesWithoutNodeIdAndVerifies", async () => {
     // Absent vRPC-NodeId no longer throws MissingHeader: the seam fetches the
     // attestation WITHOUT a node_id query param, verifies, and caches the pubkey.
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const pair = await signedPairNoNodeId();
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
 
@@ -251,45 +198,45 @@ describe("TrustedVerifier / trust seam", () => {
 
     const expectedPubkey = `0x${toHex(await getPublicKeyAsync(TEST_SEED))}`;
     expect(verified.verification.pubkeyHex).toBe(expectedPubkey);
-    expect(mock.attGetCount).toBe(1);
+    expect(mock.urls.length).toBe(1);
     // Fetched WITHOUT node_id.
-    expect(mock.lastUrl).toContain("?nonce=");
-    expect(mock.lastUrl).not.toContain("node_id=");
+    expect(mock.urls.at(-1)).toContain("?nonce=");
+    expect(mock.urls.at(-1)).not.toContain("node_id=");
 
     // Pubkey cached → a second verify within TTL skips the attestation fetch.
-    mock.attGetCount = 0;
+    mock.urls.length = 0;
     await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(mock.attGetCount).toBe(0);
+    expect(mock.urls.length).toBe(0);
   });
 
   test("cacheHit", async () => {
     // A fresh known pubkey skips the attestation fetch entirely.
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const pair = await signedPair();
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
 
     await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(mock.attGetCount).toBe(1);
+    expect(mock.urls.length).toBe(1);
 
     // Reset the counter; a second verify within TTL must NOT fetch.
-    mock.attGetCount = 0;
+    mock.urls.length = 0;
     const second = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
     expect(second.verification.pubkeyHex).toBe(`0x${toHex(await getPublicKeyAsync(TEST_SEED))}`);
-    expect(mock.attGetCount).toBe(0);
+    expect(mock.urls.length).toBe(0);
   });
 
   test("knownVsUnknown", async () => {
     // First verify (unknown) attests (counter ++), second (known,
     // within TTL) routes through the cache (counter unchanged).
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const pair = await signedPair();
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
 
     await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(mock.attGetCount).toBe(1); // miss path
+    expect(mock.urls.length).toBe(1); // miss path
 
     await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(mock.attGetCount).toBe(1); // hit path, no extra fetch
+    expect(mock.urls.length).toBe(1); // hit path, no extra fetch
   });
 
   test("expiredReVerifies", async () => {
@@ -297,36 +244,36 @@ describe("TrustedVerifier / trust seam", () => {
     // small REAL ttl + a real wait — vitest fake timers do not drive lru-cache's
     // TTL clock (see `sleep` note). Companion `expiryTestIsClockDependent` proves
     // that WITHOUT the wait the same 2nd verify is a hit (red without advancing).
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const ttlMs = 100;
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, pubkeyCacheTtlMs: ttlMs }));
 
     const initial = await signedPair();
     await tv.verify(initial.requestBytes, initial.responseBytes, initial.headers);
-    expect(mock.attGetCount).toBe(1); // initial verify warms the cache
+    expect(mock.urls.length).toBe(1); // initial verify warms the cache
 
     // Wait past the TTL → entry expired → re-verify (counter increments again).
     await sleep(ttlMs * 3);
     const after = await signedPair();
     await tv.verify(after.requestBytes, after.responseBytes, after.headers);
-    expect(mock.attGetCount).toBe(2);
+    expect(mock.urls.length).toBe(2);
   });
 
   test("expiryTestIsClockDependent", async () => {
     // Proves expiredReVerifies is meaningful: with the SAME small ttl but WITHOUT
     // waiting, the 2nd verify is a cache hit (no extra fetch). So the expiry test
     // genuinely depends on the elapsed clock — it would be red without the wait.
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const ttlMs = 100;
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, pubkeyCacheTtlMs: ttlMs }));
 
     const pair = await signedPair();
     await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(mock.attGetCount).toBe(1);
+    expect(mock.urls.length).toBe(1);
 
     // No wait → still fresh → cache hit, NO second fetch.
     await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(mock.attGetCount).toBe(1);
+    expect(mock.urls.length).toBe(1);
   });
 
   test("ttlDefaultIsOneHour", async () => {
@@ -336,23 +283,23 @@ describe("TrustedVerifier / trust seam", () => {
     // test above proves the expiry branch.
     expect(DEFAULT_PUBKEY_CACHE_TTL_MS).toBe(3_600_000);
 
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
 
     const first = await signedPair();
     await tv.verify(first.requestBytes, first.responseBytes, first.headers);
-    expect(mock.attGetCount).toBe(1);
+    expect(mock.urls.length).toBe(1);
 
     await sleep(40); // ≪ 1h → still fresh
     const within = await signedPair();
     await tv.verify(within.requestBytes, within.responseBytes, within.headers);
-    expect(mock.attGetCount).toBe(1);
+    expect(mock.urls.length).toBe(1);
   });
 
   test("evictsOldestPastMax", async () => {
     // Bounded cache: with pubkeyCacheMax=2, verifying 3 distinct pubkeys evicts
     // the least-recently-used (the first) → re-accessing it re-attests.
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, pubkeyCacheMax: 2 }));
 
     const seedA = new Uint8Array(32).fill(0x01);
@@ -360,7 +307,7 @@ describe("TrustedVerifier / trust seam", () => {
     const seedC = new Uint8Array(32).fill(0x03);
 
     const verifyWith = async (seed: Uint8Array): Promise<void> => {
-      mock.activeSeed = seed;
+      mock.seed = seed;
       const p = await signedPair(seed);
       await tv.verify(p.requestBytes, p.responseBytes, p.headers);
     };
@@ -368,14 +315,14 @@ describe("TrustedVerifier / trust seam", () => {
     await verifyWith(seedA); // miss
     await verifyWith(seedB); // miss
     await verifyWith(seedC); // miss → evicts A (LRU, max=2)
-    expect(mock.attGetCount).toBe(3);
+    expect(mock.urls.length).toBe(3);
 
     // A was evicted → re-attested; B and C are still resident → cache hits.
     await verifyWith(seedA);
-    expect(mock.attGetCount).toBe(4);
+    expect(mock.urls.length).toBe(4);
     await verifyWith(seedC);
     await verifyWith(seedB);
-    expect(mock.attGetCount).toBe(5); // B evicted when A re-entered; C still warm
+    expect(mock.urls.length).toBe(5); // B evicted when A re-entered; C still warm
   });
 
   test("nonPositiveTtlThrows", () => {
@@ -417,7 +364,7 @@ describe("TrustedVerifier / opt-in logger narration", () => {
   ];
 
   test("fullMissEmitsAllElevenEvents", async () => {
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const pair = await signedPair();
     const log = collectingLogger();
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, logger: log }));
@@ -431,7 +378,7 @@ describe("TrustedVerifier / opt-in logger narration", () => {
   });
 
   test("verifyStartLogsOnlyVrpcHeadersAndTruncatesReqRes", async () => {
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const pair = await signedPair();
     // Add credential + noise headers to the response so the vrpc-only filter is observable.
     const headers = {
@@ -461,7 +408,7 @@ describe("TrustedVerifier / opt-in logger narration", () => {
   });
 
   test("noSecretValueEverCollected", async () => {
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const pair = await signedPair();
     const headers = {
       ...(pair.headers as Record<string, string>),
@@ -480,7 +427,7 @@ describe("TrustedVerifier / opt-in logger narration", () => {
   });
 
   test("hitPathEmitsCacheLookupHitAndSkipsAttestationFetch", async () => {
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const pair = await signedPair();
     const log = collectingLogger();
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, logger: log }));
@@ -502,7 +449,7 @@ describe("TrustedVerifier / opt-in logger narration", () => {
 
   test("silentPathNeverCallsConsoleDebug", async () => {
     const spy = vi.spyOn(console, "debug").mockImplementation(() => {});
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const pair = await signedPair();
     // NO logger injected.
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
@@ -513,7 +460,7 @@ describe("TrustedVerifier / opt-in logger narration", () => {
   });
 
   test("throwingLoggerDoesNotBreakVerify", async () => {
-    const mock = installAttestationMock();
+    const mock = attestationStub();
     const pair = await signedPair();
     const throwing: Logger = {
       debug() {

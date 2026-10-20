@@ -3,10 +3,9 @@
 // the transport value and attestation sharing.
 
 import { getEventListeners } from "node:events";
-import { getPublicKeyAsync } from "@noble/ed25519";
-import { computeComposeHash } from "@w3tech.io/dstack-verify";
 import { RequestRejected } from "@w3tech.io/vrpc-core";
 import {
+  attestationAnswer,
   createTestNode,
   mockHardwareVerifier,
   rejectionOf,
@@ -15,7 +14,6 @@ import {
   type TestNode,
   type TestNodeServer,
   type TestUpstreamResponse,
-  toHex,
 } from "@w3tech.io/vrpc-test-support";
 import { InvalidChainId, vrpcHttp } from "@w3tech.io/vrpc-viem";
 import {
@@ -175,22 +173,12 @@ const parityUpstream = rpc((call) => {
   }
 });
 
-async function attestationResponse(url: string): Promise<Response> {
-  const pubkey = toHex(await getPublicKeyAsync(TEST_SEED));
-  const nonceHex = url.match(/[?&]nonce=([0-9a-fA-F]+)/)?.[1] ?? "";
-  const appCompose = '{"manifest_version":2,"name":"demo"}';
-  return Response.json({
-    quote: { quote: "00", event_log: "00", report_data: `${pubkey}${nonceHex}`, vm_config: "" },
-    pubkey: `0x${pubkey}`,
-    composeHash: computeComposeHash(appCompose),
-    app_compose: appCompose,
-  });
-}
+const APP_COMPOSE = '{"manifest_version":2,"name":"demo"}';
 
 // Open mode answered by the same upstream function, signed over the exact request bytes.
 function openFetch(upstream: Upstream) {
   return async (url: string, init: RequestInit): Promise<Response> => {
-    if (url.includes("/attestation")) return attestationResponse(url);
+    if (url.includes("/attestation")) return attestationAnswer(url, { appCompose: APP_COMPOSE });
     const requestBytes = init.body as Uint8Array;
     const answer = upstream(JSON.parse(new TextDecoder().decode(requestBytes)) as RpcCall);
     const responseBody = String(answer.body);

@@ -2,8 +2,6 @@
 // without touching the network. `provider.test.ts` feeds the
 // signed fixtures from `fixtures.ts` through `VrpcProvider._send` via this seam.
 
-import { getPublicKeyAsync } from "@noble/ed25519";
-import { TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
 import { FetchRequest } from "ethers";
 
 import { type SignFixtureOptions, signResponseBytes } from "./fixtures";
@@ -94,56 +92,4 @@ export function flipFirstDigit(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
     }
   }
   return out;
-}
-
-/** Mutable state returned by {@link installAttestationMock}. */
-export interface AttMockState {
-  /** `fetch` override to pass as the provider's `fetch` option (attestation leg). */
-  fetch: typeof fetch;
-  /** Count of `/attestation` GETs served (cache / fail-closed assertions). */
-  attGetCount: number;
-}
-
-/**
- * Mock ONLY the attestation GET leg (the always-on verify seam fetches it on the
- * FIRST read per pubkey). The returned `pubkey` is derived from the SAME
- * TEST_SEED the RPC responses are signed with, so the seam's pubkey correlation
- * passes; the mock verifier (allowInsecureMock) then resolves.
- *
- * `requireNodeId` mimics a gateway route that can only resolve WITH a `node_id`
- * query param: a fetch lacking `node_id` returns 404 → the seam fails closed
- * (exercises the no-node_id path). Counts how many times `/attestation` is hit.
- */
-export function installAttestationMock(opts: { requireNodeId?: boolean } = {}): AttMockState {
-  const state: AttMockState = { fetch: (() => {}) as unknown as typeof fetch, attGetCount: 0 };
-  const impl = async (input: string | URL | Request): Promise<Response> => {
-    const url = typeof input === "string" ? input : input.toString();
-    if (url.includes("/attestation")) {
-      state.attGetCount += 1;
-      // Gateway-style routing: without a node_id the route cannot resolve → 404,
-      // which fetchAttestation maps to AttestationNodeNotFoundError (fail-closed).
-      if (opts.requireNodeId === true && !url.includes("node_id=")) {
-        return new Response("not found", { status: 404 });
-      }
-      const attPubkey = await getPublicKeyAsync(TEST_SEED);
-      // CHK-A1 binds report_data[0:32]==pubkey and [32:64]==the fetch nonce. The
-      // seam sends the nonce as the bare-hex `?nonce=` query param; echo it so
-      // report_data = pubkey(bare) ‖ nonce(bare) passes the 128-hex shape gate +
-      // binding regardless of the (random) nonceSource.
-      const nonceHex = new URL(url).searchParams.get("nonce") ?? "";
-      const reportData = `${toHex(attPubkey)}${nonceHex}`;
-      const body = {
-        quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
-        pubkey: `0x${toHex(attPubkey)}`,
-        composeHash: "deadbeef",
-      };
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
-    throw new Error(`unexpected fetch: ${url}`);
-  };
-  state.fetch = impl as typeof fetch;
-  return state;
 }

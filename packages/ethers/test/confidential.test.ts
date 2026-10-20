@@ -7,6 +7,7 @@ import type { AddressInfo } from "node:net";
 import { UnexpectedResponse } from "@w3tech.io/vrpc-core";
 import { InvalidChainId, type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
 import {
+  attestationStub,
   createTestNode,
   mockHardwareVerifier,
   rejectionOf,
@@ -19,7 +20,6 @@ import {
 import { AbiCoder, EnsResolver, FetchRequest, isError, toUtf8String } from "ethers";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { CHAIN_ID, signResponseBytes } from "./fixtures";
-import { installAttestationMock } from "./helpers";
 
 const NODE_ID = "alpha-vrpc-1";
 const KEY = "0123456789abcdefghijABCDEFGHIJkl";
@@ -163,7 +163,7 @@ const ADDR = "0x1111111111111111111111111111111111111111";
 const TO = "0x2222222222222222222222222222222222222222";
 const TX_HASH = `0x${"ab".repeat(32)}`;
 const CALL_RESULT = `0x${"00".repeat(31)}2a`;
-const ATT = installAttestationMock();
+const ATT = attestationStub();
 const utf8 = new TextEncoder();
 
 function address(n: number): string {
