@@ -2,9 +2,12 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode: logs and error bodies carry no path, query, plaintext, key or client header.
 
-import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
-import type { TestOuterResponse } from "@w3tech.io/vrpc-test-support";
-import { TEST_SEED } from "@w3tech.io/vrpc-test-support";
+import { AttestationError } from "@w3tech.io/dstack-verify";
+import {
+  mockHardwareVerifier,
+  TEST_SEED,
+  type TestOuterResponse,
+} from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { LogLevel } from "../src/logger";
 import {
@@ -166,15 +169,14 @@ async function drive(logLevel: LogLevel): Promise<Capture> {
     upstreamUrl: `http://127.0.0.1:9/${API_KEY}`,
   });
   cleanups.push(() => unreachable.close());
-  const failing: HardwareVerifier = {
-    async verifyHardware() {
-      throw new AttestationError("CHK-P1", "hardware check failed");
-    },
-  };
   const unverified = await startConfidentialProxy(
     node,
     { ...config, upstreamUrl: `${node.url}/${API_KEY}` },
-    { hardwareVerifier: failing },
+    {
+      hardwareVerifier: mockHardwareVerifier({
+        fail: new AttestationError("CHK-P1", "hardware check failed"),
+      }),
+    },
   );
   cleanups.push(() => unverified.close());
   for (const target of [unreachable, unverified]) {
