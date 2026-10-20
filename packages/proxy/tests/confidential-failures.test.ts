@@ -347,6 +347,20 @@ const postRows: Row[] = [
     kind: "BadSignature",
     executed: "unknown",
   },
+  {
+    title: "vRPC-Timestamp above u64",
+    install: ({ node }) =>
+      node.node.setConfidential(async (context) => {
+        const normal = await context.normal();
+        return {
+          ...normal,
+          headers: { ...normal.headers, "vRPC-Timestamp": "18446744073709551616" },
+        };
+      }),
+    status: 502,
+    kind: "MalformedHeader",
+    executed: "unknown",
+  },
 ];
 
 describe("attestation failures", () => {

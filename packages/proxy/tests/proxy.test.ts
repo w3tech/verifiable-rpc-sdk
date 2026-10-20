@@ -224,6 +224,14 @@ describe("proxy pipeline", () => {
     await expectErrorKind(res, 502, "StaleTimestamp");
   });
 
+  test("timestampAboveU64IsMalformedHeader", async () => {
+    const { url } = await startProxy({
+      extraHeaders: { "vRPC-Timestamp": "18446744073709551616" },
+    });
+    const res = await post(url, RPC_REQUEST);
+    await expectErrorKind(res, 502, "MalformedHeader");
+  });
+
   test("wrongChainIdFailsClosedWithBadSignature", async () => {
     // The chain hash is baked into the pre-image, so a response signed for a
     // different chain fails as BadSignature.

@@ -239,6 +239,34 @@ describe("verifyResponse", () => {
     }
   });
 
+  test("timestampAboveU64ThrowsMalformed", async () => {
+    const nowMs = BigInt(Date.now());
+    const t = await signTriple(REQUEST, RESPONSE, nowMs);
+    t.headers["vRPC-Timestamp"] = (1n << 64n).toString();
+    let caught: unknown;
+    try {
+      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+        chainId: CHAIN_ID,
+        nowMs,
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(MalformedHeader);
+    if (caught instanceof MalformedHeader) {
+      expect(caught.headerName).toBe("vRPC-Timestamp");
+    }
+  });
+
+  test("timestampAtU64MaxIsNotMalformed", async () => {
+    const nowMs = BigInt(Date.now());
+    const t = await signTriple(REQUEST, RESPONSE, nowMs);
+    t.headers["vRPC-Timestamp"] = ((1n << 64n) - 1n).toString();
+    await expect(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, { chainId: CHAIN_ID, nowMs }),
+    ).rejects.toBeInstanceOf(BadSignature);
+  });
+
   test("staleTimestampPastThrowsStaleTimestamp", async () => {
     const nowMs = BigInt(Date.now());
     const staleMs = nowMs - 120_000n;
