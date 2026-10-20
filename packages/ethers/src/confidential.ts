@@ -21,6 +21,9 @@ import {
   toUtf8Bytes,
 } from "ethers";
 
+// A FetchRequest.registerGetUrl() made before this module loads is taken for the stock fetcher.
+const stockGetUrl = new FetchRequest("http://localhost").getUrlFunc;
+
 // Replaces the ethers fetchers, which buffer the whole body (and gunzip it in Node) before returning.
 const cappedGetUrl: FetchGetUrlFunc = async (req, signal) => {
   assert(signal == null || !signal.cancelled, "request cancelled before sending", "CANCELLED");
@@ -110,7 +113,7 @@ export function fetchRequestTransport(connection: () => FetchRequest): Confident
     req.retryFunc = async () => false;
     req.processFunc = null;
     const own = req.getUrlFunc;
-    const base = own === new FetchRequest("http://localhost").getUrlFunc ? cappedGetUrl : own;
+    const base = own === stockGetUrl ? cappedGetUrl : own;
     req.getUrlFunc = noFollowIdentity(base);
 
     const signal = outer.signal;

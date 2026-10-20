@@ -205,6 +205,23 @@ describe("base fetcher", () => {
     expect(spy).not.toHaveBeenCalled();
     expect(fetches.n).toBe(2);
   });
+
+  test("a getUrl registered with FetchRequest.registerGetUrl is wrapped, not replaced", async () => {
+    const server = await serve();
+    const stock = new FetchRequest("http://localhost").getUrlFunc;
+    const base = FetchRequest.createGetUrlFunc();
+    const registered = { n: 0 };
+    FetchRequest.registerGetUrl(async (sent, signal) => {
+      registered.n += 1;
+      return base(sent, signal);
+    });
+    cleanups.push(() => FetchRequest.registerGetUrl(stock));
+    const { provider } = build("string URL", server.url);
+
+    await provider.getBlockNumber();
+
+    expect(registered.n).toBe(2);
+  });
 });
 
 describe("encoding", () => {
