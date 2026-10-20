@@ -38,7 +38,7 @@ function attestedNodeKey(pubkeyHex: string): Uint8Array {
   }
 }
 
-export type Pin = AttestedNode & { readonly expiresAt: number; readonly generation: number };
+export type Pin = AttestedNode & { readonly expiresAt: number };
 
 /** A log-safe name for a failure: the error's `kind`, else its `name`. */
 export function errorKind(err: unknown): string {
@@ -123,7 +123,6 @@ export class PinSlot {
   readonly #ttlMs: number;
   #pin: Pin | undefined;
   #flight: Promise<Pin> | undefined;
-  #generation = 0;
 
   constructor(attest: (signal?: AbortSignal) => Promise<AttestedNode>, ttlMs: number) {
     this.#attest = attest;
@@ -148,19 +147,13 @@ export class PinSlot {
       const flight: Promise<Pin> = raceAbort(this.#attest(deadline.signal), deadline.signal)
         .then(
           (node) => {
-            const next: Pin = Object.freeze({
-              ...node,
-              expiresAt: node.attestedAt + this.#ttlMs,
-              generation: ++this.#generation,
-            });
-            if (this.#flight === flight) {
-              this.#pin = next;
-              this.#flight = undefined;
-            }
+            const next: Pin = Object.freeze({ ...node, expiresAt: node.attestedAt + this.#ttlMs });
+            this.#pin = next;
+            this.#flight = undefined;
             return next;
           },
           (err: unknown) => {
-            if (this.#flight === flight) this.#flight = undefined;
+            this.#flight = undefined;
             throw err;
           },
         )
@@ -174,6 +167,6 @@ export class PinSlot {
   }
 
   evict(pin: Pin): void {
-    if (this.#pin?.generation === pin.generation) this.#pin = undefined;
+    if (this.#pin === pin) this.#pin = undefined;
   }
 }
