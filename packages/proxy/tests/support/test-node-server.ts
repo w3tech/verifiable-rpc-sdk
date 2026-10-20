@@ -76,7 +76,7 @@ export interface RawResponse {
   body: Buffer;
 }
 
-function listen(server: http.Server): Promise<string> {
+export function listen(server: http.Server): Promise<string> {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
@@ -87,7 +87,7 @@ function listen(server: http.Server): Promise<string> {
   });
 }
 
-function closeServer(server: http.Server): Promise<void> {
+export function closeServer(server: http.Server): Promise<void> {
   server.closeAllConnections();
   return new Promise((resolve) => server.close(() => resolve()));
 }

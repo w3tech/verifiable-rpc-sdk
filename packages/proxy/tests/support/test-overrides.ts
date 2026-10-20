@@ -28,25 +28,27 @@ export function toHex(bytes: Uint8Array): string {
 }
 
 /**
+ * The sidecar attestation JSON for `TEST_SEED` (core's installAttestationMock
+ * recipe). `report_data` is the 64-byte CHK-A1 pre-image pubkey(bare) ‖ nonce(bare).
+ */
+export async function attestationBody(nonceHex: string): Promise<string> {
+  const pubkey = toHex(await getPublicKeyAsync(TEST_SEED));
+  return JSON.stringify({
+    quote: { quote: "00", event_log: "00", report_data: `${pubkey}${nonceHex}`, vm_config: "" },
+    pubkey: `0x${pubkey}`,
+    composeHash: "deadbeef",
+  });
+}
+
+/**
  * A `fetch`-compatible mock answering any URL containing `/attestation` with
- * the sidecar attestation JSON shape (core's installAttestationMock recipe).
- * `report_data` is the 64-byte CHK-A1 pre-image pubkey(bare) ‖ nonce(bare) —
- * the nonce is pinned via `nonceSource: () => NONCE`. The signing pubkey is
- * derived lazily from `TEST_SEED` inside the async impl, keeping this factory
- * synchronous.
+ * `attestationBody`; the nonce is pinned via `nonceSource: () => NONCE`.
  */
 function attestationFetchMock(): typeof fetch {
   const impl = async (input: string | URL | Request): Promise<Response> => {
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/attestation")) {
-      const attPubkey = await getPublicKeyAsync(TEST_SEED);
-      const reportData = `${toHex(attPubkey)}${toHex(NONCE)}`;
-      const body = {
-        quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
-        pubkey: `0x${toHex(attPubkey)}`,
-        composeHash: "deadbeef",
-      };
-      return new Response(JSON.stringify(body), {
+      return new Response(await attestationBody(toHex(NONCE)), {
         status: 200,
         headers: { "content-type": "application/json" },
       });

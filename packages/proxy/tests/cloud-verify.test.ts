@@ -5,17 +5,15 @@
 // through undici fetch on the proxy's Agent, never through global fetch.
 
 import type http from "node:http";
-import type { AddressInfo } from "node:net";
 
-import { getPublicKeyAsync } from "@noble/ed25519";
 import { DEFAULT_PHALA_VERIFY_ENDPOINT } from "@w3tech.io/vrpc-core";
 import * as undici from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createProxyServer } from "../src/index";
 import { startMockSidecar } from "./support/mock-sidecar";
-import { rawRequest, startTestNodeServer } from "./support/test-node-server";
-import { TEST_CHAIN_ID, TEST_SEED, testConfig, toHex } from "./support/test-overrides";
+import { closeServer, listen, rawRequest, startTestNodeServer } from "./support/test-node-server";
+import { attestationBody, TEST_CHAIN_ID, TEST_SEED, testConfig } from "./support/test-overrides";
 
 vi.mock("undici", async (importOriginal) => {
   const actual = await importOriginal<typeof import("undici")>();
@@ -39,14 +37,8 @@ function mockNetwork() {
     const url = String(input);
     calls.push({ url, dispatcher: init?.dispatcher });
     if (!url.includes("/attestation")) return new undici.Response("unavailable", { status: 503 });
-    const pubkey = toHex(await getPublicKeyAsync(TEST_SEED));
     const nonce = new URL(url).searchParams.get("nonce") ?? "";
-    const body = {
-      quote: { quote: "00", event_log: "00", report_data: `${pubkey}${nonce}`, vm_config: "" },
-      pubkey: `0x${pubkey}`,
-      composeHash: "deadbeef",
-    };
-    return new undici.Response(JSON.stringify(body), {
+    return new undici.Response(await attestationBody(nonce), {
       headers: { "content-type": "application/json" },
     });
   });
@@ -54,12 +46,9 @@ function mockNetwork() {
 }
 
 async function serve(server: http.Server): Promise<string> {
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  cleanups.push(async () => {
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  });
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const url = await listen(server);
+  cleanups.push(() => closeServer(server));
+  return url;
 }
 
 async function postRpc(url: string): Promise<string> {
