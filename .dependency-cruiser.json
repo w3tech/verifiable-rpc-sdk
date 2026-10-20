@@ -1,0 +1,35 @@
+{
+  "forbidden": [
+    { "name": "no-circular", "severity": "error", "from": {}, "to": { "circular": true } },
+    {
+      "name": "dstack-verify-no-core",
+      "severity": "error",
+      "from": { "path": "^packages/dstack-verify/" },
+      "to": { "path": "^(packages/core/|@w3tech\\.io/vrpc-core)" }
+    },
+    {
+      "name": "core-public-entries-only",
+      "severity": "error",
+      "from": { "path": "^packages/(ethers|viem|proxy)/" },
+      "to": {
+        "path": "^packages/core/",
+        "pathNot": "^packages/core/src/(index|errors|confidential)\\.ts$"
+      }
+    },
+    {
+      "name": "core-by-package-name",
+      "severity": "error",
+      "from": { "path": "^packages/(ethers|viem|proxy)/" },
+      "to": { "path": "^packages/core/", "dependencyTypes": ["local"] }
+    },
+    { "name": "resolvable", "severity": "error", "from": {}, "to": { "couldNotResolve": true } }
+  ],
+  "options": {
+    "doNotFollow": { "path": "node_modules" },
+    "tsPreCompilationDeps": true,
+    "enhancedResolveOptions": {
+      "exportsFields": ["exports"],
+      "conditionNames": ["types", "import", "default"]
+    }
+  }
+}
