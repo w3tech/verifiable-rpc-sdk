@@ -21,6 +21,8 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "format:check": "biome format .",
+    "check:api": "for c in packages/*/api-extractor*.json; do api-extractor run -c $c || exit 1; done",
+    "api:update": "for c in packages/*/api-extractor*.json; do api-extractor run --local -c $c || exit 1; done",
     "example:01-ethers-client": "tsx examples/01-ethers-client.ts",
     "example:02-viem-client": "tsx examples/02-viem-client.ts",
     "example:03-vrpc-core-walkthrough": "tsx examples/03-vrpc-core-walkthrough.ts",
