@@ -150,12 +150,13 @@ describe("exact pins", () => {
     }
   });
 
-  test("browser test packages are exact root devDependencies matching the installed vitest", () => {
+  test("browser test and coverage packages are exact root devDependencies matching the installed vitest", () => {
     const vitest = JSON.parse(
       readFileSync(new URL("../../../node_modules/vitest/package.json", import.meta.url), "utf8"),
     ) as { version: string };
     expect(root.devDependencies?.["@vitest/browser-playwright"]).toBe("4.1.10");
     expect(root.devDependencies?.["@vitest/browser-playwright"]).toBe(vitest.version);
+    expect(root.devDependencies?.["@vitest/coverage-v8"]).toBe(vitest.version);
     expect(root.devDependencies?.playwright).toBe("1.64.0");
   });
 });
