@@ -2,6 +2,13 @@
 
 import { CHAIN_ID, FIXTURE_TIMESTAMP_MS, signedJsonHeaders } from "@w3tech.io/vrpc-test-support";
 
+// Replay window wide enough for responses signed at FIXTURE_TIMESTAMP_MS.
+export const WIDE_WINDOW = Number.MAX_SAFE_INTEGER;
+
+export function jsonResult(id: number, result: unknown): string {
+  return JSON.stringify({ jsonrpc: "2.0", id, result });
+}
+
 export interface Fixture {
   /** Request body bytes, exactly as signed (= `buildPreImage` request input). */
   requestBytes: Uint8Array;

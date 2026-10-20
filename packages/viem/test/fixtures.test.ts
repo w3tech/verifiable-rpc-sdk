@@ -7,6 +7,7 @@
 import { BadSignature, MissingHeader, verifyResponse } from "@w3tech.io/vrpc-core";
 import { CHAIN_ID, signedJsonHeaders } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
+import { WIDE_WINDOW } from "./fixtures";
 
 const REQUEST_BYTES = new TextEncoder().encode(
   JSON.stringify({
@@ -25,7 +26,7 @@ describe("offline fixture scaffold (viem)", () => {
     const headers = signedJsonHeaders(CHAIN_ID, REQUEST_BYTES, RESPONSE_BYTES);
     const pair = await verifyResponse(REQUEST_BYTES, RESPONSE_BYTES, headers, {
       chainId: CHAIN_ID,
-      replayWindowMs: Number.MAX_SAFE_INTEGER,
+      replayWindowMs: WIDE_WINDOW,
     });
     expect(pair.responseBytes).toEqual(RESPONSE_BYTES);
     expect(pair.verification.signatureHex).toMatch(/^0x[0-9a-f]{128}$/);
@@ -37,7 +38,7 @@ describe("offline fixture scaffold (viem)", () => {
     await expect(
       verifyResponse(REQUEST_BYTES, RESPONSE_BYTES, headers, {
         chainId: CHAIN_ID,
-        replayWindowMs: Number.MAX_SAFE_INTEGER,
+        replayWindowMs: WIDE_WINDOW,
       }),
     ).rejects.toBeInstanceOf(BadSignature);
   });
@@ -48,7 +49,7 @@ describe("offline fixture scaffold (viem)", () => {
         REQUEST_BYTES,
         RESPONSE_BYTES,
         { "content-type": "application/json" },
-        { chainId: CHAIN_ID, replayWindowMs: Number.MAX_SAFE_INTEGER },
+        { chainId: CHAIN_ID, replayWindowMs: WIDE_WINDOW },
       ),
     ).rejects.toBeInstanceOf(MissingHeader);
   });

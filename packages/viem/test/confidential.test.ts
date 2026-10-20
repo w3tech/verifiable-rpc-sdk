@@ -28,6 +28,7 @@ import {
   RpcRequestError,
 } from "viem";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { APP_COMPOSE, WIDE_WINDOW } from "./fixtures";
 
 const arbitrum = defineChain({
   id: 42161,
@@ -172,8 +173,6 @@ const parityUpstream = rpc((call) => {
   }
 });
 
-const APP_COMPOSE = '{"manifest_version":2,"name":"demo"}';
-
 // Open mode answered by the same upstream function, signed over the exact request bytes.
 function openFetch(upstream: Upstream) {
   return async (url: string, init: RequestInit): Promise<Response> => {
@@ -227,7 +226,7 @@ describe("results equal open mode", () => {
       chain: arbitrum,
       transport: vrpcHttp("http://open.invalid/eth_vrpc", {
         fetchFn: openFetch(parityUpstream),
-        replayWindowMs: Number.MAX_SAFE_INTEGER,
+        replayWindowMs: WIDE_WINDOW,
         hardwareVerifier: mockHardwareVerifier(),
       }),
     });

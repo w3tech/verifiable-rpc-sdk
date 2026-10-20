@@ -27,14 +27,13 @@ import {
 import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 import { createPublicClient, defineChain } from "viem";
 import { describe, expect, test } from "vitest";
-import { SINGLE_RESULT_BALANCE_HEX } from "./fixtures";
+import { jsonResult, SINGLE_RESULT_BALANCE_HEX, WIDE_WINDOW } from "./fixtures";
 
 // Path-ful URL (vRPC route): used verbatim as the rpc route; the attestation
 // leg is `${URL}/attestation`.
 const URL = "http://test.invalid/arbitrum_vrpc";
 const ADDR = "0x1111111111111111111111111111111111111111" as const;
 const NODE_ID = "node-abc";
-const WIDE_WINDOW = Number.MAX_SAFE_INTEGER;
 // chainId is pinned via the viem client's `chain` (`chain.id`), not an option;
 // TEST_CHAIN pins CHAIN_ID so these tests skip the eth_chainId bootstrap.
 const TEST_CHAIN = defineChain({
@@ -43,10 +42,6 @@ const TEST_CHAIN = defineChain({
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
   rpcUrls: { default: { http: [URL] } },
 });
-
-function jsonResult(result: unknown): string {
-  return JSON.stringify({ jsonrpc: "2.0", id: 1, result });
-}
 
 interface SeamFetch {
   fetchFn: (url: string, init: RequestInit) => Promise<Response>;

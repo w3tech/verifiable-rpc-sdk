@@ -1,4 +1,3 @@
-import { getPublicKeyAsync } from "@noble/ed25519";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import {
   CHAIN_ID,
@@ -10,6 +9,8 @@ import {
   NODE_SEED,
   rejectionOf,
   signResponse,
+  TEST_PUBKEY_HEX,
+  TEST_SEED,
   type TestNodeOptions,
 } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
@@ -26,7 +27,6 @@ import {
 } from "../src/errors";
 import type { ConfidentialTransport } from "../src/transport";
 
-const OTHER_SEED = new Uint8Array(32).fill(0x42);
 const BASE_URL = "https://rpc.example/eth_vrpc";
 const KEYED_URL = `${BASE_URL}/${KEY}`;
 const utf8 = new TextEncoder();
@@ -166,7 +166,6 @@ describe("ConfidentialClient", () => {
 
   test("a sealed answer signed by another key is ConfidentialSignerMismatch", async () => {
     const node = testNode();
-    const otherPubkey = `0x${bytesToHex(await getPublicKeyAsync(OTHER_SEED))}`;
     const transport: ConfidentialTransport = async (request) => {
       const response = await node.transport(request);
       if (request.method !== "POST" || request.body === undefined) return response;
@@ -175,7 +174,7 @@ describe("ConfidentialClient", () => {
         headers: {
           "content-type": "message/ohttp-res",
           ...signResponse(CHAIN_ID, request.body, response.body, {
-            seed: OTHER_SEED,
+            seed: TEST_SEED,
             nodeId: NODE_ID,
           }),
         },
@@ -189,7 +188,7 @@ describe("ConfidentialClient", () => {
     const mismatch = err as ConfidentialSignerMismatch;
     expect(mismatch.kind).toBe("ConfidentialSignerMismatch");
     expect(mismatch.expectedPubkey).toBe(node.pubkeyHex);
-    expect(mismatch.actualPubkey).toBe(otherPubkey);
+    expect(mismatch.actualPubkey).toBe(TEST_PUBKEY_HEX);
   });
 });
 

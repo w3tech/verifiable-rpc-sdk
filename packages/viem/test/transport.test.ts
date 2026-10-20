@@ -40,18 +40,14 @@ import {
   parseAbi,
 } from "viem";
 import { describe, expect, test } from "vitest";
-import { SINGLE_RESULT_BALANCE_HEX } from "./fixtures";
+import { APP_COMPOSE, jsonResult, SINGLE_RESULT_BALANCE_HEX, WIDE_WINDOW } from "./fixtures";
 
 const URL = "http://test.invalid";
 const ADDR = "0x1111111111111111111111111111111111111111" as const;
-const WIDE_WINDOW = Number.MAX_SAFE_INTEGER;
 // Signed responses carry `vRPC-NodeId`, so the verifier's attestation GET routes by node id.
 const NODE_ID = "node-abc";
 
 const sentText = (init: RequestInit): string => new TextDecoder().decode(init.body as Uint8Array);
-
-// Served verbatim in /attestation with its composeHash, so CHK-A2 activates and passes.
-const APP_COMPOSE = '{"manifest_version":2,"name":"demo"}';
 
 interface SeamOptions {
   /** Strip the vRPC-* headers entirely (downgrade attack) → MissingHeader. */
@@ -121,10 +117,6 @@ function signingFetch(
     }
     return new Response(outBody, { status: seam.status ?? 200, headers });
   };
-}
-
-function jsonResult(result: unknown): string {
-  return JSON.stringify({ jsonrpc: "2.0", id: 1, result });
 }
 
 /**

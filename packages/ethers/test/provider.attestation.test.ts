@@ -27,17 +27,12 @@ import {
   mockHardwareVerifier,
 } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
-import { SINGLE_RESULT_BALANCE_HEX } from "./fixtures";
+import { jsonResult, SINGLE_RESULT_BALANCE_HEX, WIDE_WINDOW } from "./fixtures";
 import { signingRequest } from "./helpers";
 
 const CHAIN_ID_NUMBER = Number(CHAIN_ID); // 42161 (arbitrum)
 const ADDR = "0x1111111111111111111111111111111111111111";
-const WIDE = Number.MAX_SAFE_INTEGER;
 const NODE_ID = "node-abc";
-
-function jsonResult(id: number, result: unknown): string {
-  return JSON.stringify({ jsonrpc: "2.0", id, result });
-}
 
 /** Construct a VrpcProvider whose RPC leg is the signing mock + injected attestation fetch. */
 function vrpcProviderWith(mock: AttestationStub, signOpts: { nodeId?: string }): VrpcProvider {
@@ -46,7 +41,7 @@ function vrpcProviderWith(mock: AttestationStub, signOpts: { nodeId?: string }):
     CHAIN_ID_NUMBER,
     {
       fetch: mock.fetch,
-      replayWindowMs: WIDE,
+      replayWindowMs: WIDE_WINDOW,
       hardwareVerifier: mockHardwareVerifier(),
     },
   );
@@ -106,7 +101,7 @@ describe("VrpcProvider always-on attestation E2E", () => {
     // consumer who sets x-api-key once on the connection.
     const provider = new VrpcProvider(req, CHAIN_ID_NUMBER, {
       fetch: capturingFetch,
-      replayWindowMs: WIDE,
+      replayWindowMs: WIDE_WINDOW,
       hardwareVerifier: mockHardwareVerifier(),
     });
 

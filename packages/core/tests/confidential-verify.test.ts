@@ -10,6 +10,7 @@ import {
   NODE_ID,
   NODE_SEED,
   rejectionOf,
+  TEST_SEED,
   type TestOuterResponse,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
@@ -30,7 +31,6 @@ import {
 import { InvalidNodeKey } from "../src/node-key";
 import { OhttpError } from "../src/ohttp";
 
-const OTHER_SEED = new Uint8Array(32).fill(0x42);
 const OHTTP_RES = { "content-type": "message/ohttp-res" };
 const text = new TextDecoder();
 
@@ -88,7 +88,7 @@ describe("signed confidential answers that fail verification", () => {
       const normal = await context.normal();
       return {
         ...normal,
-        headers: { ...normal.headers, ...context.sign(normal.body, { seed: OTHER_SEED }) },
+        headers: { ...normal.headers, ...context.sign(normal.body, { seed: TEST_SEED }) },
       };
     });
     expect(err).toBeInstanceOf(ConfidentialSignerMismatch);
@@ -99,7 +99,7 @@ describe("signed confidential answers that fail verification", () => {
     const err = await failedCallAfterWarmup(async (context) => {
       const normal = await context.normal();
       const { "vRPC-Pubkey": otherPubkey, ...otherHeaders } = context.sign(normal.body, {
-        seed: OTHER_SEED,
+        seed: TEST_SEED,
       });
       const stored = new Headers({ ...OHTTP_RES, ...otherHeaders });
       // The pinned key is shown until verification reads the signature.
@@ -122,7 +122,7 @@ describe("signed confidential answers that fail verification", () => {
     const { node } = setup();
     const err = await failedCallAfterWarmup(async (context) => {
       const normal = await context.normal();
-      const headers = context.sign(normal.body, { seed: OTHER_SEED, pubkeyHex: node.pubkeyHex });
+      const headers = context.sign(normal.body, { seed: TEST_SEED, pubkeyHex: node.pubkeyHex });
       return { ...normal, headers: { ...normal.headers, ...headers } };
     });
     expect(err).toBeInstanceOf(BadSignature);
