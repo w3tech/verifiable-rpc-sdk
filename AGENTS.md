@@ -24,7 +24,7 @@ compose bump.
 | Format check     | `pnpm run format:check`                                                                              |
 | Format fix       | `pnpm run format`                                                                                    |
 | Typecheck        | `pnpm -r typecheck` (root fans out: `pnpm -r typecheck`; per-package leaf is `tsc --noEmit`) |
-| Static checks    | `pnpm run check:knip`, `check:dup`, `check:deps`, `check:pack`, `check:api` (`check:pack` and `check:api` after `pnpm -r build`; run `check:deps` under Node 22 or 24, dependency-cruiser does not run on Node 25); update the API reports: `pnpm run api:update`; coverage: `pnpm run test:coverage` |
+| Static checks    | `pnpm run check` (runs every `check:*` script; after `pnpm -r build`; `check:deps` needs Node 22 or 24, dependency-cruiser does not run on Node 25); update the API reports: `pnpm run api:update`; coverage: `pnpm run test:coverage` |
 | Docker build     | `docker build -t vrpc-proxy .` (root `Dockerfile`; amd64 production image). The docker-only bundle step alone: `pnpm --filter '@w3tech.io/vrpc-proxy' run build:docker` |
 
 ## Pre-push gate (mandatory)
@@ -37,7 +37,7 @@ pnpm run format:check   # exit 0 — no diff
 pnpm run lint           # exit 0
 pnpm -r typecheck       # exit 0 (tsc --noEmit)
 pnpm -r build
-pnpm run check:knip && pnpm run check:dup && pnpm run check:deps && pnpm run check:pack && pnpm run check:api
+pnpm run check
 pnpm -r test            # all green
 ```
 
