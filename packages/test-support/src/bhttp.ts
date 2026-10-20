@@ -10,17 +10,16 @@ function vli(length: number): string {
   return length < 64 ? length.toString(16).padStart(2, "0") : (0x4000 | length).toString(16);
 }
 
+function lengthPrefixed(text: string): string {
+  const bytes = utf8.encode(text);
+  return vli(bytes.length) + bytesToHex(bytes);
+}
+
 export function bhttpField(name: string, value: string): string {
-  return (
-    vli(name.length) +
-    bytesToHex(utf8.encode(name)) +
-    vli(value.length) +
-    bytesToHex(utf8.encode(value))
-  );
+  return lengthPrefixed(name) + lengthPrefixed(value);
 }
 
 export function bhttpOkResponse(fields: string[], body: string): string {
   const section = fields.join("");
-  const content = bytesToHex(utf8.encode(body));
-  return `0140c8${vli(section.length / 2)}${section}${vli(content.length / 2)}${content}00`;
+  return `0140c8${vli(section.length / 2)}${section}${lengthPrefixed(body)}00`;
 }
