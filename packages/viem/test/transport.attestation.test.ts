@@ -98,8 +98,7 @@ function seamFetch(opts: { withNodeId?: boolean } = {}): SeamFetch {
       });
     }
     // RPC POST leg: sign over the EXACT bytes the transport POSTed.
-    const bodyStr = init.body as string;
-    const requestBytes = new TextEncoder().encode(bodyStr);
+    const requestBytes = init.body as Uint8Array;
     const responseBody = jsonResult(SINGLE_RESULT_BALANCE_HEX);
     const responseBytes = new TextEncoder().encode(responseBody);
     const headers = await signResponseBytes(requestBytes, responseBytes, {

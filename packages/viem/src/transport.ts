@@ -140,13 +140,7 @@ export function vrpcHttp(
           await verifier.verify(requestBytes, rawResponseBytes, res.headers);
 
           // A client with a chain may have pinned the transport while this was in flight.
-          chainIdResolved ??= chainId;
-          if (chainIdResolved !== chainId) {
-            throw new InvalidChainId(
-              chainId,
-              `this transport is bound to chain ${chainIdResolved}`,
-            );
-          }
+          chainIdResolved = bindChainId(chainIdResolved, chainId);
           trustedVerifier ??= verifier;
           return chainId;
         } catch (err) {
@@ -157,24 +151,19 @@ export function vrpcHttp(
       return chainIdPromise;
     };
 
-    // Shared POST choke (mirrors ethers' #post): serialize once, fetch, capture the
-    // content-decoded body bytes as is (what the sidecar signed) for verify; the
-    // JSON is their decoded text.
+    // Shared POST choke (mirrors ethers' #post): serialize once, send exactly the
+    // bytes verify hashes, capture the content-decoded body bytes as is (what the
+    // sidecar signed).
     const post = async (payload: Record<string, unknown>) => {
-      const body = JSON.stringify(payload);
+      const requestBytes = utf8.encode(JSON.stringify(payload));
       const res = await fetchFn(rpcUrl, {
         method: "POST",
         headers: { "content-type": "application/json", ...opts.headers },
-        body,
+        body: requestBytes,
         ...(timeout ? { signal: AbortSignal.timeout(timeout) } : {}),
       });
       const rawResponseBytes = new Uint8Array(await res.arrayBuffer());
-      return {
-        requestBytes: utf8.encode(body),
-        rawText: new TextDecoder().decode(rawResponseBytes),
-        rawResponseBytes,
-        res,
-      };
+      return { requestBytes, rawResponseBytes, res };
     };
 
     return createTransport(
@@ -190,14 +179,11 @@ export function vrpcHttp(
         timeout,
         async request({ method, params }) {
           // One transport serves one chain: the node URL is chain-specific.
-          if (clientChainId !== undefined && clientChainId !== chainIdResolved) {
-            throw new InvalidChainId(
-              clientChainId,
-              `this transport is bound to chain ${chainIdResolved}`,
-            );
+          if (clientChainId !== undefined) {
+            chainIdResolved = bindChainId(chainIdResolved, clientChainId);
           }
           // POST first, then resolve chainId (memoized) and verify the held bytes.
-          const { requestBytes, rawText, rawResponseBytes, res } = await post({
+          const { requestBytes, rawResponseBytes, res } = await post({
             jsonrpc: "2.0",
             id: 1,
             method,
@@ -225,7 +211,7 @@ export function vrpcHttp(
           // Parse ONLY after verify. `any` mirrors viem's own `http` transport
           // (returns the parsed value untyped); a parse failure propagates (fail-closed).
           // biome-ignore lint/suspicious/noExplicitAny: viem request returns untyped.
-          const parsed: any = JSON.parse(rawText);
+          const parsed: any = JSON.parse(utf8Decoder.decode(rawResponseBytes));
           // Signed JSON-RPC error = PRESENCE of the `error` key (not a truthy check).
           if (parsed != null && "error" in parsed) {
             // Same class viem's http transport throws — buildRequest maps it by code.
@@ -244,6 +230,15 @@ export function vrpcHttp(
 }
 
 const utf8 = new TextEncoder();
+const utf8Decoder = new TextDecoder();
+
+/** Returns the chain a transport serves: `pinned`, or `chainId` while nothing is pinned. */
+function bindChainId(pinned: string | undefined, chainId: string): string {
+  if (pinned !== undefined && pinned !== chainId) {
+    throw new InvalidChainId(chainId, `this transport is bound to chain ${pinned}`);
+  }
+  return chainId;
+}
 
 /** Members `vrpcHttp(url, { confidential: true })` adds to `client.transport`. */
 export interface ConfidentialValue {
@@ -276,10 +271,7 @@ function confidentialHttp(
       throw new InvalidChainId("", "Ankr Confidential RPC mode needs the client's chain");
     }
     const chainId = String(chain.id);
-    if (boundChainId !== undefined && chainId !== boundChainId) {
-      throw new InvalidChainId(chainId, `this transport is bound to chain ${boundChainId}`);
-    }
-    boundChainId = chainId;
+    boundChainId = bindChainId(boundChainId, chainId);
     holder ??= new ConfidentialHolder({
       url: rpcUrl,
       chainId,

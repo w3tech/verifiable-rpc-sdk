@@ -193,14 +193,12 @@ async function attestationResponse(url: string): Promise<Response> {
 function openFetch(upstream: Upstream) {
   return async (url: string, init: RequestInit): Promise<Response> => {
     if (url.includes("/attestation")) return attestationResponse(url);
-    const requestBody = init.body as string;
-    const answer = upstream(JSON.parse(requestBody) as RpcCall);
+    const requestBytes = init.body as Uint8Array;
+    const answer = upstream(JSON.parse(new TextDecoder().decode(requestBytes)) as RpcCall);
     const responseBody = String(answer.body);
-    const headers = await signResponseBytes(
-      new TextEncoder().encode(requestBody),
-      new TextEncoder().encode(responseBody),
-      { nodeId: NODE_ID },
-    );
+    const headers = await signResponseBytes(requestBytes, new TextEncoder().encode(responseBody), {
+      nodeId: NODE_ID,
+    });
     return new Response(responseBody, { status: answer.status, headers });
   };
 }

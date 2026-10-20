@@ -51,6 +51,8 @@ const WIDE_WINDOW = Number.MAX_SAFE_INTEGER;
 const TEST_SEED = new Uint8Array(32).fill(0x42);
 const NODE_ID = "node-abc";
 
+const sentText = (init: RequestInit): string => new TextDecoder().decode(init.body as Uint8Array);
+
 function hex(bytes: Uint8Array): string {
   let out = "";
   for (const b of bytes) {
@@ -130,11 +132,10 @@ function signingFetch(
     if (seam.inits) {
       seam.inits.push(init);
     }
-    const bodyStr = init.body as string;
+    const requestBytes = init.body as Uint8Array;
     if (seam.bodies) {
-      seam.bodies.push(bodyStr);
+      seam.bodies.push(sentText(init));
     }
-    const requestBytes = new TextEncoder().encode(bodyStr);
     const responseBytes = new TextEncoder().encode(responseBody);
 
     if (seam.unsigned) {
@@ -202,8 +203,8 @@ function autoDeriveFetch(
     if (url.includes("/attestation")) {
       return attestationResponse(url);
     }
-    const bodyStr = init.body as string;
-    const payload = JSON.parse(bodyStr) as { method?: string };
+    const requestBytes = init.body as Uint8Array;
+    const payload = JSON.parse(sentText(init)) as { method?: string };
     if (payload.method === "eth_chainId") {
       if (seam.bootstrapHits) {
         seam.bootstrapHits.n += 1;
@@ -228,7 +229,6 @@ function autoDeriveFetch(
           headers: { "content-type": "application/json" },
         });
       }
-      const requestBytes = new TextEncoder().encode(bodyStr);
       const responseBytes = new TextEncoder().encode(bootstrapBody);
       // SIGNED bootstrap: by default signed over the SAME chain it claims
       // (self-consistent → verifies). `bootstrapSigningChainId` forges a
@@ -247,7 +247,6 @@ function autoDeriveFetch(
       }
       return new Response(outBody, { status: 200, headers });
     }
-    const requestBytes = new TextEncoder().encode(bodyStr);
     const responseBytes = new TextEncoder().encode(responseBody);
     const headers = await signResponseBytes(requestBytes, responseBytes, {
       nodeId: NODE_ID,
@@ -297,7 +296,7 @@ describe("vrpcHttp transport wiring", () => {
     const body = new Uint8Array([0xef, 0xbb, 0xbf, ...json]);
     const fetchFn = async (url: string, init: RequestInit) => {
       if (url.includes("/attestation")) return attestationResponse(url);
-      const requestBytes = new TextEncoder().encode(init.body as string);
+      const requestBytes = init.body as Uint8Array;
       const headers = await signResponseBytes(requestBytes, body, { nodeId: NODE_ID });
       return new Response(body, { status: 200, headers });
     };
@@ -348,7 +347,7 @@ describe("vrpcHttp transport wiring", () => {
     let reads = 0;
     const fetchFn = async (url: string, init: RequestInit) => {
       if (!url.includes("/attestation")) {
-        if (String(init.body).includes('"eth_chainId"')) {
+        if (sentText(init).includes('"eth_chainId"')) {
           bootstrapStarted();
           await bootstrapGate;
         } else if (++reads === 2) {
@@ -663,7 +662,7 @@ describe("vrpcHttp transport wiring", () => {
     const honest = autoDeriveFetch(answer);
     let bootstraps = 0;
     const fetchFn = (url: string, init: RequestInit) => {
-      if (!url.includes("/attestation") && String(init.body).includes('"eth_chainId"')) {
+      if (!url.includes("/attestation") && sentText(init).includes('"eth_chainId"')) {
         bootstraps += 1;
         if (bootstraps === 1) return lying(url, init);
       }
