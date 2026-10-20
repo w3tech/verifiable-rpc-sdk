@@ -291,6 +291,23 @@ describe("vrpcHttp transport wiring", () => {
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX)); // 2 ETH in wei
   });
 
+  test("a signed body starting with a UTF-8 BOM verifies against the raw bytes", async () => {
+    const json = new TextEncoder().encode(jsonResult(SINGLE_RESULT_BALANCE_HEX));
+    const body = new Uint8Array([0xef, 0xbb, 0xbf, ...json]);
+    const fetchFn = async (url: string, init: RequestInit) => {
+      if (url.includes("/attestation")) return attestationResponse(url);
+      const requestBytes = new TextEncoder().encode(init.body as string);
+      const headers = await signResponseBytes(requestBytes, body, { nodeId: NODE_ID });
+      return new Response(body, { status: 200, headers });
+    };
+    await expect(
+      pinnedTransport(fetchFn).config.request({
+        method: "eth_getBalance",
+        params: [ADDR, "latest"],
+      }),
+    ).resolves.toBe(SINGLE_RESULT_BALANCE_HEX);
+  });
+
   // a uint256 view eth_call → ABI-encoded result verifies + decodes.
   test("verified readContract returns the decoded value", async () => {
     const abi = parseAbi(["function totalSupply() view returns (uint256)"]);

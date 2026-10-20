@@ -152,8 +152,8 @@ export function vrpcHttp(
     };
 
     // Shared POST choke (mirrors ethers' #post): serialize once, fetch, capture the
-    // RAW content-decoded body. `res.text()` decodes gzip/br transparently — the
-    // sidecar signs the decoded body — so encode that exact text for the pre-image.
+    // content-decoded body bytes as is (what the sidecar signed) for verify; the
+    // JSON is their decoded text.
     const post = async (payload: Record<string, unknown>) => {
       const body = JSON.stringify(payload);
       const res = await fetchFn(rpcUrl, {
@@ -162,11 +162,11 @@ export function vrpcHttp(
         body,
         ...(timeout ? { signal: AbortSignal.timeout(timeout) } : {}),
       });
-      const rawText = await res.text();
+      const rawResponseBytes = new Uint8Array(await res.arrayBuffer());
       return {
-        requestBytes: new TextEncoder().encode(body),
-        rawText,
-        rawResponseBytes: new TextEncoder().encode(rawText),
+        requestBytes: utf8.encode(body),
+        rawText: new TextDecoder().decode(rawResponseBytes),
+        rawResponseBytes,
         res,
       };
     };
