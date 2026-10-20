@@ -2,19 +2,19 @@
 // the gateway answers, follows no redirect, and only re-attests on the next call.
 
 import { hexToBytes } from "@noble/hashes/utils.js";
-import { afterEach, describe, expect, test } from "vitest";
 import {
   createTestNode,
+  mockHardwareVerifier,
   type ServedAnswer,
   type ServedRequest,
   serveTestNode,
   type TestNodeServer,
   type TestNodeServerOptions,
-} from "../../test-support/src/index";
+} from "@w3tech.io/vrpc-test-support";
+import { afterEach, describe, expect, test } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
 import { AttestationUnavailable, RequestRejected, UnexpectedResponse } from "../src/errors";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const CHAIN_ID = "42161";

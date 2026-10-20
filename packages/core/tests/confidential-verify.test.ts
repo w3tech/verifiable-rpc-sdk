@@ -1,11 +1,12 @@
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { describe, expect, expectTypeOf, test } from "vitest";
 import {
   type ConfidentialContext,
   createTestNode,
+  mockHardwareVerifier,
   type TestOuterResponse,
   type TestUpstreamResponse,
-} from "../../test-support/src/index";
+} from "@w3tech.io/vrpc-test-support";
+import { describe, expect, expectTypeOf, test } from "vitest";
 import vectors from "../../test-support/vectors/sidecar-confidential.json";
 import { type InnerRequest, MalformedInnerResponse } from "../src/bhttp";
 import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
@@ -21,7 +22,6 @@ import {
 } from "../src/errors";
 import { InvalidNodeKey } from "../src/node-key";
 import { OhttpError } from "../src/ohttp";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const OTHER_SEED = new Uint8Array(32).fill(0x42);

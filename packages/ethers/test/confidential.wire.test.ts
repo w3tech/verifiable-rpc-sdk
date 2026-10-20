@@ -12,19 +12,19 @@ import {
   UnexpectedResponse,
 } from "@w3tech.io/vrpc-core";
 import { type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
-import { FetchRequest } from "ethers";
-import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createTestNode,
+  mockHardwareVerifier,
   type ServedAnswer,
   type ServedRequest,
   serveTestNode,
   type TestNodeServer,
   type TestNodeServerOptions,
   type TestUpstreamResponse,
-} from "../../test-support/src/index";
+} from "@w3tech.io/vrpc-test-support";
+import { FetchRequest } from "ethers";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { CHAIN_ID, TEST_SEED } from "./fixtures";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const NODE_ID = "alpha-vrpc-1";
 const KEY = "0123456789abcdefghijABCDEFGHIJkl";

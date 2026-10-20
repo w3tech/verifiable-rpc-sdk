@@ -1,12 +1,11 @@
 import { hexToBytes } from "@noble/hashes/utils.js";
+import { createTestNode, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test, vi } from "vitest";
-import { createTestNode } from "../../test-support/src/index";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
 import { ConfidentialSealFailed, UnavailableError } from "../src/errors";
 import { InvalidNodeKey } from "../src/node-key";
 import { OhttpError, sealRequest } from "../src/ohttp";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 vi.mock("../src/ohttp", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/ohttp")>();

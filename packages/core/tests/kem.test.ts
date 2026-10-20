@@ -1,7 +1,7 @@
 import type { CipherSuite } from "@hpke/core";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { hideX25519 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test } from "vitest";
-import { hideX25519 } from "../../test-support/src/index";
 import vector from "../../test-support/vectors/hpke-cfrg-mode0-x25519-sha256-aes256gcm.json";
 import {
   createSuite,

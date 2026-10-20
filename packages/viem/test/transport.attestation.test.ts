@@ -19,12 +19,11 @@
 // network.
 
 import { getPublicKeyAsync } from "@noble/ed25519";
+import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 import { createPublicClient, defineChain } from "viem";
 import { describe, expect, test } from "vitest";
-
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 // Path-ful URL (vRPC route): used verbatim as the rpc route; the attestation
 // leg is `${URL}/attestation`.

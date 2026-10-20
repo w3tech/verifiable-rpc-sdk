@@ -97,6 +97,7 @@
     "@hpke/dhkem-x25519": "1.8.0",
     "@noble/curves": "2.4.0",
     "@types/node": "^26.1.1",
+    "@w3tech.io/vrpc-test-support": "workspace:*",
     "bhttp-ts": "0.6.1"
   }
 }

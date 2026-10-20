@@ -1,7 +1,7 @@
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 import { AttestationError, EMPTY_ALLOWLIST } from "@w3tech.io/dstack-verify";
+import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-
 import {
   AttestationFailed,
   InvalidChainId,
@@ -18,7 +18,6 @@ import {
 } from "../src/trusted-verifier";
 import type { ResponseHeaders } from "../src/verify";
 import { collectingLogger } from "./support/collecting-logger";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const RPC_BASE = "https://rpc.ankr.com";
 const CHAIN = "arbitrum";

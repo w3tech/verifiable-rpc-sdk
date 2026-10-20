@@ -8,9 +8,8 @@ import type { AddressInfo } from "node:net";
 import { getPublicKeyAsync } from "@noble/ed25519";
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 import { ConfidentialClient } from "@w3tech.io/vrpc-core/confidential";
+import type { TestOuterResponse, TestUpstreamResponse } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
-
-import type { TestOuterResponse, TestUpstreamResponse } from "../../test-support/src/index";
 import type { ProxyConfig } from "../src/config";
 
 import {

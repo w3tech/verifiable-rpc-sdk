@@ -19,6 +19,7 @@ import { getPublicKeyAsync } from "@noble/ed25519";
 // tell the two adapters apart by error shape (cross-adapter parity).
 import { computeComposeHash } from "@w3tech.io/dstack-verify";
 import { VerificationError as CoreVerificationError } from "@w3tech.io/vrpc-core";
+import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import {
   BadSignature,
   InvalidChainId,
@@ -35,9 +36,7 @@ import {
   parseAbi,
 } from "viem";
 import { describe, expect, test } from "vitest";
-
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const URL = "http://test.invalid";
 const ADDR = "0x1111111111111111111111111111111111111111" as const;

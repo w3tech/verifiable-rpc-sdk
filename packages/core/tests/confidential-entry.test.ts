@@ -28,9 +28,8 @@ import type {
   TransportFailedReason,
 } from "@w3tech.io/vrpc-core/errors";
 import * as errors from "@w3tech.io/vrpc-core/errors";
+import { createTestNode, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { createTestNode } from "../../test-support/src/index";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const CHAIN_ID = "42161";

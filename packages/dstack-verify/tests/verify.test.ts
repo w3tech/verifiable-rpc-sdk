@@ -12,6 +12,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 import { AttestationError, parseReportData, verifyDstackAttestation } from "../src/index";
 import type {
@@ -25,7 +26,6 @@ import type {
 // (raw sha256, no canonicalization), so the test can synthesize self-consistent
 // app_compose/compose_hash pairs.
 import { computeComposeHash } from "../src/verify-steps";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const fixture = JSON.parse(
   readFileSync(

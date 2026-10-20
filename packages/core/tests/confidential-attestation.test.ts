@@ -1,13 +1,14 @@
 import { readFileSync } from "node:fs";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
-import { describe, expect, test } from "vitest";
 import {
   type AttestationContext,
   createTestNode,
+  mockHardwareVerifier,
   type TestNode,
   type TestOuterResponse,
-} from "../../test-support/src/index";
+} from "@w3tech.io/vrpc-test-support";
+import { describe, expect, test } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
 import {
@@ -17,7 +18,6 @@ import {
   VerificationError,
 } from "../src/errors";
 import type { ConfidentialTransport } from "../src/transport";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const CHAIN_ID = "42161";

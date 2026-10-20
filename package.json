@@ -23,7 +23,7 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "check": "pnpm run --sequential \"/^check:/\"",
-    "check:pack": "rm -rf .pack && pnpm -r --filter './packages/*' pack --pack-destination .pack && for f in .pack/*.tgz; do publint --strict $f && attw $f --profile esm-only || exit 1; done",
+    "check:pack": "rm -rf .pack && pnpm -r --filter './packages/*' --filter '!./packages/test-support' pack --pack-destination .pack && for f in .pack/*.tgz; do publint --strict $f && attw $f --profile esm-only || exit 1; done",
     "check:knip": "knip",
     "check:dup": "jscpd packages/core/src packages/dstack-verify/src packages/ethers/src packages/viem/src packages/proxy/src --threshold 1.95",
     "check:deps": "depcruise packages/core/src packages/dstack-verify/src packages/ethers/src packages/viem/src packages/proxy/src",

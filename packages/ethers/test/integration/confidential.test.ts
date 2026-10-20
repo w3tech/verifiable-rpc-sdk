@@ -2,6 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // ethers provider in Ankr Confidential RPC mode against the real sidecar.
 
+import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { isError, toUtf8String } from "ethers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -11,7 +12,6 @@ import {
   spawnInterop,
 } from "../../../test-support/src/interop";
 import { BadSignature, type VrpcOptions, VrpcProvider } from "../../src/index";
-import { mockHardwareVerifier } from "../support/mock-hardware-verifier";
 
 if (!integrationEnabled) {
   console.log(INTEROP_SKIP_MESSAGE);

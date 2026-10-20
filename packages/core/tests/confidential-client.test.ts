@@ -1,7 +1,11 @@
 import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import {
+  createTestNode,
+  mockHardwareVerifier,
+  type TestNodeOptions,
+} from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
-import { createTestNode, type TestNodeOptions } from "../../test-support/src/index";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
 import {
@@ -15,7 +19,6 @@ import {
 } from "../src/errors";
 import { buildPreImage } from "../src/preimage";
 import type { ConfidentialTransport } from "../src/transport";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const OTHER_SEED = new Uint8Array(32).fill(0x42);

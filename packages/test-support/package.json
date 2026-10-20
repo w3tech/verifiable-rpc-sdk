@@ -1,9 +1,15 @@
 {
   "name": "@w3tech.io/vrpc-test-support",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./interop": "./src/interop.ts",
+    "./recipient": "./src/recipient.ts",
+    "./hide-x25519": "./src/hide-x25519.ts",
+    "./vectors/*": "./vectors/*",
+    "./package.json": "./package.json"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

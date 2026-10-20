@@ -5,14 +5,14 @@ import * as core from "@w3tech.io/vrpc-core";
 import * as conf from "@w3tech.io/vrpc-core/confidential";
 import * as errors from "@w3tech.io/vrpc-core/errors";
 import * as adapter from "@w3tech.io/vrpc-ethers";
-import { afterEach, describe, expect, test } from "vitest";
 import {
   createTestNode,
+  mockHardwareVerifier,
   serveTestNode,
   type TestUpstreamResponse,
-} from "../../test-support/src/index";
+} from "@w3tech.io/vrpc-test-support";
+import { afterEach, describe, expect, test } from "vitest";
 import { CHAIN_ID, TEST_SEED } from "./fixtures";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const ERROR_CLASSES = [
   "AttestationFailed",

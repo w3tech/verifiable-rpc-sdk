@@ -3,13 +3,14 @@ import type { AddressInfo } from "node:net";
 import { x25519 } from "@noble/curves/ed25519.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { AttestationError } from "@w3tech.io/dstack-verify";
-import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createTestNode,
+  mockHardwareVerifier,
   type TestNode,
   type TestOuterResponse,
   x25519SecretFromSeed,
-} from "../../test-support/src/index";
+} from "@w3tech.io/vrpc-test-support";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
 import {
@@ -29,7 +30,6 @@ import {
 import type { Logger } from "../src/logger";
 import type { ConfidentialTransport } from "../src/transport";
 import { type CollectingLogger, collectingLogger } from "./support/collecting-logger";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const SEED_HEX = "421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee";
 const OTHER_SEED_HEX = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";

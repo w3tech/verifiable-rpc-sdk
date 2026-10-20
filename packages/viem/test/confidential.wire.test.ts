@@ -12,20 +12,20 @@ import {
   TransportFailed,
   UnexpectedResponse,
 } from "@w3tech.io/vrpc-core";
-import { vrpcHttp } from "@w3tech.io/vrpc-viem";
-import { BaseError, createPublicClient, defineChain, fallback } from "viem";
-import { afterEach, describe, expect, test } from "vitest";
 import {
   createTestNode,
+  mockHardwareVerifier,
   type ServedAnswer,
   type ServedRequest,
   serveTestNode,
   type TestNodeServer,
   type TestNodeServerOptions,
   type TestUpstreamResponse,
-} from "../../test-support/src/index";
+} from "@w3tech.io/vrpc-test-support";
+import { vrpcHttp } from "@w3tech.io/vrpc-viem";
+import { BaseError, createPublicClient, defineChain, fallback } from "viem";
+import { afterEach, describe, expect, test } from "vitest";
 import { CHAIN_ID } from "./fixtures";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const NODE_ID = "alpha-vrpc-1";
 const KEY = "0123456789abcdefghijABCDEFGHIJkl";

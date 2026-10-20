@@ -1,6 +1,6 @@
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { createRecipient } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
-import { createRecipient } from "../../test-support/src/index";
 import appendixA from "../../test-support/vectors/rfc9458-appendix-a.json";
 import { decodeInnerResponse, encodeInnerRequest } from "../src/bhttp";
 import { InvalidNodeKey, nodeKeyFromEd25519 } from "../src/node-key";

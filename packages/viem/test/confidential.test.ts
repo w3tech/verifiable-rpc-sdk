@@ -6,6 +6,14 @@ import { getEventListeners } from "node:events";
 import { getPublicKeyAsync } from "@noble/ed25519";
 import { computeComposeHash } from "@w3tech.io/dstack-verify";
 import { RequestRejected } from "@w3tech.io/vrpc-core";
+import {
+  createTestNode,
+  mockHardwareVerifier,
+  serveTestNode,
+  type TestNode,
+  type TestNodeServer,
+  type TestUpstreamResponse,
+} from "@w3tech.io/vrpc-test-support";
 import { InvalidChainId, vrpcHttp } from "@w3tech.io/vrpc-viem";
 import {
   BaseError,
@@ -16,15 +24,7 @@ import {
   RpcRequestError,
 } from "viem";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import {
-  createTestNode,
-  serveTestNode,
-  type TestNode,
-  type TestNodeServer,
-  type TestUpstreamResponse,
-} from "../../test-support/src/index";
 import { CHAIN_ID, signResponseBytes } from "./fixtures";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const NODE_ID = "alpha-vrpc-1";
 const KEY = "0123456789abcdefghijABCDEFGHIJkl";

@@ -20,10 +20,10 @@
 
 import { getPublicKeyAsync } from "@noble/ed25519";
 import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
+import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, TEST_SEED } from "./fixtures";
 import { type AttMockState, installAttestationMock, signingRequest } from "./helpers";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const CHAIN_ID_NUMBER = Number(CHAIN_ID); // 42161 (arbitrum)
 const ADDR = "0x1111111111111111111111111111111111111111";

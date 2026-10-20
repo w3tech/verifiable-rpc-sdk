@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import { hexToBytes } from "@noble/hashes/utils.js";
-import { describe, expect, test } from "vitest";
 import {
   type ConfidentialContext,
   createTestNode,
+  mockHardwareVerifier,
   type TestOuterResponse,
-} from "../../test-support/src/index";
+} from "@w3tech.io/vrpc-test-support";
+import { describe, expect, test } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
 import {
@@ -16,7 +17,6 @@ import {
   UnexpectedResponse,
   VerificationError,
 } from "../src/errors";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const CHAIN_ID = "42161";

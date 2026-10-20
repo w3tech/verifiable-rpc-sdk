@@ -3,17 +3,16 @@
 // Shared unit-test constants and no-network injection helpers.
 //
 // Replicates the fixture recipe from core's trusted-verifier.test.ts
-// (constants, attestation-fetch mock, options factory) — repo convention is a
-// local copy per package, never a cross-package test import. Every proxy test
+// (constants, attestation-fetch mock, options factory); helpers shared across
+// packages live in @w3tech.io/vrpc-test-support. Every proxy test
 // MUST pass `testOverrides()` into `createProxyServer`; without it the
 // TrustedVerifier hits the network through the proxy's Agent (attestation GET
 // and the Phala CloudVerifier) on a pubkey-cache miss.
 
 import { getPublicKeyAsync } from "@noble/ed25519";
-
+import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import type { ProxyConfig } from "../../src/config";
 import type { ProxyTestOverrides } from "../../src/server";
-import { mockHardwareVerifier } from "./mock-hardware-verifier";
 
 export const TEST_CHAIN_ID = "proxy-test-chain";
 export const TEST_SEED = new Uint8Array(32).fill(0x42);

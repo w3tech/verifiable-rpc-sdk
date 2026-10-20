@@ -6,18 +6,18 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { UnexpectedResponse } from "@w3tech.io/vrpc-core";
 import { InvalidChainId, type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
-import { AbiCoder, EnsResolver, FetchRequest, isError, toUtf8String } from "ethers";
-import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createTestNode,
+  mockHardwareVerifier,
   serveTestNode,
   type TestNode,
   type TestNodeServer,
   type TestUpstreamResponse,
-} from "../../test-support/src/index";
+} from "@w3tech.io/vrpc-test-support";
+import { AbiCoder, EnsResolver, FetchRequest, isError, toUtf8String } from "ethers";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { CHAIN_ID, signResponseBytes, TEST_SEED } from "./fixtures";
 import { installAttestationMock } from "./helpers";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const NODE_ID = "alpha-vrpc-1";
 const KEY = "0123456789abcdefghijABCDEFGHIJkl";

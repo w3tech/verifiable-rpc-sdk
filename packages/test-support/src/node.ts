@@ -35,7 +35,7 @@ export interface TestNodeOptions {
   upstream?: (request: Request) => TestUpstreamResponse | Promise<TestUpstreamResponse>;
 }
 
-export interface TestSignOptions {
+interface TestSignOptions {
   seed?: Uint8Array;
   timestampMs?: number;
   pubkeyHex?: string;
@@ -62,7 +62,7 @@ export interface AttestationContext {
   normal(): Promise<TestOuterResponse>;
 }
 
-export type AttestationHandler = (
+type AttestationHandler = (
   context: AttestationContext,
 ) => TestOuterResponse | Promise<TestOuterResponse>;
 

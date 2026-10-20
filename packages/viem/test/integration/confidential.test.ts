@@ -2,6 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // viem transport in Ankr Confidential RPC mode against the real sidecar.
 
+import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { BaseError, createPublicClient } from "viem";
 import { arbitrum } from "viem/chains";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -12,7 +13,6 @@ import {
   spawnInterop,
 } from "../../../test-support/src/interop";
 import { BadSignature, vrpcHttp } from "../../src/index";
-import { mockHardwareVerifier } from "../support/mock-hardware-verifier";
 
 if (!integrationEnabled) {
   console.log(INTEROP_SKIP_MESSAGE);

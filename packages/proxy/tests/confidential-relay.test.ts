@@ -2,9 +2,8 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode: what the client receives from a verified, decrypted node answer.
 
+import type { TestUpstreamResponse } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
-
-import type { TestUpstreamResponse } from "../../test-support/src/index";
 
 import {
   type RawResponse,

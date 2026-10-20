@@ -6,6 +6,9 @@
     },
     "packages/viem": {
       "entry": ["test/confidential.types.ts"]
+    },
+    "packages/test-support": {
+      "includeEntryExports": true
     }
   }
 }

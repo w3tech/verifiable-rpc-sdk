@@ -3,12 +3,13 @@ import { createServer, type IncomingHttpHeaders, type ServerResponse } from "nod
 import type { AddressInfo, Socket } from "node:net";
 import { gzipSync } from "node:zlib";
 import { hexToBytes } from "@noble/hashes/utils.js";
-import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createTestNode,
+  mockHardwareVerifier,
   type TestNode,
   type TestOuterResponse,
-} from "../../test-support/src/index";
+} from "@w3tech.io/vrpc-test-support";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
 import {
@@ -18,7 +19,6 @@ import {
   UnexpectedResponse,
 } from "../src/errors";
 import { type ConfidentialTransport, defaultTransport } from "../src/transport";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const CHAIN_ID = "42161";

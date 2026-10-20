@@ -21,7 +21,7 @@ const ENC_LENGTH = 32;
 const utf8 = new TextEncoder();
 const EMPTY = new Uint8Array(0);
 
-export interface OpenedRequest {
+interface OpenedRequest {
   hdr: Uint8Array;
   bhttp: Uint8Array;
   request: Request;

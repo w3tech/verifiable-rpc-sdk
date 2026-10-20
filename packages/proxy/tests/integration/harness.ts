@@ -33,9 +33,8 @@ import {
   type VerifyPolicy,
   verifyDstackAttestation,
 } from "@w3tech.io/dstack-verify";
-
+import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { createProxyServer } from "../../src/server";
-import { mockHardwareVerifier } from "../support/mock-hardware-verifier";
 import { testConfig } from "../support/test-overrides";
 
 /** True when all required integration env vars are set and non-empty. */

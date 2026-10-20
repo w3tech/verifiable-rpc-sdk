@@ -4,16 +4,16 @@
 import * as core from "@w3tech.io/vrpc-core";
 import * as conf from "@w3tech.io/vrpc-core/confidential";
 import * as errors from "@w3tech.io/vrpc-core/errors";
+import {
+  createTestNode,
+  mockHardwareVerifier,
+  serveTestNode,
+  type TestUpstreamResponse,
+} from "@w3tech.io/vrpc-test-support";
 import * as adapter from "@w3tech.io/vrpc-viem";
 import { BaseError, createPublicClient, defineChain } from "viem";
 import { afterEach, describe, expect, test } from "vitest";
-import {
-  createTestNode,
-  serveTestNode,
-  type TestUpstreamResponse,
-} from "../../test-support/src/index";
 import { CHAIN_ID } from "./fixtures";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 const ERROR_CLASSES = [
   "AttestationFailed",

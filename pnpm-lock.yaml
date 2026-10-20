@@ -103,6 +103,9 @@ importers:
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
+      '@w3tech.io/vrpc-test-support':
+        specifier: workspace:*
+        version: link:../test-support
       bhttp-ts:
         specifier: 0.6.1
         version: 0.6.1
@@ -116,6 +119,9 @@ importers:
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
+      '@w3tech.io/vrpc-test-support':
+        specifier: workspace:*
+        version: link:../test-support
 
   packages/ethers:
     dependencies:
@@ -129,6 +135,9 @@ importers:
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
+      '@w3tech.io/vrpc-test-support':
+        specifier: workspace:*
+        version: link:../test-support
       ethers:
         specifier: ^6.16.0
         version: 6.17.0
@@ -151,6 +160,9 @@ importers:
       '@w3tech.io/dstack-verify':
         specifier: workspace:*
         version: link:../dstack-verify
+      '@w3tech.io/vrpc-test-support':
+        specifier: workspace:*
+        version: link:../test-support
 
   packages/test-support:
     dependencies:
@@ -185,6 +197,9 @@ importers:
       '@w3tech.io/dstack-verify':
         specifier: workspace:*
         version: link:../dstack-verify
+      '@w3tech.io/vrpc-test-support':
+        specifier: workspace:*
+        version: link:../test-support
       viem:
         specifier: ^2.55.1
         version: 2.55.1(typescript@7.0.2)(zod@4.6.7)

@@ -27,7 +27,7 @@ export interface ServedAnswer {
 }
 
 /** Returns the answer, or `undefined` to send the node's own answer. */
-export type ServedHandler = (
+type ServedHandler = (
   request: ServedRequest,
   forward: () => Promise<TestOuterResponse>,
 ) => ServedAnswer | undefined | Promise<ServedAnswer | undefined>;

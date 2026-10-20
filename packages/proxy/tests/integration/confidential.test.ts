@@ -4,6 +4,7 @@
 
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   INTEROP_SKIP_MESSAGE,
@@ -12,7 +13,6 @@ import {
   spawnInterop,
 } from "../../../test-support/src/interop";
 import { createProxyServer } from "../../src/index";
-import { mockHardwareVerifier } from "../support/mock-hardware-verifier";
 import { testConfig } from "../support/test-overrides";
 
 if (!integrationEnabled) {

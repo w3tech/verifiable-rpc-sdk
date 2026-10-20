@@ -6,15 +6,14 @@ import http from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { gzipSync } from "node:zlib";
-
 import {
   createTestNode,
+  mockHardwareVerifier,
   type TestNode,
   type TestNodeOptions,
-} from "../../../test-support/src/index";
+} from "@w3tech.io/vrpc-test-support";
 import type { ProxyConfig } from "../../src/config";
 import { createProxyServer, type ProxyTestOverrides } from "../../src/server";
-import { mockHardwareVerifier } from "./mock-hardware-verifier";
 import { testConfig } from "./test-overrides";
 
 export interface WireRequest {

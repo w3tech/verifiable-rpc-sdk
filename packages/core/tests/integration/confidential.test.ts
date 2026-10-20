@@ -2,6 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC client against the real sidecar and the dstack simulator.
 
+import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   INTEROP_SKIP_MESSAGE,
@@ -17,7 +18,6 @@ import {
   UnavailableError,
   VerificationError,
 } from "../../src/confidential";
-import { mockHardwareVerifier } from "../support/mock-hardware-verifier";
 
 if (!integrationEnabled) {
   console.log(INTEROP_SKIP_MESSAGE);

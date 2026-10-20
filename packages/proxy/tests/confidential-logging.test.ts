@@ -3,9 +3,8 @@
 // Ankr Confidential RPC mode: logs and error bodies carry no path, query, plaintext, key or client header.
 
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
+import type { TestOuterResponse } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
-
-import type { TestOuterResponse } from "../../test-support/src/index";
 import type { LogLevel } from "../src/logger";
 import {
   type RawResponse,
