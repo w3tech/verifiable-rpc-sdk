@@ -107,11 +107,10 @@ export function vrpcHttp(
     // viem injects the client's `chain`; its id is the pin source (chainId left
     // the options bag — mirrors ethers taking it from the ctor). No chain → the
     // lazy verified eth_chainId bootstrap fills it on the first request.
-    if (chainIdResolved === undefined && chain?.id != null) {
-      // viem chain ids are plain numbers; decimal stringification matches what
-      // EVM sidecars are configured with (e.g. 42161 → "42161").
-      chainIdResolved = String(chain.id);
-    }
+    // viem chain ids are plain numbers; decimal stringification matches what
+    // EVM sidecars are configured with (e.g. 42161 → "42161").
+    const clientChainId = chain?.id == null ? undefined : String(chain.id);
+    chainIdResolved ??= clientChainId;
     // Effective timeout: explicit option → client-injected → viem's 10s default.
     const timeout = opts.timeout ?? injectedTimeout ?? 10_000;
 
@@ -183,6 +182,13 @@ export function vrpcHttp(
         retryCount: 0,
         timeout,
         async request({ method, params }) {
+          // One transport serves one chain: the node URL is chain-specific.
+          if (clientChainId !== undefined && clientChainId !== chainIdResolved) {
+            throw new InvalidChainId(
+              clientChainId,
+              `this transport is bound to chain ${chainIdResolved}`,
+            );
+          }
           // POST first, then resolve chainId (memoized) and verify the held bytes.
           const { requestBytes, rawText, rawResponseBytes, res } = await post({
             jsonrpc: "2.0",

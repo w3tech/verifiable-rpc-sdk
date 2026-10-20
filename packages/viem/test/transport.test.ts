@@ -21,6 +21,7 @@ import { computeComposeHash } from "@w3tech.io/dstack-verify";
 import { VerificationError as CoreVerificationError } from "@w3tech.io/vrpc-core";
 import {
   BadSignature,
+  InvalidChainId,
   MalformedHeader,
   MissingHeader,
   VerificationError,
@@ -306,6 +307,34 @@ describe("vrpcHttp transport wiring", () => {
         params: [ADDR, "latest"],
       }),
     ).resolves.toBe(SINGLE_RESULT_BALANCE_HEX);
+  });
+
+  test("a client on another chain gets InvalidChainId and sends nothing", async () => {
+    const counter = { n: 0 };
+    const t = vrpcHttp(URL, {
+      fetchFn: signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { counter }),
+      replayWindowMs: WIDE_WINDOW,
+      hardwareVerifier: MOCK_HV,
+    });
+    const a = t(PINNED);
+    const b = t({ chain: defineChain({ ...TEST_CHAIN, id: 1 }) } as never);
+    const getBalance = { method: "eth_getBalance", params: [ADDR, "latest"] } as const;
+    await expect(a.config.request(getBalance)).resolves.toBe(SINGLE_RESULT_BALANCE_HEX);
+    await expect(b.config.request(getBalance)).rejects.toBeInstanceOf(InvalidChainId);
+    expect(counter.n).toBe(1);
+  });
+
+  test("a transport pinned to a wrong chain gives InvalidChainId to a client on the right chain", async () => {
+    const t = vrpcHttp(URL, {
+      fetchFn: signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX)),
+      replayWindowMs: WIDE_WINDOW,
+      hardwareVerifier: MOCK_HV,
+    });
+    const wrong = t({ chain: defineChain({ ...TEST_CHAIN, id: 1 }) } as never);
+    const right = t(PINNED);
+    const getBalance = { method: "eth_getBalance", params: [ADDR, "latest"] } as const;
+    await expect(wrong.config.request(getBalance)).rejects.toBeInstanceOf(BadSignature);
+    await expect(right.config.request(getBalance)).rejects.toBeInstanceOf(InvalidChainId);
   });
 
   // a uint256 view eth_call → ABI-encoded result verifies + decodes.
