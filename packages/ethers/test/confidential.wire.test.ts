@@ -488,6 +488,7 @@ describe("response size cap", () => {
     const err = await rejection(provider.getBlockNumber());
 
     expect(err).toBeInstanceOf(TransportFailed);
+    expect((err as TransportFailed).reason).toBe("too-large");
     expect(seen.cancelled).toBe(true);
     expect(seen.pulled).toBeLessThanOrEqual(CAP + 2 * CHUNK.byteLength);
   });
@@ -549,7 +550,7 @@ describe("responses without a web stream body", () => {
     const err = await rejection(provider.getBlockNumber());
 
     expect(err).toBeInstanceOf(TransportFailed);
-    expect((err as TransportFailed).reason).toBe("network");
+    expect((err as TransportFailed).reason).toBe("too-large");
     expect(seen.buffered).toBe(past === "read" ? 1 : 0);
   });
 });

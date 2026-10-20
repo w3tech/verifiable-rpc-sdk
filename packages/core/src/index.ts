@@ -58,6 +58,7 @@ export { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
 export type { Logger } from "./logger";
 export { createConsoleLogger, defaultLogger, safeLogger } from "./logger";
 export { buildPreImage, validateChainId } from "./preimage";
+export { ResponseTooLarge, readCappedBody } from "./transport";
 export type { TrustedVerifierOptions } from "./trusted-verifier";
 export {
   DEFAULT_PUBKEY_CACHE_MAX,

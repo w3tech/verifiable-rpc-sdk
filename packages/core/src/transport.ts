@@ -27,7 +27,7 @@ export interface OuterResponse {
  */
 export type ConfidentialTransport = (request: OuterRequest) => Promise<OuterResponse>;
 
-/** Thrown by the default transport when an answer passes the response size cap; never reaches the caller. */
+/** Thrown by `readCappedBody` when an answer passes the response size cap; never reaches the caller. */
 export class ResponseTooLarge extends Error {
   constructor() {
     super("Response exceeds the size cap");
@@ -35,9 +35,25 @@ export class ResponseTooLarge extends Error {
   }
 }
 
-async function readCapped(body: ReadableStream<Uint8Array> | null): Promise<Uint8Array> {
+/** Reads a fetch `Response` body for a `ConfidentialTransport`, stopping at the response size cap. */
+export async function readCappedBody(response: Response): Promise<Uint8Array> {
+  const body = response.body as ReadableStream<Uint8Array> | null | undefined;
+  // node-fetch hands over a Node Readable, whatwg-fetch and React Native no body at all.
+  const stream = typeof body?.getReader === "function" ? body : undefined;
+  // With an encoding, content-length is the encoded size; the runtime hands over decoded bytes.
+  const encoding = (response.headers.get("content-encoding") ?? "identity").trim().toLowerCase();
+  const declared = Number(response.headers.get("content-length"));
+  if ((encoding === "" || encoding === "identity") && declared > MAX_RESPONSE_BYTES) {
+    await stream?.cancel();
+    throw new ResponseTooLarge();
+  }
   if (body === null) return new Uint8Array(0);
-  const reader = body.getReader();
+  if (stream === undefined) {
+    const buffered = new Uint8Array(await response.arrayBuffer());
+    if (buffered.byteLength > MAX_RESPONSE_BYTES) throw new ResponseTooLarge();
+    return buffered;
+  }
+  const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
   for (;;) {
@@ -70,16 +86,9 @@ export const defaultTransport: ConfidentialTransport = async (request) => {
   if (response.type === "opaqueredirect") {
     return { status: 0, headers: new Headers(), body: new Uint8Array(0) };
   }
-  // With an encoding, content-length is the encoded size; the runtime hands over decoded bytes.
-  const encoding = (response.headers.get("content-encoding") ?? "identity").trim().toLowerCase();
-  const declared = Number(response.headers.get("content-length"));
-  if ((encoding === "" || encoding === "identity") && declared > MAX_RESPONSE_BYTES) {
-    await response.body?.cancel();
-    throw new ResponseTooLarge();
-  }
   return {
     status: response.status,
     headers: response.headers,
-    body: await readCapped(response.body),
+    body: await readCappedBody(response),
   };
 };

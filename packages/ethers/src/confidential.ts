@@ -2,6 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode for VrpcProvider: FetchRequest transport, lazy client, answer mapping.
 
+import { ResponseTooLarge, readCappedBody } from "@w3tech.io/vrpc-core";
 import type {
   ConfidentialClient,
   ConfidentialClientOptions,
@@ -19,55 +20,6 @@ import {
   makeError,
   toUtf8Bytes,
 } from "ethers";
-
-// The core default transport's cap: 192 MiB, above the 160 MiB gateway response cap.
-const MAX_RESPONSE_BYTES = 201_326_592;
-
-class ResponseTooLarge extends Error {
-  constructor() {
-    super("Response exceeds the size cap");
-    this.name = "ResponseTooLarge";
-  }
-}
-
-// With an encoding, content-length is the encoded size; the runtime hands over decoded bytes.
-async function readCapped(response: Response): Promise<Uint8Array> {
-  const body = response.body as ReadableStream<Uint8Array> | null | undefined;
-  // A fetch polyfill (whatwg-fetch, React Native) has no stream body.
-  const stream = typeof body?.getReader === "function" ? body : undefined;
-  const encoding = (response.headers.get("content-encoding") ?? "identity").trim().toLowerCase();
-  const declared = Number(response.headers.get("content-length"));
-  if ((encoding === "" || encoding === "identity") && declared > MAX_RESPONSE_BYTES) {
-    await stream?.cancel();
-    throw new ResponseTooLarge();
-  }
-  if (body === null) return new Uint8Array(0);
-  if (stream === undefined) {
-    const buffered = new Uint8Array(await response.arrayBuffer());
-    if (buffered.byteLength > MAX_RESPONSE_BYTES) throw new ResponseTooLarge();
-    return buffered;
-  }
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_RESPONSE_BYTES) {
-      await reader.cancel();
-      throw new ResponseTooLarge();
-    }
-    chunks.push(value);
-  }
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return out;
-}
 
 // Replaces the ethers fetchers, which buffer the whole body (and gunzip it in Node) before returning.
 const cappedGetUrl: FetchGetUrlFunc = async (req, signal) => {
@@ -107,7 +59,7 @@ const cappedGetUrl: FetchGetUrlFunc = async (req, signal) => {
     response.headers.forEach((value, name) => {
       headers[name.toLowerCase()] = value;
     });
-    const body = await readCapped(response);
+    const body = await readCappedBody(response);
     return { statusCode: response.status, statusMessage: response.statusText, headers, body };
   } catch (err) {
     throw reason ?? err;

@@ -157,7 +157,10 @@ client.getConfidentialInfo(); // { nodeId, pubkey, composeHash, attestedAt }, or
   `RangeError`.
 - `transport`: replaces `fetch` for both outer requests. It must send the bytes
   as given, never follow a redirect, never retry, honour the signal and return
-  the content-decoded body.
+  the content-decoded body. A fetch-based transport reads the body with
+  `readCappedBody(response)` from `@w3tech.io/vrpc-core`, which stops at the
+  192 MiB cap and then fails the call with `TransportFailed` (reason
+  `too-large`).
 
 The inner request is `{ method, path, contentType?, accept?, body? }`. A `GET`
 without a body is allowed; a request body requires `contentType`. Only
@@ -451,6 +454,8 @@ fields; some empty under the dstack simulator).
 | `parseChainId(...)` | function | Decodes a decimal-string chainId (e.g. `"42161"`) from the raw bytes of a signed `eth_chainId` response (the auto-derive bootstrap used by the ethers/viem adapters); throws `MalformedHeader` on invalid JSON or a non-0x-hex `result`. |
 | `validateChainId(...)` | function | Validates a chain id string (sidecar-identical rules: non-empty, ≤64 bytes, printable ASCII, no inner whitespace) and returns the trimmed value; throws `InvalidChainId`. |
 | `isSignedVrpcResponse(...)` | function | Predicate: whether a response carries the `vRPC-*` signing headers. |
+| `readCappedBody(response)` | function | Reads a fetch `Response` body for a custom confidential `transport`; throws `ResponseTooLarge` past 192 MiB. |
+| `ResponseTooLarge` | class | Thrown by `readCappedBody`; the client turns it into `TransportFailed` (reason `too-large`). |
 
 ---
 

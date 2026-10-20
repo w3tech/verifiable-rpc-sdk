@@ -486,7 +486,7 @@ describe("response size cap", () => {
 
     const err = await rejection(client.request({ method: "eth_blockNumber" }));
 
-    expect(walkFind(err, TransportFailed)).toBeInstanceOf(TransportFailed);
+    expect(walkFind(err, TransportFailed)?.reason).toBe("too-large");
     expect(seen.cancelled).toBe(true);
     expect(seen.pulled).toBeLessThanOrEqual(CAP + 2 * CHUNK.byteLength);
   });
@@ -556,7 +556,7 @@ describe("responses without a web stream body", () => {
 
     const err = await rejection(client.request({ method: "eth_blockNumber" }));
 
-    expect(walkFind(err, TransportFailed)?.reason).toBe("network");
+    expect(walkFind(err, TransportFailed)?.reason).toBe("too-large");
     expect(seen.buffered).toBe(past === "read" ? 1 : 0);
   });
 });
