@@ -1,8 +1,9 @@
-import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
+import { getPublicKeyAsync } from "@noble/ed25519";
 import { AttestationError, EMPTY_ALLOWLIST } from "@w3tech.io/dstack-verify";
 import {
   collectingLogger,
   mockHardwareVerifier,
+  signResponse,
   TEST_SEED,
   toHex,
 } from "@w3tech.io/vrpc-test-support";
@@ -14,7 +15,6 @@ import {
   VerificationError,
 } from "../src/errors";
 import type { Logger } from "../src/logger";
-import { buildPreImage } from "../src/preimage";
 import {
   buildVerifyPolicy,
   DEFAULT_PUBKEY_CACHE_TTL_MS,
@@ -56,20 +56,9 @@ async function signedPair(seed: Uint8Array = TEST_SEED): Promise<{
   const responseBytes = new TextEncoder().encode(
     JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x12345" }),
   );
-  // Sign with the current `Date.now()` so verifyResponse's replay window accepts
-  // it. Under vitest fake timers `Date` is faked, so re-signing right before a
-  // verify keeps the timestamp in-window even after the clock has been advanced
-  // past the cache TTL.
-  const ts = BigInt(Date.now());
-  const preImage = buildPreImage(CHAIN_ID, requestBytes, responseBytes, ts);
-  const signature = await signAsync(preImage, seed);
-  const pubkey = await getPublicKeyAsync(seed);
-  const headers: Record<string, string> = {
-    "vRPC-Signature": `0x${toHex(signature)}`,
-    "vRPC-Timestamp": ts.toString(),
-    "vRPC-Pubkey": `0x${toHex(pubkey)}`,
-    "vRPC-NodeId": "node-abc",
-  };
+  // Default timestamp is `Date.now()` per call: under fake timers re-signing right
+  // before a verify keeps it in the replay window past the cache TTL.
+  const headers = signResponse(CHAIN_ID, requestBytes, responseBytes, { seed, nodeId: "node-abc" });
   return { requestBytes, responseBytes, headers };
 }
 

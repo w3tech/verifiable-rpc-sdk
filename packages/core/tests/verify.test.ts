@@ -1,5 +1,4 @@
-import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
-import { TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
+import { signResponse } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -9,7 +8,6 @@ import {
   MissingHeader,
   StaleTimestamp,
 } from "../src/errors";
-import { buildPreImage } from "../src/preimage";
 import { isSignedVrpcResponse, type ResponseHeaders, verifyResponse } from "../src/verify";
 
 const CHAIN_ID = "1";
@@ -33,22 +31,10 @@ async function signTriple(
 ): Promise<SignedTriple> {
   const requestBytes = new TextEncoder().encode(request);
   const responseBytes = new TextEncoder().encode(response);
-  const preImage = buildPreImage(
-    opts.signingChainId ?? CHAIN_ID,
-    requestBytes,
-    responseBytes,
+  const headers = signResponse(opts.signingChainId ?? CHAIN_ID, requestBytes, responseBytes, {
     timestampMs,
-  );
-  const signature = await signAsync(preImage, TEST_SEED);
-  const pubkey = await getPublicKeyAsync(TEST_SEED);
-  const headers: Record<string, string> = {
-    "vRPC-Signature": `0x${toHex(signature)}`,
-    "vRPC-Timestamp": timestampMs.toString(),
-    "vRPC-Pubkey": `0x${toHex(pubkey)}`,
-  };
-  if (opts.nodeId !== undefined) {
-    headers["vRPC-NodeId"] = opts.nodeId;
-  }
+    nodeId: opts.nodeId,
+  });
   return { requestBytes, responseBytes, headers };
 }
 

@@ -1,9 +1,10 @@
-import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
+import { getPublicKeyAsync } from "@noble/ed25519";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import {
   createTestNode,
   mockHardwareVerifier,
   rejectionOf,
+  signResponse,
   type TestNodeOptions,
 } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
@@ -18,7 +19,6 @@ import {
   UnexpectedResponse,
   VerificationError,
 } from "../src/errors";
-import { buildPreImage } from "../src/preimage";
 import type { ConfidentialTransport } from "../src/transport";
 
 const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
@@ -180,19 +180,14 @@ describe("ConfidentialClient", () => {
     const transport: ConfidentialTransport = async (request) => {
       const response = await node.transport(request);
       if (request.method !== "POST" || request.body === undefined) return response;
-      const timestamp = BigInt(Date.now());
-      const signature = await signAsync(
-        buildPreImage(CHAIN_ID, request.body, response.body, timestamp),
-        OTHER_SEED,
-      );
       return {
         status: response.status,
         headers: {
           "content-type": "message/ohttp-res",
-          "vRPC-Signature": `0x${bytesToHex(signature)}`,
-          "vRPC-Timestamp": timestamp.toString(),
-          "vRPC-Pubkey": otherPubkey,
-          "vRPC-NodeId": NODE_ID,
+          ...signResponse(CHAIN_ID, request.body, response.body, {
+            seed: OTHER_SEED,
+            nodeId: NODE_ID,
+          }),
         },
         body: response.body,
       };

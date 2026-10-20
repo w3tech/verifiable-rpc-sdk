@@ -2,10 +2,9 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // In-test node that attests and answers sealed requests with signed, sealed responses.
 
-import { ed25519 } from "@noble/curves/ed25519.js";
-import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex, concatBytes } from "@noble/hashes/utils.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import { createRecipient } from "./recipient";
+import { signResponse } from "./sign";
 
 export interface TestOuterRequest {
   method: string;
@@ -88,19 +87,12 @@ function defaultUpstream(): TestUpstreamResponse {
   };
 }
 
-function u64le(value: bigint): Uint8Array {
-  const out = new Uint8Array(8);
-  new DataView(out.buffer).setBigUint64(0, value, true);
-  return out;
-}
-
 export function createTestNode(options: TestNodeOptions): TestNode {
   const recipient = createRecipient(options.seed);
   const pubkeyHex = `0x${bytesToHex(recipient.ed25519PublicKey)}`;
   const nodeId = options.nodeId === undefined ? "test-node-1" : options.nodeId;
   const nodeIdHeader: Record<string, string> = nodeId === null ? {} : { "vRPC-NodeId": nodeId };
   const upstream = options.upstream ?? defaultUpstream;
-  const chainHash = sha256(utf8.encode(options.chainId));
   const requests: TestOuterRequest[] = [];
   let attestationCount = 0;
   let confidential: ConfidentialHandler = (context) => context.normal();
@@ -129,20 +121,11 @@ export function createTestNode(options: TestNodeOptions): TestNode {
     responseBody: Uint8Array,
     signOptions: TestSignOptions = {},
   ): Record<string, string> {
-    const seed = signOptions.seed ?? options.seed;
-    const timestamp = BigInt(signOptions.timestampMs ?? Date.now());
-    const preImage = concatBytes(
-      chainHash,
-      sha256(requestBody),
-      sha256(responseBody),
-      u64le(timestamp),
-    );
-    return {
-      "vRPC-Signature": `0x${bytesToHex(ed25519.sign(preImage, seed))}`,
-      "vRPC-Timestamp": timestamp.toString(),
-      "vRPC-Pubkey": signOptions.pubkeyHex ?? `0x${bytesToHex(ed25519.getPublicKey(seed))}`,
-      ...nodeIdHeader,
-    };
+    return signResponse(options.chainId, requestBody, responseBody, {
+      seed: options.seed,
+      ...signOptions,
+      nodeId: nodeId ?? undefined,
+    });
   }
 
   function contextFor(request: TestOuterRequest, body: Uint8Array): ConfidentialContext {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
 // Signing mock sidecar: a real node:http upstream that signs responses exactly
-// like the production sidecar — Ed25519 over core's buildPreImage — and
+// like the production sidecar — Ed25519 over the vRPC pre-image — and
 // compresses strictly AFTER signing (the sidecar's CompressionLayer ordering:
 // the signature covers the plaintext). Per-instance tamper and encoding modes
 // drive the proxy's fail-closed matrix; the `received` capture array proves
@@ -10,9 +10,7 @@
 import { createServer, type IncomingHttpHeaders } from "node:http";
 import type { AddressInfo } from "node:net";
 import * as zlib from "node:zlib";
-import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
-import { buildPreImage } from "@w3tech.io/vrpc-core";
-import { TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
+import { signResponse } from "@w3tech.io/vrpc-test-support";
 
 import { TEST_CHAIN_ID } from "./test-overrides";
 
@@ -87,9 +85,10 @@ export async function startMockSidecar(opts: MockSidecarOptions = {}): Promise<M
         ts -= 600_000n;
       }
       const signingChainId = tamper === "wrong-chain" ? "some-other-chain" : TEST_CHAIN_ID;
-      const preImage = buildPreImage(signingChainId, bytes, plaintext, ts);
-      const signature = await signAsync(preImage, TEST_SEED);
-      const pubkey = await getPublicKeyAsync(TEST_SEED);
+      const signed = signResponse(signingChainId, bytes, plaintext, {
+        timestampMs: ts,
+        nodeId: "node-test",
+      });
 
       // Encoding strictly AFTER signing (sidecar CompressionLayer ordering).
       let wire: Buffer = plaintext;
@@ -112,14 +111,9 @@ export async function startMockSidecar(opts: MockSidecarOptions = {}): Promise<M
         wire[0] = (wire[0] ?? 0) ^ 0xff;
       }
 
-      const headers: Record<string, string> = {};
-      if (tamper !== "unsigned") {
-        headers["vRPC-Signature"] = `0x${toHex(signature)}`;
-        if (tamper !== "drop-timestamp-header") {
-          headers["vRPC-Timestamp"] = ts.toString();
-        }
-        headers["vRPC-Pubkey"] = `0x${toHex(pubkey)}`;
-        headers["vRPC-NodeId"] = "node-test";
+      const headers: Record<string, string> = tamper === "unsigned" ? {} : signed;
+      if (tamper === "drop-timestamp-header") {
+        delete headers["vRPC-Timestamp"];
       }
       if (contentEncoding !== undefined) {
         headers["content-encoding"] = contentEncoding;
