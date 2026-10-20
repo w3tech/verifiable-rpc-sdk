@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Shared checks of the built ethers and viem adapters.
+// Shared checks of the ethers and viem adapters.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 
-export const ERROR_CLASSES = [
+const ERROR_CLASSES = [
   "AttestationFailed",
   "AttestationUnavailable",
   "BadSignature",
@@ -29,7 +29,7 @@ export const ERROR_CLASSES = [
   "VerificationError",
 ] as const;
 
-export const CONFIDENTIAL_CLASSES = [
+const CONFIDENTIAL_CLASSES = [
   "AttestationUnavailable",
   "ConfidentialDecryptFailed",
   "ConfidentialSealFailed",
@@ -41,6 +41,41 @@ export const CONFIDENTIAL_CLASSES = [
   "UnavailableError",
   "UnexpectedResponse",
 ] as const;
+
+type Namespace = Record<string, unknown>;
+
+function errorExports(namespace: Namespace): string[] {
+  return Object.keys(namespace)
+    .filter((name) => {
+      const value = namespace[name];
+      return typeof value === "function" && value.prototype instanceof Error;
+    })
+    .sort();
+}
+
+// The adapter exports each error class as the very class the core entries export.
+export function describeAdapterErrors(
+  name: string,
+  entries: { adapter: object; core: object; errors: object; confidential: object },
+): void {
+  const adapter = entries.adapter as Namespace;
+  describe(`error classes exported by the ${name} adapter`, () => {
+    test.each(ERROR_CLASSES)("%s is the core class from the main and errors entries", (error) => {
+      const value = adapter[error];
+      expect(typeof value).toBe("function");
+      expect(value).toBe((entries.core as Namespace)[error]);
+      expect(value).toBe((entries.errors as Namespace)[error]);
+    });
+
+    test.each(CONFIDENTIAL_CLASSES)("%s is the core class from the confidential entry", (error) => {
+      expect(adapter[error]).toBe((entries.confidential as Namespace)[error]);
+    });
+
+    test("the adapter exports exactly this error set and declares none of its own", () => {
+      expect(errorExports(adapter)).toEqual([...ERROR_CLASSES]);
+    });
+  });
+}
 
 const ENTRY = "@w3tech.io/vrpc-core/confidential";
 const quoted = ENTRY.replace(/[./]/g, "\\$&");

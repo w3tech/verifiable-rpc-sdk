@@ -7,17 +7,16 @@ import * as errors from "@w3tech.io/vrpc-core/errors";
 import {
   createTestNode,
   mockHardwareVerifier,
+  rejectionOf,
   TEST_SEED,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
-import { CONFIDENTIAL_CLASSES, ERROR_CLASSES } from "@w3tech.io/vrpc-test-support/adapter";
+import { describeAdapterErrors } from "@w3tech.io/vrpc-test-support/adapter";
 import { serveTestNode } from "@w3tech.io/vrpc-test-support/server";
 import * as adapter from "@w3tech.io/vrpc-viem";
 import { BaseError, createPublicClient, defineChain } from "viem";
 import { afterEach, describe, expect, test } from "vitest";
 import { CHAIN_ID } from "./fixtures";
-
-type Namespace = Record<string, unknown>;
 
 const KEY = "0123456789abcdefghijABCDEFGHIJkl";
 
@@ -34,31 +33,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-function errorExports(namespace: Namespace): string[] {
-  return Object.keys(namespace)
-    .filter((name) => {
-      const value = namespace[name];
-      return typeof value === "function" && value.prototype instanceof Error;
-    })
-    .sort();
-}
-
-describe("error classes exported by the viem adapter", () => {
-  test.each(ERROR_CLASSES)("%s is the core class from the main and errors entries", (name) => {
-    const value = (adapter as Namespace)[name];
-    expect(typeof value).toBe("function");
-    expect(value).toBe((core as Namespace)[name]);
-    expect(value).toBe((errors as Namespace)[name]);
-  });
-
-  test.each(CONFIDENTIAL_CLASSES)("%s is the core class from the confidential entry", (name) => {
-    expect((adapter as Namespace)[name]).toBe((conf as Namespace)[name]);
-  });
-
-  test("the adapter exports exactly this error set and declares none of its own", () => {
-    expect(errorExports(adapter as Namespace)).toEqual([...ERROR_CLASSES]);
-  });
-});
+describeAdapterErrors("viem", { adapter, core, errors, confidential: conf });
 
 describe("an error from a live call", () => {
   test("a rejected sealed call is an instance of the classes from every entry", async () => {
@@ -91,10 +66,7 @@ describe("an error from a live call", () => {
       }),
     });
 
-    const thrown = await client.getBlockNumber({ cacheTime: 0 }).then(
-      () => undefined,
-      (e: unknown) => e,
-    );
+    const thrown = await rejectionOf(client.getBlockNumber({ cacheTime: 0 }));
     expect(thrown).toBeInstanceOf(BaseError);
     const err = (thrown as BaseError).walk((e) => e instanceof core.UnavailableError);
 
