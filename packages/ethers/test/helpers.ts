@@ -73,22 +73,26 @@ export function signingRequest(
     const headers = opts.unsigned
       ? { "content-type": "application/json" }
       : await signResponseBytes(requestBytes, responseBytes, opts);
-    let body = responseBytes;
-    if (opts.tamper) {
-      body = new Uint8Array(responseBytes);
-      // Mutate ONE digit byte AFTER signing so the bytes differ (→ BadSignature)
-      // while the body stays valid UTF-8/JSON. Flip the first ASCII digit
-      // (0x30-0x39) found, mapping it to a different digit.
-      for (const [i, b] of body.entries()) {
-        if (b >= 0x30 && b <= 0x39) {
-          body[i] = b === 0x39 ? 0x30 : b + 1;
-          break;
-        }
-      }
-    }
+    const body = opts.tamper ? flipFirstDigit(responseBytes) : responseBytes;
     return { statusCode: 200, statusMessage: "OK", headers, body };
   };
   return req;
+}
+
+/**
+ * Return a copy of `bytes` with ONE digit byte mutated, so a body tampered AFTER
+ * signing differs (→ BadSignature) while it stays valid UTF-8/JSON. Flips the
+ * first ASCII digit (0x30-0x39) found, mapping it to a different digit.
+ */
+export function flipFirstDigit(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(bytes);
+  for (const [i, b] of out.entries()) {
+    if (b >= 0x30 && b <= 0x39) {
+      out[i] = b === 0x39 ? 0x30 : b + 1;
+      break;
+    }
+  }
+  return out;
 }
 
 /** Local lowercase-hex encode (no `0x` prefix). */

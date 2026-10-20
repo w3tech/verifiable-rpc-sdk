@@ -32,14 +32,14 @@ export function toHex(bytes: Uint8Array): string {
  * the sidecar attestation JSON shape (core's installAttestationMock recipe).
  * `report_data` is the 64-byte CHK-A1 pre-image pubkey(bare) ‖ nonce(bare) —
  * the nonce is pinned via `nonceSource: () => NONCE`. The signing pubkey is
- * derived lazily from `seed` inside the async impl, keeping this factory
+ * derived lazily from `TEST_SEED` inside the async impl, keeping this factory
  * synchronous.
  */
-function attestationFetchMock(seed: Uint8Array = TEST_SEED): typeof fetch {
+function attestationFetchMock(): typeof fetch {
   const impl = async (input: string | URL | Request): Promise<Response> => {
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/attestation")) {
-      const attPubkey = await getPublicKeyAsync(seed);
+      const attPubkey = await getPublicKeyAsync(TEST_SEED);
       const reportData = `${toHex(attPubkey)}${toHex(NONCE)}`;
       const body = {
         quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },

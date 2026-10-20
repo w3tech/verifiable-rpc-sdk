@@ -23,7 +23,7 @@ import {
 import { Contract, FetchRequest, Interface, toBeHex } from "ethers";
 import { describe, expect, test } from "vitest";
 import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
-import { installAttestationMock, signingRequest } from "./helpers";
+import { flipFirstDigit, installAttestationMock, signingRequest } from "./helpers";
 import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
 // Always-on verify seam: the FIRST verified read per pubkey lazily fetches the
@@ -109,13 +109,7 @@ function autoDeriveRequest(
       if (opts.bootstrapTamper) {
         // Flip the first ASCII digit AFTER signing → BadSignature (body stays
         // valid JSON so the parse before verify still succeeds).
-        body = new Uint8Array(body);
-        for (const [i, b] of body.entries()) {
-          if (b >= 0x30 && b <= 0x39) {
-            body[i] = b === 0x39 ? 0x30 : b + 1;
-            break;
-          }
-        }
+        body = flipFirstDigit(body);
       }
       return { statusCode: 200, statusMessage: "OK", headers, body };
     }

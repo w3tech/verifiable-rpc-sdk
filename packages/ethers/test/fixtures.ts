@@ -67,43 +67,9 @@ export interface SignFixtureOptions {
 }
 
 /**
- * Sign a `(requestBody, responseBody)` pair with `TEST_SEED` over the canonical
- * 104-byte pre-image and emit the matching `vRPC-*` headers. Mirrors core's
- * `signTriple`. No fetch, no ethers — pure synthesis.
- */
-async function signFixture(
-  requestBody: string,
-  responseBody: string,
-  opts: SignFixtureOptions = {},
-): Promise<Fixture> {
-  const chainId = opts.chainId ?? CHAIN_ID;
-  const timestampMs = opts.timestampMs ?? FIXTURE_TIMESTAMP_MS;
-  const requestBytes = new TextEncoder().encode(requestBody);
-  const responseBytes = new TextEncoder().encode(responseBody);
-  const preImage = buildPreImage(
-    opts.signingChainId ?? chainId,
-    requestBytes,
-    responseBytes,
-    timestampMs,
-  );
-  const signature = await signAsync(preImage, TEST_SEED);
-  const pubkey = await getPublicKeyAsync(TEST_SEED);
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-    "vRPC-Signature": `0x${toHex(signature)}`,
-    "vRPC-Timestamp": timestampMs.toString(),
-    "vRPC-Pubkey": `0x${toHex(pubkey)}`,
-  };
-  if (opts.nodeId !== undefined) {
-    headers["vRPC-NodeId"] = opts.nodeId;
-  }
-  return { requestBytes, responseBytes, headers, timestampMs };
-}
-
-/**
- * Sign an arbitrary `(requestBytes, responseBytes)` pair with `TEST_SEED` and
- * return the matching `vRPC-*` headers. Unlike `signFixture` (which signs a
- * fixed request string), this signs over the EXACT request bytes a transport
+ * Sign an arbitrary `(requestBytes, responseBytes)` pair with `TEST_SEED` over
+ * the canonical 104-byte pre-image and return the matching `vRPC-*` headers.
+ * Mirrors core's `signTriple`. Signs over the EXACT request bytes a transport
  * actually emitted — used by the request-aware `getUrlFunc` so a real
  * ethers `getBalance`/Contract payload (whose key order, id counter and
  * resolved blockTag are ethers-internal) verifies without the fixture having to
@@ -138,20 +104,29 @@ export async function signResponseBytes(
 }
 
 // ---------------------------------------------------------------------------
-// The five static fixtures. All sign with the single fixed TEST_SEED, so the
-// matching pubkey is deterministic. Synthesized eagerly at module load.
+// The static fixture. Signed with the fixed TEST_SEED, so the matching pubkey is
+// deterministic. Synthesized eagerly at module load.
 // ---------------------------------------------------------------------------
 
 /** Known decoded balance carried by SINGLE_RESULT. `0x1bc16d674ec80000` = 2 ETH (wei). */
 export const SINGLE_RESULT_BALANCE_HEX = "0x1bc16d674ec80000";
 
-/** Single signed `eth_getBalance` result. */
-export const SINGLE_RESULT: Fixture = await signFixture(
+const singleRequestBytes = new TextEncoder().encode(
   JSON.stringify({
     jsonrpc: "2.0",
     id: 1,
     method: "eth_getBalance",
     params: ["0x1111111111111111111111111111111111111111", "latest"],
   }),
+);
+const singleResponseBytes = new TextEncoder().encode(
   JSON.stringify({ jsonrpc: "2.0", id: 1, result: SINGLE_RESULT_BALANCE_HEX }),
 );
+
+/** Single signed `eth_getBalance` result. */
+export const SINGLE_RESULT: Fixture = {
+  requestBytes: singleRequestBytes,
+  responseBytes: singleResponseBytes,
+  headers: await signResponseBytes(singleRequestBytes, singleResponseBytes),
+  timestampMs: FIXTURE_TIMESTAMP_MS,
+};
