@@ -110,9 +110,9 @@ function autoDeriveRequest(
         // Flip the first ASCII digit AFTER signing → BadSignature (body stays
         // valid JSON so the parse before verify still succeeds).
         body = new Uint8Array(body);
-        for (let i = 0; i < body.length; i++) {
-          if (body[i] >= 0x30 && body[i] <= 0x39) {
-            body[i] = body[i] === 0x39 ? 0x30 : body[i] + 1;
+        for (const [i, b] of body.entries()) {
+          if (b >= 0x30 && b <= 0x39) {
+            body[i] = b === 0x39 ? 0x30 : b + 1;
             break;
           }
         }
@@ -169,7 +169,7 @@ describe("VrpcProvider._send wiring", () => {
       WIDE_WINDOW,
     );
     const contract = new Contract("0x2222222222222222222222222222222222222222", iface, provider);
-    expect(await contract.totalSupply()).toBe(value);
+    expect(await contract.getFunction("totalSupply")()).toBe(value);
   });
 
   test("tampered response → BadSignature, fail-closed (strict default)", async () => {
@@ -301,7 +301,7 @@ describe("VrpcProvider._send wiring", () => {
     );
     const logs = await provider.getLogs({ address: LOG_ENTRY.address, fromBlock: 0x10d4f });
     expect(logs).toHaveLength(1);
-    expect(logs[0].transactionHash).toBe(TX_HASH);
+    expect(logs[0]?.transactionHash).toBe(TX_HASH);
   });
 
   test("unsigned eth_getLogs response → MissingHeader (poll path is NOT exempt)", async () => {
@@ -325,7 +325,7 @@ describe("VrpcProvider._send wiring", () => {
     // proves the poll-loop's RPC is verified before the parsed changes surface.
     const changes = await provider.send("eth_getFilterChanges", ["0x1"]);
     expect(changes).toHaveLength(1);
-    expect((changes as Array<{ transactionHash: string }>)[0].transactionHash).toBe(TX_HASH);
+    expect((changes as Array<{ transactionHash: string }>)[0]?.transactionHash).toBe(TX_HASH);
   });
 
   test("tampered eth_getFilterChanges response → BadSignature, fail-closed", async () => {

@@ -79,9 +79,9 @@ export function signingRequest(
       // Mutate ONE digit byte AFTER signing so the bytes differ (→ BadSignature)
       // while the body stays valid UTF-8/JSON. Flip the first ASCII digit
       // (0x30-0x39) found, mapping it to a different digit.
-      for (let i = 0; i < body.length; i++) {
-        if (body[i] >= 0x30 && body[i] <= 0x39) {
-          body[i] = body[i] === 0x39 ? 0x30 : body[i] + 1;
+      for (const [i, b] of body.entries()) {
+        if (b >= 0x30 && b <= 0x39) {
+          body[i] = b === 0x39 ? 0x30 : b + 1;
           break;
         }
       }

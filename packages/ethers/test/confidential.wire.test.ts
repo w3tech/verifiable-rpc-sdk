@@ -586,7 +586,12 @@ describe("hardware verifier", () => {
       seen.push(String(input));
       return new Response("", { status: 503 });
     };
-    const { provider } = build("string URL", server.url, { fetch, hardwareVerifier: undefined });
+    const provider = new VrpcProvider(`${server.url}/eth_vrpc/${KEY}`, 42161, {
+      confidential: true,
+      cacheTimeout: -1,
+      fetch,
+    });
+    cleanups.push(() => provider.destroy());
 
     await rejection(provider.getBlockNumber());
 
