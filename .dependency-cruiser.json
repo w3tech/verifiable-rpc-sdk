@@ -8,15 +8,6 @@
       "to": { "path": "^packages/core/" }
     },
     {
-      "name": "core-public-entries-only",
-      "severity": "error",
-      "from": { "path": "^packages/(ethers|viem|proxy)/" },
-      "to": {
-        "path": "^packages/core/",
-        "pathNot": "^packages/core/src/(index|errors|confidential)\\.ts$"
-      }
-    },
-    {
       "name": "core-by-package-name",
       "severity": "error",
       "from": { "path": "^packages/(ethers|viem|proxy)/" },
