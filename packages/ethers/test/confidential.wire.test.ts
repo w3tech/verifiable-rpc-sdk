@@ -331,7 +331,11 @@ function windows(bytes: Uint8Array): string[] {
   return out;
 }
 
-function expectSanitised(err: unknown, bodies: Uint8Array[], code?: string): void {
+function expectSanitised(
+  err: unknown,
+  bodies: Uint8Array[],
+  code?: string | readonly string[],
+): void {
   const chain = causes(err);
   expect(chain.length).toBeGreaterThan(0);
   const secrets = [KEY, ...bodies.flatMap(windows)];
@@ -349,7 +353,7 @@ function expectSanitised(err: unknown, bodies: Uint8Array[], code?: string): voi
     const causeCode = (cause as { code?: unknown }).code;
     expect(causeCode === undefined || typeof causeCode === "string").toBe(true);
   }
-  if (code !== undefined) expect((chain[0] as { code?: unknown }).code).toBe(code);
+  if (code !== undefined) expect([code].flat()).toContain((chain[0] as { code?: unknown }).code);
 }
 
 function keyedBoth(origin: string, timeout?: number): VrpcProvider {
@@ -385,7 +389,8 @@ describe("transport errors carry neither the key nor body bytes", () => {
 
     expect(err).toBeInstanceOf(AttestationUnavailable);
     expect((err as AttestationUnavailable).reason).toBe("transport");
-    expectSanitised(err, [], "ECONNRESET");
+    // undici reports the dropped socket as either code, by timing and Node version.
+    expectSanitised(err, [], ["ECONNRESET", "UND_ERR_SOCKET"]);
   });
 
   test("a sealed answer cut after half its body", async () => {
