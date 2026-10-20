@@ -50,5 +50,6 @@ export default defineConfig({
     // excluded by vitest defaults — the injected workspace copies under
     // `node_modules/@w3tech.io/*/tests` are therefore never collected.
     include: ["**/test/**/*.test.ts", "**/tests/**/*.test.ts"],
+    coverage: { include: ["src/**"] },
   },
 });
