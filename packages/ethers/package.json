@@ -58,7 +58,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@w3tech.io/dstack-verify": "workspace:*",
     "@w3tech.io/vrpc-core": "workspace:*"
   },
   "peerDependencies": {

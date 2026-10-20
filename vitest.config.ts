@@ -9,20 +9,16 @@ const src = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 // Under the old bun toolchain the `"bun"` export condition made in-repo imports
 // of `@w3tech.io/*` resolve to `./src/*.ts`. That dev-only condition is removed
 // (the published `exports`/`publishConfig` → ./dist are untouched). To keep
-// tests resolving workspace packages to SOURCE (not built dist), we alias the 5
-// `@w3tech.io/*` specifiers — including `@w3tech.io/vrpc-core/errors` — to their
-// `src` entry. Longest-prefix subpath alias listed first so `/errors` wins over
-// the bare package alias.
+// tests resolving workspace packages to SOURCE (not built dist), we alias core
+// (with its `/errors` and `/confidential` subpaths), dstack-verify, ethers and
+// viem to their `src` entry. Longest-prefix subpath alias listed first so
+// `/errors` wins over the bare package alias.
 export default defineConfig({
   resolve: {
     alias: [
       {
         find: "@w3tech.io/vrpc-core/errors",
         replacement: src("./packages/core/src/errors.ts"),
-      },
-      {
-        find: "@w3tech.io/vrpc-core/compose",
-        replacement: src("./packages/core/src/compose.ts"),
       },
       {
         find: "@w3tech.io/vrpc-core/confidential",
