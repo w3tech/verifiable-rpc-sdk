@@ -33,7 +33,7 @@ export const CHAIN_ID = "42161";
  * 30-02 neutralizes staleness by passing `nowMs: FIXTURE_TIMESTAMP_MS` (or a
  * wide `replayWindowMs`) to `verifyResponse`.
  */
-export const FIXTURE_TIMESTAMP_MS = 1_700_000_000_000n;
+const FIXTURE_TIMESTAMP_MS = 1_700_000_000_000n;
 
 /** Lowercase hex encode, no `0x` prefix. */
 function toHex(bytes: Uint8Array): string {
@@ -75,7 +75,7 @@ export interface SignFixtureOptions {
  * 104-byte pre-image and emit the matching `vRPC-*` headers. Mirrors core's
  * `signTriple`. No fetch, no ethers — pure synthesis.
  */
-export async function signFixture(
+async function signFixture(
   requestBody: string,
   responseBody: string,
   opts: SignFixtureOptions = {},
@@ -162,53 +162,3 @@ export const SINGLE_RESULT: Fixture = await signFixture(
   }),
   JSON.stringify({ jsonrpc: "2.0", id: 1, result: SINGLE_RESULT_BALANCE_HEX }),
 );
-
-/** Signed JSON-RPC batch: array of two payloads (ids 1, 2), signed once over the whole body. */
-export const BATCH_ARRAY: Fixture = await signFixture(
-  JSON.stringify([
-    { jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] },
-    {
-      jsonrpc: "2.0",
-      id: 2,
-      method: "eth_getBalance",
-      params: ["0x2222222222222222222222222222222222222222", "latest"],
-    },
-  ]),
-  JSON.stringify([
-    { jsonrpc: "2.0", id: 1, result: "0x10d4f" },
-    { jsonrpc: "2.0", id: 2, result: SINGLE_RESULT_BALANCE_HEX },
-  ]),
-);
-
-/** Signed JSON-RPC error envelope (execution reverted). */
-export const SIGNED_RPC_ERROR: Fixture = await signFixture(
-  JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [] }),
-  JSON.stringify({
-    jsonrpc: "2.0",
-    id: 1,
-    error: { code: -32000, message: "execution reverted" },
-  }),
-);
-
-/** Signed `{result:null}` (e.g. getBlock of a missing block). */
-export const SIGNED_NULL_RESULT: Fixture = await signFixture(
-  JSON.stringify({
-    jsonrpc: "2.0",
-    id: 1,
-    method: "eth_getBlockByNumber",
-    params: ["0xffffffff", false],
-  }),
-  JSON.stringify({ jsonrpc: "2.0", id: 1, result: null }),
-);
-
-/**
- * Unsigned response: SINGLE_RESULT's bytes, but headers carry only
- * `content-type` (the `vRPC-*` triple removed) to drive the strict-mode
- * `MissingHeader` fail-closed path in 30-02.
- */
-export const UNSIGNED: Fixture = {
-  requestBytes: SINGLE_RESULT.requestBytes,
-  responseBytes: SINGLE_RESULT.responseBytes,
-  headers: { "content-type": "application/json" },
-  timestampMs: SINGLE_RESULT.timestampMs,
-};

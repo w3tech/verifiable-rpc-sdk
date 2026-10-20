@@ -67,7 +67,7 @@ export interface SidecarHandle {
 }
 
 /** One request observed by the mock upstream. */
-export interface CapturedRequest {
+interface CapturedRequest {
   /** HTTP method as received (e.g. `GET`, `POST`). */
   method: string;
   /** Request target as received — path plus query string. */

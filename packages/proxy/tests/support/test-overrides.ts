@@ -17,7 +17,7 @@ import { mockHardwareVerifier } from "./mock-hardware-verifier";
 
 export const TEST_CHAIN_ID = "proxy-test-chain";
 export const TEST_SEED = new Uint8Array(32).fill(0x42);
-export const NONCE = new Uint8Array(32).fill(0x07);
+const NONCE = new Uint8Array(32).fill(0x07);
 
 export function toHex(bytes: Uint8Array): string {
   let out = "";
@@ -35,7 +35,7 @@ export function toHex(bytes: Uint8Array): string {
  * derived lazily from `seed` inside the async impl, keeping this factory
  * synchronous.
  */
-export function attestationFetchMock(seed: Uint8Array = TEST_SEED): typeof fetch {
+function attestationFetchMock(seed: Uint8Array = TEST_SEED): typeof fetch {
   const impl = async (input: string | URL | Request): Promise<Response> => {
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/attestation")) {

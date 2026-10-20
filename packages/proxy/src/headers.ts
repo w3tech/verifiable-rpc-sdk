@@ -10,7 +10,7 @@ import type { IncomingHttpHeaders } from "node:http";
 import { MalformedHeader } from "@w3tech.io/vrpc-core";
 
 /** RFC 7230 §6.1 hop-by-hop headers (lowercase), stripped on both legs. */
-export const HOP_BY_HOP: ReadonlySet<string> = new Set([
+const HOP_BY_HOP: ReadonlySet<string> = new Set([
   "connection",
   "keep-alive",
   "proxy-authenticate",

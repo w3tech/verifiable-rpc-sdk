@@ -22,9 +22,9 @@ import { TEST_CHAIN_ID, TEST_SEED, toHex } from "./test-overrides";
  * to drive DecodeFailed (an unknown token, or a known token such as "gzip"
  * whose bytes then fail to decode).
  */
-export type MockSidecarEncoding = "identity" | "gzip" | "zstd" | { rawToken: string };
+type MockSidecarEncoding = "identity" | "gzip" | "zstd" | { rawToken: string };
 
-export type MockSidecarTamper =
+type MockSidecarTamper =
   | "none"
   | "flip-byte"
   | "drop-timestamp-header"

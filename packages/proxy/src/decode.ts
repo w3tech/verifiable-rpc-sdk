@@ -22,7 +22,7 @@ const brotliDecompress = promisify(zlib.brotliDecompress) as AsyncCodec;
  * 23.8; older runtimes lack it, in which case a zstd upstream response fails
  * closed as DecodeFailed.
  */
-export function zstdAvailable(): boolean {
+function zstdAvailable(): boolean {
   return typeof zlib.zstdDecompressSync === "function";
 }
 

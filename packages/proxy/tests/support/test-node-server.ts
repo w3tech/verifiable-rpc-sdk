@@ -28,7 +28,7 @@ export interface WireRequest {
 }
 
 /** Wire-level changes to the outer answer; `only` limits them to one method. */
-export interface WireHooks {
+interface WireHooks {
   /** Gzip answers below 400. */
   gzip?: boolean;
   /** `content-encoding: gzip` on bytes that are not gzip. */

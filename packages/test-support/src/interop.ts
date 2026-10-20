@@ -24,7 +24,7 @@ export const integrationEnabled: boolean =
 export const INTEROP_SKIP_MESSAGE =
   "[integration] skipping — set DSTACK_SIMULATOR_BIN, DSTACK_SIMULATOR_FIXTURES_DIR, SIDECAR_BIN to run";
 
-export interface UpstreamRecord {
+interface UpstreamRecord {
   method: string;
   url: string;
   contentType: string | null;
@@ -33,15 +33,15 @@ export interface UpstreamRecord {
   jsonArrayLength: number | null;
 }
 
-export interface EchoUpstream {
+interface EchoUpstream {
   url: string;
   requests(): UpstreamRecord[];
   kill(): Promise<void>;
 }
 
-export type RelayMode = "pass" | "flip" | "replay";
+type RelayMode = "pass" | "flip" | "replay";
 
-export interface RelayRecord {
+interface RelayRecord {
   method: string;
   url: string;
   headers: Record<string, string>;
@@ -49,7 +49,7 @@ export interface RelayRecord {
   status: number;
 }
 
-export interface Relay {
+interface Relay {
   url: string;
   set(options: { mode?: RelayMode; confidentialTarget?: string | null }): void;
   requests(): RelayRecord[];
@@ -57,7 +57,7 @@ export interface Relay {
   kill(): Promise<void>;
 }
 
-export interface InteropSidecar {
+interface InteropSidecar {
   url: string;
   pubkeyHex: string;
   kill(): Promise<void>;

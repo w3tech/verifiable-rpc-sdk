@@ -35,7 +35,7 @@ export const CHAIN_ID = "42161";
  * 31-02 neutralizes staleness by passing `nowMs: FIXTURE_TIMESTAMP_MS` (or a
  * wide `replayWindowMs`) to `verifyResponse`.
  */
-export const FIXTURE_TIMESTAMP_MS = 1_700_000_000_000n;
+const FIXTURE_TIMESTAMP_MS = 1_700_000_000_000n;
 
 /**
  * Known decoded balance a signed `eth_getBalance` fixture carries —
