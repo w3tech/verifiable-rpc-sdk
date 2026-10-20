@@ -7,6 +7,7 @@ import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import {
   AttestationUnavailable,
+  DEFAULT_PHALA_VERIFY_ENDPOINT,
   RequestRejected,
   TransportFailed,
   UnexpectedResponse,
@@ -558,5 +559,26 @@ describe("responses without a web stream body", () => {
 
     expect(walkFind(err, TransportFailed)?.reason).toBe("too-large");
     expect(seen.buffered).toBe(past === "read" ? 1 : 0);
+  });
+});
+
+describe("hardware verifier", () => {
+  test("without a hardwareVerifier of its own the fetchFn also carries the cloud verify call", async () => {
+    const server = await serve();
+    const seen: string[] = [];
+    const fetchFn: typeof fetch = async (input, init) => {
+      seen.push(String(input));
+      if (String(input) === DEFAULT_PHALA_VERIFY_ENDPOINT) return new Response("", { status: 503 });
+      return fetch(input, init);
+    };
+    const client = createPublicClient({
+      chain: arbitrum,
+      transport: confidential(server.url, { fetchFn, hardwareVerifier: undefined }),
+    });
+
+    await rejection(client.request({ method: "eth_blockNumber" }));
+
+    expect(seen).toContain(DEFAULT_PHALA_VERIFY_ENDPOINT);
+    expect(count(server, isPost)).toBe(0);
   });
 });

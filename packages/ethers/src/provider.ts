@@ -7,6 +7,7 @@
 // unverified data is ever returned.
 
 import {
+  createCloudVerifier,
   deriveVrpcUrls,
   InvalidChainId,
   parseChainId,
@@ -172,7 +173,11 @@ export class VrpcProvider extends JsonRpcProvider {
           replayWindowMs,
           pubkeyCacheTtlMs,
           logger,
-          hardwareVerifier,
+          hardwareVerifier:
+            hardwareVerifier ??
+            (attestationFetch === undefined
+              ? undefined
+              : createCloudVerifier({ fetch: attestationFetch })),
           transport: fetchRequestTransport(() => this._getConnection()),
         }),
       );

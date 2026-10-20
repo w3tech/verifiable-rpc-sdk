@@ -9,6 +9,7 @@
 // `buildRequest` maps it by code.
 
 import {
+  createCloudVerifier,
   deriveVrpcUrls,
   fetchTransport,
   InvalidChainId,
@@ -269,7 +270,11 @@ function confidentialHttp(
         replayWindowMs: opts.replayWindowMs,
         pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
         logger: opts.logger,
-        hardwareVerifier: opts.hardwareVerifier,
+        hardwareVerifier:
+          opts.hardwareVerifier ??
+          (opts.fetchFn === undefined
+            ? undefined
+            : createCloudVerifier({ fetch: opts.fetchFn as typeof fetch })),
       }),
     });
     const confidential = holder;

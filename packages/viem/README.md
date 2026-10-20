@@ -331,7 +331,7 @@ error is thrown as a typed error. `fallback` retries the whole request
 `retryCount` you pass to `client.request` is honoured and resends the call.
 A `fetchFn` of your own must pass `init.redirect` (`"manual"`) through and must
 not retry; otherwise it follows a redirect or resends the encrypted request and
-the API key itself.
+the API key itself. It also carries the default hardware verifier's call.
 
 **Response size.** The transport stops reading an answer past 192 MiB and the
 call fails with `TransportFailed`, with your `fetchFn` too. A response without a

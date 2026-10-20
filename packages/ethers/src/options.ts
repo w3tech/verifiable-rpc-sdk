@@ -31,8 +31,9 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
   /** Verified-pubkey cache TTL (ms) for the attestation seam; default 1h (vrpc-core). */
   pubkeyCacheTtlMs?: number;
   /**
-   * `fetch` override for the attestation leg — test injectable. Internal. Unused in
-   * Ankr Confidential RPC mode, where both requests go through the `FetchRequest`.
+   * `fetch` override for the attestation leg — test injectable. Internal. In Ankr
+   * Confidential RPC mode both requests go through the `FetchRequest`, and this fetch
+   * carries only the default hardware verifier's call.
    */
   fetch?: typeof fetch;
   /**

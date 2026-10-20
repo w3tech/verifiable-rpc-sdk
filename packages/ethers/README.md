@@ -230,7 +230,8 @@ call encrypted to an attested node.
 The chain id is required and must be decimal. `await provider.confidentialReady()`
 attests up front; `provider.getConfidentialInfo()` returns the pinned node. Auth
 headers, credentials and the timeout come from the `FetchRequest` you pass as the
-URL and apply to both requests; the `fetch` option is not used in this mode.
+URL and apply to both requests; the `fetch` option carries only the default
+hardware verifier's call in this mode.
 
 **CCIP-Read is off.** CCIP-Read (EIP-3668) would send `{ sender, data }` in
 plaintext to a gateway URL the contract names, so the provider sets
