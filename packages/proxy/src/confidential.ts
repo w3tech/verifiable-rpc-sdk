@@ -55,8 +55,6 @@ export function createConfidentialTransport(
         headers: { ...outer.headers, "accept-encoding": "identity" },
         body: outer.body ?? null,
         dispatcher,
-        headersTimeout: config.upstreamTimeoutMs,
-        bodyTimeout: config.upstreamTimeoutMs,
         ...(outer.signal === undefined ? {} : { signal: outer.signal }),
       });
     } catch (err) {
@@ -180,7 +178,9 @@ export function createConfidentialHandler(ctx: ConfidentialHandlerContext): http
   async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const started = performance.now();
     const disconnected = new AbortController();
-    res.once("close", () => disconnected.abort());
+    res.once("close", () => {
+      if (!res.writableFinished) disconnected.abort();
+    });
     const bytes = await bufferStream(
       req,
       config.maxBodyBytes,

@@ -37,9 +37,7 @@ export interface RequestContext {
   logger: ProxyLogger;
   /**
    * The undici dispatcher for upstream requests. The server factory supplies
-   * an Agent whose connect timeout is bound to `config.upstreamTimeoutMs` —
-   * undici's per-request options cover only headers/body timeouts, so without
-   * this the connect phase would run on the global dispatcher's default.
+   * an Agent that bounds connect, headers and body by `config.upstreamTimeoutMs`.
    */
   dispatcher: Dispatcher;
 }
@@ -226,8 +224,6 @@ export function createRequestHandler(ctx: RequestContext): http.RequestListener 
         headers: forwardHeaders,
         body: requestBytes.length > 0 ? requestBytes : null,
         dispatcher: ctx.dispatcher,
-        headersTimeout: config.upstreamTimeoutMs,
-        bodyTimeout: config.upstreamTimeoutMs,
       });
     } catch (err) {
       throw mapUndiciError(err);
