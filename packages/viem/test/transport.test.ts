@@ -38,8 +38,6 @@ import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtur
 
 const URL = "http://test.invalid";
 const ADDR = "0x1111111111111111111111111111111111111111" as const;
-// Wide window neutralizes the static FIXTURE_TIMESTAMP_MS staleness; production
-// keeps the vrpc-core default (60s).
 const WIDE_WINDOW = Number.MAX_SAFE_INTEGER;
 // Signed responses carry `vRPC-NodeId`, so the verifier's attestation GET routes by node id.
 const NODE_ID = "node-abc";

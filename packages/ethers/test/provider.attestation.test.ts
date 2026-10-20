@@ -31,7 +31,6 @@ import { signingRequest } from "./helpers";
 
 const CHAIN_ID_NUMBER = Number(CHAIN_ID); // 42161 (arbitrum)
 const ADDR = "0x1111111111111111111111111111111111111111";
-// Wide window neutralizes the static FIXTURE_TIMESTAMP_MS staleness.
 const WIDE = Number.MAX_SAFE_INTEGER;
 const NODE_ID = "node-abc";
 

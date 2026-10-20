@@ -124,8 +124,7 @@ function autoDeriveRequest(
 
 const CHAIN_ID_NUMBER = Number(CHAIN_ID); // 42161 (arbitrum)
 const ADDR = "0x1111111111111111111111111111111111111111";
-// Wide window neutralizes the static FIXTURE_TIMESTAMP_MS staleness; production
-// keeps the vrpc-core default (60s). `fetch: ATT.fetch` serves the always-on
+// `fetch: ATT.fetch` serves the always-on
 // attestation leg offline (every provider below threads it).
 // Hardware verification is mandatory + defaults to a network cloud POST; inject
 // the no-network mock so every provider built with WIDE_WINDOW verifies offline.

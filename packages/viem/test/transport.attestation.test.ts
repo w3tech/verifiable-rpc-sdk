@@ -32,7 +32,6 @@ import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtur
 const URL = "http://test.invalid/arbitrum_vrpc";
 const ADDR = "0x1111111111111111111111111111111111111111" as const;
 const NODE_ID = "node-abc";
-// Wide window neutralizes the static FIXTURE_TIMESTAMP_MS staleness.
 const WIDE_WINDOW = Number.MAX_SAFE_INTEGER;
 // chainId is pinned via the viem client's `chain` (`chain.id`), not an option;
 // TEST_CHAIN pins CHAIN_ID so these tests skip the eth_chainId bootstrap.
