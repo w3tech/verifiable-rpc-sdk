@@ -157,6 +157,7 @@ variables set.
 | Build/publish the proxy container image       | `Dockerfile`, `.github/workflows/docker-test-build.yml` (push) + `publish.yml` `docker` job (tag) |
 | Release runbook (npm + docker, user gates)    | `docs/PUBLISHING.md`             |
 | Change strict-mode TS flags                   | `tsconfig.base.json`             |
+| Add or reuse a test helper shared by packages | `packages/test-support/src` (`@w3tech.io/vrpc-test-support`: private workspace package, imported by package name as a devDependency) |
 | Explain vRPC / the trust model to a user      | `.claude/skills/explain-vrpc/SKILL.md` |
 
 ## Conventions
