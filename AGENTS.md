@@ -29,15 +29,20 @@ compose bump.
 
 ## Pre-push gate (mandatory)
 
-**Before every `git push`** run all four in order. CI runs the same set — fix
+**Before every `git push`** run all of these in order. CI runs the same set — fix
 locally rather than letting CI fail.
 
 ```sh
 pnpm run format:check   # exit 0 — no diff
 pnpm run lint           # exit 0
 pnpm -r typecheck       # exit 0 (tsc --noEmit)
+pnpm -r build
+pnpm run check:knip && pnpm run check:dup && pnpm run check:deps && pnpm run check:pack && pnpm run check:api
 pnpm -r test            # all green
 ```
+
+If the public API changed, run `pnpm run api:update` and commit
+`packages/*/etc/*.api.md`; `check:api` fails on a stale report.
 
 If `pnpm run format:check` fails: run `pnpm run format`, commit the diff as a
 SEPARATE commit, do not amend the offending commit.
