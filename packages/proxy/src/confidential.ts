@@ -62,13 +62,15 @@ export function createConfidentialHandler(
   ctx: ConfidentialHandlerContext,
 ): (req: http.IncomingMessage, res: http.ServerResponse, signal: AbortSignal) => Promise<void> {
   const { config, client, logger: log } = ctx;
+  // The relay event's fields cost time per request; gather them only when they are logged.
+  const debug = config.logLevel === "debug";
 
   async function handle(
     req: http.IncomingMessage,
     res: http.ServerResponse,
     signal: AbortSignal,
   ): Promise<void> {
-    const started = performance.now();
+    const started = debug ? performance.now() : 0;
     const bytes = await bufferStream(
       req,
       config.maxBodyBytes,
@@ -93,13 +95,14 @@ export function createConfidentialHandler(
     const out = await client.request(inner, { signal });
     res.writeHead(out.status, relayHeaders(inner.method, out));
     res.end(out.body);
-    log.debug("proxy.relay", {
-      status: out.status,
-      requestBytes: bytes.length,
-      responseBytes: out.body.byteLength,
-      durationMs: Math.round(performance.now() - started),
-      nodeId: client.getConfidentialInfo()?.nodeId,
-    });
+    if (debug) {
+      log.debug("proxy.relay", {
+        status: out.status,
+        requestBytes: bytes.length,
+        responseBytes: out.body.byteLength,
+        durationMs: Math.round(performance.now() - started),
+      });
+    }
   }
 
   return handle;

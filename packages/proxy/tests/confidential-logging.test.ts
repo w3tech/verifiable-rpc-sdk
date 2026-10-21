@@ -37,7 +37,7 @@ const TIMEOUT_MS = 300;
 const EVENT_FIELDS: Record<string, { required: string[]; optional: string[] }> = {
   "proxy.attested": { required: ["nodeId", "durationMs"], optional: [] },
   "proxy.relay": {
-    required: ["status", "requestBytes", "responseBytes", "durationMs", "nodeId"],
+    required: ["status", "requestBytes", "responseBytes", "durationMs"],
     optional: [],
   },
   "proxy.error": { required: ["kind", "status", "message"], optional: ["executed", "code"] },
