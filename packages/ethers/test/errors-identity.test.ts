@@ -27,11 +27,6 @@ afterEach(async () => {
 
 describeAdapterErrors("ethers", { adapter, core, errors, confidential: conf });
 
-test("mayHaveExecuted is the function every core entry exports", () => {
-  for (const entry of [core, errors, conf])
-    expect(adapter.mayHaveExecuted).toBe(entry.mayHaveExecuted);
-});
-
 describe("an error from a live call", () => {
   test("a rejected sealed call is an instance of the classes from every entry", async () => {
     const node = createTestNode({

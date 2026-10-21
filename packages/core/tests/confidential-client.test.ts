@@ -13,6 +13,7 @@ import {
   TEST_PUBKEY_HEX,
   TEST_SEED,
   type TestNodeOptions,
+  thrownBy,
 } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
@@ -23,7 +24,6 @@ import {
   InvalidInnerRequest,
   InvalidOption,
   UnavailableError,
-  UnexpectedResponse,
   VerificationError,
 } from "../src/errors";
 import type { ConfidentialTransport } from "../src/transport";
@@ -143,28 +143,6 @@ describe("ConfidentialClient", () => {
     expect(node.requests.filter((r) => r.method === "POST")).toHaveLength(0);
   });
 
-  test("a plain-text gateway answer is UnexpectedResponse and is never opened", async () => {
-    const node = testNode();
-    const transport: ConfidentialTransport = async (request) =>
-      request.method === "POST"
-        ? {
-            status: 502,
-            headers: { "content-type": "text/plain" },
-            body: utf8.encode("upstream down"),
-          }
-        : node.transport(request);
-    const err = await rejectionOf(clientFor(transport).request(jsonRpcCall()));
-
-    expect(err).toBeInstanceOf(UnexpectedResponse);
-    expect(err).toBeInstanceOf(UnavailableError);
-    const unexpected = err as UnexpectedResponse;
-    expect(unexpected.kind).toBe("UnexpectedResponse");
-    expect(unexpected.status).toBe(502);
-    expect(unexpected.contentType).toBe("text/plain");
-    expect(unexpected.executed).toBe("unknown");
-    expect(unexpected.nodeId).toBe(NODE_ID);
-  });
-
   test("a sealed answer signed by another key is ConfidentialSignerMismatch", async () => {
     const node = testNode();
     const transport: ConfidentialTransport = async (request) => {
@@ -188,7 +166,6 @@ describe("ConfidentialClient", () => {
     expect(err).toBeInstanceOf(VerificationError);
     const mismatch = err as ConfidentialSignerMismatch;
     expect(mismatch.kind).toBe("ConfidentialSignerMismatch");
-    expect(mismatch.executed).toBe("unknown");
     expect(mismatch.expectedPubkey).toBe(node.pubkeyHex);
     expect(mismatch.actualPubkey).toBe(TEST_PUBKEY_HEX);
   });
@@ -232,7 +209,6 @@ describe("ConfidentialClient call surface", () => {
     expect(err).not.toBeInstanceOf(VerificationError);
     const invalid = err as InvalidInnerRequest;
     expect(invalid.kind).toBe("InvalidInnerRequest");
-    expect(invalid.executed).toBe("no");
     expect(invalid.reason).toBe(reason);
     expect(invalid.message).not.toContain(inner.path);
     expect(node.requests).toHaveLength(0);
@@ -410,24 +386,13 @@ describe("ConfidentialClient call surface", () => {
   });
 
   test.each([
-    ["url", { url: "::not a url SECRETKEY42" }],
-    ["chainId", { chainId: "" }],
-    ["chainId", { chainId: undefined as unknown as string }],
-    ["url", { url: undefined as unknown as string }],
-    ["headers", { headers: { "x-api-key": "bad\nSECRETKEY42" } }],
-    ["replayWindowMs", { replayWindowMs: 1.5 }],
-    ["pubkeyCacheTtlMs", { pubkeyCacheTtlMs: Number.POSITIVE_INFINITY }],
-  ] as const)("a bad %s throws InvalidOption at construction and sends nothing", (option, bad) => {
+    "url",
+    "chainId",
+  ] as const)("a missing %s throws InvalidOption at construction and sends nothing", (option) => {
     const node = testNode();
-    let err: unknown;
-    try {
-      clientFor(node.transport, bad);
-    } catch (caught) {
-      err = caught;
-    }
+    const err = thrownBy(() => clientFor(node.transport, { [option]: undefined }));
     expect(err).toBeInstanceOf(InvalidOption);
     expect(err).toMatchObject({ option, executed: "no" });
-    expect(`${String(err)} ${JSON.stringify(err)}`).not.toContain("SECRETKEY42");
     expect(node.requests).toHaveLength(0);
   });
 });

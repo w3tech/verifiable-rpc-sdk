@@ -75,6 +75,12 @@ export function describeAdapterErrors(
       expect(adapter[error]).toBe((entries.confidential as Namespace)[error]);
     });
 
+    test("mayHaveExecuted is the function every core entry exports", () => {
+      for (const entry of [entries.core, entries.errors, entries.confidential]) {
+        expect(adapter.mayHaveExecuted).toBe((entry as Namespace).mayHaveExecuted);
+      }
+    });
+
     test("the adapter exports exactly this error set and declares none of its own", () => {
       expect(errorExports(adapter)).toEqual([...ERROR_CLASSES]);
     });

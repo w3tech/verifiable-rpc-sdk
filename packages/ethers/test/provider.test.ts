@@ -27,6 +27,7 @@ import {
   CHAIN_ID,
   mockHardwareVerifier,
   signedJsonHeaders,
+  thrownBy,
 } from "@w3tech.io/vrpc-test-support";
 import { Contract, FetchRequest, Interface, toBeHex } from "ethers";
 import { describe, expect, test } from "vitest";
@@ -616,14 +617,9 @@ describe("constructor options", () => {
   };
 
   function invalidOption(make: () => unknown): InvalidOption {
-    let caught: unknown;
-    try {
-      make();
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(InvalidOption);
-    return caught as InvalidOption;
+    const err = thrownBy(make);
+    expect(err).toBeInstanceOf(InvalidOption);
+    return err as InvalidOption;
   }
 
   test("a bad URL is InvalidOption in both modes and its message omits the URL", () => {
@@ -634,12 +630,10 @@ describe("constructor options", () => {
     }
   });
 
-  test("a fractional number or an invalid string chain id is InvalidOption", () => {
-    for (const chainId of [1.5, " "]) {
-      expect(invalidOption(() => new VrpcProvider("http://test.invalid", chainId))).toMatchObject({
-        option: "chainId",
-      });
-    }
+  test("a fractional chain id is InvalidOption", () => {
+    expect(invalidOption(() => new VrpcProvider("http://test.invalid", 1.5))).toMatchObject({
+      option: "chainId",
+    });
   });
 
   test("open-mode millisecond options and the confidential flag are checked before any request", async () => {

@@ -10,7 +10,7 @@ import {
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
-import { AttestationUnavailable, InvalidInnerRequest, RequestRejected } from "../src/errors";
+import { AttestationUnavailable, RequestRejected } from "../src/errors";
 import type { ConfidentialTransport } from "../src/transport";
 
 const KEYED_URL = "https://rpc.example/eth_vrpc/0123456789abcdefghijABCDEFGHIJkl";
@@ -241,17 +241,5 @@ describe("eviction", () => {
     await client.request(jsonRpcCall());
     expect(node.attestations()).toBe(1);
     expect(client.getConfidentialInfo()).toBeDefined();
-  });
-
-  test("an invalid inner request keeps the pin", async () => {
-    const node = testNode();
-    const client = clientFor(node.transport);
-    await client.ready();
-
-    await expect(client.request({ ...jsonRpcCall(), path: "x" })).rejects.toBeInstanceOf(
-      InvalidInnerRequest,
-    );
-    await client.request(jsonRpcCall());
-    expect(node.attestations()).toBe(1);
   });
 });

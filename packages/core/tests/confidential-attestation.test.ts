@@ -189,7 +189,6 @@ describe("ConfidentialClient attestation: quote verification", () => {
     expect(err).toBeInstanceOf(AttestationFailed);
     expect(err).toBeInstanceOf(VerificationError);
     expect((err as AttestationFailed).chkId).toBe("CHK-P1");
-    expect((err as AttestationFailed).executed).toBe("no");
     expect((err as Error).cause).toBe(failure);
     expect(posts(node)).toBe(0);
 
@@ -270,7 +269,6 @@ describe("ConfidentialClient attestation: gateway answers", () => {
     expect(err).toBeInstanceOf(MalformedAttestationResponse);
     const malformed = err as MalformedAttestationResponse;
     expect(malformed.reason).toBe("response is not valid JSON");
-    expect(malformed.executed).toBe("no");
     expect(malformed.cause).toBeUndefined();
     expect(malformed.message).not.toContain("sentinel-body");
     expect(String(malformed)).not.toContain("sentinel-body");

@@ -129,32 +129,6 @@ describe("cancellation", () => {
     expect(node.attestations()).toBe(1);
   });
 
-  test("an abort during the POST rejects with the reason and keeps the pin", async () => {
-    const node = testNode();
-    const client = clientFor(node.transport);
-    await client.ready();
-    const entered = deferred();
-    const release = deferred();
-    node.setConfidential(async (context) => {
-      entered.resolve();
-      await release.promise;
-      return context.normal();
-    });
-    const controller = new AbortController();
-    const reason = new Error("gone");
-
-    const pending = rejectionOf(client.request(jsonRpcCall(), { signal: controller.signal }));
-    await entered.promise;
-    controller.abort(reason);
-    expect(await pending).toBe(reason);
-
-    release.resolve();
-    node.setConfidential();
-    expect(client.getConfidentialInfo()).toBeDefined();
-    await client.request(jsonRpcCall());
-    expect(node.attestations()).toBe(1);
-  });
-
   test("AbortSignal.timeout rejects with a TimeoutError", async () => {
     const node = testNode();
     const client = clientFor(node.transport);

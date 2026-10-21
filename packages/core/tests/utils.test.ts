@@ -1,3 +1,4 @@
+import { thrownBy } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 
 import { InvalidChainId, MalformedHeader, VerificationError } from "../src/errors";
@@ -30,12 +31,7 @@ describe("parseChainId", () => {
 
   test("throwsInvalidChainIdThatMayHaveExecutedWhenTheDecimalIdIsTooLong", () => {
     const body = JSON.stringify({ jsonrpc: "2.0", id: 1, result: `0x${"f".repeat(60)}` });
-    let err: unknown;
-    try {
-      parseChainId(encode(body));
-    } catch (caught) {
-      err = caught;
-    }
+    const err = thrownBy(() => parseChainId(encode(body)));
     expect(err).toBeInstanceOf(InvalidChainId);
     expect(err).toBeInstanceOf(VerificationError);
     expect(err).toMatchObject({ executed: "unknown" });

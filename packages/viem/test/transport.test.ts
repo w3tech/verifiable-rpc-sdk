@@ -22,6 +22,7 @@ import {
   CHAIN_ID,
   mockHardwareVerifier,
   signedJsonHeaders,
+  thrownBy,
 } from "@w3tech.io/vrpc-test-support";
 import {
   BadSignature,
@@ -674,14 +675,9 @@ describe("vrpcHttp transport wiring", () => {
 
 describe("vrpcHttp options", () => {
   function invalidOption(make: () => unknown): InvalidOption {
-    let caught: unknown;
-    try {
-      make();
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(InvalidOption);
-    return caught as InvalidOption;
+    const err = thrownBy(make);
+    expect(err).toBeInstanceOf(InvalidOption);
+    return err as InvalidOption;
   }
 
   test("a bad URL is InvalidOption in both modes and its message omits the URL", () => {

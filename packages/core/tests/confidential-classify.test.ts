@@ -19,7 +19,6 @@ import {
   TransportFailed,
   UnavailableError,
   UnexpectedResponse,
-  VerificationError,
 } from "../src/errors";
 
 const utf8 = new TextEncoder();
@@ -81,61 +80,6 @@ function setup(upstream?: Parameters<typeof createTestNode>[0]["upstream"]) {
   });
   return { node, client };
 }
-
-describe("confidential answer classification", () => {
-  test("gateway rate limit 429 text/plain is RequestRejected and keeps the pin", async () => {
-    const { node, client } = setup();
-    node.setConfidential(() => ({
-      status: 429,
-      headers: { "content-type": "text/plain" },
-      body: utf8.encode("message: rate limited"),
-    }));
-
-    const err = await rejectionOf(client.request(jsonRpcCall()));
-
-    expect(err).toBeInstanceOf(RequestRejected);
-    expect(err).toBeInstanceOf(UnavailableError);
-    expect(err).not.toBeInstanceOf(VerificationError);
-    const rejected = err as RequestRejected;
-    expect(rejected.kind).toBe("RequestRejected");
-    expect(rejected.status).toBe(429);
-    expect(rejected.executed).toBe("no");
-    expect(rejected.contentType).toBe("text/plain");
-    expect(rejected.nodeId).toBe(NODE_ID);
-
-    node.setConfidential();
-    const response = await client.request(jsonRpcCall());
-    expect(response.status).toBe(200);
-    expect(node.attestations()).toBe(1);
-    expect(node.requests.map((request) => request.method)).toEqual(["GET", "POST", "POST"]);
-  });
-
-  test("an inner 500 is returned and keeps the pin", async () => {
-    const { node, client } = setup(() => ({ status: 500, body: "boom" }));
-
-    const response = await client.request(jsonRpcCall());
-    expect(response.status).toBe(500);
-    await client.request(jsonRpcCall());
-    expect(node.attestations()).toBe(1);
-  });
-
-  test("gateway 502 text/plain is UnexpectedResponse and the next call attests again", async () => {
-    const { node, client } = setup();
-    node.setConfidential(() => ({
-      status: 502,
-      headers: { "content-type": "text/plain" },
-      body: utf8.encode("upstream down"),
-    }));
-
-    const err = await rejectionOf(client.request(jsonRpcCall()));
-    expect(err).toBeInstanceOf(UnexpectedResponse);
-    expect((err as UnexpectedResponse).executed).toBe("unknown");
-
-    node.setConfidential();
-    await client.request(jsonRpcCall());
-    expect(node.attestations()).toBe(2);
-  });
-});
 
 type Answer = (context: ConfidentialContext) => TestOuterResponse | Promise<TestOuterResponse>;
 

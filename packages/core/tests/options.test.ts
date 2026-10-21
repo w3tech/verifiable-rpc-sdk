@@ -1,3 +1,4 @@
+import { thrownBy } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 
 import { type InvalidChainId, InvalidOption, type OptionName, VrpcError } from "../src/errors";
@@ -6,63 +7,43 @@ import { validateChainId } from "../src/preimage";
 
 const MS = "must be a positive whole number of milliseconds";
 
-function thrown(fn: () => unknown): unknown {
-  try {
-    fn();
-  } catch (err) {
-    return err;
-  }
-  return undefined;
-}
-
 const chainIdReason = (chainId: string) =>
-  (thrown(() => validateChainId(chainId)) as InvalidChainId).reason;
+  (thrownBy(() => validateChainId(chainId)) as InvalidChainId).reason;
 
-describe("checkOptions", () => {
-  test.each<[string, OptionsInput, OptionName, string]>([
-    ["url", { url: "::not a url SECRETKEY42" }, "url", "is not a valid URL"],
-    [
-      "header",
-      { headers: { "x-api-key": "bad\nSECRETKEY42" } },
-      "headers",
-      "is not a valid header set",
-    ],
-    [
-      "header name",
-      { headers: { "bad key": "SECRETKEY42" } },
-      "headers",
-      "is not a valid header set",
-    ],
-    ["empty chain id", { chainId: "" }, "chainId", chainIdReason("")],
-    ["blank chain id", { chainId: " " }, "chainId", chainIdReason(" ")],
-    ["long chain id", { chainId: "7".repeat(65) }, "chainId", chainIdReason("7".repeat(65))],
-    ["non-ASCII chain id", { chainId: "arbitruméone" }, "chainId", chainIdReason("arbitruméone")],
-    ["fractional chain id", { chainId: 1.5 }, "chainId", "must be an integer"],
-    ["unsafe chain id", { chainId: 2 ** 53 }, "chainId", "must be an integer"],
-    ...[true, null, {}].map((chainId): [string, OptionsInput, OptionName, string] => [
+type Bad = [string, OptionsInput, OptionName, string];
+
+const badOptions: Bad[] = [
+  ["url", { url: "::not a url SECRETKEY42" }, "url", "is not a valid URL"],
+  ...[{ "x-api-key": "bad\nSECRETKEY42" }, { "bad key": "SECRETKEY42" }].map(
+    (headers): Bad => ["headers", { headers }, "headers", "is not a valid header set"],
+  ),
+  ...["", " ", "7".repeat(65), "arbitruméone"].map(
+    (chainId): Bad => [`chain id ${chainId}`, { chainId }, "chainId", chainIdReason(chainId)],
+  ),
+  ...[1.5, 2 ** 53].map(
+    (chainId): Bad => [`chain id ${chainId}`, { chainId }, "chainId", "must be an integer"],
+  ),
+  ...[true, null, {}].map(
+    (chainId): Bad => [
       `chain id ${JSON.stringify(chainId)}`,
-      { chainId: chainId as unknown as string },
+      { chainId: chainId as never },
       "chainId",
       "must be a string, number or bigint",
-    ]),
-    ["replayWindowMs 0", { replayWindowMs: 0 }, "replayWindowMs", MS],
-    ["replayWindowMs -1", { replayWindowMs: -1 }, "replayWindowMs", MS],
-    ["replayWindowMs 1.5", { replayWindowMs: 1.5 }, "replayWindowMs", MS],
-    ["replayWindowMs NaN", { replayWindowMs: Number.NaN }, "replayWindowMs", MS],
-    ["replayWindowMs Infinity", { replayWindowMs: Infinity }, "replayWindowMs", MS],
-    ["TTL 0", { pubkeyCacheTtlMs: 0 }, "pubkeyCacheTtlMs", MS],
-    ["TTL -1", { pubkeyCacheTtlMs: -1 }, "pubkeyCacheTtlMs", MS],
-    ["TTL 1.5", { pubkeyCacheTtlMs: 1.5 }, "pubkeyCacheTtlMs", MS],
-    ["TTL NaN", { pubkeyCacheTtlMs: Number.NaN }, "pubkeyCacheTtlMs", MS],
-    ["TTL Infinity", { pubkeyCacheTtlMs: Infinity }, "pubkeyCacheTtlMs", MS],
-    [
-      "confidential",
-      { confidential: "yes" as unknown as boolean },
-      "confidential",
-      "must be a boolean",
     ],
-  ])("a bad %s is InvalidOption without the value", (_, input, option, reason) => {
-    const err = thrown(() => checkOptions(input));
+  ),
+  ...(["replayWindowMs", "pubkeyCacheTtlMs"] as const).flatMap((option) =>
+    [0, -1, 1.5, Number.NaN, Infinity].map(
+      (value): Bad => [`${option} ${value}`, { [option]: value }, option, MS],
+    ),
+  ),
+  ["confidential", { confidential: "yes" as never }, "confidential", "must be a boolean"],
+];
+
+describe("checkOptions", () => {
+  test.each(
+    badOptions,
+  )("a bad %s is InvalidOption without the value", (_, input, option, reason) => {
+    const err = thrownBy(() => checkOptions(input));
     expect(err).toBeInstanceOf(InvalidOption);
     expect(err).toBeInstanceOf(VrpcError);
     expect(err).toMatchObject({ option, reason, executed: "no" });
@@ -79,7 +60,7 @@ describe("checkOptions", () => {
     "chainId",
   ] as const)("a missing %s is InvalidOption when required", (option) => {
     const input = { url: "https://rpc.example/eth_vrpc", chainId: "1", [option]: undefined };
-    const err = thrown(() => checkOptions(input, ["url", "chainId"]));
+    const err = thrownBy(() => checkOptions(input, ["url", "chainId"]));
     expect(err).toMatchObject({ option, reason: "is required", executed: "no" });
     expect(() => checkOptions(input)).not.toThrow();
   });
