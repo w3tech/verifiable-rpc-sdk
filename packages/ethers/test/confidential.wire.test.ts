@@ -306,6 +306,22 @@ describe("response size cap", () => {
     expect(seen.cancelled).toBe(true);
     expect(seen.pulled).toBeLessThanOrEqual(CAP + 2 * CHUNK.byteLength);
   });
+
+  test("the attestation GET stops reading at its own 1 MiB cap", async () => {
+    const chunk = new Uint8Array(64 * 1024);
+    let pulled = 0;
+    const pull = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+      pulled += chunk.byteLength;
+      controller.enqueue(chunk);
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new ReadableStream({ pull })));
+    const { provider } = build("string URL", "http://127.0.0.1:9");
+
+    const err = await rejectionOf(provider.getBlockNumber());
+
+    expect(err).toMatchObject({ kind: "AttestationUnavailable", reason: "too-large" });
+    expect(pulled).toBeLessThanOrEqual(1_048_576 + 2 * chunk.byteLength);
+  });
 });
 
 describe("hardware verifier", () => {

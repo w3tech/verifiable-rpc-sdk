@@ -19,51 +19,53 @@ import {
 const stockGetUrl = new FetchRequest("http://localhost").getUrlFunc;
 
 // Replaces the ethers fetchers, which buffer the whole body (and gunzip it in Node) before returning.
-const cappedGetUrl: FetchGetUrlFunc = async (req, signal) => {
-  assert(signal == null || !signal.cancelled, "request cancelled before sending", "CANCELLED");
-  const protocol = req.url.split(":")[0]?.toLowerCase();
-  assert(
-    protocol === "http" || protocol === "https",
-    `unsupported protocol ${protocol}`,
-    "UNSUPPORTED_OPERATION",
-    { operation: "request" },
-  );
-  assert(
-    protocol === "https" || !req.credentials || req.allowInsecureAuthentication,
-    "insecure authorized connections unsupported",
-    "UNSUPPORTED_OPERATION",
-    { operation: "request" },
-  );
-  let reason: Error | undefined;
-  const controller = new AbortController();
-  const timer = setTimeout(() => {
-    reason = makeError("request timeout", "TIMEOUT");
-    controller.abort();
-  }, req.timeout);
-  signal?.addListener(() => {
-    reason = makeError("request cancelled", "CANCELLED");
-    controller.abort();
-  });
-  try {
-    const response = await fetch(req.url, {
-      method: req.method,
-      headers: new Headers(Array.from(req)),
-      redirect: "manual",
-      signal: controller.signal,
-      ...(req.body === null ? {} : { body: req.body }),
+const cappedGetUrl =
+  (maxBytes: number | undefined): FetchGetUrlFunc =>
+  async (req, signal) => {
+    assert(signal == null || !signal.cancelled, "request cancelled before sending", "CANCELLED");
+    const protocol = req.url.split(":")[0]?.toLowerCase();
+    assert(
+      protocol === "http" || protocol === "https",
+      `unsupported protocol ${protocol}`,
+      "UNSUPPORTED_OPERATION",
+      { operation: "request" },
+    );
+    assert(
+      protocol === "https" || !req.credentials || req.allowInsecureAuthentication,
+      "insecure authorized connections unsupported",
+      "UNSUPPORTED_OPERATION",
+      { operation: "request" },
+    );
+    let reason: Error | undefined;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      reason = makeError("request timeout", "TIMEOUT");
+      controller.abort();
+    }, req.timeout);
+    signal?.addListener(() => {
+      reason = makeError("request cancelled", "CANCELLED");
+      controller.abort();
     });
-    const headers: Record<string, string> = {};
-    response.headers.forEach((value, name) => {
-      headers[name.toLowerCase()] = value;
-    });
-    const body = await readCappedBody(response);
-    return { statusCode: response.status, statusMessage: response.statusText, headers, body };
-  } catch (err) {
-    throw reason ?? err;
-  } finally {
-    clearTimeout(timer);
-  }
-};
+    try {
+      const response = await fetch(req.url, {
+        method: req.method,
+        headers: new Headers(Array.from(req)),
+        redirect: "manual",
+        signal: controller.signal,
+        ...(req.body === null ? {} : { body: req.body }),
+      });
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, name) => {
+        headers[name.toLowerCase()] = value;
+      });
+      const body = await readCappedBody(response, maxBytes);
+      return { statusCode: response.status, statusMessage: response.statusText, headers, body };
+    } catch (err) {
+      throw reason ?? err;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 
 // `send()` clones the request per attempt and the clone turns gzip back on, so it is set here.
 function noFollowIdentity(base: FetchGetUrlFunc): FetchGetUrlFunc {
@@ -90,7 +92,7 @@ export function fetchRequestTransport(connection: () => FetchRequest): Confident
     req.retryFunc = async () => false;
     req.processFunc = null;
     const own = req.getUrlFunc;
-    const base = own === stockGetUrl ? cappedGetUrl : own;
+    const base = own === stockGetUrl ? cappedGetUrl(outer.maxBytes) : own;
     req.getUrlFunc = noFollowIdentity(base);
 
     const signal = outer.signal;
