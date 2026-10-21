@@ -2,7 +2,7 @@
 // a loopback HTTP server: wire shape, results and errors equal to open mode, configuration errors,
 // eager attestation and concurrency.
 
-import { createServer } from "node:http";
+import http, { createServer } from "node:http";
 import { UnexpectedResponse } from "@w3tech.io/vrpc-core";
 import { type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
 import {
@@ -335,10 +335,16 @@ describe("errors", () => {
 describe("configuration errors", () => {
   test("throw from the constructor and nothing is sent or logged", async () => {
     const { server } = await serveRpcNode();
-    const spies = (["log", "info", "warn", "error", "debug"] as const).map((level) =>
-      vi.spyOn(console, level).mockImplementation(() => {}),
-    );
+    const spies = [
+      ...(["log", "info", "warn", "error", "debug"] as const).map((level) =>
+        vi.spyOn(console, level).mockImplementation(() => {}),
+      ),
+      vi.spyOn(http, "request"),
+      vi.spyOn(globalThis, "fetch"),
+    ];
+    vi.useFakeTimers();
     onTestFinished(() => {
+      vi.useRealTimers();
       for (const spy of spies) spy.mockRestore();
     });
     const url = `${server.url}/eth_vrpc/${KEY}`;
@@ -354,7 +360,7 @@ describe("configuration errors", () => {
       expect.objectContaining({ name: "InvalidOption", option: "confidential" }),
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await vi.runAllTimersAsync();
     expect(server.requests).toHaveLength(0);
     for (const spy of spies) expect(spy).not.toHaveBeenCalled();
   });
