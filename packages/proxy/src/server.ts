@@ -29,9 +29,9 @@ type Handler = (
   signal: AbortSignal,
 ) => Promise<void>;
 
-// One abort signal and one error path per request, for both modes.
-function createServer(handler: Handler, log: ProxyLogger): http.Server {
-  return http.createServer((req, res) => {
+// One abort signal and one error path per request, for both modes. The Agent closes with the server.
+function createServer(handler: Handler, log: ProxyLogger, dispatcher: Agent): http.Server {
+  const server = http.createServer((req, res) => {
     const disconnected = new AbortController();
     res.once("close", () => {
       if (!res.writableFinished) disconnected.abort();
@@ -50,6 +50,8 @@ function createServer(handler: Handler, log: ProxyLogger): http.Server {
       }
     });
   });
+  server.on("close", () => void dispatcher.close());
+  return server;
 }
 
 // Core calls fetch with a string URL only; the cast bridges undici's and the DOM's fetch types.
@@ -71,36 +73,33 @@ export function createProxyServer(
   const coreLogger = overrides.logger ?? (config.logLevel === "debug" ? proxyLogger : undefined);
 
   // One Agent bounds connect, headers and body of upstream requests and of the
-  // attestation fetches by --timeout. Closed with the server.
+  // attestation fetches by --timeout.
   const dispatcher = new Agent({
     connect: { timeout: config.upstreamTimeoutMs },
     headersTimeout: config.upstreamTimeoutMs,
     bodyTimeout: config.upstreamTimeoutMs,
   });
 
-  if (config.confidential === true) {
-    return createConfidentialServer(config, overrides, coreLogger, proxyLogger, dispatcher);
-  }
-
-  const verifier = new TrustedVerifier({
-    chainId: config.chainId,
-    attestationUrl: config.attestationUrl,
-    headers: config.attestationHeaders,
-    logger: coreLogger,
-    fetch: overrides.fetch ?? agentFetch(dispatcher),
-    hardwareVerifier: overrides.hardwareVerifier,
-    replayWindowMs: config.replayWindowMs,
-    pubkeyCacheTtlMs: config.pubkeyCacheTtlMs,
-  });
-
-  const server = createServer(
-    createRequestHandler({ config, verifier, logger: proxyLogger, dispatcher }),
-    proxyLogger,
-  );
-  server.on("close", () => {
+  try {
+    if (config.confidential === true) {
+      return createConfidentialServer(config, overrides, coreLogger, proxyLogger, dispatcher);
+    }
+    const verifier = new TrustedVerifier({
+      chainId: config.chainId,
+      attestationUrl: config.attestationUrl,
+      headers: config.attestationHeaders,
+      logger: coreLogger,
+      fetch: overrides.fetch ?? agentFetch(dispatcher),
+      hardwareVerifier: overrides.hardwareVerifier,
+      replayWindowMs: config.replayWindowMs,
+      pubkeyCacheTtlMs: config.pubkeyCacheTtlMs,
+    });
+    const handler = createRequestHandler({ config, verifier, logger: proxyLogger, dispatcher });
+    return createServer(handler, proxyLogger, dispatcher);
+  } catch (err) {
     void dispatcher.close();
-  });
-  return server;
+    throw err;
+  }
 }
 
 function createConfidentialServer(
@@ -122,17 +121,11 @@ function createConfidentialServer(
     pubkeyCacheTtlMs: config.pubkeyCacheTtlMs,
   };
 
-  let client: ConfidentialClient;
-  try {
-    client = new ConfidentialClient(options);
-  } catch (err) {
-    void dispatcher.close();
-    throw err;
-  }
-
+  const client = new ConfidentialClient(options);
   const server = createServer(
     createConfidentialHandler({ config, client, logger: proxyLogger }),
     proxyLogger,
+    dispatcher,
   );
   // Attest after the port is open; a failure is logged and the next request attests again.
   server.once("listening", () => {
@@ -152,9 +145,6 @@ function createConfidentialServer(
       )
       // A failing log sink must not end the process.
       .catch(() => {});
-  });
-  server.on("close", () => {
-    void dispatcher.close();
   });
   return server;
 }

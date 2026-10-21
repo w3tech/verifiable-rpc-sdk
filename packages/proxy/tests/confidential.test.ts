@@ -4,7 +4,7 @@
 
 import { ConfidentialClient, InvalidOption } from "@w3tech.io/vrpc-core/confidential";
 import { TEST_SEED } from "@w3tech.io/vrpc-test-support";
-import { request } from "undici";
+import { Agent, request } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createProxyServer, type ProxyTestOverrides } from "../src/index";
@@ -209,11 +209,15 @@ describe("confidential mode startup", () => {
     expect(posts(node.wire)).toHaveLength(1);
   });
 
-  test("invalidClientOptionsAreAnInvalidOptionBeforeListen", () => {
+  test.each([
+    true,
+    false,
+  ])("confidential %s: invalid options throw InvalidOption before listen and close the Agent", (confidential) => {
+    const close = vi.spyOn(Agent.prototype, "close");
     const upstream = "http://127.0.0.1:1/test_vrpc";
     const badKey = "bad\nkey";
     const build = (overrides: Parameters<typeof testConfig>[1]) => () =>
-      createProxyServer(testConfig(upstream, { confidential: true, ...overrides }));
+      createProxyServer(testConfig(upstream, { confidential, ...overrides }));
 
     const badHeader = build({ attestationHeaders: { "x-api-key": badKey } });
     expect(badHeader).toThrow(InvalidOption);
@@ -227,5 +231,6 @@ describe("confidential mode startup", () => {
     expect(message).not.toContain("bad");
     expect(build({ replayWindowMs: 1.5 })).toThrow(InvalidOption);
     expect(build({ pubkeyCacheTtlMs: Number.POSITIVE_INFINITY })).toThrow(InvalidOption);
+    expect(new Set(close.mock.contexts).size).toBe(4);
   });
 });
