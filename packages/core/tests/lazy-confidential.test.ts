@@ -32,9 +32,13 @@ describe("LazyConfidentialClient", () => {
     vi.resetModules();
   });
 
-  test("a bad option throws InvalidOption at construction", () => {
-    const options = { ...optionsFor(testNode()), replayWindowMs: 0 };
-    expect(() => new LazyConfidentialClient(options)).toThrow(InvalidOption);
+  test.each([
+    { replayWindowMs: 0 },
+    { chainId: undefined as unknown as string },
+  ])("a bad option %o throws InvalidOption at construction", (bad) => {
+    expect(() => new LazyConfidentialClient({ ...optionsFor(testNode()), ...bad })).toThrow(
+      InvalidOption,
+    );
   });
 
   test("request and ready load one client and report the same pin", async () => {

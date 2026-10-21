@@ -139,13 +139,10 @@ export class ConfidentialClient {
 
   constructor(options: ConfidentialClientOptions) {
     this.#headers = withoutContentType(options.headers ?? {});
-    const { urls, chainId, replayWindowMs, pubkeyCacheTtlMs } = checkOptions({
-      url: options.url,
-      chainId: options.chainId,
-      headers: this.#headers,
-      replayWindowMs: options.replayWindowMs,
-      pubkeyCacheTtlMs: options.pubkeyCacheTtlMs,
-    });
+    const { urls, chainId, replayWindowMs, pubkeyCacheTtlMs } = checkOptions(
+      { ...options, headers: this.#headers },
+      ["url", "chainId"],
+    );
     this.#chainId = chainId;
     this.#replayWindowMs = replayWindowMs;
     this.#confidentialUrl = urls.confidentialUrl;

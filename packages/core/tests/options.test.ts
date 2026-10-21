@@ -39,6 +39,12 @@ describe("checkOptions", () => {
     ["non-ASCII chain id", { chainId: "arbitruméone" }, "chainId", chainIdReason("arbitruméone")],
     ["fractional chain id", { chainId: 1.5 }, "chainId", "must be an integer"],
     ["unsafe chain id", { chainId: 2 ** 53 }, "chainId", "must be an integer"],
+    ...[true, null, {}].map((chainId): [string, OptionsInput, OptionName, string] => [
+      `chain id ${JSON.stringify(chainId)}`,
+      { chainId: chainId as unknown as string },
+      "chainId",
+      "must be a string, number or bigint",
+    ]),
     ["replayWindowMs 0", { replayWindowMs: 0 }, "replayWindowMs", MS],
     ["replayWindowMs -1", { replayWindowMs: -1 }, "replayWindowMs", MS],
     ["replayWindowMs 1.5", { replayWindowMs: 1.5 }, "replayWindowMs", MS],
@@ -66,6 +72,16 @@ describe("checkOptions", () => {
     if (typeof input.chainId === "string" && input.chainId.length > 1) {
       expect(text).not.toContain(input.chainId);
     }
+  });
+
+  test.each([
+    "url",
+    "chainId",
+  ] as const)("a missing %s is InvalidOption when required", (option) => {
+    const input = { url: "https://rpc.example/eth_vrpc", chainId: "1", [option]: undefined };
+    const err = thrown(() => checkOptions(input, ["url", "chainId"]));
+    expect(err).toMatchObject({ option, reason: "is required", executed: "no" });
+    expect(() => checkOptions(input)).not.toThrow();
   });
 
   test.each<[OptionsInput["chainId"], string]>([

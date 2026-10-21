@@ -22,13 +22,7 @@ export class LazyConfidentialClient {
   #loading: Promise<ConfidentialClient> | undefined;
 
   constructor(options: ConfidentialClientOptions) {
-    checkOptions({
-      url: options.url,
-      chainId: options.chainId,
-      headers: options.headers,
-      replayWindowMs: options.replayWindowMs,
-      pubkeyCacheTtlMs: options.pubkeyCacheTtlMs,
-    });
+    checkOptions(options, ["url", "chainId"]);
     this.#options = options;
   }
 

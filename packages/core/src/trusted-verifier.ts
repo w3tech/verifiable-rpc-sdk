@@ -198,16 +198,7 @@ export class TrustedVerifier {
   private readonly ttlMs: number;
 
   constructor(opts: TrustedVerifierOptions) {
-    const {
-      chainId,
-      replayWindowMs,
-      pubkeyCacheTtlMs: ttlMs,
-    } = checkOptions({
-      chainId: opts.chainId,
-      headers: opts.headers,
-      replayWindowMs: opts.replayWindowMs,
-      pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
-    });
+    const { chainId, replayWindowMs, pubkeyCacheTtlMs: ttlMs } = checkOptions(opts, ["chainId"]);
     this.ttlMs = ttlMs;
     this.cache = new LRUCache<string, true>({
       max: opts.pubkeyCacheMax ?? DEFAULT_PUBKEY_CACHE_MAX,

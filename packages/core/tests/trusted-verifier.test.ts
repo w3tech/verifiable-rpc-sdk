@@ -96,6 +96,7 @@ function baseOpts(overrides: Partial<TrustedVerifierOptions> = {}): TrustedVerif
 describe("TrustedVerifier / trust seam", () => {
   test.each<[Partial<TrustedVerifierOptions>, OptionName]>([
     [{ chainId: "" }, "chainId"],
+    [{ chainId: undefined as unknown as string }, "chainId"],
     [{ chainId: "7".repeat(65) }, "chainId"],
     [{ headers: { "x-api-key": "bad\nSECRETKEY42" } }, "headers"],
     ...[0, -1, 1.5, Infinity].map((v): [Partial<TrustedVerifierOptions>, OptionName] => [

@@ -29,9 +29,18 @@ export interface CheckedOptions<T extends OptionsInput = OptionsInput> {
 
 const MS_REASON = "must be a positive whole number of milliseconds";
 
-/** Validates and normalizes client options; a bad one throws `InvalidOption`. */
-export function checkOptions<T extends OptionsInput>(input: T): CheckedOptions<T>;
-export function checkOptions(input: OptionsInput): CheckedOptions {
+/** Validates and normalizes client options; a bad or missing `required` one throws `InvalidOption`. */
+export function checkOptions<T extends OptionsInput>(
+  input: T,
+  required?: readonly ("url" | "chainId")[],
+): CheckedOptions<T>;
+export function checkOptions(
+  input: OptionsInput,
+  required: readonly ("url" | "chainId")[] = [],
+): CheckedOptions {
+  for (const option of required) {
+    if (input[option] === undefined) throw new InvalidOption(option, "is required");
+  }
   let urls: VrpcUrls | undefined;
   if (input.url !== undefined) {
     try {
@@ -69,6 +78,9 @@ function isPositiveMs(value: number): boolean {
 }
 
 function checkChainId(chainId: string | number | bigint): string {
+  if (typeof chainId !== "string" && typeof chainId !== "number" && typeof chainId !== "bigint") {
+    throw new InvalidOption("chainId", "must be a string, number or bigint");
+  }
   if (typeof chainId === "number" && !Number.isSafeInteger(chainId)) {
     throw new InvalidOption("chainId", "must be an integer");
   }

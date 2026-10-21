@@ -412,6 +412,8 @@ describe("ConfidentialClient call surface", () => {
   test.each([
     ["url", { url: "::not a url SECRETKEY42" }],
     ["chainId", { chainId: "" }],
+    ["chainId", { chainId: undefined as unknown as string }],
+    ["url", { url: undefined as unknown as string }],
     ["headers", { headers: { "x-api-key": "bad\nSECRETKEY42" } }],
     ["replayWindowMs", { replayWindowMs: 1.5 }],
     ["pubkeyCacheTtlMs", { pubkeyCacheTtlMs: Number.POSITIVE_INFINITY }],

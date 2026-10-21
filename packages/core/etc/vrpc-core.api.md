@@ -112,7 +112,7 @@ export interface CheckedOptions<T extends OptionsInput = OptionsInput> {
 }
 
 // @public
-export function checkOptions<T extends OptionsInput>(input: T): CheckedOptions<T>;
+export function checkOptions<T extends OptionsInput>(input: T, required?: readonly ("url" | "chainId")[]): CheckedOptions<T>;
 
 export { CloudVerifierConfig }
 
