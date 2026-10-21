@@ -28,6 +28,7 @@ export type {
   ConfidentialResponse,
 } from "./confidential-client";
 export type {
+  AttestationFailedReason,
   AttestationUnavailableReason,
   BadSignatureContext,
   InvalidInnerRequestReason,
@@ -39,9 +40,7 @@ export type {
   VerificationErrorKind,
 } from "./errors";
 export {
-  AttestationCorrelationError,
   AttestationFailed,
-  AttestationNodeNotFoundError,
   AttestationUnavailable,
   BadSignature,
   ConfidentialDecryptFailed,
@@ -51,7 +50,6 @@ export {
   InvalidInnerRequest,
   InvalidNonce,
   InvalidOption,
-  MalformedAttestationResponse,
   MalformedConfidentialResponse,
   MalformedHeader,
   MissingHeader,

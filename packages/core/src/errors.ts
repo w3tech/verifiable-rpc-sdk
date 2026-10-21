@@ -20,9 +20,6 @@ export type VerificationErrorKind =
   | "BadSignature"
   | "StaleTimestamp"
   | "InvalidNonce"
-  | "MalformedAttestationResponse"
-  | "AttestationNodeNotFound"
-  | "AttestationCorrelation"
   | "Attestation"
   | "ConfidentialSignerMismatch"
   | "ConfidentialDecryptFailed"
@@ -176,66 +173,28 @@ export class InvalidNonce extends VerificationError {
   }
 }
 
-/** The sidecar returned a body that does not match the documented attestation wire shape. */
-export class MalformedAttestationResponse extends VerificationError {
-  readonly kind = "MalformedAttestationResponse" as const;
-
-  constructor(public readonly reason: string) {
-    super(`Malformed attestation response: ${reason}`);
-  }
-}
+export type AttestationFailedReason = "malformed" | "pubkey-mismatch" | "check";
 
 /**
- * The RPC proxy could not route attestation to the requested `node_id` (HTTP
- * 404). The node id is stale or unknown; the SDK does NOT retry or fall back to
- * another node — a targeted attestation request that misses is terminal.
- */
-export class AttestationNodeNotFoundError extends VerificationError {
-  readonly kind = "AttestationNodeNotFound" as const;
-
-  constructor(public readonly nodeId: string) {
-    super(`Attestation node not found: ${nodeId}`);
-  }
-}
-
-/**
- * The fetched attestation's `pubkey` did not match the pubkey that signed the
- * RPC response (`vRPC-Pubkey`). The attestation belongs to a different node than
- * the one that served the verified response — correlation failed.
- */
-export class AttestationCorrelationError extends VerificationError {
-  readonly kind = "AttestationCorrelation" as const;
-
-  constructor(
-    public readonly expectedPubkey: string,
-    public readonly actualPubkey: string,
-  ) {
-    super(
-      `Attestation pubkey mismatch: expected ${expectedPubkey} (RPC response), ` +
-        `got ${actualPubkey} (attestation)`,
-    );
-  }
-}
-
-/**
- * dstack/TDX attestation verification failed. This is core's wrapper around the
- * leaf `@w3tech.io/dstack-verify` `AttestationError`: that package is a standalone
- * leaf (its error does NOT extend `VerificationError`), so the trust seam catches
- * it at the `verifyDstackAttestation` boundary and re-throws it as this member of
- * the `VerificationError` family — keeping the SDK's public error contract
- * (callers catch `VerificationError`) intact. The original leaf error is attached
- * as `cause`; `chkId` records which `CHK-*` item failed.
- * A `CHK-P1` failure can also mean the hardware verifier service was unreachable.
+ * The attestation evidence was fetched and does not prove the node; fail closed.
+ * `chkId` names the failed `CHK-*` item and is set only for `reason "check"`.
  */
 export class AttestationFailed extends VerificationError {
   readonly kind = "Attestation" as const;
+  declare readonly chkId?: string;
 
   constructor(
-    public readonly chkId: string,
+    public readonly reason: AttestationFailedReason,
     public readonly detail: string,
-    options?: { cause?: unknown },
+    options?: { chkId?: string; cause?: unknown },
   ) {
-    super(`Attestation verification failed [${chkId}]: ${detail}`, options);
+    super(
+      `Attestation verification failed [${options?.chkId ?? reason}]: ${detail}`,
+      options?.cause === undefined ? undefined : { cause: options.cause },
+    );
+    if (options?.chkId !== undefined) {
+      this.chkId = options.chkId;
+    }
   }
 }
 
@@ -333,7 +292,7 @@ export type AttestationUnavailableReason =
   | "verifier";
 
 /**
- * The node could not be attested, so the call was not sent.
+ * The attestation evidence could not be fetched or checked; retrying may succeed.
  * A browser calling another origin cannot read `vRPC-NodeId` and gets `node-id-missing`.
  */
 export class AttestationUnavailable extends UnavailableError {

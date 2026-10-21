@@ -87,7 +87,6 @@ describe("@w3tech.io/vrpc-core/confidential", () => {
       "MissingHeader",
       "MalformedHeader",
       "AttestationFailed",
-      "MalformedAttestationResponse",
       "ConfidentialSignerMismatch",
       "ConfidentialDecryptFailed",
       "MalformedConfidentialResponse",

@@ -1,9 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  AttestationCorrelationError,
   AttestationFailed,
-  AttestationNodeNotFoundError,
   AttestationUnavailable,
   BadSignature,
   ConfidentialDecryptFailed,
@@ -13,7 +11,6 @@ import {
   InvalidInnerRequest,
   InvalidNonce,
   InvalidOption,
-  MalformedAttestationResponse,
   MalformedConfidentialResponse,
   MalformedHeader,
   MissingHeader,
@@ -41,10 +38,8 @@ describe("errors", () => {
       }),
       new StaleTimestamp({ observedMs: 1n, nowMs: 2n, skewMs: -1n, allowedWindowMs: 1 }),
       new InvalidNonce("r"),
-      new MalformedAttestationResponse("r"),
-      new AttestationNodeNotFoundError("n"),
-      new AttestationCorrelationError(key, key),
-      new AttestationFailed("CHK-1", "d"),
+      new AttestationFailed("malformed", "r"),
+      new AttestationFailed("check", "d", { chkId: "CHK-1" }),
       new ConfidentialSignerMismatch(key, key),
       new InvalidInnerRequest("path"),
       new ConfidentialDecryptFailed(),
@@ -117,10 +112,13 @@ describe("errors", () => {
     expect(invalidChainId instanceof VerificationError).toBe(true);
     expect(invalidChainId instanceof InvalidChainId).toBe(true);
 
-    const malformedAttestation = new MalformedAttestationResponse("missing field quote.event_log");
+    const malformedAttestation = new AttestationFailed(
+      "malformed",
+      "missing field quote.event_log",
+    );
     expect(malformedAttestation instanceof Error).toBe(true);
     expect(malformedAttestation instanceof VerificationError).toBe(true);
-    expect(malformedAttestation instanceof MalformedAttestationResponse).toBe(true);
+    expect(malformedAttestation instanceof AttestationFailed).toBe(true);
   });
 
   test("kindFieldDiscriminates", () => {
@@ -146,7 +144,7 @@ describe("errors", () => {
     expect(stale.kind).toBe("StaleTimestamp");
 
     expect(new InvalidNonce("x").kind).toBe("InvalidNonce");
-    expect(new MalformedAttestationResponse("y").kind).toBe("MalformedAttestationResponse");
+    expect(new AttestationFailed("malformed", "y").kind).toBe("Attestation");
     expect(new InvalidChainId("a b", "whitespace").kind).toBe("InvalidChainId");
   });
 
@@ -197,10 +195,19 @@ describe("errors", () => {
     expect(err.message).toContain("expected 32 bytes, got 31");
   });
 
-  test("malformedAttestationResponseCarriesReason", () => {
-    const err = new MalformedAttestationResponse("missing field: quote.event_log");
-    expect(err.reason).toBe("missing field: quote.event_log");
-    expect(err.message).toContain("missing field: quote.event_log");
+  test("attestationFailedCarriesReasonAndChkIdOnlyForCheck", () => {
+    const malformed = new AttestationFailed("malformed", "missing field: quote.event_log");
+    const check = new AttestationFailed("check", "d", { chkId: "CHK-P1" });
+    expect([malformed.reason, "chkId" in malformed, malformed.message]).toEqual([
+      "malformed",
+      false,
+      "Attestation verification failed [malformed]: missing field: quote.event_log",
+    ]);
+    expect([check.reason, check.chkId, check.message]).toEqual([
+      "check",
+      "CHK-P1",
+      "Attestation verification failed [CHK-P1]: d",
+    ]);
   });
 
   test("staleTimestampCarriesSkew", () => {
@@ -249,34 +256,8 @@ describe("errors", () => {
       }).name,
     ).toBe("StaleTimestamp");
     expect(new InvalidNonce("x").name).toBe("InvalidNonce");
-    expect(new MalformedAttestationResponse("y").name).toBe("MalformedAttestationResponse");
+    expect(new AttestationFailed("malformed", "y").name).toBe("AttestationFailed");
     expect(new InvalidChainId("", "must not be empty").name).toBe("InvalidChainId");
-  });
-
-  test("attestationNodeNotFoundCarriesNodeIdAndKind", () => {
-    const err = new AttestationNodeNotFoundError("node-7");
-    expect(err instanceof Error).toBe(true);
-    expect(err instanceof VerificationError).toBe(true);
-    expect(err instanceof AttestationNodeNotFoundError).toBe(true);
-    expect(err.kind).toBe("AttestationNodeNotFound");
-    expect(err.name).toBe("AttestationNodeNotFoundError");
-    expect(err.nodeId).toBe("node-7");
-    expect(err.message).toContain("node-7");
-  });
-
-  test("attestationCorrelationCarriesPubkeysAndKind", () => {
-    const expected = `0x${"ab".repeat(32)}`;
-    const actual = `0x${"cd".repeat(32)}`;
-    const err = new AttestationCorrelationError(expected, actual);
-    expect(err instanceof Error).toBe(true);
-    expect(err instanceof VerificationError).toBe(true);
-    expect(err instanceof AttestationCorrelationError).toBe(true);
-    expect(err.kind).toBe("AttestationCorrelation");
-    expect(err.name).toBe("AttestationCorrelationError");
-    expect(err.expectedPubkey).toBe(expected);
-    expect(err.actualPubkey).toBe(actual);
-    expect(err.message).toContain(expected);
-    expect(err.message).toContain(actual);
   });
 
   test("unavailableErrorsAreNotVerificationErrors", () => {

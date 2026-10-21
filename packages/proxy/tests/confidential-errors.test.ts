@@ -12,7 +12,6 @@ import {
   InvalidInnerRequest,
   type InvalidInnerRequestReason,
   InvalidNonce,
-  MalformedAttestationResponse,
   MalformedConfidentialResponse,
   MalformedHeader,
   MissingHeader,
@@ -158,8 +157,8 @@ describe("verification failures", () => {
   const sig = `0x${"ab".repeat(64)}`;
   const key = `0x${"cd".repeat(32)}`;
   test.each<[string, VrpcError]>([
-    ["Attestation", new AttestationFailed("CHK-1", "detail")],
-    ["MalformedAttestationResponse", new MalformedAttestationResponse("r")],
+    ["Attestation", new AttestationFailed("check", "detail", { chkId: "CHK-1" })],
+    ["Attestation", new AttestationFailed("malformed", "r")],
     ["InvalidNonce", new InvalidNonce("r")],
   ])("%s before sending is 502 with its own kind, executed no", (kind, err) => {
     err.executed = "no";

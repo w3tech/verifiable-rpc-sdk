@@ -10,6 +10,7 @@ export type {
 } from "./confidential-client";
 export { ConfidentialClient } from "./confidential-client";
 export type {
+  AttestationFailedReason,
   AttestationUnavailableReason,
   InvalidInnerRequestReason,
   MalformedConfidentialResponseReason,
@@ -27,7 +28,6 @@ export {
   InternalError,
   InvalidInnerRequest,
   InvalidOption,
-  MalformedAttestationResponse,
   MalformedConfidentialResponse,
   MalformedHeader,
   MissingHeader,

@@ -3,7 +3,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { x25519SecretFromSeed } from "@w3tech.io/vrpc-test-support";
 import vector from "@w3tech.io/vrpc-test-support/vectors/ed25519-to-x25519.json";
 import { describe, expect, test } from "vitest";
-import { MalformedAttestationResponse } from "../src/errors";
+import type { AttestationFailed } from "../src/errors";
 import { nodeKeyFromEd25519 } from "../src/node-session";
 
 describe("nodeKeyFromEd25519", () => {
@@ -25,8 +25,8 @@ describe("nodeKeyFromEd25519", () => {
     } catch (error) {
       caught = error;
     }
-    expect(caught).toBeInstanceOf(MalformedAttestationResponse);
-    const { message } = caught as MalformedAttestationResponse;
+    expect(caught).toMatchObject({ reason: "malformed" });
+    const { message } = caught as AttestationFailed;
     expect(message).toContain("attested pubkey is not a usable encryption key");
     expect(message.toLowerCase()).not.toContain(ed25519PublicKey);
   });

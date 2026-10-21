@@ -8,16 +8,22 @@ import { HardwareVerifier } from '@w3tech.io/dstack-verify';
 
 // @public
 export class AttestationFailed extends VerificationError {
-    constructor(chkId: string, detail: string, options?: {
+    constructor(reason: AttestationFailedReason, detail: string, options?: {
+        chkId?: string;
         cause?: unknown;
     });
     // (undocumented)
-    readonly chkId: string;
+    readonly chkId?: string;
     // (undocumented)
     readonly detail: string;
     // (undocumented)
     readonly kind: "Attestation";
+    // (undocumented)
+    readonly reason: AttestationFailedReason;
 }
+
+// @public (undocumented)
+export type AttestationFailedReason = "malformed" | "pubkey-mismatch" | "check";
 
 // @public
 export class AttestationUnavailable extends UnavailableError {
@@ -162,15 +168,6 @@ export class InvalidOption extends VrpcError {
 }
 
 // @public
-export class MalformedAttestationResponse extends VerificationError {
-    constructor(reason: string);
-    // (undocumented)
-    readonly kind: "MalformedAttestationResponse";
-    // (undocumented)
-    readonly reason: string;
-}
-
-// @public
 export class MalformedConfidentialResponse extends VerificationError {
     constructor(reason: MalformedConfidentialResponseReason);
     // (undocumented)
@@ -310,7 +307,7 @@ export abstract class VerificationError extends VrpcError {
 }
 
 // @public (undocumented)
-export type VerificationErrorKind = "MissingHeader" | "MalformedHeader" | "InvalidChainId" | "BadSignature" | "StaleTimestamp" | "InvalidNonce" | "MalformedAttestationResponse" | "AttestationNodeNotFound" | "AttestationCorrelation" | "Attestation" | "ConfidentialSignerMismatch" | "ConfidentialDecryptFailed" | "MalformedConfidentialResponse";
+export type VerificationErrorKind = "MissingHeader" | "MalformedHeader" | "InvalidChainId" | "BadSignature" | "StaleTimestamp" | "InvalidNonce" | "Attestation" | "ConfidentialSignerMismatch" | "ConfidentialDecryptFailed" | "MalformedConfidentialResponse";
 
 // @public
 export abstract class VrpcError extends Error {

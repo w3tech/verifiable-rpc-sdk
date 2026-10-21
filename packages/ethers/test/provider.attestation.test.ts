@@ -63,7 +63,7 @@ describe("VrpcProvider always-on attestation E2E", () => {
 
   test("missingNodeIdGateway: signed response without vRPC-NodeId against a gateway route fails closed", async () => {
     // Gateway route requires `node_id`; the signed response carries none → the
-    // attestation fetch lacks `node_id` → 404 → AttestationNodeNotFoundError
+    // attestation fetch lacks `node_id` → 404 → AttestationUnavailable
     // propagates (fail-closed; no unverified data returned).
     const mock = attestationStub();
     mock.failNext = 404;

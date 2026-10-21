@@ -28,7 +28,6 @@ import {
   ConfidentialSignerMismatch,
   InternalError,
   InvalidInnerRequest,
-  MalformedAttestationResponse,
   MalformedConfidentialResponse,
   MalformedHeader,
   MissingHeader,
@@ -165,13 +164,13 @@ const rows: Row[] = [
   row("attestation 503", AttestationUnavailable, "no", "cold", {
     attestation: () => plain(503, "text/plain"),
   }),
-  row("attestation body {}", MalformedAttestationResponse, "no", "cold", {
+  row("attestation body {}", AttestationFailed, "no", "cold", {
     attestation: () => ({ status: 200, headers: emptyJson, body: curlyBody }),
   }),
   row("verifier AttestationError", AttestationFailed, "no", "cold", {
     verifierFailure: new AttestationError("CHK-P1", "down"),
   }),
-  row("verifier TypeError", InternalError, "no", "cold", {
+  row("verifier TypeError", AttestationFailed, "no", "cold", {
     verifierFailure: verifierTypeError,
     cause: verifierTypeError,
   }),

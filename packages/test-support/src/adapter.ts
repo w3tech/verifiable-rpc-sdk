@@ -18,7 +18,6 @@ const ERROR_CLASSES = [
   "InvalidChainId",
   "InvalidInnerRequest",
   "InvalidOption",
-  "MalformedAttestationResponse",
   "MalformedConfidentialResponse",
   "MalformedHeader",
   "MissingHeader",

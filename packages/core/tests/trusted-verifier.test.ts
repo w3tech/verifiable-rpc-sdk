@@ -14,7 +14,6 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ATTESTATION_TIMEOUT_MS } from "../src/attestation";
 import {
-  AttestationCorrelationError,
   AttestationFailed,
   AttestationUnavailable,
   InvalidOption,
@@ -199,7 +198,7 @@ describe("TrustedVerifier / trust seam", () => {
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, hardwareVerifier }));
 
     const err = await rejectionOf(tv.verify(pair.requestBytes, pair.responseBytes, pair.headers));
-    expect(err).toBeInstanceOf(AttestationCorrelationError);
+    expect(err).toMatchObject({ reason: "pubkey-mismatch" });
     expect(verifyHardware).not.toHaveBeenCalled();
   });
 

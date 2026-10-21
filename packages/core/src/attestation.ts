@@ -13,13 +13,7 @@ import {
   verifyDstackAttestation,
 } from "@w3tech.io/dstack-verify";
 
-import {
-  AttestationCorrelationError,
-  AttestationFailed,
-  AttestationUnavailable,
-  InvalidNonce,
-  MalformedAttestationResponse,
-} from "./errors";
+import { AttestationFailed, AttestationUnavailable, InvalidNonce } from "./errors";
 import { byteLen, truncateHex } from "./log-redact";
 import { defaultLogger, type Logger } from "./logger";
 import {
@@ -80,7 +74,7 @@ export interface FetchAttestationOptions {
  * Fetch a TDX attestation bound to a 32-byte nonce: `GET <attestationUrl>?nonce=<hex>[&node_id=<id>]`.
  * A nonce that is not 32 bytes throws {@link InvalidNonce} before any network call. Redirects are
  * not followed; a transport failure or a non-2xx answer throws {@link AttestationUnavailable}, a
- * malformed body {@link MalformedAttestationResponse}.
+ * malformed body {@link AttestationFailed}.
  */
 export async function fetchAttestation(opts: FetchAttestationOptions): Promise<Attestation> {
   if (opts.nonce.length !== 32) {
@@ -197,7 +191,7 @@ export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestati
     requireNodeId: expectPubkey === undefined,
   });
   if (!ATTESTED_PUBKEY_RE.test(attestation.pubkey)) {
-    throw new MalformedAttestationResponse("pubkey must be 0x + 64 hex chars");
+    throw new AttestationFailed("malformed", "pubkey must be 0x + 64 hex chars");
   }
   const pubkey = attestation.pubkey.toLowerCase();
   if (expectPubkey !== undefined) {
@@ -208,7 +202,9 @@ export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestati
         match: pubkey === expectPubkey,
       });
     }
-    if (pubkey !== expectPubkey) throw new AttestationCorrelationError(expectPubkey, pubkey);
+    if (pubkey !== expectPubkey) {
+      throw new AttestationFailed("pubkey-mismatch", `expected ${expectPubkey}, got ${pubkey}`);
+    }
   }
   if (verbose) {
     logger.debug("attestation.received", {
@@ -230,9 +226,12 @@ export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestati
       throw new AttestationUnavailable("verifier", { cause: err });
     }
     if (err instanceof AttestationError) {
-      throw new AttestationFailed(err.chkId, err.detail, { cause: err });
+      throw new AttestationFailed("check", err.detail, { chkId: err.chkId, cause: err });
     }
-    throw err;
+    throw new AttestationFailed("check", "hardware verifier failed", {
+      chkId: "CHK-P1",
+      cause: err,
+    });
   }
   return { nodeId, pubkey, composeHash: attestation.composeHash, attestedAt: Date.now() };
 }
@@ -283,7 +282,7 @@ function parseAttestationBody(bytes: Uint8Array): Attestation {
     body = JSON.parse(new TextDecoder().decode(bytes));
   } catch {
     // The platform parse error quotes the input.
-    throw new MalformedAttestationResponse("response is not valid JSON");
+    throw new AttestationFailed("malformed", "response is not valid JSON");
   }
   return narrowAttestation(body);
 }
@@ -294,44 +293,50 @@ function parseAttestationBody(bytes: Uint8Array): Attestation {
  */
 function narrowAttestation(body: unknown): Attestation {
   if (body === null || typeof body !== "object") {
-    throw new MalformedAttestationResponse("response is not a JSON object");
+    throw new AttestationFailed("malformed", "response is not a JSON object");
   }
   const obj = body as Record<string, unknown>;
 
   if (typeof obj.pubkey !== "string") {
-    throw new MalformedAttestationResponse(
+    throw new AttestationFailed(
+      "malformed",
       "pubkey" in obj ? "pubkey must be string" : "missing field: pubkey",
     );
   }
   if (typeof obj.composeHash !== "string") {
-    throw new MalformedAttestationResponse(
+    throw new AttestationFailed(
+      "malformed",
       "composeHash" in obj ? "composeHash must be string" : "missing field: composeHash",
     );
   }
   if (obj.quote === null || typeof obj.quote !== "object") {
-    throw new MalformedAttestationResponse("quote must be an object");
+    throw new AttestationFailed("malformed", "quote must be an object");
   }
 
   const quote = obj.quote as Record<string, unknown>;
   if (typeof quote.quote !== "string") {
-    throw new MalformedAttestationResponse(
+    throw new AttestationFailed(
+      "malformed",
       "quote" in quote ? "quote.quote must be string" : "missing field: quote.quote",
     );
   }
   if (typeof quote.event_log !== "string") {
-    throw new MalformedAttestationResponse(
+    throw new AttestationFailed(
+      "malformed",
       "event_log" in quote ? "quote.event_log must be string" : "missing field: quote.event_log",
     );
   }
   if (typeof quote.report_data !== "string") {
-    throw new MalformedAttestationResponse(
+    throw new AttestationFailed(
+      "malformed",
       "report_data" in quote
         ? "quote.report_data must be string"
         : "missing field: quote.report_data",
     );
   }
   if (typeof quote.vm_config !== "string") {
-    throw new MalformedAttestationResponse(
+    throw new AttestationFailed(
+      "malformed",
       "vm_config" in quote ? "quote.vm_config must be string" : "missing field: quote.vm_config",
     );
   }

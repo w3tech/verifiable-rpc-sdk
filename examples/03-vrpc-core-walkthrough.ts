@@ -10,7 +10,6 @@ import {
   deriveVrpcUrls,
   fetchAttestation,
   TrustedVerifier,
-  verifyAttestationCorrelation,
   verifyResponse,
 } from "@w3tech.io/vrpc-core";
 
@@ -59,7 +58,10 @@ async function main() {
     attestationUrl: `${URL}/attestation`,
     nonce: crypto.randomBytes(32),
   });
-  verifyAttestationCorrelation(attestation, verified.verification.pubkeyHex);
+  // TrustedVerifier does this automatically.
+  if (attestation.pubkey.toLowerCase() !== verified.verification.pubkeyHex) {
+    throw new Error("attestation pubkey does not match the response signer");
+  }
 
   // 5 — the everyday seam (what the ethers/viem adapters construct):
   // signature + replay + lazy attestation + mandatory hardware verify,

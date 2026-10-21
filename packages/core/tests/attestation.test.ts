@@ -3,7 +3,7 @@ import { rejectionOf } from "@w3tech.io/vrpc-test-support";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { fetchAttestation } from "../src/attestation";
-import { AttestationUnavailable, InvalidNonce, MalformedAttestationResponse } from "../src/errors";
+import { AttestationFailed, AttestationUnavailable, InvalidNonce } from "../src/errors";
 
 const TEST_URL = "http://test.local:8545";
 const TEST_ATTESTATION_URL = `${TEST_URL}/attestation`;
@@ -141,9 +141,9 @@ describe("fetchAttestation", () => {
     const caught = await rejectionOf(
       fetchAttestation({ attestationUrl: TEST_ATTESTATION_URL, nonce: new Uint8Array(32) }),
     );
-    expect(caught).toBeInstanceOf(MalformedAttestationResponse);
-    if (caught instanceof MalformedAttestationResponse) {
-      expect(caught.reason).toContain("quote");
+    expect(caught).toBeInstanceOf(AttestationFailed);
+    if (caught instanceof AttestationFailed) {
+      expect(caught.detail).toContain("quote");
     }
   });
 
@@ -183,9 +183,9 @@ describe("fetchAttestation", () => {
       const caught = await rejectionOf(
         fetchAttestation({ attestationUrl: TEST_ATTESTATION_URL, nonce: new Uint8Array(32) }),
       );
-      expect(caught).toBeInstanceOf(MalformedAttestationResponse);
-      if (caught instanceof MalformedAttestationResponse) {
-        expect(caught.reason).toContain(fieldPath);
+      expect(caught).toBeInstanceOf(AttestationFailed);
+      if (caught instanceof AttestationFailed) {
+        expect(caught.detail).toContain(fieldPath);
       }
     }
   });
@@ -321,7 +321,7 @@ describe("fetchAttestation", () => {
           nonce: new Uint8Array(32),
         }),
       );
-      expect(caught).toBeInstanceOf(MalformedAttestationResponse);
+      expect(caught).toBeInstanceOf(AttestationFailed);
     });
   });
 });
@@ -401,10 +401,10 @@ describe("fetchAttestation non-OK and non-JSON answers", () => {
     installRawFetch(200, "<html>sentinel-body</html>", "text/html");
     const caught = await caughtFrom();
 
-    expect(caught).toBeInstanceOf(MalformedAttestationResponse);
+    expect(caught).toBeInstanceOf(AttestationFailed);
     expect(caught).not.toBeInstanceOf(SyntaxError);
-    const malformed = caught as MalformedAttestationResponse;
-    expect(malformed.reason).toBe("response is not valid JSON");
+    const malformed = caught as AttestationFailed;
+    expect(malformed.detail).toBe("response is not valid JSON");
     expect(malformed.cause).toBeUndefined();
     expect(malformed.message).not.toContain("sentinel-body");
     expect(String(malformed)).not.toContain("sentinel-body");
@@ -415,7 +415,7 @@ describe("fetchAttestation non-OK and non-JSON answers", () => {
     installRawFetch(200, "", "application/json");
     const caught = await caughtFrom();
 
-    expect(caught).toBeInstanceOf(MalformedAttestationResponse);
-    expect((caught as MalformedAttestationResponse).reason).toBe("response is not valid JSON");
+    expect(caught).toBeInstanceOf(AttestationFailed);
+    expect((caught as AttestationFailed).detail).toBe("response is not valid JSON");
   });
 });

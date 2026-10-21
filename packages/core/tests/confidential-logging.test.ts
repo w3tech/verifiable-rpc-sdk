@@ -26,7 +26,6 @@ import {
   ConfidentialSignerMismatch,
   InvalidInnerRequest,
   InvalidOption,
-  MalformedAttestationResponse,
   MalformedConfidentialResponse,
   RequestRejected,
   StaleTimestamp,
@@ -190,7 +189,7 @@ const SCENARIOS: Scenario[] = [
   },
   {
     name: "attestation not JSON",
-    expected: MalformedAttestationResponse,
+    expected: AttestationFailed,
     arrange: (node) =>
       node.setAttestation(() => ({
         status: 200,

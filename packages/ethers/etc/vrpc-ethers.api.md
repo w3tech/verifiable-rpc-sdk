@@ -5,6 +5,7 @@
 ```ts
 
 import { AttestationFailed } from '@w3tech.io/vrpc-core';
+import { AttestationFailedReason } from '@w3tech.io/vrpc-core';
 import { AttestationUnavailable } from '@w3tech.io/vrpc-core';
 import { AttestationUnavailableReason } from '@w3tech.io/vrpc-core';
 import { BadSignature } from '@w3tech.io/vrpc-core';
@@ -23,7 +24,6 @@ import { JsonRpcPayload } from 'ethers';
 import { JsonRpcProvider } from 'ethers';
 import { JsonRpcResult } from 'ethers';
 import { Logger } from '@w3tech.io/vrpc-core';
-import { MalformedAttestationResponse } from '@w3tech.io/vrpc-core';
 import { MalformedConfidentialResponse } from '@w3tech.io/vrpc-core';
 import { MalformedConfidentialResponseReason } from '@w3tech.io/vrpc-core';
 import { MalformedHeader } from '@w3tech.io/vrpc-core';
@@ -41,6 +41,8 @@ import { VerificationError } from '@w3tech.io/vrpc-core';
 import { VrpcError } from '@w3tech.io/vrpc-core';
 
 export { AttestationFailed }
+
+export { AttestationFailedReason }
 
 export { AttestationUnavailable }
 
@@ -63,8 +65,6 @@ export { InvalidInnerRequest }
 export { InvalidInnerRequestReason }
 
 export { InvalidOption }
-
-export { MalformedAttestationResponse }
 
 export { MalformedConfidentialResponse }
 

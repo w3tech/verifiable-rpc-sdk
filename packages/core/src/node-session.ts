@@ -7,7 +7,7 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 
 import { raceAbort } from "./abort";
 import { ATTESTATION_TIMEOUT_MS, type AttestNodeOptions, attestNode } from "./attestation";
-import { AttestationUnavailable, MalformedAttestationResponse } from "./errors";
+import { AttestationFailed, AttestationUnavailable } from "./errors";
 import { defaultLogger } from "./logger";
 
 export interface AttestedNode {
@@ -27,7 +27,7 @@ export function nodeKeyFromEd25519(ed25519PublicKey: Uint8Array): Uint8Array {
   } catch {
     // a malformed point or a failed conversion is rejected below
   }
-  throw new MalformedAttestationResponse("attested pubkey is not a usable encryption key");
+  throw new AttestationFailed("malformed", "attested pubkey is not a usable encryption key");
 }
 
 export type Pin = AttestedNode & { readonly expiresAt: number };

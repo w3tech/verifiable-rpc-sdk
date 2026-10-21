@@ -15,12 +15,7 @@ import {
 import ed25519ToX25519 from "@w3tech.io/vrpc-test-support/vectors/ed25519-to-x25519.json";
 import { describe, expect, test } from "vitest";
 import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
-import {
-  AttestationFailed,
-  AttestationUnavailable,
-  MalformedAttestationResponse,
-  VerificationError,
-} from "../src/errors";
+import { AttestationFailed, AttestationUnavailable, VerificationError } from "../src/errors";
 import type { ConfidentialTransport } from "../src/transport";
 
 const BASE_URL = "https://rpc.example/eth_vrpc";
@@ -119,7 +114,7 @@ describe("ConfidentialClient attestation: attested key", () => {
     ["63 hex characters", (pubkey: string) => pubkey.slice(0, -1)],
     ["no 0x prefix", (pubkey: string) => pubkey.slice(2)],
     ["non-hex characters", () => `0x${"zz".repeat(32)}`],
-  ])("a pubkey with %s is MalformedAttestationResponse and nothing is posted", async (_label, shape) => {
+  ])("a pubkey with %s is AttestationFailed and nothing is posted", async (_label, shape) => {
     const node = testNode();
     node.setAttestation((context) =>
       edited(context, (body) => {
@@ -128,8 +123,8 @@ describe("ConfidentialClient attestation: attested key", () => {
     );
     const err = await rejectionOf(clientFor(node.transport).request(jsonRpcCall()));
 
-    expect(err).toBeInstanceOf(MalformedAttestationResponse);
-    expect((err as MalformedAttestationResponse).reason).toBe("pubkey must be 0x + 64 hex chars");
+    expect(err).toBeInstanceOf(AttestationFailed);
+    expect((err as AttestationFailed).detail).toBe("pubkey must be 0x + 64 hex chars");
     expect(posts(node)).toBe(0);
   });
 
@@ -163,8 +158,8 @@ describe("ConfidentialClient attestation: attested key", () => {
       clientFor(node.transport, { hardwareVerifier: verifier }).request(jsonRpcCall()),
     );
 
-    expect(err).toBeInstanceOf(MalformedAttestationResponse);
-    expect((err as MalformedAttestationResponse).reason).toBe(
+    expect(err).toBeInstanceOf(AttestationFailed);
+    expect((err as AttestationFailed).detail).toBe(
       "attested pubkey is not a usable encryption key",
     );
     expect((err as Error).cause).toBeUndefined();
@@ -248,16 +243,16 @@ describe("ConfidentialClient attestation: gateway answers", () => {
     expect(posts(node)).toBe(1);
   });
 
-  test("a non-JSON body is MalformedAttestationResponse that never echoes the body", async () => {
+  test("a non-JSON body is AttestationFailed that never echoes the body", async () => {
     const node = testNode();
     node.setAttestation(() =>
       answer(200, "<html>sentinel-body</html>", { "content-type": "text/html" }),
     );
     const err = await rejectionOf(clientFor(node.transport).request(jsonRpcCall()));
 
-    expect(err).toBeInstanceOf(MalformedAttestationResponse);
-    const malformed = err as MalformedAttestationResponse;
-    expect(malformed.reason).toBe("response is not valid JSON");
+    expect(err).toBeInstanceOf(AttestationFailed);
+    const malformed = err as AttestationFailed;
+    expect(malformed.detail).toBe("response is not valid JSON");
     expect(malformed.cause).toBeUndefined();
     expect(malformed.message).not.toContain("sentinel-body");
     expect(String(malformed)).not.toContain("sentinel-body");
@@ -266,13 +261,13 @@ describe("ConfidentialClient attestation: gateway answers", () => {
     expect(posts(node)).toBe(0);
   });
 
-  test("an empty 200 body is MalformedAttestationResponse", async () => {
+  test("an empty 200 body is AttestationFailed", async () => {
     const node = testNode();
     node.setAttestation(() => answer(200, ""));
     const err = await rejectionOf(clientFor(node.transport).request(jsonRpcCall()));
 
-    expect(err).toBeInstanceOf(MalformedAttestationResponse);
-    expect((err as MalformedAttestationResponse).reason).toBe("response is not valid JSON");
+    expect(err).toBeInstanceOf(AttestationFailed);
+    expect((err as AttestationFailed).detail).toBe("response is not valid JSON");
   });
 
   test("a JSON body of the wrong shape names the missing field", async () => {
@@ -280,8 +275,8 @@ describe("ConfidentialClient attestation: gateway answers", () => {
     node.setAttestation(() => answer(200, '{"quote":{}}'));
     const err = await rejectionOf(clientFor(node.transport).request(jsonRpcCall()));
 
-    expect(err).toBeInstanceOf(MalformedAttestationResponse);
-    expect((err as MalformedAttestationResponse).reason).toBe("missing field: pubkey");
+    expect(err).toBeInstanceOf(AttestationFailed);
+    expect((err as AttestationFailed).detail).toBe("missing field: pubkey");
   });
 
   test("an empty 500 body is a status error", async () => {
@@ -310,12 +305,12 @@ describe("ConfidentialClient attestation: check order", () => {
     expectUnavailable(err, "node-id-missing");
   });
 
-  test("a 200 with vRPC-NodeId and a non-JSON body is MalformedAttestationResponse", async () => {
+  test("a 200 with vRPC-NodeId and a non-JSON body is AttestationFailed", async () => {
     const node = testNode();
     node.setAttestation(() => answer(200, "not json"));
     const err = await rejectionOf(clientFor(node.transport).request(jsonRpcCall()));
 
-    expect(err).toBeInstanceOf(MalformedAttestationResponse);
+    expect(err).toBeInstanceOf(AttestationFailed);
   });
 });
 

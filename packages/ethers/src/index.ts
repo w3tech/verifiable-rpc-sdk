@@ -9,6 +9,7 @@
 // @w3tech.io/vrpc-core — never copied (no viem import here, manifest isolation).
 
 export type {
+  AttestationFailedReason,
   AttestationUnavailableReason,
   InvalidInnerRequestReason,
   MalformedConfidentialResponseReason,
@@ -28,7 +29,6 @@ export {
   InvalidChainId,
   InvalidInnerRequest,
   InvalidOption,
-  MalformedAttestationResponse,
   MalformedConfidentialResponse,
   MalformedHeader,
   MissingHeader,

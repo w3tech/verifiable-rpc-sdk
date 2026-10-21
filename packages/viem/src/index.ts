@@ -9,6 +9,7 @@
 // copied (no ethers import here, manifest isolation).
 
 export type {
+  AttestationFailedReason,
   AttestationUnavailableReason,
   InvalidInnerRequestReason,
   MalformedConfidentialResponseReason,
@@ -31,7 +32,6 @@ export {
   InvalidChainId,
   InvalidInnerRequest,
   InvalidOption,
-  MalformedAttestationResponse,
   MalformedConfidentialResponse,
   MalformedHeader,
   MissingHeader,

@@ -21,37 +21,23 @@ export interface Attestation {
 }
 
 // @public
-export class AttestationCorrelationError extends VerificationError {
-    constructor(expectedPubkey: string, actualPubkey: string);
-    // (undocumented)
-    readonly actualPubkey: string;
-    // (undocumented)
-    readonly expectedPubkey: string;
-    // (undocumented)
-    readonly kind: "AttestationCorrelation";
-}
-
-// @public
 export class AttestationFailed extends VerificationError {
-    constructor(chkId: string, detail: string, options?: {
+    constructor(reason: AttestationFailedReason, detail: string, options?: {
+        chkId?: string;
         cause?: unknown;
     });
     // (undocumented)
-    readonly chkId: string;
+    readonly chkId?: string;
     // (undocumented)
     readonly detail: string;
     // (undocumented)
     readonly kind: "Attestation";
+    // (undocumented)
+    readonly reason: AttestationFailedReason;
 }
 
-// @public
-export class AttestationNodeNotFoundError extends VerificationError {
-    constructor(nodeId: string);
-    // (undocumented)
-    readonly kind: "AttestationNodeNotFound";
-    // (undocumented)
-    readonly nodeId: string;
-}
+// @public (undocumented)
+export type AttestationFailedReason = "malformed" | "pubkey-mismatch" | "check";
 
 // @public
 export class AttestationUnavailable extends UnavailableError {
@@ -313,15 +299,6 @@ export interface Logger {
 }
 
 // @public
-export class MalformedAttestationResponse extends VerificationError {
-    constructor(reason: string);
-    // (undocumented)
-    readonly kind: "MalformedAttestationResponse";
-    // (undocumented)
-    readonly reason: string;
-}
-
-// @public
 export class MalformedConfidentialResponse extends VerificationError {
     constructor(reason: MalformedConfidentialResponseReason);
     // (undocumented)
@@ -503,7 +480,7 @@ export abstract class VerificationError extends VrpcError {
 }
 
 // @public (undocumented)
-export type VerificationErrorKind = "MissingHeader" | "MalformedHeader" | "InvalidChainId" | "BadSignature" | "StaleTimestamp" | "InvalidNonce" | "MalformedAttestationResponse" | "AttestationNodeNotFound" | "AttestationCorrelation" | "Attestation" | "ConfidentialSignerMismatch" | "ConfidentialDecryptFailed" | "MalformedConfidentialResponse";
+export type VerificationErrorKind = "MissingHeader" | "MalformedHeader" | "InvalidChainId" | "BadSignature" | "StaleTimestamp" | "InvalidNonce" | "Attestation" | "ConfidentialSignerMismatch" | "ConfidentialDecryptFailed" | "MalformedConfidentialResponse";
 
 // @public (undocumented)
 export interface VerifiedPair {
