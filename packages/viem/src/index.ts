@@ -8,40 +8,8 @@
 // instance); ALL verification logic is reused from @w3tech.io/vrpc-core — never
 // copied (no ethers import here, manifest isolation).
 
-export type {
-  AttestationFailedReason,
-  AttestationUnavailableReason,
-  InvalidInnerRequestReason,
-  MalformedConfidentialResponseReason,
-  TransportFailedReason,
-  UnavailableErrorKind,
-} from "@w3tech.io/vrpc-core";
-// Re-export the shared vrpc-core error family — the EXACT SAME set the ethers
-// adapter re-exports — so a caller cannot tell the two adapters apart by error
-// shape. `instanceof`-checks work without importing core directly.
-export {
-  AttestationFailed,
-  AttestationUnavailable,
-  BadSignature,
-  ConfidentialDecryptFailed,
-  ConfidentialSignerMismatch,
-  InternalError,
-  InvalidChainId,
-  InvalidInnerRequest,
-  InvalidNonce,
-  InvalidOption,
-  MalformedConfidentialResponse,
-  MalformedHeader,
-  MissingHeader,
-  mayHaveExecuted,
-  RequestRejected,
-  StaleTimestamp,
-  TransportFailed,
-  UnavailableError,
-  UnexpectedResponse,
-  VerificationError,
-  VrpcError,
-} from "@w3tech.io/vrpc-core";
 export type { ConfidentialInfo } from "@w3tech.io/vrpc-core/confidential";
+// One error family from core: the same classes, so `instanceof` works across packages.
+export * from "@w3tech.io/vrpc-core/errors";
 export type { VrpcHttpOptions } from "./options";
 export { vrpcHttp } from "./transport";

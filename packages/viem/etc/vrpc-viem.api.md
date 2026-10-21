@@ -4,93 +4,12 @@
 
 ```ts
 
-import { AttestationFailed } from '@w3tech.io/vrpc-core';
-import { AttestationFailedReason } from '@w3tech.io/vrpc-core';
-import { AttestationUnavailable } from '@w3tech.io/vrpc-core';
-import { AttestationUnavailableReason } from '@w3tech.io/vrpc-core';
-import { BadSignature } from '@w3tech.io/vrpc-core';
-import { ConfidentialDecryptFailed } from '@w3tech.io/vrpc-core';
 import { ConfidentialInfo } from '@w3tech.io/vrpc-core/confidential';
-import { ConfidentialSignerMismatch } from '@w3tech.io/vrpc-core';
 import { HardwareVerifier } from '@w3tech.io/vrpc-core';
-import { InternalError } from '@w3tech.io/vrpc-core';
-import { InvalidChainId } from '@w3tech.io/vrpc-core';
-import { InvalidInnerRequest } from '@w3tech.io/vrpc-core';
-import { InvalidInnerRequestReason } from '@w3tech.io/vrpc-core';
-import { InvalidNonce } from '@w3tech.io/vrpc-core';
-import { InvalidOption } from '@w3tech.io/vrpc-core';
 import { Logger } from '@w3tech.io/vrpc-core';
-import { MalformedConfidentialResponse } from '@w3tech.io/vrpc-core';
-import { MalformedConfidentialResponseReason } from '@w3tech.io/vrpc-core';
-import { MalformedHeader } from '@w3tech.io/vrpc-core';
-import { mayHaveExecuted } from '@w3tech.io/vrpc-core';
-import { MissingHeader } from '@w3tech.io/vrpc-core';
-import { RequestRejected } from '@w3tech.io/vrpc-core';
-import { StaleTimestamp } from '@w3tech.io/vrpc-core';
 import { Transport } from 'viem';
-import { TransportFailed } from '@w3tech.io/vrpc-core';
-import { TransportFailedReason } from '@w3tech.io/vrpc-core';
-import { UnavailableError } from '@w3tech.io/vrpc-core';
-import { UnavailableErrorKind } from '@w3tech.io/vrpc-core';
-import { UnexpectedResponse } from '@w3tech.io/vrpc-core';
-import { VerificationError } from '@w3tech.io/vrpc-core';
-import { VrpcError } from '@w3tech.io/vrpc-core';
-
-export { AttestationFailed }
-
-export { AttestationFailedReason }
-
-export { AttestationUnavailable }
-
-export { AttestationUnavailableReason }
-
-export { BadSignature }
-
-export { ConfidentialDecryptFailed }
 
 export { ConfidentialInfo }
-
-export { ConfidentialSignerMismatch }
-
-export { InternalError }
-
-export { InvalidChainId }
-
-export { InvalidInnerRequest }
-
-export { InvalidInnerRequestReason }
-
-export { InvalidNonce }
-
-export { InvalidOption }
-
-export { MalformedConfidentialResponse }
-
-export { MalformedConfidentialResponseReason }
-
-export { MalformedHeader }
-
-export { mayHaveExecuted }
-
-export { MissingHeader }
-
-export { RequestRejected }
-
-export { StaleTimestamp }
-
-export { TransportFailed }
-
-export { TransportFailedReason }
-
-export { UnavailableError }
-
-export { UnavailableErrorKind }
-
-export { UnexpectedResponse }
-
-export { VerificationError }
-
-export { VrpcError }
 
 // Warning: (ae-forgotten-export) The symbol "ConfidentialValue" needs to be exported by the entry point index.d.ts
 //
@@ -113,6 +32,9 @@ export interface VrpcHttpOptions {
     replayWindowMs?: number;
     timeout?: number;
 }
+
+
+export * from "@w3tech.io/vrpc-core/errors";
 
 // (No @packageDocumentation comment for this package)
 

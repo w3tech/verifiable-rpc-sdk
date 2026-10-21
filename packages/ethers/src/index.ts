@@ -8,40 +8,8 @@
 // (consumer-supplied, single instance); ALL verification logic is reused from
 // @w3tech.io/vrpc-core — never copied (no viem import here, manifest isolation).
 
-export type {
-  AttestationFailedReason,
-  AttestationUnavailableReason,
-  InvalidInnerRequestReason,
-  MalformedConfidentialResponseReason,
-  TransportFailedReason,
-  UnavailableErrorKind,
-} from "@w3tech.io/vrpc-core";
-// Re-export the shared vrpc-core error family so consumers `instanceof`-check
-// without importing core directly. This is the SAME error type the viem adapter
-// reuses — one error family across both adapters.
-export {
-  AttestationFailed,
-  AttestationUnavailable,
-  BadSignature,
-  ConfidentialDecryptFailed,
-  ConfidentialSignerMismatch,
-  InternalError,
-  InvalidChainId,
-  InvalidInnerRequest,
-  InvalidNonce,
-  InvalidOption,
-  MalformedConfidentialResponse,
-  MalformedHeader,
-  MissingHeader,
-  mayHaveExecuted,
-  RequestRejected,
-  StaleTimestamp,
-  TransportFailed,
-  UnavailableError,
-  UnexpectedResponse,
-  VerificationError,
-  VrpcError,
-} from "@w3tech.io/vrpc-core";
 export type { ConfidentialInfo } from "@w3tech.io/vrpc-core/confidential";
+// One error family from core: the same classes, so `instanceof` works across packages.
+export * from "@w3tech.io/vrpc-core/errors";
 export type { VrpcOptions } from "./options";
 export { VrpcProvider } from "./provider";

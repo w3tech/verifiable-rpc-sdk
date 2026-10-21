@@ -103,9 +103,9 @@ export function describeBuiltAdapter(adapter: string): void {
       expect(Number(out)).toBeGreaterThan(0);
     });
 
-    test("the declarations carry the error kind and node info types", () => {
+    test("the declarations carry the error family and node info types", () => {
       const dts = readFileSync(join(distDir, "index.d.ts"), "utf8");
-      expect(dts).toContain("UnavailableErrorKind");
+      expect(dts).toContain("export * from '@w3tech.io/vrpc-core/errors'");
       expect(dts).toContain("ConfidentialInfo");
     });
   });
