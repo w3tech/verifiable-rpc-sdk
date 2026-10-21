@@ -1,63 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Ankr Confidential RPC mode for vrpcHttp: fetch transport, lazy client, signal linking, answer mapping.
+// Ankr Confidential RPC mode for vrpcHttp: map an inner answer the way viem's http transport would.
 
 import type { ConfidentialResponse } from "@w3tech.io/vrpc-core";
 import { HttpRequestError, RpcRequestError } from "viem";
-
-const linked = new WeakMap<AbortSignal, Set<AbortController>>();
-const listeners = new WeakMap<AbortSignal, () => void>();
-
-function register(caller: AbortSignal): Set<AbortController> {
-  const existing = linked.get(caller);
-  if (existing !== undefined) return existing;
-  const fresh = new Set<AbortController>();
-  const onAbort = () => {
-    linked.delete(caller);
-    listeners.delete(caller);
-    for (const controller of fresh) controller.abort(caller.reason);
-  };
-  linked.set(caller, fresh);
-  listeners.set(caller, onAbort);
-  caller.addEventListener("abort", onAbort, { once: true });
-  return fresh;
-}
-
-/** One signal per call from the caller's signal and the timeout, with one listener per caller signal. */
-export function linkSignal(
-  caller: AbortSignal | undefined,
-  timeoutMs: number,
-): { signal: AbortSignal | undefined; done(): void } {
-  if (caller === undefined) {
-    return { signal: timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined, done() {} };
-  }
-  const controller = new AbortController();
-  if (caller.aborted) {
-    controller.abort(caller.reason);
-    return { signal: controller.signal, done() {} };
-  }
-  const entry = register(caller);
-  entry.add(controller);
-  const timer =
-    timeoutMs > 0
-      ? setTimeout(
-          () => controller.abort(new DOMException("The operation timed out.", "TimeoutError")),
-          timeoutMs,
-        )
-      : undefined;
-  return {
-    signal: controller.signal,
-    done() {
-      clearTimeout(timer);
-      entry.delete(controller);
-      if (entry.size > 0 || linked.get(caller) !== entry) return;
-      linked.delete(caller);
-      const onAbort = listeners.get(caller);
-      listeners.delete(caller);
-      if (onAbort !== undefined) caller.removeEventListener("abort", onAbort);
-    },
-  };
-}
 
 const utf8 = new TextDecoder();
 

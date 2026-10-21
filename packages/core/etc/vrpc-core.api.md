@@ -288,6 +288,12 @@ export class LazyConfidentialClient {
 }
 
 // @public
+export function linkSignal(caller: AbortSignal | undefined, timeoutMs: number): {
+    signal: AbortSignal | undefined;
+    done(): void;
+};
+
+// @public
 export interface Logger {
     debug(event: string, data?: Record<string, unknown>): void;
 }

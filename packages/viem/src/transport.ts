@@ -8,11 +8,12 @@ import {
   createOpenSession,
   InvalidOption,
   LazyConfidentialClient,
+  linkSignal,
 } from "@w3tech.io/vrpc-core";
 import type { ConfidentialInfo } from "@w3tech.io/vrpc-core/confidential";
 import { createTransport, HttpRequestError, RpcRequestError, type Transport } from "viem";
 
-import { linkSignal, mapInnerResponse } from "./confidential";
+import { mapInnerResponse } from "./confidential";
 import type { VrpcHttpOptions } from "./options";
 
 /**

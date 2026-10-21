@@ -457,6 +457,7 @@ fields; some empty under the dstack simulator).
 | `validateChainId(...)` | function | Validates a chain id string (sidecar-identical rules: non-empty, ≤64 bytes, printable ASCII, no inner whitespace) and returns the trimmed value; throws `InvalidChainId`. Client options are checked with the same rules and throw `InvalidOption`. |
 | `isSignedVrpcResponse(...)` | function | Predicate: whether a response carries the `vRPC-*` signing headers. |
 | `fetchTransport(fetchFn?)` | function | A confidential `transport` over `fetchFn` (the global fetch when omitted): no redirect, no retry, body capped at 192 MiB, errors without the URL. |
+| `linkSignal(caller, timeoutMs)` | function | One signal per call that aborts with the caller's reason or a `TimeoutError` after `timeoutMs` (none when not positive); call `done()` when the call ends. Calls sharing a caller signal hold one abort listener on it. |
 
 ---
 

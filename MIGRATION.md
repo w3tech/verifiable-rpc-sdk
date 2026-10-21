@@ -397,7 +397,7 @@ viem:
 - ethers and viem re-export everything in `@w3tech.io/vrpc-core/errors`,
   including `InvalidNonce`, `BadSignatureContext`, `StaleTimestampContext`,
   `VerificationErrorKind` and `OptionName`.
-- Core: `createOpenSession`, `checkOptions`, `fetchTransport`.
+- Core: `createOpenSession`, `checkOptions`, `fetchTransport`, `linkSignal`.
 - dstack-verify: `AttestationError.unavailable`.
 
 ---
