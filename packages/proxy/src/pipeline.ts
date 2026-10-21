@@ -126,11 +126,8 @@ export function createRequestHandler(
       // Convenience injection; a client-supplied x-api-key is forwarded verbatim instead.
       forwardHeaders["x-api-key"] ??= config.apiKey;
     }
-    log.debug("proxy.forward", {
-      method: req.method,
-      url: req.url,
-      bodyBytes: requestBytes.length,
-    });
+    // No URL: a client key may sit in the path or query.
+    log.debug("proxy.forward", { method: req.method, bodyBytes: requestBytes.length });
 
     let upstreamRes: UpstreamResponse;
     try {

@@ -410,11 +410,14 @@ describe("proxy pipeline", () => {
     cleanups.push(() => closeServer(server));
 
     const sends = Array.from({ length: 10 }, () =>
-      post(url, RPC_REQUEST, { "content-type": "application/json" }),
+      post(`${url}/sentinel-path?key=sentinel-query`, RPC_REQUEST, {
+        "content-type": "application/json",
+      }),
     );
     const statuses = (await Promise.all(sends)).map((res) => res.status);
 
     expect(statuses).toEqual(Array(10).fill(200));
+    expect(stderr.join("")).not.toContain("sentinel");
     expect(stub.urls).toHaveLength(1);
     for (const spy of consoles) expect(spy).not.toHaveBeenCalled();
     expect(stdout).not.toHaveBeenCalled();
