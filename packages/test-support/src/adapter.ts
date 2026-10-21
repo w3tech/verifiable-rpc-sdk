@@ -179,3 +179,39 @@ export function expectSealedTrafficOnly(
     }
   }
 }
+
+function textForms(err: unknown): string[] {
+  if (typeof err !== "object" || err === null) return [String(err)];
+  const e = err as Error;
+  let json: string;
+  try {
+    json =
+      JSON.stringify(e, (_key, value) => (typeof value === "bigint" ? value.toString() : value)) ??
+      "";
+  } catch {
+    json = "unserialisable";
+  }
+  return [String(e.message), String(e), String(e.stack ?? ""), json];
+}
+
+function windows(bytes: Uint8Array): string[] {
+  const out: string[] = [];
+  for (let offset = 0; offset + 16 <= bytes.byteLength; offset += 16) {
+    out.push(Buffer.from(bytes.subarray(offset, offset + 16)).toString("hex"));
+  }
+  return out;
+}
+
+/** No secret and no 16-byte hex window of a body in the message, string, stack or JSON of any error. */
+export function expectNoSecrets(
+  errors: readonly unknown[],
+  secrets: readonly string[],
+  bodies: readonly Uint8Array[],
+): void {
+  const needles = [...secrets, ...bodies.flatMap(windows)];
+  for (const item of errors) {
+    for (const form of textForms(item)) {
+      for (const needle of needles) expect(form).not.toContain(needle);
+    }
+  }
+}

@@ -5,7 +5,14 @@
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 import { gzipSync } from "node:zlib";
-import type { TestNode, TestOuterResponse } from "./node";
+import { CHAIN_ID, NODE_ID } from "./fixtures";
+import {
+  createTestNode,
+  type TestNode,
+  type TestNodeOptions,
+  type TestOuterResponse,
+} from "./node";
+import { TEST_SEED } from "./sign";
 
 export interface ServedRequest {
   method: string;
@@ -143,4 +150,42 @@ export async function serveTestNode(
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },
   };
+}
+
+/** Serves a test node with the shared seed, chain and node id in front of `upstream`. */
+export function serveUpstream(
+  upstream: NonNullable<TestNodeOptions["upstream"]>,
+  options?: TestNodeServerOptions,
+): Promise<TestNodeServer> {
+  const node = createTestNode({ seed: TEST_SEED, chainId: CHAIN_ID, nodeId: NODE_ID, upstream });
+  return serveTestNode(node, options);
+}
+
+/** Leaves every later sealed POST unanswered; returns the bodies received. */
+export function holdPosts(server: TestNodeServer): Uint8Array[] {
+  const sent: Uint8Array[] = [];
+  server.answer((request) => {
+    if (!isPost(request)) return undefined;
+    sent.push(request.body);
+    return new Promise<undefined>(() => {});
+  });
+  return sent;
+}
+
+export const isPost = (request: ServedRequest) => request.method === "POST";
+export const isGet = (request: ServedRequest) => request.method === "GET";
+export const isElsewhere = (request: ServedRequest) => request.path === "/elsewhere";
+
+export const countOf = (server: TestNodeServer, match: (request: ServedRequest) => boolean) =>
+  server.requests.filter(match).length;
+
+/** A 429 with retry-after, a redirect to `/elsewhere` on the same server, or a plain-text failure. */
+export function failureAnswer(server: TestNodeServer, status: number): ServedAnswer {
+  if (status === 429) {
+    return { status, headers: { "content-type": "text/plain", "retry-after": "1" }, body: "slow" };
+  }
+  if (status >= 300 && status < 400) {
+    return { status, headers: { location: `${server.url}/elsewhere` } };
+  }
+  return { status, headers: { "content-type": "text/plain" }, body: "gateway failure" };
 }

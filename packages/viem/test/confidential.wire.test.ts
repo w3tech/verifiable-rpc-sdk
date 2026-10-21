@@ -1,10 +1,7 @@
 // Ankr Confidential RPC mode with viem on the wire: exactly one request per call whatever the
-// gateway answers, also under fallback, no redirect followed, decoded answers, no plaintext JSON-RPC,
+// gateway answers, also under fallback, no redirect followed, no plaintext JSON-RPC,
 // and errors without the key, the params, the inner body or body bytes.
 
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
-import { Readable } from "node:stream";
 import {
   AttestationUnavailable,
   DEFAULT_PHALA_VERIFY_ENDPOINT,
@@ -13,20 +10,20 @@ import {
   UnexpectedResponse,
 } from "@w3tech.io/vrpc-core";
 import {
-  CHAIN_ID,
-  createTestNode,
   KEY,
   mockHardwareVerifier,
-  NODE_ID,
   rejectionOf,
-  TEST_SEED,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
-import { expectSealedTrafficOnly } from "@w3tech.io/vrpc-test-support/adapter";
+import { expectNoSecrets, expectSealedTrafficOnly } from "@w3tech.io/vrpc-test-support/adapter";
 import {
-  type ServedAnswer,
-  type ServedRequest,
-  serveTestNode,
+  countOf,
+  failureAnswer,
+  holdPosts,
+  isElsewhere,
+  isGet,
+  isPost,
+  serveUpstream,
   type TestNodeServer,
   type TestNodeServerOptions,
 } from "@w3tech.io/vrpc-test-support/server";
@@ -44,7 +41,6 @@ const arbitrum = defineChain({
 });
 
 type Mode = "client" | "fallback";
-const MODES: Mode[] = ["client", "fallback"];
 
 interface RpcCall {
   id: number;
@@ -71,13 +67,10 @@ async function serve(
   options: TestNodeServerOptions = {},
   upstream: Upstream = result(() => "0x10"),
 ): Promise<TestNodeServer> {
-  const node = createTestNode({
-    seed: TEST_SEED,
-    chainId: CHAIN_ID,
-    nodeId: NODE_ID,
-    upstream: async (request) => upstream(JSON.parse(await request.text()) as RpcCall),
-  });
-  const server = await serveTestNode(node, options);
+  const server = await serveUpstream(
+    async (request) => upstream(JSON.parse(await request.text()) as RpcCall),
+    options,
+  );
   cleanups.push(() => server.close());
   return server;
 }
@@ -111,36 +104,21 @@ function walkFind<T>(err: unknown, type: abstract new (...args: never[]) => T): 
   return (err.walk((e) => e instanceof type) as T | null) ?? undefined;
 }
 
-const count = (server: TestNodeServer, match: (r: ServedRequest) => boolean) =>
-  server.requests.filter(match).length;
-const isPost = (r: ServedRequest) => r.method === "POST";
-const isGet = (r: ServedRequest) => r.method === "GET";
-const isElsewhere = (r: ServedRequest) => r.path === "/elsewhere";
-
-function answerFor(server: TestNodeServer, status: number): ServedAnswer {
-  if (status === 429) {
-    return { status, headers: { "content-type": "text/plain", "retry-after": "1" }, body: "slow" };
-  }
-  if (status >= 300 && status < 400) {
-    return { status, headers: { location: `${server.url}/elsewhere` } };
-  }
-  return { status, headers: { "content-type": "text/plain" }, body: "gateway failure" };
-}
-
-describe.each(MODES)("one request per call through %s", (mode) => {
+// The client mode is the default transport, covered by the core suite.
+describe("one request per call through fallback", () => {
   test.each([
     429, 301, 302, 303, 307, 308, 500, 502, 503, 504,
   ])("the sealed POST answered %i is sent once and no redirect is followed", async (status) => {
     const server = await serve();
-    const { client, ready } = build(mode, `${server.url}/eth_vrpc`);
+    const { client, ready } = build("fallback", `${server.url}/eth_vrpc`);
     await ready();
     server.requests.splice(0);
-    server.answer((request) => (isPost(request) ? answerFor(server, status) : undefined));
+    server.answer((request) => (isPost(request) ? failureAnswer(server, status) : undefined));
 
     const err = await rejectionOf(client.getBlockNumber({ cacheTime: 0 }));
 
-    expect(count(server, isPost)).toBe(1);
-    expect(count(server, isElsewhere)).toBe(0);
+    expect(countOf(server, isPost)).toBe(1);
+    expect(countOf(server, isElsewhere)).toBe(0);
     expect(server.requests).toHaveLength(1);
     if (status === 429) {
       const rejected = walkFind(err, RequestRejected);
@@ -158,29 +136,17 @@ describe.each(MODES)("one request per call through %s", (mode) => {
     429, 302, 307, 502,
   ])("the cold attestation answered %i is sent once and nothing is sealed", async (status) => {
     const server = await serve();
-    const { client } = build(mode, `${server.url}/eth_vrpc`);
-    server.answer((request) => (isGet(request) ? answerFor(server, status) : undefined));
+    const { client } = build("fallback", `${server.url}/eth_vrpc`);
+    server.answer((request) => (isGet(request) ? failureAnswer(server, status) : undefined));
 
     const err = await rejectionOf(client.getBlockNumber({ cacheTime: 0 }));
 
-    expect(count(server, isGet)).toBe(1);
-    expect(count(server, isPost)).toBe(0);
-    expect(count(server, isElsewhere)).toBe(0);
+    expect(countOf(server, isGet)).toBe(1);
+    expect(countOf(server, isPost)).toBe(0);
+    expect(countOf(server, isElsewhere)).toBe(0);
     const unavailable = walkFind(err, AttestationUnavailable);
     expect(unavailable).toBeInstanceOf(AttestationUnavailable);
     expect(unavailable?.reason).toBe("status");
-  });
-});
-
-describe("encoding", () => {
-  test("gzipped answers from a gzip-capable gateway are decoded and verified", async () => {
-    const server = await serve({ gzipWhenAccepted: true });
-    const { client } = build("client", `${server.url}/eth_vrpc`);
-
-    await expect(client.getBlockNumber({ cacheTime: 0 })).resolves.toBe(16n);
-    await expect(client.getBlockNumber({ cacheTime: 0 })).resolves.toBe(16n);
-
-    expect(server.requests.some((r) => r.gzipped)).toBe(true);
   });
 });
 
@@ -204,24 +170,10 @@ describe("wire invariant", () => {
     await client.getChainId();
     await client.request({ method: "eth_getCode", params: [sentinelAddress, "latest"] });
 
-    expect(count(server, isPost)).toBe(5);
+    expect(countOf(server, isPost)).toBe(5);
     expectSealedTrafficOnly(server.requests, [SENTINEL]);
   });
 });
-
-function textForms(err: unknown): string[] {
-  if (typeof err !== "object" || err === null) return [String(err)];
-  const e = err as Error;
-  let json: string;
-  try {
-    json =
-      JSON.stringify(e, (_key, value) => (typeof value === "bigint" ? value.toString() : value)) ??
-      "";
-  } catch {
-    json = "unserialisable";
-  }
-  return [String(e.message), String(e), String(e.stack ?? ""), json];
-}
 
 // The error, every cause below it and every error viem's walk visits.
 function chain(err: unknown): unknown[] {
@@ -240,23 +192,8 @@ function chain(err: unknown): unknown[] {
   return out;
 }
 
-function windows(bytes: Uint8Array): string[] {
-  const out: string[] = [];
-  for (let offset = 0; offset + 16 <= bytes.byteLength; offset += 16) {
-    out.push(Buffer.from(bytes.subarray(offset, offset + 16)).toString("hex"));
-  }
-  return out;
-}
-
 function expectSanitised(err: unknown, bodies: Uint8Array[]): void {
-  const secrets = [KEY, "sentinel-param", "sentinel-reply", ...bodies.flatMap(windows)];
-  const items = chain(err);
-  expect(items.length).toBeGreaterThan(0);
-  for (const item of items) {
-    for (const form of textForms(item)) {
-      for (const secret of secrets) expect(form).not.toContain(secret);
-    }
-  }
+  expectNoSecrets(chain(err), [KEY, "sentinel-param", "sentinel-reply"], bodies);
 }
 
 const sweepRequest = { method: "eth_blockNumber", params: ["sentinel-param"] } as const;
@@ -267,18 +204,6 @@ function keyed(origin: string, timeout?: number) {
     timeout === undefined ? {} : { timeout },
   );
   return createPublicClient({ chain: arbitrum, transport });
-}
-
-// Stays bound and drops every connection, so no other process can take the port.
-async function droppingEveryConnection(): Promise<string> {
-  const server = createServer();
-  server.on("connection", (socket) => socket.destroy());
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  cleanups.push(() => {
-    server.closeAllConnections();
-    server.close();
-  });
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
 
 // Records the outer request and response bodies of every sealed POST.
@@ -292,43 +217,11 @@ function recordBodies(server: TestNodeServer, sent: Uint8Array[]): void {
 }
 
 describe("errors carry neither the key, the params, the inner body nor body bytes", () => {
-  test("a dropped connection on the cold attestation", async () => {
-    const client = keyed(await droppingEveryConnection());
-
-    const err = await rejectionOf(client.request(sweepRequest as never));
-
-    expect(walkFind(err, AttestationUnavailable)?.reason).toBe("transport");
-    expectSanitised(err, []);
-  });
-
-  test("a sealed answer cut after half its body", async () => {
-    const server = await serve();
-    const client = keyed(server.url);
-    await client.transport.ready();
-    const sent: Uint8Array[] = [];
-    server.answer(async (request, forward) => {
-      if (!isPost(request)) return undefined;
-      const answer = await forward();
-      sent.push(request.body, answer.body);
-      return { ...answer, cutAfter: answer.body.byteLength >> 1 };
-    });
-
-    const err = await rejectionOf(client.request(sweepRequest as never));
-
-    expect(walkFind(err, TransportFailed)?.reason).toBe("network");
-    expectSanitised(err, sent);
-  });
-
   test("a timeout while the sealed POST hangs", async () => {
     const server = await serve();
     const client = keyed(server.url, 200);
     await client.transport.ready();
-    const sent: Uint8Array[] = [];
-    server.answer((request) => {
-      if (!isPost(request)) return undefined;
-      sent.push(request.body);
-      return new Promise<undefined>(() => {});
-    });
+    const sent = holdPosts(server);
 
     const err = await rejectionOf(client.request(sweepRequest as never));
 
@@ -393,146 +286,6 @@ describe("errors carry neither the key, the params, the inner body nor body byte
     expect(walkFind<Error>(err, core)).toBeInstanceOf(core);
     expectSanitised(err, sent);
   });
-
-  test("a custom fetchFn that throws with the keyed URL in its message", async () => {
-    const server = await serve();
-    const fetchFn: typeof fetch = async (input, init) => {
-      if (init?.method !== "POST") return fetch(input, init);
-      const url = String(input);
-      throw Object.assign(new Error(`request to ${url} failed, reason: socket hang up`), {
-        code: "ECONNRESET",
-        cause: new Error(`connect to ${url}`),
-      });
-    };
-    const client = createPublicClient({
-      chain: arbitrum,
-      transport: confidential(`${server.url}/eth_vrpc/${KEY}`, { fetchFn }),
-    });
-
-    const err = await rejectionOf(client.request(sweepRequest as never));
-
-    const failed = walkFind(err, TransportFailed);
-    expect(failed?.reason).toBe("network");
-    expect((failed?.cause as { code?: string } | undefined)?.code).toBe("ECONNRESET");
-    expectSanitised(err, []);
-    for (const item of chain(err)) {
-      for (const form of textForms(item)) expect(form).not.toContain("/eth_vrpc/");
-    }
-  });
-});
-
-describe("response size cap", () => {
-  const CAP = 201_326_592;
-  const CHUNK = new Uint8Array(16 * 1024 * 1024);
-
-  // Answers the sealed POST with an endless body, optionally declaring a length.
-  function endless(headers: Record<string, string>) {
-    const seen = { pulled: 0, cancelled: false };
-    const fetchFn: typeof fetch = async (input, init) => {
-      if (init?.method !== "POST") return fetch(input, init);
-      const body = new ReadableStream<Uint8Array>({
-        pull(controller) {
-          seen.pulled += CHUNK.byteLength;
-          controller.enqueue(CHUNK);
-        },
-        cancel() {
-          seen.cancelled = true;
-        },
-      });
-      return new Response(body, { status: 200, headers });
-    };
-    return { fetchFn, seen };
-  }
-
-  test.each([
-    { name: "a streamed body past the cap", headers: {} },
-    {
-      name: "a declared identity length past the cap",
-      headers: { "content-length": `${CAP + 1}` },
-    },
-  ])("$name is cut and the call fails without reading on", async ({ headers }) => {
-    const server = await serve();
-    const { fetchFn, seen } = endless(headers);
-    const client = createPublicClient({
-      chain: arbitrum,
-      transport: confidential(server.url, { fetchFn }),
-    });
-
-    const err = await rejectionOf(client.request({ method: "eth_blockNumber" }));
-
-    expect(walkFind(err, TransportFailed)?.reason).toBe("too-large");
-    expect(seen.cancelled).toBe(true);
-    expect(seen.pulled).toBeLessThanOrEqual(CAP + 2 * CHUNK.byteLength);
-  });
-});
-
-describe("responses without a web stream body", () => {
-  const CAP = 201_326_592;
-  type Shape = "a Node Readable" | "an absent";
-  const SHAPES: Shape[] = ["a Node Readable", "an absent"];
-
-  // node-fetch answers with a Node Readable body, whatwg-fetch and React Native with none.
-  function streamless(
-    shape: Shape,
-    status: number,
-    headers: Headers,
-    bytes: Uint8Array,
-    seen: { buffered: number },
-  ): Response {
-    return {
-      status,
-      statusText: "",
-      ok: status >= 200 && status < 300,
-      type: "basic",
-      headers,
-      body: shape === "an absent" ? undefined : Readable.from([bytes]),
-      arrayBuffer: async () => {
-        seen.buffered += 1;
-        return bytes.slice().buffer;
-      },
-    } as unknown as Response;
-  }
-
-  test.each(SHAPES)("%s body is read in full", async (shape) => {
-    const server = await serve();
-    const seen = { buffered: 0 };
-    const fetchFn: typeof fetch = async (input, init) => {
-      const response = await fetch(input, init);
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      return streamless(shape, response.status, response.headers, bytes, seen);
-    };
-    const client = createPublicClient({
-      chain: arbitrum,
-      transport: confidential(server.url, { fetchFn }),
-    });
-
-    await expect(client.request({ method: "eth_blockNumber" })).resolves.toBe("0x10");
-    expect(seen.buffered).toBe(server.requests.length);
-    expect(count(server, isPost)).toBe(1);
-  });
-
-  test.each(
-    SHAPES.flatMap((shape) => [
-      [shape, "declared", { "content-length": `${CAP + 1}` }, 0] as const,
-      [shape, "read", {}, CAP + 1] as const,
-    ]),
-  )("%s body past the cap (%s) fails the call", async (shape, past, headers, size) => {
-    const server = await serve();
-    const seen = { buffered: 0 };
-    const fetchFn: typeof fetch = async (input, init) => {
-      if (init?.method !== "POST") return fetch(input, init);
-      return streamless(shape, 200, new Headers(headers), new Uint8Array(size), seen);
-    };
-    const client = createPublicClient({
-      chain: arbitrum,
-      transport: confidential(server.url, { fetchFn }),
-    });
-
-    const err = await rejectionOf(client.request({ method: "eth_blockNumber" }));
-
-    expect(walkFind(err, TransportFailed)?.reason).toBe("too-large");
-    expect(seen.buffered).toBe(past === "read" ? 1 : 0);
-  });
 });
 
 describe("hardware verifier", () => {
@@ -556,6 +309,6 @@ describe("hardware verifier", () => {
     await rejectionOf(client.request({ method: "eth_blockNumber" }));
 
     expect(seen).toContain(DEFAULT_PHALA_VERIFY_ENDPOINT);
-    expect(count(server, isPost)).toBe(0);
+    expect(countOf(server, isPost)).toBe(0);
   });
 });

@@ -1,6 +1,7 @@
 import { getEventListeners } from "node:events";
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
+import { Readable } from "node:stream";
 import { gzipSync } from "node:zlib";
 import {
   CHAIN_ID,
@@ -22,7 +23,13 @@ import {
   TransportFailed,
   UnexpectedResponse,
 } from "../src/errors";
-import { type ConfidentialTransport, defaultTransport } from "../src/transport";
+import {
+  type ConfidentialTransport,
+  defaultTransport,
+  MAX_RESPONSE_BYTES,
+  ResponseTooLarge,
+  readCappedBody,
+} from "../src/transport";
 
 const UPSTREAM_BODY = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 const OVER_CAP = 201326593;
@@ -32,6 +39,7 @@ const text = new TextDecoder();
 type Mode =
   | "plain"
   | "gzip"
+  | "gzip-garbage"
   | "redirect"
   | "cut"
   | "short-chunked"
@@ -114,6 +122,10 @@ function answerWith(mode: Mode, isPost: boolean, answer: TestOuterResponse, res:
     case "redirect":
       res.writeHead(302, { location: "/elsewhere", "content-length": "0" });
       res.end();
+      return undefined;
+    case "gzip-garbage":
+      res.writeHead(status, { ...full, "content-encoding": "gzip" });
+      res.end(body);
       return undefined;
     case "cut":
       res.writeHead(status, full);
@@ -209,6 +221,14 @@ function posts(h: Harness): Seen[] {
   return h.log.filter((entry) => entry.method === "POST");
 }
 
+function expectFixedCause(err: unknown): void {
+  const cause = (err as TransportFailed).cause as Error;
+  expect(cause.message).toBe("The request failed.");
+  for (const item of [err as Error, cause]) {
+    expect(`${item.message} ${String(item)} ${item.stack}`).not.toContain(KEY);
+  }
+}
+
 describe("default transport over HTTP", () => {
   test("attests with a GET, then sends the sealed request as message/ohttp-req", async () => {
     const h = await harness();
@@ -253,11 +273,21 @@ describe("default transport over HTTP", () => {
 
     expect(err).toBeInstanceOf(TransportFailed);
     expect((err as TransportFailed).reason).toBe("network");
-    expect((err as TransportFailed).cause).toBeDefined();
+    expectFixedCause(err);
 
     h.setMode("plain");
     expect((await client.request(jsonRpcCall())).status).toBe(200);
     expect(h.node.attestations()).toBe(1);
+  });
+
+  test("a gzip-labelled answer whose body is not gzip is a network failure", async () => {
+    const h = await harness();
+    h.setMode("gzip-garbage");
+    const err = await rejectionOf(clientAt(h).request(jsonRpcCall()));
+
+    expect(err).toBeInstanceOf(TransportFailed);
+    expect((err as TransportFailed).reason).toBe("network");
+    expectFixedCause(err);
   });
 
   test("a chunked body that ends cleanly but short fails the signature", async () => {
@@ -424,5 +454,50 @@ describe("default transport fetch contract", () => {
     expect(get?.init.method).toBe("GET");
     expect(get?.init).not.toHaveProperty("body");
     expect(get?.init).not.toHaveProperty("signal");
+  });
+});
+
+describe("readCappedBody without a web stream", () => {
+  type Shape = "an absent" | "a Node Readable" | "an arrayBuffer-only";
+  const SHAPES: Shape[] = ["an absent", "a Node Readable", "an arrayBuffer-only"];
+  const OVER = MAX_RESPONSE_BYTES + 1;
+
+  // node-fetch answers with a Node Readable body, whatwg-fetch and React Native with none.
+  function streamless(
+    shape: Shape,
+    headers: Record<string, string>,
+    size: number,
+    seen: { buffered: number },
+  ) {
+    const body = shape === "a Node Readable" ? { body: Readable.from([]) } : { body: undefined };
+    return {
+      ...(shape === "an arrayBuffer-only" ? {} : body),
+      headers: new Headers(headers),
+      arrayBuffer: async () => {
+        seen.buffered += 1;
+        return new Uint8Array(size).buffer;
+      },
+    } as unknown as Response;
+  }
+
+  test.each(SHAPES)("%s body is read in full", async (shape) => {
+    const seen = { buffered: 0 };
+
+    expect(await readCappedBody(streamless(shape, {}, 16, seen))).toEqual(new Uint8Array(16));
+    expect(seen.buffered).toBe(1);
+  });
+
+  test.each(
+    SHAPES.flatMap((shape) => [
+      [shape, "declared", { "content-length": `${OVER}` }, 0] as const,
+      [shape, "read", {}, OVER] as const,
+    ]),
+  )("%s body past the cap (%s) is too large", async (shape, past, headers, size) => {
+    const seen = { buffered: 0 };
+
+    await expect(readCappedBody(streamless(shape, headers, size, seen))).rejects.toBeInstanceOf(
+      ResponseTooLarge,
+    );
+    expect(seen.buffered).toBe(past === "read" ? 1 : 0);
   });
 });
