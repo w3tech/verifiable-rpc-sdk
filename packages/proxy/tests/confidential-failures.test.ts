@@ -4,28 +4,32 @@
 
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import { setTimeout as delay } from "node:timers/promises";
 import { gzipSync } from "node:zlib";
 import { getPublicKeyAsync } from "@noble/ed25519";
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 import { ConfidentialClient } from "@w3tech.io/vrpc-core/confidential";
 import type { TestOuterResponse, TestUpstreamResponse } from "@w3tech.io/vrpc-test-support";
-import { rejectionOf, TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
+import { createTestNode, rejectionOf, TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
+import {
+  closeServer,
+  holdPosts,
+  isPost,
+  listen,
+  type ServedRequest,
+  serveTestNode,
+  type TestNodeServer,
+} from "@w3tech.io/vrpc-test-support/server";
 import { getGlobalDispatcher } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createConfidentialTransport } from "../src/confidential";
 import type { ProxyConfig } from "../src/config";
-
 import {
-  closeServer,
-  listen,
   type RawResponse,
   type RunningProxy,
   rawRequest,
   startConfidentialProxy,
-  startTestNodeServer,
-  type TestNodeServer,
-  type WireRequest,
-} from "./support/test-node-server";
+} from "./support/proxy";
 import { TEST_CHAIN_ID, testConfig } from "./support/test-overrides";
 
 const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
@@ -79,8 +83,20 @@ function plain(status: number, contentType: string | undefined, body: string): T
   };
 }
 
-const gets = (wire: WireRequest[]) => wire.filter((r) => r.method === "GET").length;
-const posts = (wire: WireRequest[]) => wire.filter((r) => r.method === "POST").length;
+const gets = (wire: ServedRequest[]) => wire.filter((r) => r.method === "GET").length;
+const posts = (wire: ServedRequest[]) => wire.filter((r) => r.method === "POST").length;
+
+const delayed = (method: string, ms: number) => async (request: ServedRequest) => {
+  if (request.method === method) await delay(ms);
+  return undefined;
+};
+
+const repeatedNodeId =
+  (method: string) => async (request: ServedRequest, forward: () => Promise<TestOuterResponse>) => {
+    if (request.method !== method) return undefined;
+    const normal = await forward();
+    return { ...normal, headers: { ...normal.headers, "vrpc-nodeid": ["n1", "n2"] } };
+  };
 
 function post(url: string): Promise<RawResponse> {
   return rawRequest(url, {
@@ -96,12 +112,14 @@ async function startHarness(options: {
   beforeListen?: (h: Omit<Harness, "proxy">) => void | Promise<void>;
   startup: "ok" | "fail";
 }): Promise<Harness> {
-  const node = await startTestNodeServer({
-    seed: TEST_SEED,
-    chainId: TEST_CHAIN_ID,
-    nodeId: "failure-node-1",
-    upstream: () => answer(),
-  });
+  const node = await serveTestNode(
+    createTestNode({
+      seed: TEST_SEED,
+      chainId: TEST_CHAIN_ID,
+      nodeId: "failure-node-1",
+      upstream: () => answer(),
+    }),
+  );
   cleanups.push(() => node.close());
   const verifier: TogglingVerifier = {
     failing: false,
@@ -124,7 +142,7 @@ async function startHarness(options: {
 function restore(h: Harness): void {
   h.node.node.setConfidential();
   h.node.node.setAttestation();
-  h.node.setWire();
+  h.node.answer();
   h.verifier.failing = false;
   answer = jsonAnswer;
 }
@@ -152,7 +170,7 @@ async function failThenRecover(
   expected: { status: number; kind: string; executed?: "no" | "unknown" },
   attempt: { gets: number; posts: number },
 ): Promise<void> {
-  const wire = h.node.wire;
+  const wire = h.node.requests;
   const before = { gets: gets(wire), posts: posts(wire) };
   const res = await post(h.proxy.url);
   await expectTypedError(res, expected.status, expected.kind, expected.executed);
@@ -206,15 +224,14 @@ const attestationRows: Row[] = [
   },
   {
     title: "attestation with a repeated node id",
-    install: ({ node }) =>
-      node.setWire({ extraHeaders: { "vrpc-nodeid": ["n1", "n2"] }, only: "GET" }),
+    install: ({ node }) => node.answer(repeatedNodeId("GET")),
     status: 502,
     kind: "AttestationFailed",
     executed: "no",
   },
   {
     title: "attestation slower than the timeout",
-    install: ({ node }) => node.setWire({ delayMs: 1000, only: "GET" }),
+    install: ({ node }) => node.answer(delayed("GET", 1000)),
     status: 504,
     kind: "AttestationUnavailable",
     executed: "no",
@@ -277,14 +294,18 @@ const postRows: Row[] = [
   },
   {
     title: "node answer slower than the timeout",
-    install: ({ node }) => node.setWire({ delayMs: 1000, only: "POST" }),
+    install: ({ node }) => node.answer(delayed("POST", 1000)),
     status: 504,
     kind: "UpstreamTimeout",
     executed: "unknown",
   },
   {
     title: "connection closed before the status line",
-    install: ({ node }) => node.setWire({ destroyBeforeHeaders: true, only: "POST" }),
+    install: ({ node }) =>
+      node.answer((request) => {
+        if (isPost(request)) request.socket.destroy();
+        return undefined;
+      }),
     status: 502,
     kind: "UpstreamConnect",
     executed: "unknown",
@@ -300,7 +321,11 @@ const postRows: Row[] = [
       });
       expect((await post(proxy.url)).status).toBe(200);
       node.node.setConfidential();
-      node.setWire({ cutAfterBytes: Math.floor(outerLength / 2), only: "POST" });
+      node.answer(async (request, forward) =>
+        isPost(request)
+          ? { ...(await forward()), cutAfter: Math.floor(outerLength / 2) }
+          : undefined,
+      );
     },
     status: 502,
     kind: "UpstreamConnect",
@@ -322,7 +347,16 @@ const postRows: Row[] = [
   },
   {
     title: "corrupt gzip answer",
-    install: ({ node }) => node.setWire({ corruptGzip: true, only: "POST" }),
+    install: ({ node }) =>
+      node.answer(async (request, forward) => {
+        if (!isPost(request)) return undefined;
+        const normal = await forward();
+        return {
+          ...normal,
+          headers: { ...normal.headers, "content-encoding": "gzip" },
+          body: Buffer.concat([Buffer.from("not gzip:"), normal.body]),
+        };
+      }),
     status: 502,
     kind: "DecodeFailed",
     executed: "unknown",
@@ -375,8 +409,7 @@ const postRows: Row[] = [
   },
   {
     title: "repeated vRPC-NodeId on the answer",
-    install: ({ node }) =>
-      node.setWire({ extraHeaders: { "vrpc-nodeid": ["n1", "n2"] }, only: "POST" }),
+    install: ({ node }) => node.answer(repeatedNodeId("POST")),
     status: 502,
     kind: "MalformedHeader",
     executed: "unknown",
@@ -458,12 +491,14 @@ describe("concurrent and interrupted requests", () => {
     const gate = new Promise<TestOuterResponse>((resolve) => {
       answerAttestation = resolve;
     });
-    const node = await startTestNodeServer({
-      seed: TEST_SEED,
-      chainId: TEST_CHAIN_ID,
-      nodeId: "failure-node-1",
-      upstream: () => answer(),
-    });
+    const node = await serveTestNode(
+      createTestNode({
+        seed: TEST_SEED,
+        chainId: TEST_CHAIN_ID,
+        nodeId: "failure-node-1",
+        upstream: () => answer(),
+      }),
+    );
     cleanups.push(() => node.close());
     node.node.setAttestation(() => gate);
     const proxy = await startConfidentialProxy(node);
@@ -478,14 +513,14 @@ describe("concurrent and interrupted requests", () => {
     for (const res of responses) {
       await expectTypedError(res, 503, "AttestationUnavailable", "no");
     }
-    expect(gets(node.wire)).toBe(1);
-    expect(posts(node.wire)).toBe(0);
+    expect(gets(node.requests)).toBe(1);
+    expect(posts(node.requests)).toBe(0);
 
     node.node.setAttestation();
     const ok = await post(proxy.url);
     expect(ok.status).toBe(200);
-    expect(gets(node.wire)).toBe(2);
-    expect(posts(node.wire)).toBe(1);
+    expect(gets(node.requests)).toBe(2);
+    expect(posts(node.requests)).toBe(1);
   });
 
   test("a client that disconnects mid-request leaves the proxy serving with its pin", async () => {
@@ -496,7 +531,7 @@ describe("concurrent and interrupted requests", () => {
     });
     cleanups.push(async () => write.mockRestore());
     const h = await startHarness({ startup: "ok", config: { logLevel: "debug" } });
-    h.node.setWire({ delayMs: 200, only: "POST" });
+    h.node.answer(delayed("POST", 200));
     const target = new URL(h.proxy.url);
     const aborted = new Promise<void>((resolve) => {
       const req = http.request({
@@ -515,19 +550,19 @@ describe("concurrent and interrupted requests", () => {
     await vi.waitFor(() =>
       expect(stderr.some((l) => / proxy\.(relay|clientAborted|error)\b/.test(l))).toBe(true),
     );
-    expect(posts(h.node.wire)).toBe(1);
-    expect(gets(h.node.wire)).toBe(1);
+    expect(posts(h.node.requests)).toBe(1);
+    expect(gets(h.node.requests)).toBe(1);
 
-    h.node.setWire();
+    h.node.answer();
     const ok = await post(h.proxy.url);
     expect(ok.status).toBe(200);
-    expect(gets(h.node.wire)).toBe(1);
-    expect(posts(h.node.wire)).toBe(2);
+    expect(gets(h.node.requests)).toBe(1);
+    expect(posts(h.node.requests)).toBe(2);
   });
 
   test("a client disconnect aborts the upstream request", async () => {
     const h = await startHarness({ startup: "ok" });
-    h.node.setWire({ hang: true, only: "POST" });
+    holdPosts(h.node);
     const target = new URL(h.proxy.url);
     const req = http.request({
       host: target.hostname,
@@ -538,8 +573,8 @@ describe("concurrent and interrupted requests", () => {
     });
     req.on("error", () => {});
     req.end(RPC_BODY);
-    await vi.waitFor(() => expect(posts(h.node.wire)).toBe(1));
-    const upstream = h.node.wire.find((r) => r.method === "POST");
+    await vi.waitFor(() => expect(posts(h.node.requests)).toBe(1));
+    const upstream = h.node.requests.find((r) => r.method === "POST");
     req.destroy();
 
     await vi.waitFor(() => expect(upstream?.socket.destroyed).toBe(true));

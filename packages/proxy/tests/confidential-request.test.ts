@@ -2,19 +2,20 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode: what the node receives, what is refused locally, and the outer wire headers.
 
-import { TEST_SEED } from "@w3tech.io/vrpc-test-support";
+import { createTestNode, TEST_SEED } from "@w3tech.io/vrpc-test-support";
+import {
+  type ServedRequest,
+  serveTestNode,
+  type TestNodeServer,
+} from "@w3tech.io/vrpc-test-support/server";
 import { afterEach, describe, expect, test, vi } from "vitest";
-
 import {
   type RawRequestOptions,
   type RunningProxy,
   rawRequest,
   startConfidentialProxy,
-  startTestNodeServer,
-  type TestNodeServer,
-  type WireRequest,
   wireHeaderNames,
-} from "./support/test-node-server";
+} from "./support/proxy";
 import { TEST_CHAIN_ID } from "./support/test-overrides";
 
 const API_KEY = "configured-key-1";
@@ -46,22 +47,24 @@ afterEach(async () => {
 });
 
 async function startNode(): Promise<TestNodeServer> {
-  nodeServer = await startTestNodeServer({
-    seed: TEST_SEED,
-    chainId: TEST_CHAIN_ID,
-    nodeId: NODE_ID,
-    upstream: async (inner) => {
-      const url = new URL(inner.url);
-      seen.push({
-        method: inner.method,
-        target: url.pathname + url.search,
-        contentType: inner.headers.get("content-type"),
-        accept: inner.headers.get("accept"),
-        body: Buffer.from(await inner.arrayBuffer()),
-      });
-      return { status: 200, headers: { "content-type": "application/json" }, body: ANSWER };
-    },
-  });
+  nodeServer = await serveTestNode(
+    createTestNode({
+      seed: TEST_SEED,
+      chainId: TEST_CHAIN_ID,
+      nodeId: NODE_ID,
+      upstream: async (inner) => {
+        const url = new URL(inner.url);
+        seen.push({
+          method: inner.method,
+          target: url.pathname + url.search,
+          contentType: inner.headers.get("content-type"),
+          accept: inner.headers.get("accept"),
+          body: Buffer.from(await inner.arrayBuffer()),
+        });
+        return { status: 200, headers: { "content-type": "application/json" }, body: ANSWER };
+      },
+    }),
+  );
   return nodeServer;
 }
 
@@ -76,8 +79,8 @@ async function setup(maxBodyBytes?: number): Promise<{ node: TestNodeServer; url
   return { node, url: proxy.url };
 }
 
-const gets = (wire: WireRequest[]) => wire.filter((r) => r.method === "GET");
-const posts = (wire: WireRequest[]) => wire.filter((r) => r.method === "POST");
+const gets = (wire: ServedRequest[]) => wire.filter((r) => r.method === "GET");
+const posts = (wire: ServedRequest[]) => wire.filter((r) => r.method === "POST");
 
 function errorOf(body: Buffer): { kind: string; message: string } {
   return (JSON.parse(body.toString()) as { error: { kind: string; message: string } }).error;
@@ -92,7 +95,7 @@ async function expectNextRequestRelayed(node: TestNodeServer, url: string): Prom
   });
   expect(res.status).toBe(200);
   expect(res.body.toString()).toBe(ANSWER);
-  expect(gets(node.wire)).toHaveLength(1);
+  expect(gets(node.requests)).toHaveLength(1);
   expect(node.node.attestations()).toBe(1);
 }
 
@@ -178,7 +181,7 @@ describe("refused locally", () => {
     const res = await rawRequest(url, options);
     expect(res.status).toBe(415);
     expect(errorOf(res.body).kind).toBe("UnsupportedMediaType");
-    expect(node.wire).toHaveLength(1);
+    expect(node.requests).toHaveLength(1);
     expect(seen).toHaveLength(0);
     await expectNextRequestRelayed(node, url);
   });
@@ -208,7 +211,7 @@ describe("refused locally", () => {
     for (const leak of ["upstream.example", "/a/../b", "//x"]) {
       expect(error.message).not.toContain(leak);
     }
-    expect(node.wire).toHaveLength(1);
+    expect(node.requests).toHaveLength(1);
     expect(seen).toHaveLength(0);
     await expectNextRequestRelayed(node, url);
   });
@@ -223,7 +226,7 @@ describe("refused locally", () => {
     });
     expect(res.status).toBe(400);
     expect(res.headers["content-type"]).toBe("application/json");
-    expect(node.wire).toHaveLength(1);
+    expect(node.requests).toHaveLength(1);
     expect(seen).toHaveLength(0);
     await expectNextRequestRelayed(node, url);
   });
@@ -238,7 +241,7 @@ describe("refused locally", () => {
     });
     expect(res.status).toBe(413);
     expect(errorOf(res.body).kind).toBe("BodyTooLarge");
-    expect(node.wire).toHaveLength(1);
+    expect(node.requests).toHaveLength(1);
     expect(seen).toHaveLength(0);
   });
 });
@@ -263,9 +266,9 @@ describe("outer wire", () => {
     expect(res.status).toBe(200);
     expect(seen).toHaveLength(1);
 
-    expect(node.wire).toHaveLength(2);
-    const get = gets(node.wire)[0] as WireRequest;
-    const post = posts(node.wire)[0] as WireRequest;
+    expect(node.requests).toHaveLength(2);
+    const get = gets(node.requests)[0] as ServedRequest;
+    const post = posts(node.requests)[0] as ServedRequest;
     expect(new Set(wireHeaderNames(get))).toEqual(
       new Set(["host", "connection", "accept-encoding", "x-api-key"]),
     );
@@ -279,13 +282,13 @@ describe("outer wire", () => {
         "content-length",
       ]),
     );
-    expect(get.query).toMatch(/^nonce=[0-9a-f]{64}$/);
-    expect(post.query).toBe(`node_id=${NODE_ID}`);
+    expect(get.url).toMatch(/^[^?]*\?nonce=[0-9a-f]{64}$/);
+    expect(post.url).toBe(`${post.path}?node_id=${NODE_ID}`);
     expect(post.headers["content-type"]).toBe("message/ohttp-req");
-    for (const record of node.wire) {
+    for (const record of node.requests) {
       expect(record.headers["accept-encoding"]).toBe("identity");
       expect(record.headers["x-api-key"]).toBe(API_KEY);
-      expect(`${record.path}?${record.query}`).not.toContain("sentinel");
+      expect(record.url).not.toContain("sentinel");
       for (const field of record.rawHeaders) expect(field).not.toContain("sentinel");
     }
   });
@@ -305,10 +308,10 @@ describe("outer wire", () => {
       body: JSON_BODY,
     });
     expect(res.status).toBe(200);
-    const [get] = gets(node.wire);
-    const [post] = posts(node.wire);
+    const [get] = gets(node.requests);
+    const [post] = posts(node.requests);
     expect(get?.path).toBe(`/test_vrpc/${PATH_KEY}/attestation`);
     expect(post?.path).toBe(`/test_vrpc/${PATH_KEY}/confidential`);
-    for (const record of node.wire) expect(wireHeaderNames(record)).not.toContain("x-api-key");
+    for (const record of node.requests) expect(wireHeaderNames(record)).not.toContain("x-api-key");
   });
 });

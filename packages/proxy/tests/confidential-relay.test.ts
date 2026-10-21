@@ -2,23 +2,26 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode: what the client receives from a verified, decrypted node answer.
 
+import { gzipSync } from "node:zlib";
 import {
   bhttpField,
   bhttpOkResponse,
+  createTestNode,
   TEST_SEED,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
+import {
+  type ServedRequest,
+  serveTestNode,
+  type TestNodeServer,
+} from "@w3tech.io/vrpc-test-support/server";
 import { afterEach, describe, expect, test, vi } from "vitest";
-
 import {
   type RawResponse,
   type RunningProxy,
   rawRequest,
   startConfidentialProxy,
-  startTestNodeServer,
-  type TestNodeServer,
-  type WireRequest,
-} from "./support/test-node-server";
+} from "./support/proxy";
 import { TEST_CHAIN_ID } from "./support/test-overrides";
 
 const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
@@ -70,21 +73,23 @@ afterEach(async () => {
 });
 
 async function setup(): Promise<{ node: TestNodeServer; url: string }> {
-  const node = await startTestNodeServer({
-    seed: TEST_SEED,
-    chainId: TEST_CHAIN_ID,
-    nodeId: "relay-node-1",
-    upstream: async (inner) => {
-      const url = new URL(inner.url);
-      seen.push({
-        method: inner.method,
-        target: url.pathname + url.search,
-        accept: inner.headers.get("accept"),
-        body: Buffer.from(await inner.arrayBuffer()),
-      });
-      return answer(inner);
-    },
-  });
+  const node = await serveTestNode(
+    createTestNode({
+      seed: TEST_SEED,
+      chainId: TEST_CHAIN_ID,
+      nodeId: "relay-node-1",
+      upstream: async (inner) => {
+        const url = new URL(inner.url);
+        seen.push({
+          method: inner.method,
+          target: url.pathname + url.search,
+          accept: inner.headers.get("accept"),
+          body: Buffer.from(await inner.arrayBuffer()),
+        });
+        return answer(inner);
+      },
+    }),
+  );
   nodeServer = node;
   proxy = await startConfidentialProxy(node);
   await vi.waitFor(() => expect(node.node.attestations()).toBe(1));
@@ -104,7 +109,7 @@ function headerCount(res: RawResponse, name: string): number {
   return res.rawHeaders.filter((_, i) => i % 2 === 0 && _.toLowerCase() === name).length;
 }
 
-const gets = (wire: WireRequest[]) => wire.filter((r) => r.method === "GET").length;
+const gets = (wire: ServedRequest[]) => wire.filter((r) => r.method === "GET").length;
 
 describe("relayed answers", () => {
   test("a JSON-RPC batch reaches the node unchanged and its array answer is relayed byte for byte", async () => {
@@ -152,7 +157,7 @@ describe("relayed answers", () => {
     expect(res.body.toString()).toBe("boom");
     answer = jsonAnswer;
     expect((await post(url)).status).toBe(200);
-    expect(gets(node.wire)).toBe(1);
+    expect(gets(node.requests)).toBe(1);
   });
 
   test("an inner 413 problem answer is delivered as the node's answer and keeps the pin", async () => {
@@ -168,7 +173,7 @@ describe("relayed answers", () => {
     expect(res.body.toString()).toBe(PROBLEM);
     answer = jsonAnswer;
     expect((await post(url)).status).toBe(200);
-    expect(gets(node.wire)).toBe(1);
+    expect(gets(node.requests)).toBe(1);
   });
 });
 
@@ -251,7 +256,10 @@ describe("relay framing", () => {
 describe("outer answer never relayed", () => {
   test("outer headers stay behind and only the relay set reaches the client", async () => {
     const { node, url } = await setup();
-    node.setWire({ extraHeaders: { "x-upstream-extra": "sentinel-extra" } });
+    node.answer(async (_request, forward) => {
+      const normal = await forward();
+      return { ...normal, headers: { ...normal.headers, "x-upstream-extra": "sentinel-extra" } };
+    });
     const res = await post(url);
     expect(res.status).toBe(200);
     const names = res.rawHeaders.filter((_, i) => i % 2 === 0).map((n) => n.toLowerCase());
@@ -265,7 +273,15 @@ describe("outer answer never relayed", () => {
 
   test("a gzip outer answer is decoded before verification and relayed as plaintext", async () => {
     const { node, url } = await setup();
-    node.setWire({ gzip: true });
+    node.answer(async (_request, forward) => {
+      const normal = await forward();
+      if (normal.status >= 400) return normal;
+      return {
+        ...normal,
+        headers: { ...normal.headers, "content-encoding": "gzip" },
+        body: gzipSync(normal.body),
+      };
+    });
     const res = await post(url);
     expect(res.status).toBe(200);
     expect(res.headers["content-encoding"]).toBeUndefined();

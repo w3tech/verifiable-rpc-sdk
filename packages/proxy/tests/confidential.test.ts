@@ -3,19 +3,16 @@
 // Ankr Confidential RPC mode end to end against the in-test node behind a loopback server.
 
 import { ConfidentialClient, InvalidOption } from "@w3tech.io/vrpc-core/confidential";
-import { TEST_SEED } from "@w3tech.io/vrpc-test-support";
+import { createTestNode, TEST_SEED } from "@w3tech.io/vrpc-test-support";
+import {
+  type ServedRequest,
+  serveTestNode,
+  type TestNodeServer,
+} from "@w3tech.io/vrpc-test-support/server";
 import { Agent, request } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
-
 import { createProxyServer, type ProxyTestOverrides } from "../src/server";
-
-import {
-  type RunningProxy,
-  startConfidentialProxy,
-  startTestNodeServer,
-  type TestNodeServer,
-  type WireRequest,
-} from "./support/test-node-server";
+import { type RunningProxy, startConfidentialProxy } from "./support/proxy";
 import { TEST_CHAIN_ID, testConfig } from "./support/test-overrides";
 
 const API_KEY = "test-api-key-1";
@@ -41,24 +38,26 @@ afterEach(async () => {
 });
 
 async function startNode(seen: SeenInner[] = []): Promise<TestNodeServer> {
-  nodeServer = await startTestNodeServer({
-    seed: TEST_SEED,
-    chainId: TEST_CHAIN_ID,
-    nodeId: "proxy-node-1",
-    upstream: async (inner) => {
-      seen.push({
-        method: inner.method,
-        pathname: new URL(inner.url).pathname,
-        contentType: inner.headers.get("content-type"),
-        body: Buffer.from(await inner.arrayBuffer()),
-      });
-      return {
-        status: 200,
-        headers: { "content-type": "application/json" },
-        body: RPC_ANSWER,
-      };
-    },
-  });
+  nodeServer = await serveTestNode(
+    createTestNode({
+      seed: TEST_SEED,
+      chainId: TEST_CHAIN_ID,
+      nodeId: "proxy-node-1",
+      upstream: async (inner) => {
+        seen.push({
+          method: inner.method,
+          pathname: new URL(inner.url).pathname,
+          contentType: inner.headers.get("content-type"),
+          body: Buffer.from(await inner.arrayBuffer()),
+        });
+        return {
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: RPC_ANSWER,
+        };
+      },
+    }),
+  );
   return nodeServer;
 }
 
@@ -89,8 +88,8 @@ async function postRpc(url: string): Promise<{
   return { status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) };
 }
 
-const posts = (wire: WireRequest[]) => wire.filter((r) => r.method === "POST");
-const gets = (wire: WireRequest[]) => wire.filter((r) => r.method === "GET");
+const posts = (wire: ServedRequest[]) => wire.filter((r) => r.method === "POST");
+const gets = (wire: ServedRequest[]) => wire.filter((r) => r.method === "GET");
 
 describe("confidential mode", () => {
   test("attestsOnceAtStartupBeforeAnyClientRequest", async () => {
@@ -98,12 +97,12 @@ describe("confidential mode", () => {
     await startProxy(node);
     await vi.waitFor(() => expect(node.node.attestations()).toBe(1));
 
-    expect(node.wire).toHaveLength(1);
-    const [get] = node.wire;
+    expect(node.requests).toHaveLength(1);
+    const [get] = node.requests;
     expect(get?.method).toBe("GET");
     expect(get?.path).toBe("/test_vrpc/attestation");
-    expect(get?.query).toMatch(/^nonce=[0-9a-f]{64}$/);
-    expect(posts(node.wire)).toHaveLength(0);
+    expect(get?.url).toMatch(/^[^?]*\?nonce=[0-9a-f]{64}$/);
+    expect(posts(node.requests)).toHaveLength(0);
   });
 
   test("relaysTheInnerAnswerOfAJsonRpcCall", async () => {
@@ -120,15 +119,16 @@ describe("confidential mode", () => {
     expect(res.headers["content-length"]).toBe(String(res.body.length));
     expect(Object.keys(res.headers).filter((name) => name.startsWith("vrpc-"))).toEqual([]);
 
-    expect(node.wire).toHaveLength(2);
-    const [post] = posts(node.wire);
+    expect(node.requests).toHaveLength(2);
+    const [post] = posts(node.requests);
     expect(post?.path).toBe("/test_vrpc/confidential");
-    expect(post?.query).toBe("node_id=proxy-node-1");
+    expect(post?.url).toBe(`${post?.path}?node_id=proxy-node-1`);
     expect(post?.headers["content-type"]).toBe("message/ohttp-req");
     expect(post?.headers["accept-encoding"]).toBe("identity");
     expect(post?.headers["x-api-key"]).toBe(API_KEY);
-    expect(post?.body.toString("hex").startsWith("00002000010002")).toBe(true);
-    expect(post?.body.includes(Buffer.from("eth_blockNumber"))).toBe(false);
+    const body = Buffer.from(post?.body ?? []);
+    expect(body.toString("hex").startsWith("00002000010002")).toBe(true);
+    expect(body.includes(Buffer.from("eth_blockNumber"))).toBe(false);
 
     expect(seen).toHaveLength(1);
     expect(seen[0]?.method).toBe("POST");
@@ -147,10 +147,10 @@ describe("confidential mode", () => {
       expect((await postRpc(url)).status).toBe(200);
     }
 
-    const sealed = posts(node.wire);
+    const sealed = posts(node.requests);
     expect(sealed).toHaveLength(11);
-    expect(sealed.every((r) => r.query === "node_id=proxy-node-1")).toBe(true);
-    expect(gets(node.wire)).toHaveLength(1);
+    expect(sealed.every((r) => r.url === `${r.path}?node_id=proxy-node-1`)).toBe(true);
+    expect(gets(node.requests)).toHaveLength(1);
     expect(node.node.attestations()).toBe(1);
   });
 });
@@ -175,14 +175,14 @@ describe("confidential mode startup", () => {
     expect(failed.headers["content-type"]).toBe("application/json");
     expect(JSON.parse(failed.body.toString()).error.kind).toBe("AttestationUnavailable");
     expect(node.node.attestations()).toBe(2);
-    expect(posts(node.wire)).toHaveLength(0);
+    expect(posts(node.requests)).toHaveLength(0);
 
     node.node.setAttestation();
     const ok = await postRpc(running.url);
     expect(ok.status).toBe(200);
     expect(ok.body.toString()).toBe(RPC_ANSWER);
     expect(node.node.attestations()).toBe(3);
-    expect(posts(node.wire)).toHaveLength(1);
+    expect(posts(node.requests)).toHaveLength(1);
   });
 
   test("requestDuringStartupAttestationJoinsIt", async () => {
@@ -205,8 +205,8 @@ describe("confidential mode startup", () => {
 
     const res = await pending;
     expect(res.status).toBe(200);
-    expect(gets(node.wire)).toHaveLength(1);
-    expect(posts(node.wire)).toHaveLength(1);
+    expect(gets(node.requests)).toHaveLength(1);
+    expect(posts(node.requests)).toHaveLength(1);
   });
 
   test.each([

@@ -2,20 +2,18 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode: logs and error bodies carry no path, query, plaintext, key or client header.
 
+import { setTimeout as delay } from "node:timers/promises";
 import { AttestationError } from "@w3tech.io/dstack-verify";
 import {
+  createTestNode,
   mockHardwareVerifier,
   TEST_SEED,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
+import { isPost, serveTestNode } from "@w3tech.io/vrpc-test-support/server";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { LogLevel } from "../src/logger";
-import {
-  type RawResponse,
-  rawRequest,
-  startConfidentialProxy,
-  startTestNodeServer,
-} from "./support/test-node-server";
+import { type RawResponse, rawRequest, startConfidentialProxy } from "./support/proxy";
 import { TEST_CHAIN_ID } from "./support/test-overrides";
 
 const API_KEY = "abcdef0123456789".repeat(4);
@@ -98,16 +96,18 @@ function keep(out: Capture, res: RawResponse): RawResponse {
 
 /** Every scenario of the sweep at one log level; returns what was written and answered. */
 async function drive(logLevel: LogLevel): Promise<Capture> {
-  const node = await startTestNodeServer({
-    seed: TEST_SEED,
-    chainId: TEST_CHAIN_ID,
-    nodeId: "logging-node-1",
-    upstream: () => ({
-      status: 200,
-      headers: { "content-type": "application/json" },
-      body: '{"jsonrpc":"2.0","id":1,"result":"0x10"}',
+  const node = await serveTestNode(
+    createTestNode({
+      seed: TEST_SEED,
+      chainId: TEST_CHAIN_ID,
+      nodeId: "logging-node-1",
+      upstream: () => ({
+        status: 200,
+        headers: { "content-type": "application/json" },
+        body: '{"jsonrpc":"2.0","id":1,"result":"0x10"}',
+      }),
     }),
-  });
+  );
   cleanups.push(() => node.close());
   const out = capture();
   const config = { logLevel, upstreamTimeoutMs: TIMEOUT_MS };
@@ -152,17 +152,22 @@ async function drive(logLevel: LogLevel): Promise<Capture> {
   ).toBe(502);
   node.node.setConfidential();
 
-  node.setWire({ delayMs: 1000, only: "POST" });
+  node.answer(async (request) => {
+    if (isPost(request)) await delay(1000);
+    return undefined;
+  });
   expect(
     (await send("POST", "/sentinel-path/rpc?sentinel-query=1", RPC_BODY, "application/json"))
       .status,
   ).toBe(504);
-  node.setWire({ cutAfterBytes: 10, only: "POST" });
+  node.answer(async (request, forward) =>
+    isPost(request) ? { ...(await forward()), cutAfter: 10 } : undefined,
+  );
   expect(
     (await send("POST", "/sentinel-path/rpc?sentinel-query=1", RPC_BODY, "application/json"))
       .status,
   ).toBe(502);
-  node.setWire();
+  node.answer();
 
   const unreachable = await startConfidentialProxy(node, {
     ...config,

@@ -6,13 +6,13 @@
 
 import http from "node:http";
 import { DEFAULT_PHALA_VERIFY_ENDPOINT } from "@w3tech.io/vrpc-core";
-import { attestationBody, TEST_SEED } from "@w3tech.io/vrpc-test-support";
+import { attestationBody, createTestNode, TEST_SEED } from "@w3tech.io/vrpc-test-support";
+import { closeServer, listen, serveTestNode } from "@w3tech.io/vrpc-test-support/server";
 import * as undici from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
-
 import { createProxyServer } from "../src/index";
 import { startMockSidecar } from "./support/mock-sidecar";
-import { closeServer, listen, rawRequest, startTestNodeServer } from "./support/test-node-server";
+import { rawRequest } from "./support/proxy";
 import { TEST_CHAIN_ID, testConfig } from "./support/test-overrides";
 
 vi.mock("undici", async (importOriginal) => {
@@ -106,7 +106,7 @@ describe("cloud verify egress", () => {
 
   test("Ankr Confidential RPC verifies the attestation through the proxy Agent", async () => {
     const { globalFetch, calls } = mockNetwork();
-    const node = await startTestNodeServer({ seed: TEST_SEED, chainId: TEST_CHAIN_ID });
+    const node = await serveTestNode(createTestNode({ seed: TEST_SEED, chainId: TEST_CHAIN_ID }));
     cleanups.push(() => node.close());
     const config = testConfig(`${node.url}/test_vrpc`, { confidential: true });
     const url = await serve(createProxyServer(config));

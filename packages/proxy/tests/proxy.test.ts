@@ -17,16 +17,15 @@ import {
   mockHardwareVerifier,
   TEST_PUBKEY_HEX,
 } from "@w3tech.io/vrpc-test-support";
+import { closeServer, listen } from "@w3tech.io/vrpc-test-support/server";
 import { request } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
-
 import { createServerWith } from "../src/server";
 import {
   type MockSidecar,
   type MockSidecarOptions,
   startMockSidecar,
 } from "./support/mock-sidecar";
-import { closeServer, listen } from "./support/test-node-server";
 import { TEST_CHAIN_ID, testConfig, testOverrides } from "./support/test-overrides";
 
 interface RawResponse {
