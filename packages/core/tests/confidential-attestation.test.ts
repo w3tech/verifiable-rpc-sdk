@@ -2,13 +2,14 @@ import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verif
 import {
   type AttestationContext,
   CHAIN_ID,
+  countOf,
   createTestNode,
+  isPost,
   jsonRpcCall,
   KEY,
   mockHardwareVerifier,
   NODE_ID,
   rejectionOf,
-  type TestNode,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
 import ed25519ToX25519 from "@w3tech.io/vrpc-test-support/vectors/ed25519-to-x25519.json";
@@ -43,10 +44,6 @@ function clientFor(
     transport,
     ...overrides,
   });
-}
-
-function posts(node: TestNode): number {
-  return node.requests.filter((request) => request.method === "POST").length;
 }
 
 type Fields = Record<string, unknown>;
@@ -108,7 +105,7 @@ describe("ConfidentialClient attestation: attested key", () => {
     );
     expect((err as Error).cause).toBeUndefined();
     expect(verifier.calls).toBe(1);
-    expect(posts(node)).toBe(0);
+    expect(countOf(node, isPost)).toBe(0);
   });
 });
 
@@ -159,7 +156,7 @@ describe("ConfidentialClient attestation: request", () => {
       if (result.status === "rejected") expect(result.reason).toBeInstanceOf(AttestationFailed);
     }
     expect(node.attestations()).toBe(1);
-    expect(posts(node)).toBe(0);
+    expect(countOf(node, isPost)).toBe(0);
   });
 
   test("ready and request waiting on one failed attestation reject with the same error, not executed", async () => {

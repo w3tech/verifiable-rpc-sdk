@@ -9,6 +9,8 @@ import {
   VrpcError,
 } from "@w3tech.io/vrpc-core";
 import {
+  countOf,
+  isPost,
   KEY,
   mockHardwareVerifier,
   rejectionOf,
@@ -20,9 +22,7 @@ import {
   expectSealedTrafficOnly,
 } from "@w3tech.io/vrpc-test-support/adapter";
 import {
-  countOf,
   holdPosts,
-  isPost,
   serveUpstream,
   type TestNodeServer,
   type TestNodeServerOptions,

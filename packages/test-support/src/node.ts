@@ -78,6 +78,13 @@ export interface TestNode {
   setAttestation(handler?: AttestationHandler): void;
 }
 
+export const isGet = (request: { method: string }) => request.method === "GET";
+export const isPost = (request: { method: string }) => request.method === "POST";
+
+/** Requests of a test node or its server that `match`. */
+export const countOf = <R>(source: { requests: readonly R[] }, match: (request: R) => boolean) =>
+  source.requests.filter(match).length;
+
 const utf8 = new TextEncoder();
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 

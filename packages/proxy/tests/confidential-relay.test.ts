@@ -6,14 +6,12 @@ import { gzipSync } from "node:zlib";
 import {
   bhttpField,
   bhttpOkResponse,
+  countOf,
   createTestNode,
+  isGet,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
-import {
-  type ServedRequest,
-  serveTestNode,
-  type TestNodeServer,
-} from "@w3tech.io/vrpc-test-support/server";
+import { serveTestNode, type TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   type RawResponse,
@@ -106,8 +104,6 @@ function headerCount(res: RawResponse, name: string): number {
   return res.rawHeaders.filter((_, i) => i % 2 === 0 && _.toLowerCase() === name).length;
 }
 
-const gets = (wire: ServedRequest[]) => wire.filter((r) => r.method === "GET").length;
-
 describe("relayed answers", () => {
   test("a JSON-RPC batch reaches the node unchanged and its array answer is relayed byte for byte", async () => {
     answer = () => ({
@@ -154,7 +150,7 @@ describe("relayed answers", () => {
     expect(res.body.toString()).toBe("boom");
     answer = jsonAnswer;
     expect((await post(url)).status).toBe(200);
-    expect(gets(node.requests)).toBe(1);
+    expect(countOf(node, isGet)).toBe(1);
   });
 
   test("an inner 413 problem answer is delivered as the node's answer and keeps the pin", async () => {
@@ -170,7 +166,7 @@ describe("relayed answers", () => {
     expect(res.body.toString()).toBe(PROBLEM);
     answer = jsonAnswer;
     expect((await post(url)).status).toBe(200);
-    expect(gets(node.requests)).toBe(1);
+    expect(countOf(node, isGet)).toBe(1);
   });
 });
 

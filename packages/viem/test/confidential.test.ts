@@ -7,7 +7,10 @@ import { RequestRejected, VrpcError } from "@w3tech.io/vrpc-core";
 import {
   attestationAnswer,
   CHAIN_ID,
+  countOf,
   createTestNode,
+  isGet,
+  isPost,
   KEY,
   mockHardwareVerifier,
   NODE_ID,
@@ -450,7 +453,7 @@ describe("signals", () => {
     const pending = rejectionOf(
       client.request({ method: "eth_blockNumber" }, { signal: controller.signal }),
     );
-    await until(() => server.requests.some((r) => r.method === "POST"));
+    await until(() => server.requests.some(isPost));
     const abortedAt = Date.now();
     controller.abort(reason);
     const err = await pending;
@@ -579,8 +582,8 @@ describe("attestation sharing", () => {
 
     for (let i = 0; i < 3; i++) await client.getBlockNumber({ cacheTime: 0 });
 
-    expect(server.requests.filter((r) => r.method === "GET")).toHaveLength(1);
-    expect(server.requests.filter((r) => r.method === "POST")).toHaveLength(3);
+    expect(countOf(server, isGet)).toBe(1);
+    expect(countOf(server, isPost)).toBe(3);
   });
 
   test("ten concurrent first calls put one attestation and ten sealed requests on the wire", async () => {
@@ -595,7 +598,7 @@ describe("attestation sharing", () => {
       Promise.all(addresses.map((address) => client.getBalance({ address }))),
     ).resolves.toEqual(Array(10).fill(1n));
 
-    expect(server.requests.filter((r) => r.method === "GET")).toHaveLength(1);
-    expect(server.requests.filter((r) => r.method === "POST")).toHaveLength(10);
+    expect(countOf(server, isGet)).toBe(1);
+    expect(countOf(server, isPost)).toBe(10);
   });
 });

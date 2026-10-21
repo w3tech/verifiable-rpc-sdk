@@ -2,7 +2,9 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { DEFAULT_PHALA_VERIFY_ENDPOINT } from "@w3tech.io/dstack-verify";
 import {
   CHAIN_ID,
+  countOf,
   createTestNode,
+  isPost,
   jsonRpcCall,
   KEY,
   mockHardwareVerifier,
@@ -117,7 +119,7 @@ describe("ConfidentialClient", () => {
     expect(unavailable.kind).toBe("AttestationUnavailable");
     expect(unavailable.reason).toBe("node-id-missing");
     expect(unavailable.executed).toBe("no");
-    expect(node.requests.filter((r) => r.method === "POST")).toHaveLength(0);
+    expect(countOf(node, isPost)).toBe(0);
   });
 
   test("a header object whose get returns undefined on a miss still reports a missing vRPC-NodeId", async () => {
@@ -134,7 +136,7 @@ describe("ConfidentialClient", () => {
     expect(err).toBeInstanceOf(AttestationUnavailable);
     expect((err as AttestationUnavailable).reason).toBe("node-id-missing");
     expect(client.getConfidentialInfo()).toBeUndefined();
-    expect(node.requests.filter((r) => r.method === "POST")).toHaveLength(0);
+    expect(countOf(node, isPost)).toBe(0);
   });
 
   test("a sealed answer signed by another key is ConfidentialSignerMismatch", async () => {

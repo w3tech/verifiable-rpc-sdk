@@ -2,7 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode: what the node receives, what is refused locally, and the outer wire headers.
 
-import { createTestNode, NODE_ID } from "@w3tech.io/vrpc-test-support";
+import { countOf, createTestNode, isGet, isPost, NODE_ID } from "@w3tech.io/vrpc-test-support";
 import {
   type ServedRequest,
   serveTestNode,
@@ -76,9 +76,6 @@ async function setup(maxBodyBytes?: number): Promise<{ node: TestNodeServer; url
   return { node, url: proxy.url };
 }
 
-const gets = (wire: ServedRequest[]) => wire.filter((r) => r.method === "GET");
-const posts = (wire: ServedRequest[]) => wire.filter((r) => r.method === "POST");
-
 function errorOf(body: Buffer): { kind: string; message: string } {
   return (JSON.parse(body.toString()) as { error: { kind: string; message: string } }).error;
 }
@@ -92,7 +89,7 @@ async function expectNextRequestRelayed(node: TestNodeServer, url: string): Prom
   });
   expect(res.status).toBe(200);
   expect(res.body.toString()).toBe(ANSWER);
-  expect(gets(node.requests)).toHaveLength(1);
+  expect(countOf(node, isGet)).toBe(1);
   expect(node.node.attestations()).toBe(1);
 }
 
@@ -264,8 +261,8 @@ describe("outer wire", () => {
     expect(seen).toHaveLength(1);
 
     expect(node.requests).toHaveLength(2);
-    const get = gets(node.requests)[0] as ServedRequest;
-    const post = posts(node.requests)[0] as ServedRequest;
+    const get = node.requests.find(isGet) as ServedRequest;
+    const post = node.requests.find(isPost) as ServedRequest;
     expect(new Set(wireHeaderNames(get))).toEqual(
       new Set(["host", "connection", "accept-encoding", "x-api-key"]),
     );
@@ -305,8 +302,8 @@ describe("outer wire", () => {
       body: JSON_BODY,
     });
     expect(res.status).toBe(200);
-    const [get] = gets(node.requests);
-    const [post] = posts(node.requests);
+    const get = node.requests.find(isGet);
+    const post = node.requests.find(isPost);
     expect(get?.path).toBe(`/test_vrpc/${PATH_KEY}/attestation`);
     expect(post?.path).toBe(`/test_vrpc/${PATH_KEY}/confidential`);
     for (const record of node.requests) expect(wireHeaderNames(record)).not.toContain("x-api-key");

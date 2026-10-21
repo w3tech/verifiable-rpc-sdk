@@ -9,7 +9,10 @@ import { type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
 import {
   attestationStub,
   CHAIN_ID,
+  countOf,
   createTestNode,
+  isGet,
+  isPost,
   KEY,
   mockHardwareVerifier,
   NODE_ID,
@@ -215,10 +218,6 @@ function textForms(err: unknown): string[] {
   ];
 }
 
-function posts(server: TestNodeServer): number {
-  return server.requests.filter((r) => r.method === "POST").length;
-}
-
 describe("results equal open mode", () => {
   test("single calls, a batch and a null result", async () => {
     const { server } = await harness(chainUpstream);
@@ -252,7 +251,7 @@ describe("batching", () => {
 
     await Promise.all([provider.getBalance(address(1)), provider.getBalance(address(2))]);
 
-    expect(posts(server)).toBe(1);
+    expect(countOf(server, isPost)).toBe(1);
     const inner = JSON.parse(seen[0]?.body ?? "") as unknown;
     expect(Array.isArray(inner) && inner.length).toBe(2);
   });
@@ -265,7 +264,7 @@ describe("batching", () => {
     const balances = await Promise.all([1, 2, 3].map((n) => provider.getBalance(address(n))));
 
     expect(balances).toEqual([1n, 2n, 3n]);
-    expect(posts(server)).toBe(2);
+    expect(countOf(server, isPost)).toBe(2);
   });
 
   test("a lone call is a single JSON object, as in open mode", async () => {
@@ -490,8 +489,8 @@ describe("concurrency", () => {
     );
 
     expect(balances).toEqual(Array.from({ length: 10 }, (_, n) => BigInt(n + 1)));
-    expect(server.requests.filter((r) => r.method === "GET")).toHaveLength(1);
-    expect(posts(server)).toBe(10);
+    expect(countOf(server, isGet)).toBe(1);
+    expect(countOf(server, isPost)).toBe(10);
   });
 });
 
@@ -561,6 +560,6 @@ describe("CCIP-Read", () => {
     await expect(resolver.getAddress()).resolves.toBeNull();
     expect(hits).toEqual([]);
     expect(server.requests.every((r) => r.method === "GET" || r.method === "POST")).toBe(true);
-    expect(posts(server)).toBeGreaterThan(0);
+    expect(countOf(server, isPost)).toBeGreaterThan(0);
   });
 });

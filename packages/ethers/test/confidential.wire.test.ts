@@ -4,16 +4,20 @@
 
 import { DEFAULT_PHALA_VERIFY_ENDPOINT, TransportFailed } from "@w3tech.io/vrpc-core";
 import { type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
-import { KEY, mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
+import {
+  countOf,
+  isPost,
+  KEY,
+  mockHardwareVerifier,
+  rejectionOf,
+} from "@w3tech.io/vrpc-test-support";
 import {
   describeOneRequestPerCall,
   expectNoSecrets,
   expectSealedTrafficOnly,
 } from "@w3tech.io/vrpc-test-support/adapter";
 import {
-  countOf,
   holdPosts,
-  isPost,
   serveUpstream,
   type TestNodeServer,
   type TestNodeServerOptions,

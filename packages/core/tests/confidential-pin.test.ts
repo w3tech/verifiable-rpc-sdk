@@ -1,10 +1,12 @@
 import {
   CHAIN_ID,
+  countOf,
   createTestNode,
+  isGet,
+  isPost,
   jsonRpcCall,
   mockHardwareVerifier,
   NODE_ID,
-  type TestNode,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -27,10 +29,6 @@ function clientFor(
     transport,
     ...overrides,
   });
-}
-
-function posts(node: TestNode): number {
-  return node.requests.filter((request) => request.method === "POST").length;
 }
 
 function plain(status: number, contentType?: string): TestOuterResponse {
@@ -81,8 +79,8 @@ describe("ready and getConfidentialInfo", () => {
 
     await client.request(jsonRpcCall());
     expect(node.attestations()).toBe(1);
-    expect(posts(node)).toBe(1);
-    expect(node.requests.filter((request) => request.method === "GET")).toHaveLength(1);
+    expect(countOf(node, isPost)).toBe(1);
+    expect(countOf(node, isGet)).toBe(1);
   });
 });
 
@@ -95,7 +93,7 @@ describe("single flight", () => {
     );
 
     expect(node.attestations()).toBe(1);
-    expect(posts(node)).toBe(50);
+    expect(countOf(node, isPost)).toBe(50);
     expect(responses.every((response) => response.status === 200)).toBe(true);
   });
 
@@ -108,7 +106,7 @@ describe("single flight", () => {
     );
 
     expect(node.attestations()).toBe(1);
-    expect(posts(node)).toBe(0);
+    expect(countOf(node, isPost)).toBe(0);
     const reasons = results.map((result) => {
       expect(result.status).toBe("rejected");
       return (result as PromiseRejectedResult).reason as unknown;

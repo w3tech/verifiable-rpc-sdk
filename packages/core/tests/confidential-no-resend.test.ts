@@ -3,14 +3,17 @@
 
 import {
   CHAIN_ID,
+  countOf,
   createTestNode,
+  isGet,
+  isPost,
   jsonRpcCall,
   KEY,
   mockHardwareVerifier,
   rejectionOf,
 } from "@w3tech.io/vrpc-test-support";
 import {
-  type ServedAnswer,
+  failureAnswer,
   type ServedRequest,
   serveTestNode,
   type TestNodeServer,
@@ -50,21 +53,7 @@ function clientAt(server: TestNodeServer): ConfidentialClient {
   });
 }
 
-const count = (server: TestNodeServer, match: (r: ServedRequest) => boolean) =>
-  server.requests.filter(match).length;
-const isPost = (r: ServedRequest) => r.method === "POST";
-const isGet = (r: ServedRequest) => r.method === "GET";
 const isElsewhere = (r: ServedRequest) => r.path === "/elsewhere";
-
-function answerFor(server: TestNodeServer, status: number): ServedAnswer {
-  if (status === 429) {
-    return { status, headers: { "content-type": "text/plain", "retry-after": "1" }, body: "slow" };
-  }
-  if (status >= 300 && status < 400) {
-    return { status, headers: { location: `${server.url}/elsewhere` } };
-  }
-  return { status, headers: { "content-type": "text/plain" }, body: "gateway failure" };
-}
 
 describe("one request per call with the default transport", () => {
   test.each([
@@ -74,13 +63,13 @@ describe("one request per call with the default transport", () => {
     const client = clientAt(server);
     await client.ready();
     server.requests.splice(0);
-    server.answer((request) => (isPost(request) ? answerFor(server, status) : undefined));
+    server.answer((request) => (isPost(request) ? failureAnswer(server, status) : undefined));
 
     const err = await rejectionOf(client.request(jsonRpcCall()));
 
     expect(server.requests).toHaveLength(1);
-    expect(count(server, isPost)).toBe(1);
-    expect(count(server, isElsewhere)).toBe(0);
+    expect(countOf(server, isPost)).toBe(1);
+    expect(countOf(server, isElsewhere)).toBe(0);
     if (status === 429) {
       expect(err).toBeInstanceOf(RequestRejected);
       expect((err as RequestRejected).status).toBe(429);
@@ -100,13 +89,13 @@ describe("one request per call with the default transport", () => {
   ])("the cold attestation answered %i is sent once and nothing is sealed", async (status) => {
     const server = await serve();
     const client = clientAt(server);
-    server.answer((request) => (isGet(request) ? answerFor(server, status) : undefined));
+    server.answer((request) => (isGet(request) ? failureAnswer(server, status) : undefined));
 
     const err = await rejectionOf(client.request(jsonRpcCall()));
 
-    expect(count(server, isGet)).toBe(1);
-    expect(count(server, isPost)).toBe(0);
-    expect(count(server, isElsewhere)).toBe(0);
+    expect(countOf(server, isGet)).toBe(1);
+    expect(countOf(server, isPost)).toBe(0);
+    expect(countOf(server, isElsewhere)).toBe(0);
     expect(err).toBeInstanceOf(AttestationUnavailable);
     expect((err as AttestationUnavailable).reason).toBe("status");
     expect((err as AttestationUnavailable).status).toBe(status);

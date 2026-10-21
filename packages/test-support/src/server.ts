@@ -7,6 +7,7 @@ import type { AddressInfo, Socket } from "node:net";
 import { gzipSync } from "node:zlib";
 import {
   createTestNode,
+  isPost,
   type TestNode,
   type TestNodeOptions,
   type TestOuterResponse,
@@ -183,11 +184,6 @@ export function holdPosts(server: TestNodeServer): Uint8Array[] {
   });
   return sent;
 }
-
-export const isPost = (request: ServedRequest) => request.method === "POST";
-
-export const countOf = (server: TestNodeServer, match: (request: ServedRequest) => boolean) =>
-  server.requests.filter(match).length;
 
 /** A 429 with retry-after, a redirect to `/elsewhere` on the same server, or a plain-text failure. */
 export function failureAnswer(server: TestNodeServer, status: number): ServedAnswer {

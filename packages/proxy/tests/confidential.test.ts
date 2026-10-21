@@ -3,12 +3,8 @@
 // Ankr Confidential RPC mode end to end against the in-test node behind a loopback server.
 
 import { ConfidentialClient, InvalidOption } from "@w3tech.io/vrpc-core/confidential";
-import { createTestNode, NODE_ID } from "@w3tech.io/vrpc-test-support";
-import {
-  type ServedRequest,
-  serveTestNode,
-  type TestNodeServer,
-} from "@w3tech.io/vrpc-test-support/server";
+import { countOf, createTestNode, isGet, isPost, NODE_ID } from "@w3tech.io/vrpc-test-support";
+import { serveTestNode, type TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
 import { Agent, request } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createProxyServer, type ProxyTestOverrides } from "../src/server";
@@ -86,9 +82,6 @@ async function postRpc(url: string): Promise<{
   return { status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) };
 }
 
-const posts = (wire: ServedRequest[]) => wire.filter((r) => r.method === "POST");
-const gets = (wire: ServedRequest[]) => wire.filter((r) => r.method === "GET");
-
 describe("confidential mode", () => {
   test("attestsOnceAtStartupBeforeAnyClientRequest", async () => {
     const node = await startNode();
@@ -100,7 +93,7 @@ describe("confidential mode", () => {
     expect(get?.method).toBe("GET");
     expect(get?.path).toBe("/test_vrpc/attestation");
     expect(get?.url).toMatch(/^[^?]*\?nonce=[0-9a-f]{64}$/);
-    expect(posts(node.requests)).toHaveLength(0);
+    expect(countOf(node, isPost)).toBe(0);
   });
 
   test("relaysTheInnerAnswerOfAJsonRpcCall", async () => {
@@ -118,7 +111,7 @@ describe("confidential mode", () => {
     expect(Object.keys(res.headers).filter((name) => name.startsWith("vrpc-"))).toEqual([]);
 
     expect(node.requests).toHaveLength(2);
-    const [post] = posts(node.requests);
+    const [post] = node.requests.filter(isPost);
     expect(post?.path).toBe("/test_vrpc/confidential");
     expect(post?.url).toBe(`${post?.path}?node_id=${NODE_ID}`);
     expect(post?.headers["content-type"]).toBe("message/ohttp-req");
@@ -145,10 +138,10 @@ describe("confidential mode", () => {
       expect((await postRpc(url)).status).toBe(200);
     }
 
-    const sealed = posts(node.requests);
+    const sealed = node.requests.filter(isPost);
     expect(sealed).toHaveLength(11);
     expect(sealed.every((r) => r.url === `${r.path}?node_id=${NODE_ID}`)).toBe(true);
-    expect(gets(node.requests)).toHaveLength(1);
+    expect(countOf(node, isGet)).toBe(1);
     expect(node.node.attestations()).toBe(1);
   });
 });
@@ -173,14 +166,14 @@ describe("confidential mode startup", () => {
     expect(failed.headers["content-type"]).toBe("application/json");
     expect(JSON.parse(failed.body.toString()).error.kind).toBe("AttestationUnavailable");
     expect(node.node.attestations()).toBe(2);
-    expect(posts(node.requests)).toHaveLength(0);
+    expect(countOf(node, isPost)).toBe(0);
 
     node.node.setAttestation();
     const ok = await postRpc(running.url);
     expect(ok.status).toBe(200);
     expect(ok.body.toString()).toBe(RPC_ANSWER);
     expect(node.node.attestations()).toBe(3);
-    expect(posts(node.requests)).toHaveLength(1);
+    expect(countOf(node, isPost)).toBe(1);
   });
 
   test("requestDuringStartupAttestationJoinsIt", async () => {
@@ -200,8 +193,8 @@ describe("confidential mode startup", () => {
 
     const res = await pending;
     expect(res.status).toBe(200);
-    expect(gets(node.requests)).toHaveLength(1);
-    expect(posts(node.requests)).toHaveLength(1);
+    expect(countOf(node, isGet)).toBe(1);
+    expect(countOf(node, isPost)).toBe(1);
   });
 
   test.each([

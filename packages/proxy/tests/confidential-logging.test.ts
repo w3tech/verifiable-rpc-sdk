@@ -5,10 +5,11 @@
 import { AttestationError } from "@w3tech.io/dstack-verify";
 import {
   createTestNode,
+  isPost,
   mockHardwareVerifier,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
-import { holdPosts, isPost, serveTestNode } from "@w3tech.io/vrpc-test-support/server";
+import { holdPosts, serveTestNode } from "@w3tech.io/vrpc-test-support/server";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { LogLevel } from "../src/logger";
 import { type RawResponse, rawRequest, startConfidentialProxy } from "./support/proxy";

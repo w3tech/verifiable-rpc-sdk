@@ -9,11 +9,17 @@ import { getPublicKeyAsync } from "@noble/ed25519";
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 import { ConfidentialClient } from "@w3tech.io/vrpc-core/confidential";
 import type { TestOuterResponse, TestUpstreamResponse } from "@w3tech.io/vrpc-test-support";
-import { createTestNode, rejectionOf, toHex } from "@w3tech.io/vrpc-test-support";
+import {
+  countOf,
+  createTestNode,
+  isGet,
+  isPost,
+  rejectionOf,
+  toHex,
+} from "@w3tech.io/vrpc-test-support";
 import {
   closeServer,
   holdPosts,
-  isPost,
   listen,
   type ServedRequest,
   serveTestNode,
@@ -81,9 +87,6 @@ function plain(status: number, contentType: string | undefined, body: string): T
     body: Buffer.from(body),
   };
 }
-
-const gets = (wire: ServedRequest[]) => wire.filter((r) => r.method === "GET").length;
-const posts = (wire: ServedRequest[]) => wire.filter((r) => r.method === "POST").length;
 
 /** Never answers; only the proxy's own timeout or abort ends the request. */
 const stalled = (method: string) => (request: ServedRequest) =>
@@ -166,21 +169,20 @@ async function failThenRecover(
   expected: { status: number; kind: string; executed?: "no" | "unknown" },
   attempt: { gets: number; posts: number },
 ): Promise<void> {
-  const wire = h.node.requests;
-  const before = { gets: gets(wire), posts: posts(wire) };
+  const before = { gets: countOf(h.node, isGet), posts: countOf(h.node, isPost) };
   const res = await post(h.proxy.url);
   await expectTypedError(res, expected.status, expected.kind, expected.executed);
   await vi.waitFor(() => {
-    expect(gets(wire) - before.gets).toBe(attempt.gets);
-    expect(posts(wire) - before.posts).toBe(attempt.posts);
+    expect(countOf(h.node, isGet) - before.gets).toBe(attempt.gets);
+    expect(countOf(h.node, isPost) - before.posts).toBe(attempt.posts);
   });
 
   restore(h);
-  const after = posts(wire);
+  const after = countOf(h.node, isPost);
   const ok = await post(h.proxy.url);
   expect(ok.status).toBe(200);
   expect(ok.body.toString()).toBe(RPC_ANSWER);
-  expect(posts(wire) - after).toBe(1);
+  expect(countOf(h.node, isPost) - after).toBe(1);
 }
 
 const attestationRows: Row[] = [
@@ -505,14 +507,14 @@ describe("concurrent and interrupted requests", () => {
     for (const res of responses) {
       await expectTypedError(res, 503, "AttestationUnavailable", "no");
     }
-    expect(gets(node.requests)).toBe(1);
-    expect(posts(node.requests)).toBe(0);
+    expect(countOf(node, isGet)).toBe(1);
+    expect(countOf(node, isPost)).toBe(0);
 
     node.node.setAttestation();
     const ok = await post(proxy.url);
     expect(ok.status).toBe(200);
-    expect(gets(node.requests)).toBe(2);
-    expect(posts(node.requests)).toBe(1);
+    expect(countOf(node, isGet)).toBe(2);
+    expect(countOf(node, isPost)).toBe(1);
   });
 
   test("a client that disconnects mid-request leaves the proxy serving with its pin", async () => {
@@ -534,18 +536,18 @@ describe("concurrent and interrupted requests", () => {
     });
     req.on("error", () => {});
     req.end(RPC_BODY);
-    await vi.waitFor(() => expect(posts(h.node.requests)).toBe(1));
+    await vi.waitFor(() => expect(countOf(h.node, isPost)).toBe(1));
     req.destroy();
     await vi.waitFor(() =>
       expect(stderr.some((l) => / proxy\.(relay|clientAborted|error)\b/.test(l))).toBe(true),
     );
-    expect(gets(h.node.requests)).toBe(1);
+    expect(countOf(h.node, isGet)).toBe(1);
 
     h.node.answer();
     const ok = await post(h.proxy.url);
     expect(ok.status).toBe(200);
-    expect(gets(h.node.requests)).toBe(1);
-    expect(posts(h.node.requests)).toBe(2);
+    expect(countOf(h.node, isGet)).toBe(1);
+    expect(countOf(h.node, isPost)).toBe(2);
   });
 
   test("a client disconnect aborts the upstream request", async () => {
@@ -561,8 +563,8 @@ describe("concurrent and interrupted requests", () => {
     });
     req.on("error", () => {});
     req.end(RPC_BODY);
-    await vi.waitFor(() => expect(posts(h.node.requests)).toBe(1));
-    const upstream = h.node.requests.find((r) => r.method === "POST");
+    await vi.waitFor(() => expect(countOf(h.node, isPost)).toBe(1));
+    const upstream = h.node.requests.find(isPost);
     req.destroy();
 
     await vi.waitFor(() => expect(upstream?.socket.destroyed).toBe(true));

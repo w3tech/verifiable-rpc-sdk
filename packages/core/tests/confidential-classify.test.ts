@@ -2,7 +2,9 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 import {
   CHAIN_ID,
   type ConfidentialContext,
+  countOf,
   createTestNode,
+  isPost,
   jsonRpcCall,
   mockHardwareVerifier,
   NODE_ID,
@@ -88,9 +90,9 @@ async function failedCallAfterWarmup(answer: Answer) {
   const { node, client } = setup();
   await client.request(jsonRpcCall());
   node.setConfidential(answer);
-  const posts = node.requests.filter((request) => request.method === "POST").length;
+  const posts = countOf(node, isPost);
   const err = await rejectionOf(client.request(jsonRpcCall()));
-  expect(node.requests.filter((request) => request.method === "POST").length).toBe(posts + 1);
+  expect(countOf(node, isPost)).toBe(posts + 1);
   return err;
 }
 
