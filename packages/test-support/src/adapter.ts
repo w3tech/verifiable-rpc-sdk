@@ -85,7 +85,8 @@ const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 // The built adapter in a plain node process, where no test alias maps a package to its source:
 // one class identity with the built core, and the confidential entry never loaded statically.
 export function describeBuiltAdapter(adapter: string): void {
-  const distDir = join(repoRoot, "packages", adapter.replace("@w3tech.io/vrpc-", ""), "dist");
+  const packageDir = join(repoRoot, "packages", adapter.replace("@w3tech.io/vrpc-", ""));
+  const distDir = join(packageDir, "dist");
   const built =
     existsSync(join(distDir, "index.js")) &&
     existsSync(join(repoRoot, "packages/core/dist/confidential.js"));
@@ -123,7 +124,7 @@ export function describeBuiltAdapter(adapter: string): void {
         process.stdout.write(String(all.length));
       `;
       const out = execFileSync(process.execPath, ["--input-type=module", "-e", script], {
-        cwd: repoRoot,
+        cwd: packageDir,
         encoding: "utf8",
       });
       expect(Number(out)).toBeGreaterThan(0);
