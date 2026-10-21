@@ -9,7 +9,7 @@ import {
   rejectionOf,
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { ConfidentialClientOptions } from "../src/confidential-client";
+import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
 import { InvalidOption } from "../src/errors";
 import { LazyConfidentialClient } from "../src/lazy-confidential";
 
@@ -39,6 +39,12 @@ describe("LazyConfidentialClient", () => {
     expect(() => new LazyConfidentialClient({ ...optionsFor(testNode()), ...bad })).toThrow(
       InvalidOption,
     );
+  });
+
+  test("a content-type header is ignored by both clients, valid or not", () => {
+    const options = { ...optionsFor(testNode()), headers: { "Content-Type": "bad\nvalue" } };
+    expect(() => new ConfidentialClient(options)).not.toThrow();
+    expect(() => new LazyConfidentialClient(options)).not.toThrow();
   });
 
   test("request and ready load one client and report the same pin", async () => {

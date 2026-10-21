@@ -73,6 +73,13 @@ export function checkOptions(
   };
 }
 
+/** Confidential clients set their own content-type, so a caller's entry is dropped before the check. */
+export function withoutContentType(headers: Record<string, string> = {}): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(headers).filter(([name]) => name.toLowerCase() !== "content-type"),
+  );
+}
+
 function isPositiveMs(value: number): boolean {
   return Number.isSafeInteger(value) && value > 0;
 }

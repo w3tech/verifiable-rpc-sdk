@@ -33,7 +33,7 @@ import {
   type SealedRequest,
   sealRequest,
 } from "./ohttp";
-import { checkOptions } from "./options";
+import { checkOptions, withoutContentType } from "./options";
 import {
   type ConfidentialTransport,
   defaultTransport,
@@ -81,12 +81,6 @@ export type ConfidentialResponse = InnerResponse;
 
 const OHTTP_REQUEST = "message/ohttp-req";
 const OHTTP_RESPONSE = "message/ohttp-res";
-
-function withoutContentType(headers: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(headers).filter(([name]) => name.toLowerCase() !== "content-type"),
-  );
-}
 
 async function open(opener: ResponseOpener, body: Uint8Array): Promise<InnerResponse> {
   let inner: Uint8Array;
@@ -138,7 +132,7 @@ export class ConfidentialClient {
   readonly #slot: PinSlot;
 
   constructor(options: ConfidentialClientOptions) {
-    this.#headers = withoutContentType(options.headers ?? {});
+    this.#headers = withoutContentType(options.headers);
     const { urls, chainId, replayWindowMs, pubkeyCacheTtlMs } = checkOptions(
       { ...options, headers: this.#headers },
       ["url", "chainId"],

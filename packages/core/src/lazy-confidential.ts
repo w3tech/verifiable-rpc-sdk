@@ -10,7 +10,7 @@ import type {
   ConfidentialResponse,
 } from "./confidential-client";
 import { InternalError } from "./errors";
-import { checkOptions } from "./options";
+import { checkOptions, withoutContentType } from "./options";
 
 /**
  * A `ConfidentialClient` whose code, crypto included, is loaded on the first `request` or `ready`.
@@ -23,7 +23,7 @@ export class LazyConfidentialClient {
   #loading: Promise<ConfidentialClient> | undefined;
 
   constructor(options: ConfidentialClientOptions) {
-    this.#options = { ...options, ...(options.headers && { headers: { ...options.headers } }) };
+    this.#options = { ...options, headers: withoutContentType(options.headers) };
     checkOptions(this.#options, ["url", "chainId"]);
   }
 
