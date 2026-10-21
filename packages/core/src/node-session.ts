@@ -6,13 +6,8 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { hexToBytes } from "@noble/hashes/utils.js";
 
 import { raceAbort } from "./abort";
-import {
-  ATTESTATION_TIMEOUT_MS,
-  type AttestNodeOptions,
-  attestNode,
-  type NodeAttestation,
-} from "./attestation";
-import { AttestationFailed, AttestationUnavailable } from "./errors";
+import { type AttestNodeOptions, attestNode, type NodeAttestation } from "./attestation";
+import { AttestationFailed } from "./errors";
 
 export type AttestedNode = NodeAttestation<string> & { readonly nodeKey: Uint8Array };
 
@@ -69,12 +64,12 @@ export async function attestPin(opts: AttestOptions): Promise<AttestedNode> {
 }
 
 export class PinSlot {
-  readonly #attest: (signal?: AbortSignal) => Promise<AttestedNode>;
+  readonly #attest: () => Promise<AttestedNode>;
   readonly #ttlMs: number;
   #pin: Pin | undefined;
   #flight: Promise<Pin> | undefined;
 
-  constructor(attest: (signal?: AbortSignal) => Promise<AttestedNode>, ttlMs: number) {
+  constructor(attest: () => Promise<AttestedNode>, ttlMs: number) {
     this.#attest = attest;
     this.#ttlMs = ttlMs;
   }
@@ -88,26 +83,18 @@ export class PinSlot {
     const pin = this.current();
     if (pin !== undefined) return Promise.resolve(pin);
     if (this.#flight === undefined) {
-      const deadline = new AbortController();
-      const timer = setTimeout(
-        () => deadline.abort(new AttestationUnavailable("timeout")),
-        ATTESTATION_TIMEOUT_MS,
+      const flight: Promise<Pin> = this.#attest().then(
+        (node) => {
+          const next: Pin = Object.freeze({ ...node, expiresAt: node.attestedAt + this.#ttlMs });
+          this.#pin = next;
+          this.#flight = undefined;
+          return next;
+        },
+        (err: unknown) => {
+          this.#flight = undefined;
+          throw err;
+        },
       );
-      // The verifier takes no signal, so the deadline also settles the flight itself.
-      const flight: Promise<Pin> = raceAbort(this.#attest(deadline.signal), deadline.signal)
-        .then(
-          (node) => {
-            const next: Pin = Object.freeze({ ...node, expiresAt: node.attestedAt + this.#ttlMs });
-            this.#pin = next;
-            this.#flight = undefined;
-            return next;
-          },
-          (err: unknown) => {
-            this.#flight = undefined;
-            throw err;
-          },
-        )
-        .finally(() => clearTimeout(timer));
       // Nobody may be waiting when the flight settles.
       flight.catch(() => {});
       this.#flight = flight;

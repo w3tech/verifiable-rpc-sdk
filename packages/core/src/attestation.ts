@@ -12,6 +12,7 @@ import {
   verifyDstackAttestation,
 } from "@w3tech.io/dstack-verify";
 
+import { raceAbort } from "./abort";
 import { AttestationFailed, AttestationUnavailable, InvalidNonce } from "./errors";
 import { byteLen, truncateHex } from "./log-redact";
 import type { Logger } from "./logger";
@@ -139,7 +140,6 @@ export interface AttestNodeOptions {
   hardwareVerifier: HardwareVerifier;
   /** Already safe-wrapped; absent keeps the path silent. */
   logger?: Logger | undefined;
-  signal?: AbortSignal | undefined;
   /** Open mode: the verified signer; the attested pubkey must equal it. */
   expectPubkey?: string;
   /** Open mode: `vRPC-NodeId` of the signed response, sent as `node_id`. */
@@ -156,9 +156,10 @@ export interface NodeAttestation<NodeId extends string | undefined = string | un
 const ATTESTED_PUBKEY_RE = /^0x[0-9a-fA-F]{64}$/;
 
 /**
- * Attest one node with a fresh nonce. With `expectPubkey` (open mode) the attested pubkey must
- * match it before the hardware verifier runs; without it (Ankr Confidential RPC) the answer must
- * carry `vRPC-NodeId`.
+ * Attest one node with a fresh nonce, failing with `AttestationUnavailable("timeout")` after
+ * {@link ATTESTATION_TIMEOUT_MS}. With `expectPubkey` (open mode) the attested pubkey must match it
+ * before the hardware verifier runs; without it (Ankr Confidential RPC) the answer must carry
+ * `vRPC-NodeId`.
  */
 export function attestNode(
   opts: AttestNodeOptions & { expectPubkey: string },
@@ -167,6 +168,20 @@ export function attestNode(
   opts: Omit<AttestNodeOptions, "expectPubkey" | "nodeId">,
 ): Promise<NodeAttestation<string>>;
 export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestation> {
+  const deadline = new AbortController();
+  const timer = setTimeout(
+    () => deadline.abort(new AttestationUnavailable("timeout")),
+    ATTESTATION_TIMEOUT_MS,
+  );
+  try {
+    // The hardware verifier takes no signal, so the deadline also settles the attestation itself.
+    return await raceAbort(attest(opts, deadline.signal), deadline.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function attest(opts: AttestNodeOptions, signal: AbortSignal): Promise<NodeAttestation> {
   const { logger, expectPubkey } = opts;
   const nonce = crypto.getRandomValues(new Uint8Array(32));
   // The URL may carry the API key; nodeId and nonce identify the fetch.
@@ -179,7 +194,7 @@ export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestati
     nonce,
     headers: opts.headers,
     nodeId: opts.nodeId,
-    signal: opts.signal,
+    signal,
     requireNodeId: expectPubkey === undefined,
   });
   if (!ATTESTED_PUBKEY_RE.test(attestation.pubkey)) {

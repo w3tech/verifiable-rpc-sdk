@@ -143,14 +143,13 @@ export class ConfidentialClient {
     this.#verifyOptions = verifyOptions;
     const headers = this.#headers;
     this.#slot = new PinSlot(
-      (signal) =>
+      () =>
         attestPin({
           transport,
           attestationUrl: urls.attestationUrl,
           headers: { ...headers },
           hardwareVerifier,
           logger,
-          ...(signal === undefined ? {} : { signal }),
         }),
       pubkeyCacheTtlMs,
     );

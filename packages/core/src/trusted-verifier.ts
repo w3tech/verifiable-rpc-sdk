@@ -6,9 +6,7 @@
 import type { HardwareVerifier } from "@w3tech.io/dstack-verify";
 import { LRUCache } from "lru-cache";
 
-import { raceAbort } from "./abort";
-import { ATTESTATION_TIMEOUT_MS, attestNode } from "./attestation";
-import { AttestationUnavailable } from "./errors";
+import { attestNode } from "./attestation";
 import { pickVrpcHeaders, truncateHex } from "./log-redact";
 import type { Logger } from "./logger";
 import { checkOptions, resolveSeams, type Seams } from "./options";
@@ -120,29 +118,15 @@ export class TrustedVerifier {
   }
 
   private async attest(pubkeyHex: string, nodeId: string | undefined): Promise<void> {
-    const deadline = new AbortController();
-    const timer = setTimeout(
-      () => deadline.abort(new AttestationUnavailable("timeout")),
-      ATTESTATION_TIMEOUT_MS,
-    );
-    try {
-      // The hardware verifier takes no signal, so the deadline also settles the attestation itself.
-      await raceAbort(
-        attestNode({
-          transport: this.seams.transport,
-          attestationUrl: this.attestationUrl,
-          headers: this.headers,
-          hardwareVerifier: this.seams.hardwareVerifier,
-          logger: this.seams.logger,
-          signal: deadline.signal,
-          expectPubkey: pubkeyHex,
-          nodeId,
-        }),
-        deadline.signal,
-      );
-    } finally {
-      clearTimeout(timer);
-    }
+    await attestNode({
+      transport: this.seams.transport,
+      attestationUrl: this.attestationUrl,
+      headers: this.headers,
+      hardwareVerifier: this.seams.hardwareVerifier,
+      logger: this.seams.logger,
+      expectPubkey: pubkeyHex,
+      nodeId,
+    });
     this.cache.set(pubkeyHex, true);
     this.seams.logger?.debug("cache.store", { pubkeyHex, ttlMs: this.ttlMs });
   }
