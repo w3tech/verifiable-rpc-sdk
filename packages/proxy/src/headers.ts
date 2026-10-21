@@ -22,43 +22,27 @@ const HOP_BY_HOP: ReadonlySet<string> = new Set([
 /** Header value shape shared by node:http and undici response headers. */
 export type RawHeaders = Record<string, string | string[] | undefined>;
 
-/**
- * Build the header set forwarded to the upstream: the inbound request headers
- * minus hop-by-hop, `host` (undici derives it from the target URL), and
- * `content-length` (undici recomputes it from the Buffer body). Everything
- * else — including `accept-encoding`, `content-encoding`, `content-type` —
- * passes verbatim.
- */
-export function buildForwardHeaders(
-  reqHeaders: IncomingHttpHeaders,
-): Record<string, string | string[]> {
+/** Lowercased copy without hop-by-hop headers and `drop`; multi-value headers stay arrays. */
+function strip(headers: RawHeaders, drop: string[]): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
-  for (const [name, value] of Object.entries(reqHeaders)) {
-    if (value === undefined) continue;
+  for (const [name, value] of Object.entries(headers)) {
     const lower = name.toLowerCase();
-    if (HOP_BY_HOP.has(lower) || lower === "host" || lower === "content-length") continue;
-    out[lower] = value;
+    if (value !== undefined && !HOP_BY_HOP.has(lower) && !drop.includes(lower)) out[lower] = value;
   }
   return out;
 }
 
-/**
- * Build the header set relayed to the client: upstream headers minus
- * hop-by-hop and `content-length`, with `content-length` set from the actual
- * outgoing buffer. Multi-value headers (e.g. `set-cookie`) stay arrays —
- * node:http `writeHead` accepts `string[]` values.
- */
+/** Upstream request headers: undici derives `host` from the URL and `content-length` from the body. */
+export function buildForwardHeaders(
+  reqHeaders: IncomingHttpHeaders,
+): Record<string, string | string[]> {
+  return strip(reqHeaders, ["host", "content-length"]);
+}
+
+/** Client response headers, with `content-length` set from the outgoing buffer. */
 export function buildRelayHeaders(
   headers: RawHeaders,
   bodyLength: number,
 ): Record<string, string | string[]> {
-  const out: Record<string, string | string[]> = {};
-  for (const [name, value] of Object.entries(headers)) {
-    if (value === undefined) continue;
-    const lower = name.toLowerCase();
-    if (HOP_BY_HOP.has(lower) || lower === "content-length") continue;
-    out[lower] = value;
-  }
-  out["content-length"] = String(bodyLength);
-  return out;
+  return { ...strip(headers, ["content-length"]), "content-length": String(bodyLength) };
 }
