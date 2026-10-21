@@ -546,19 +546,6 @@ describe("configuration errors", () => {
     expect(server.requests).toEqual([]);
     expect(consoleCalls()).toBe(0);
   });
-
-  test("an invalid replay window or key cache TTL throws InvalidOption from vrpcHttp", async () => {
-    const { server } = await harness();
-    const consoleCalls = spyConsole();
-
-    for (const option of ["replayWindowMs", "pubkeyCacheTtlMs"]) {
-      const call = () => vrpcHttp(`${server.url}/eth_vrpc`, { confidential: true, [option]: 0 });
-      expect(call).toThrow(InvalidOption);
-      expect(call).toThrow(expect.objectContaining({ option }));
-    }
-    expect(server.requests).toEqual([]);
-    expect(consoleCalls()).toBe(0);
-  });
 });
 
 describe("transport value", () => {

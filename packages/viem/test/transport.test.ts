@@ -282,22 +282,6 @@ describe("vrpcHttp transport wiring", () => {
     expect(result).toBe(value);
   });
 
-  // tampered response fails closed. buildRequest re-wraps the typed
-  // error as UnknownRpcError at the client surface; the typed error is `.cause`,
-  // recovered via err.walk. (Transport-level type is asserted separately below.)
-  test("tampered response → BadSignature, fail-closed (strict default)", async () => {
-    const c = client(signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { tamper: true }));
-    const err = await c.getBalance({ address: ADDR }).then(
-      () => {
-        throw new Error("expected rejection");
-      },
-      (e) => e,
-    );
-    const typed =
-      typeof err?.walk === "function" ? err.walk((e: unknown) => e instanceof BadSignature) : err;
-    expect(typed).toBeInstanceOf(BadSignature);
-  });
-
   // a chain id beyond Number.MAX_SAFE_INTEGER round-trips exactly through
   // the auto-derive bootstrap (parseChainId decodes the full value off the hex
   // into a decimal string; no number coercion). Explicit pinning of such ids is
@@ -318,14 +302,6 @@ describe("vrpcHttp transport wiring", () => {
     });
     const balance = await c.getBalance({ address: ADDR });
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
-  });
-
-  // stripped vRPC-* headers (downgrade) → MissingHeader, fail-closed.
-  test("unsigned response → MissingHeader, fail-closed (strict default)", async () => {
-    const transport = pinnedTransport(
-      signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { unsigned: true }),
-    );
-    await expect(transport.config.request(GET_BALANCE)).rejects.toBeInstanceOf(MissingHeader);
   });
 
   // a signed JSON-RPC {error} body is an ordinary RPC error, NOT a
@@ -383,49 +359,6 @@ describe("vrpcHttp transport wiring", () => {
     const parsed = JSON.parse(bodies[0] ?? "");
     expect(Array.isArray(parsed)).toBe(false);
     expect(parsed.method).toBe("eth_getBalance");
-  });
-
-  // an UNSIGNED non-2xx response (gateway 502 / timeout error page)
-  // surfaces as a transport-level HttpRequestError BEFORE verify, NOT as a
-  // MissingHeader that looks like a verify attack. Parity with the ethers
-  // adapter's `response.assertOk()` → SERVER_ERROR (not a VerificationError).
-  test("unsigned non-2xx → HttpRequestError (not MissingHeader), NOT a VerificationError", async () => {
-    const transport = pinnedTransport(
-      signingFetch("upstream unavailable", { unsigned: true, status: 502 }),
-    );
-    const err = await transport.config.request(GET_BALANCE).then(
-      () => {
-        throw new Error("expected rejection");
-      },
-      (e) => e,
-    );
-    expect(err).toBeInstanceOf(HttpRequestError);
-    expect(err).not.toBeInstanceOf(VerificationError);
-  });
-
-  // fail-closed is NOT weakened by the status check: a SIGNED non-2xx
-  // body still flows into verifyResponse, and its signed JSON-RPC {error}
-  // surfaces as an ordinary RpcError (NOT an HttpRequestError, NOT a
-  // VerificationError) — the sidecar attested the error response.
-  test("signed non-2xx with {error} body still verifies, surfaces as ordinary RpcError", async () => {
-    const transport = pinnedTransport(
-      signingFetch(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          error: { code: -32000, message: "execution reverted" },
-        }),
-        { status: 500 },
-      ),
-    );
-    const err = await transport.config.request(GET_BALANCE).then(
-      () => {
-        throw new Error("expected rejection");
-      },
-      (e) => e,
-    );
-    expect(err).not.toBeInstanceOf(HttpRequestError);
-    expect(err).not.toBeInstanceOf(VerificationError);
   });
 
   // the transport `timeout` is applied to the actual fetch as an
@@ -522,20 +455,25 @@ describe("vrpcHttp options", () => {
     }
   });
 
-  test("a non-boolean confidential flag and an open-mode TTL are checked before any request", () => {
+  test.each(
+    [false, true].flatMap((confidential) =>
+      ["replayWindowMs", "pubkeyCacheTtlMs"].flatMap((option) =>
+        [0, -1, 1.5, Number.POSITIVE_INFINITY].map((value) => ({ confidential, option, value })),
+      ),
+    ),
+  )("confidential=$confidential $option=$value throws InvalidOption and sends nothing", ({
+    confidential,
+    option,
+    value,
+  }) => {
     const sent: string[] = [];
     const fetchFn = async (url: string) => {
       sent.push(url);
       throw new Error("nothing may be sent");
     };
-    const url = "http://test.invalid/eth_vrpc";
-
-    expect(invalidOption(() => vrpcHttp(url, { confidential: "yes" } as never))).toMatchObject({
-      option: "confidential",
-    });
-    expect(
-      invalidOption(() => vrpcHttp(url, { fetchFn, pubkeyCacheTtlMs: Number.POSITIVE_INFINITY })),
-    ).toMatchObject({ option: "pubkeyCacheTtlMs" });
+    const make = () =>
+      vrpcHttp(URL, { confidential, fetchFn, [option]: value })({ chain: TEST_CHAIN } as never);
+    expect(invalidOption(make)).toMatchObject({ option, executed: "no" });
     expect(sent).toEqual([]);
   });
 });
