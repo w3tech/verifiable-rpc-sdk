@@ -10,17 +10,10 @@ import type { Dispatcher } from "undici";
 
 import type { ProxyConfig } from "./config";
 import { decodeBody } from "./decode";
-import { BodyTooLargeError, UnsignedUpstreamError, upstreamError } from "./errors";
+import { UnsignedUpstreamError, upstreamError } from "./errors";
 import { buildForwardHeaders, buildRelayHeaders } from "./headers";
 import type { ProxyLogger } from "./logger";
-import { bufferStream, sendUpstream, type UpstreamResponse } from "./upstream";
-
-export interface RequestContext {
-  config: ProxyConfig;
-  verifier: TrustedVerifier;
-  logger: ProxyLogger;
-  dispatcher: Dispatcher;
-}
+import { sendUpstream, type UpstreamResponse } from "./upstream";
 
 /**
  * Resolves `.`/`..` segments, percent-encoded ones too, so the client path cannot climb above the
@@ -66,25 +59,24 @@ function attachUpstreamTraceId(err: unknown, headers: Headers): unknown {
   return err;
 }
 
-export function createRequestHandler(
-  ctx: RequestContext,
-): (req: http.IncomingMessage, res: http.ServerResponse, signal: AbortSignal) => Promise<void> {
-  const log = ctx.logger;
-  const { config, verifier } = ctx;
+/**
+ * Open-mode request handler. The sidecar hashes the bytes it receives: the same request Buffer goes
+ * upstream and to verify.
+ */
+export function openHandler(
+  config: ProxyConfig,
+  verifier: TrustedVerifier,
+  log: ProxyLogger,
+  dispatcher: Dispatcher,
+) {
   const target = targetUrlFor(config.upstreamUrl);
 
-  async function handle(
+  return async (
     req: http.IncomingMessage,
+    requestBytes: Buffer,
     res: http.ServerResponse,
     signal: AbortSignal,
-  ): Promise<void> {
-    // The sidecar hashes the bytes it receives: the same Buffer goes upstream and to verify.
-    const requestBytes = await bufferStream(
-      req,
-      config.maxBodyBytes,
-      () => new BodyTooLargeError(config.maxBodyBytes),
-    );
-
+  ): Promise<void> => {
     const targetUrl = target(req.url ?? "/");
     const forwardHeaders = buildForwardHeaders(req.headers);
     if (config.apiKey !== undefined) {
@@ -96,7 +88,7 @@ export function createRequestHandler(
 
     let upstreamRes: UpstreamResponse;
     try {
-      upstreamRes = await sendUpstream(ctx.dispatcher, config.maxBodyBytes, {
+      upstreamRes = await sendUpstream(dispatcher, config.maxBodyBytes, {
         url: targetUrl,
         method: req.method ?? "GET",
         headers: forwardHeaders,
@@ -133,7 +125,5 @@ export function createRequestHandler(
     } catch (err) {
       throw attachUpstreamTraceId(err, headers);
     }
-  }
-
-  return handle;
+  };
 }

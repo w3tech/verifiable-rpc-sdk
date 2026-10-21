@@ -14,16 +14,9 @@ import type { Dispatcher } from "undici";
 
 import type { ProxyConfig } from "./config";
 import { decodeBody } from "./decode";
-import { BodyTooLargeError, UnsupportedMediaTypeError } from "./errors";
+import { UnsupportedMediaTypeError } from "./errors";
 import type { ProxyLogger } from "./logger";
-import { bufferStream, sendUpstream } from "./upstream";
-
-/** Per-process context shared by every confidential request. */
-export interface ConfidentialHandlerContext {
-  config: ProxyConfig;
-  client: ConfidentialClient;
-  logger: ProxyLogger;
-}
+import { sendUpstream } from "./upstream";
 
 /** Outer HTTP leg for the core client: undici with the proxy's timeouts, size cap and decoding. */
 export function createConfidentialTransport(
@@ -57,25 +50,22 @@ function relayHeaders(method: string, out: ConfidentialResponse): Record<string,
   return headers;
 }
 
-/** Request listener for Ankr Confidential RPC mode; nothing reaches the upstream unsealed. */
-export function createConfidentialHandler(
-  ctx: ConfidentialHandlerContext,
-): (req: http.IncomingMessage, res: http.ServerResponse, signal: AbortSignal) => Promise<void> {
-  const { config, client, logger: log } = ctx;
+/** Request handler for Ankr Confidential RPC mode; nothing reaches the upstream unsealed. */
+export function confidentialHandler(
+  config: ProxyConfig,
+  client: ConfidentialClient,
+  log: ProxyLogger,
+) {
   // The relay event's fields cost time per request; gather them only when they are logged.
   const debug = config.logLevel === "debug";
 
-  async function handle(
+  return async (
     req: http.IncomingMessage,
+    bytes: Buffer,
     res: http.ServerResponse,
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<void> => {
     const started = debug ? performance.now() : 0;
-    const bytes = await bufferStream(
-      req,
-      config.maxBodyBytes,
-      () => new BodyTooLargeError(config.maxBodyBytes),
-    );
     if (req.headers["content-encoding"] !== undefined) {
       throw new UnsupportedMediaTypeError("Request content-encoding is not supported");
     }
@@ -103,7 +93,5 @@ export function createConfidentialHandler(
         durationMs: Math.round(performance.now() - started),
       });
     }
-  }
-
-  return handle;
+  };
 }

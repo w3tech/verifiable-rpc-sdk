@@ -11,11 +11,12 @@ import {
   type ConfidentialClientOptions,
 } from "@w3tech.io/vrpc-core/confidential";
 import { Agent, type RequestInit, fetch as undiciFetch } from "undici";
-import { createConfidentialHandler, createConfidentialTransport } from "./confidential";
+import { confidentialHandler, createConfidentialTransport } from "./confidential";
 import type { ProxyConfig } from "./config";
 import { BodyTooLargeError, describeError, renderError } from "./errors";
 import { createProxyLogger, type ProxyLogger } from "./logger";
-import { createRequestHandler } from "./pipeline";
+import { openHandler } from "./pipeline";
+import { bufferStream } from "./upstream";
 
 /** Test seam keeping verification offline; confidential mode uses only `hardwareVerifier` and `logger`. */
 export type ProxyTestOverrides = Pick<
@@ -25,30 +26,38 @@ export type ProxyTestOverrides = Pick<
 
 type Handler = (
   req: http.IncomingMessage,
+  body: Buffer,
   res: http.ServerResponse,
   signal: AbortSignal,
 ) => Promise<void>;
 
-// One abort signal and one error path per request, for both modes. The Agent closes with the server.
-function createServer(handler: Handler, log: ProxyLogger, dispatcher: Agent): http.Server {
+// One body cap, one abort signal and one error path per request, for both modes. The Agent closes with the server.
+function createServer(
+  handler: Handler,
+  maxBodyBytes: number,
+  log: ProxyLogger,
+  dispatcher: Agent,
+): http.Server {
   const server = http.createServer((req, res) => {
     const disconnected = new AbortController();
     res.once("close", () => {
       if (!res.writableFinished) disconnected.abort();
     });
-    handler(req, res, disconnected.signal).catch((err: unknown) => {
-      if (res.destroyed || (err as { code?: string } | null | undefined)?.code === "ECONNRESET") {
-        log.debug("proxy.clientAborted");
-        res.destroy();
-        return;
-      }
-      renderError(res, err, log);
-      // Unread body bytes would otherwise be parsed as the next keep-alive request.
-      if (err instanceof BodyTooLargeError) {
-        if (res.writableFinished) req.destroy();
-        else res.once("finish", () => req.destroy());
-      }
-    });
+    bufferStream(req, maxBodyBytes, () => new BodyTooLargeError(maxBodyBytes))
+      .then((body) => handler(req, body, res, disconnected.signal))
+      .catch((err: unknown) => {
+        if (res.destroyed || (err as { code?: string } | null | undefined)?.code === "ECONNRESET") {
+          log.debug("proxy.clientAborted");
+          res.destroy();
+          return;
+        }
+        renderError(res, err, log);
+        // Unread body bytes would otherwise be parsed as the next keep-alive request.
+        if (err instanceof BodyTooLargeError) {
+          if (res.writableFinished) req.destroy();
+          else res.once("finish", () => req.destroy());
+        }
+      });
   });
   server.on("close", () => void dispatcher.close());
   return server;
@@ -96,8 +105,8 @@ export function createServerWith(config: ProxyConfig, overrides: ProxyTestOverri
       replayWindowMs: config.replayWindowMs,
       pubkeyCacheTtlMs: config.pubkeyCacheTtlMs,
     });
-    const handler = createRequestHandler({ config, verifier, logger: proxyLogger, dispatcher });
-    return createServer(handler, proxyLogger, dispatcher);
+    const handler = openHandler(config, verifier, proxyLogger, dispatcher);
+    return createServer(handler, config.maxBodyBytes, proxyLogger, dispatcher);
   } catch (err) {
     void dispatcher.close();
     throw err;
@@ -125,7 +134,8 @@ function createConfidentialServer(
 
   const client = new ConfidentialClient(options);
   const server = createServer(
-    createConfidentialHandler({ config, client, logger: proxyLogger }),
+    confidentialHandler(config, client, proxyLogger),
+    config.maxBodyBytes,
     proxyLogger,
     dispatcher,
   );
