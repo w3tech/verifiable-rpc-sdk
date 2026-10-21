@@ -2,11 +2,9 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 import {
   bhttpField,
   bhttpOkResponse,
-  CHAIN_ID,
   type ConfidentialContext,
   createTestNode,
   jsonRpcCall,
-  mockHardwareVerifier,
   rejectionOf,
   TEST_SEED,
   type TestOuterResponse,
@@ -14,7 +12,7 @@ import {
 } from "@w3tech.io/vrpc-test-support";
 import vectors from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
+import type { ConfidentialClientOptions } from "../src/confidential-client";
 import {
   BadSignature,
   ConfidentialDecryptFailed,
@@ -25,19 +23,14 @@ import {
   StaleTimestamp,
   VerificationError,
 } from "../src/errors";
+import { clientFor, signed } from "./support/confidential";
 
 const OHTTP_RES = { "content-type": "message/ohttp-res" };
 const text = new TextDecoder();
 
 function setup(upstream?: () => TestUpstreamResponse) {
   const node = createTestNode({ upstream });
-  const client = new ConfidentialClient({
-    url: "https://rpc.example/eth_vrpc",
-    chainId: CHAIN_ID,
-    hardwareVerifier: mockHardwareVerifier(),
-    transport: node.transport,
-  });
-  return { node, client };
+  return { node, client: clientFor(node.transport) };
 }
 
 type Answer = (context: ConfidentialContext) => TestOuterResponse | Promise<TestOuterResponse>;
@@ -49,10 +42,6 @@ async function failedCallAfterWarmup(answer: Answer): Promise<unknown> {
   const err = await rejectionOf(client.request(jsonRpcCall()));
   expect(err).toBeInstanceOf(VerificationError);
   return err;
-}
-
-function signed(context: ConfidentialContext, body: Uint8Array): TestOuterResponse {
-  return { status: 200, headers: { ...OHTTP_RES, ...context.sign(body) }, body };
 }
 
 function random(length: number): Uint8Array {

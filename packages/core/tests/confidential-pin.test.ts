@@ -1,43 +1,16 @@
 import {
-  CHAIN_ID,
   countOf,
   createTestNode,
   isGet,
   isPost,
   jsonRpcCall,
-  mockHardwareVerifier,
   NODE_ID,
-  type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
 import { AttestationUnavailable, RequestRejected } from "../src/errors";
-import type { ConfidentialTransport } from "../src/transport";
-
-const KEYED_URL = "https://rpc.example/eth_vrpc/0123456789abcdefghijABCDEFGHIJkl";
+import { clientFor, plain } from "./support/confidential";
 
 const T0 = 1_800_000_000_000;
-
-function clientFor(
-  transport: ConfidentialTransport,
-  overrides: Partial<ConfidentialClientOptions> = {},
-): ConfidentialClient {
-  return new ConfidentialClient({
-    url: KEYED_URL,
-    chainId: CHAIN_ID,
-    hardwareVerifier: mockHardwareVerifier(),
-    transport,
-    ...overrides,
-  });
-}
-
-function plain(status: number, contentType?: string): TestOuterResponse {
-  return {
-    status,
-    headers: contentType === undefined ? {} : { "content-type": contentType },
-    body: new Uint8Array(0),
-  };
-}
 
 afterEach(() => {
   vi.useRealTimers();

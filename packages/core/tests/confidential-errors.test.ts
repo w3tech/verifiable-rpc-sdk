@@ -1,7 +1,5 @@
-import { hexToBytes } from "@noble/hashes/utils.js";
 import { AttestationError } from "@w3tech.io/dstack-verify";
 import {
-  CHAIN_ID,
   type CollectingLogger,
   type ConfidentialContext,
   type ConfidentialHandler,
@@ -15,10 +13,9 @@ import {
   type TestNode,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
-import sidecarVectors from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
 import { describe, expect, test, vi } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
-import { ConfidentialClient } from "../src/confidential-client";
+import type { ConfidentialClient } from "../src/confidential-client";
 import {
   AttestationFailed,
   AttestationUnavailable,
@@ -38,6 +35,7 @@ import {
 } from "../src/errors";
 import { sealRequest } from "../src/ohttp";
 import { type OuterResponse, ResponseTooLarge } from "../src/transport";
+import { clientFor, fromVector, plain, signed } from "./support/confidential";
 
 vi.mock("../src/ohttp", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/ohttp")>();
@@ -56,44 +54,18 @@ function harness(verifierFailure?: Error): Harness {
   const node = createTestNode();
   const logger = collectingLogger();
   const h = { node, logger, posts: 0 } as Harness;
-  h.client = new ConfidentialClient({
-    url: "https://rpc.example/eth_vrpc",
-    chainId: CHAIN_ID,
-    hardwareVerifier: mockHardwareVerifier(verifierFailure ? { fail: verifierFailure } : {}),
-    logger,
-    transport: async (request) => {
+  h.client = clientFor(
+    async (request) => {
       if (request.method !== "POST") return node.transport(request);
       h.posts += 1;
       return h.onPost ? h.onPost() : node.transport(request);
     },
-  });
+    {
+      hardwareVerifier: mockHardwareVerifier(verifierFailure ? { fail: verifierFailure } : {}),
+      logger,
+    },
+  );
   return h;
-}
-
-function plain(status: number, contentType?: string, body = new Uint8Array(0)): TestOuterResponse {
-  return {
-    status,
-    headers: contentType === undefined ? {} : { "content-type": contentType },
-    body,
-  };
-}
-
-const vectors = sidecarVectors as {
-  pre_decapsulation_errors: { name: string; status: number; content_type?: string; body: string }[];
-};
-
-function fromVector(name: string): TestOuterResponse {
-  const entry = vectors.pre_decapsulation_errors.find((candidate) => candidate.name === name);
-  if (entry === undefined) throw new Error(`missing vector ${name}`);
-  return plain(entry.status, entry.content_type, hexToBytes(entry.body));
-}
-
-function signed(context: ConfidentialContext, body: Uint8Array): TestOuterResponse {
-  return {
-    status: 200,
-    headers: { "content-type": "message/ohttp-res", ...context.sign(body) },
-    body,
-  };
 }
 
 function edited(

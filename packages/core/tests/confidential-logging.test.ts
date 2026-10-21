@@ -12,7 +12,6 @@ import {
   NODE_ID,
   NODE_SEED,
   type TestNode,
-  type TestOuterResponse,
   x25519SecretFromSeed,
 } from "@w3tech.io/vrpc-test-support";
 import { expectNoSecrets } from "@w3tech.io/vrpc-test-support/adapter";
@@ -35,6 +34,7 @@ import {
 } from "../src/errors";
 import type { Logger } from "../src/logger";
 import type { ConfidentialTransport } from "../src/transport";
+import { plain } from "./support/confidential";
 
 const OTHER_SEED_HEX = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
 const BASE_URL = "https://rpc.example/eth_vrpc";
@@ -95,10 +95,6 @@ function call(path = INNER_PATH): InnerRequest {
     accept: "application/json",
     body: utf8.encode(INNER_BODY),
   };
-}
-
-function plain(status: number, contentType: string, body: string): TestOuterResponse {
-  return { status, headers: { "content-type": contentType }, body: utf8.encode(body) };
 }
 
 function random(length: number): Uint8Array {

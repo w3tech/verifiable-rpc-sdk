@@ -1,7 +1,6 @@
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 import {
   type AttestationContext,
-  CHAIN_ID,
   countOf,
   createTestNode,
   isPost,
@@ -14,11 +13,9 @@ import {
 } from "@w3tech.io/vrpc-test-support";
 import ed25519ToX25519 from "@w3tech.io/vrpc-test-support/vectors/ed25519-to-x25519.json";
 import { describe, expect, test } from "vitest";
-import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
 import { AttestationFailed, AttestationUnavailable } from "../src/errors";
-import type { ConfidentialTransport } from "../src/transport";
+import { BASE_URL, clientFor } from "./support/confidential";
 
-const BASE_URL = "https://rpc.example/eth_vrpc";
 const utf8 = new TextEncoder();
 
 interface RejectRow {
@@ -32,19 +29,6 @@ const keyVectors = ed25519ToX25519 as { reject: RejectRow[] };
 const unusableKeys = keyVectors.reject.filter(
   (row) => row.reason === "small-order" || row.reason === "not-torsion-free",
 );
-
-function clientFor(
-  transport: ConfidentialTransport,
-  overrides: Partial<ConfidentialClientOptions> = {},
-): ConfidentialClient {
-  return new ConfidentialClient({
-    url: BASE_URL,
-    chainId: CHAIN_ID,
-    hardwareVerifier: mockHardwareVerifier(),
-    transport,
-    ...overrides,
-  });
-}
 
 type Fields = Record<string, unknown>;
 
@@ -126,6 +110,7 @@ describe("ConfidentialClient attestation: request", () => {
   test("the attestation GET carries the nonce and the caller's headers without content-type", async () => {
     const node = createTestNode();
     await clientFor(node.transport, {
+      url: BASE_URL,
       headers: { "x-api-key": KEY, "Content-Type": "application/json" },
     }).request(jsonRpcCall());
 

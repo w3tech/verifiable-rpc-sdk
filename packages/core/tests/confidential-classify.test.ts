@@ -1,19 +1,14 @@
-import { hexToBytes } from "@noble/hashes/utils.js";
 import {
-  CHAIN_ID,
   type ConfidentialContext,
   countOf,
   createTestNode,
   isPost,
   jsonRpcCall,
-  mockHardwareVerifier,
   NODE_ID,
   rejectionOf,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
-import sidecarVectors from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
 import { describe, expect, test } from "vitest";
-import { ConfidentialClient } from "../src/confidential-client";
 import {
   MissingHeader,
   RequestRejected,
@@ -21,37 +16,9 @@ import {
   UnavailableError,
   UnexpectedResponse,
 } from "../src/errors";
+import { clientFor, fromVector, plain, preDecapsulationErrors } from "./support/confidential";
 
-const utf8 = new TextEncoder();
 const EMPTY = new Uint8Array(0);
-
-interface PreDecapsulationError {
-  name: string;
-  status: number;
-  content_type?: string;
-  body: string;
-}
-
-const vectors = sidecarVectors as { pre_decapsulation_errors: PreDecapsulationError[] };
-
-function vector(name: string): PreDecapsulationError {
-  const entry = vectors.pre_decapsulation_errors.find((candidate) => candidate.name === name);
-  if (entry === undefined) throw new Error(`missing vector ${name}`);
-  return entry;
-}
-
-function plain(status: number, contentType?: string, body: Uint8Array = EMPTY): TestOuterResponse {
-  return {
-    status,
-    headers: contentType === undefined ? {} : { "content-type": contentType },
-    body,
-  };
-}
-
-function fromVector(name: string): TestOuterResponse {
-  const entry = vector(name);
-  return plain(entry.status, entry.content_type, hexToBytes(entry.body));
-}
 
 async function withContentType(
   context: ConfidentialContext,
@@ -68,13 +35,7 @@ async function withContentType(
 
 function setup() {
   const node = createTestNode();
-  const client = new ConfidentialClient({
-    url: "https://rpc.example/eth_vrpc",
-    chainId: CHAIN_ID,
-    hardwareVerifier: mockHardwareVerifier(),
-    transport: node.transport,
-  });
-  return { node, client };
+  return { node, client: clientFor(node.transport) };
 }
 
 type Answer = (context: ConfidentialContext) => TestOuterResponse | Promise<TestOuterResponse>;
@@ -126,19 +87,19 @@ const rejectedRows: Row[] = [
   },
   ...[400, 403, 404, 413, 429].map((status) => ({
     title: `gateway ${status} text/plain`,
-    answer: () => plain(status, "text/plain", utf8.encode("message: refused")),
+    answer: () => plain(status, "text/plain", "message: refused"),
     status,
     contentType: "text/plain",
   })),
   {
     title: "gateway API key 401 application/json",
-    answer: () => plain(401, "application/json", utf8.encode('{"error":"unauthorized"}')),
+    answer: () => plain(401, "application/json", '{"error":"unauthorized"}'),
     status: 401,
     contentType: "application/json",
   },
   ...[413, 429].map((status) => ({
     title: `edge proxy ${status} text/html`,
-    answer: () => plain(status, "text/html", utf8.encode("<html></html>")),
+    answer: () => plain(status, "text/html", "<html></html>"),
     status,
     contentType: "text/html",
   })),
@@ -158,13 +119,13 @@ const unexpectedRows: Row[] = [
   { title: "node plaintext 500 with an empty body", answer: () => plain(500), status: 500 },
   ...[500, 502].map((status) => ({
     title: `gateway ${status} text/plain`,
-    answer: () => plain(status, "text/plain", utf8.encode("message: failed")),
+    answer: () => plain(status, "text/plain", "message: failed"),
     status,
     contentType: "text/plain",
   })),
   ...[502, 503, 504].map((status) => ({
     title: `edge proxy ${status} text/html`,
-    answer: () => plain(status, "text/html", utf8.encode("<html></html>")),
+    answer: () => plain(status, "text/html", "<html></html>"),
     status,
     contentType: "text/html",
   })),
@@ -176,7 +137,7 @@ const unexpectedRows: Row[] = [
   },
   {
     title: "captive page 200 text/html",
-    answer: () => plain(200, "text/html", utf8.encode("<html></html>")),
+    answer: () => plain(200, "text/html", "<html></html>"),
     status: 200,
     contentType: "text/html",
   },
@@ -223,7 +184,7 @@ const neverDecryptedRejectedRows: Row[] = [
 
 describe("answers that are not encrypted responses", () => {
   test("the vendored pre_decapsulation_errors are all covered", () => {
-    expect(vectors.pre_decapsulation_errors.map((entry) => entry.name).sort()).toEqual([
+    expect(preDecapsulationErrors.map((entry) => entry.name).sort()).toEqual([
       "method-not-allowed",
       "ohttp-key",
       "request-too-large",

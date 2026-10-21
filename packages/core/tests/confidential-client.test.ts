@@ -7,7 +7,6 @@ import {
   isPost,
   jsonRpcCall,
   KEY,
-  mockHardwareVerifier,
   NODE_ID,
   rejectionOf,
   signResponse,
@@ -17,7 +16,6 @@ import {
 } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
-import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
 import {
   AttestationUnavailable,
   ConfidentialSignerMismatch,
@@ -27,25 +25,11 @@ import {
   VerificationError,
 } from "../src/errors";
 import type { ConfidentialTransport } from "../src/transport";
+import { BASE_URL, clientFor, KEYED_URL } from "./support/confidential";
 
-const BASE_URL = "https://rpc.example/eth_vrpc";
-const KEYED_URL = `${BASE_URL}/${KEY}`;
 const utf8 = new TextEncoder();
 const JSON_RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const DEFAULT_UPSTREAM_BODY = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
-
-function clientFor(
-  transport: ConfidentialTransport,
-  overrides: Partial<ConfidentialClientOptions> = {},
-): ConfidentialClient {
-  return new ConfidentialClient({
-    url: KEYED_URL,
-    chainId: CHAIN_ID,
-    hardwareVerifier: mockHardwareVerifier(),
-    transport,
-    ...overrides,
-  });
-}
 
 describe("ConfidentialClient", () => {
   test("a JSON-RPC call returns the upstream's status, content-type and body", async () => {

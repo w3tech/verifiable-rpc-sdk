@@ -1,37 +1,15 @@
 import { getEventListeners } from "node:events";
 import {
-  CHAIN_ID,
   createTestNode,
   jsonRpcCall,
-  mockHardwareVerifier,
   NODE_ID,
   rejectionOf,
   type TestOuterRequest,
-  type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
-import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
 import { AttestationUnavailable } from "../src/errors";
 import type { ConfidentialTransport } from "../src/transport";
-
-const KEYED_URL = "https://rpc.example/eth_vrpc/0123456789abcdefghijABCDEFGHIJkl";
-
-function clientFor(
-  transport: ConfidentialTransport,
-  overrides: Partial<ConfidentialClientOptions> = {},
-): ConfidentialClient {
-  return new ConfidentialClient({
-    url: KEYED_URL,
-    chainId: CHAIN_ID,
-    hardwareVerifier: mockHardwareVerifier(),
-    transport,
-    ...overrides,
-  });
-}
-
-function plain(status: number): TestOuterResponse {
-  return { status, headers: { "content-type": "text/plain" }, body: new Uint8Array(0) };
-}
+import { clientFor, plain } from "./support/confidential";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -172,7 +150,7 @@ describe("cancellation", () => {
     node.setAttestation(async () => {
       entered.resolve();
       await release.promise;
-      return plain(503);
+      return plain(503, "text/plain");
     });
     const client = clientFor(node.transport);
     const first = new AbortController();
