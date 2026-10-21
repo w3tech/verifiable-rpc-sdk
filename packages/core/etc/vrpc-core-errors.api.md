@@ -15,7 +15,7 @@ export class AttestationFailed extends VerificationError {
     // (undocumented)
     readonly detail: string;
     // (undocumented)
-    readonly kind: "Attestation";
+    readonly kind: "AttestationFailed";
     // (undocumented)
     readonly reason: AttestationFailedReason;
 }
@@ -251,7 +251,7 @@ export abstract class VerificationError extends VrpcError {
 }
 
 // @public (undocumented)
-export type VerificationErrorKind = "MissingHeader" | "MalformedHeader" | "InvalidChainId" | "BadSignature" | "StaleTimestamp" | "InvalidNonce" | "Attestation" | "ConfidentialSignerMismatch" | "ConfidentialDecryptFailed" | "MalformedConfidentialResponse";
+export type VerificationErrorKind = "MissingHeader" | "MalformedHeader" | "InvalidChainId" | "BadSignature" | "StaleTimestamp" | "InvalidNonce" | "AttestationFailed" | "ConfidentialSignerMismatch" | "ConfidentialDecryptFailed" | "MalformedConfidentialResponse";
 
 // @public
 export abstract class VrpcError extends Error {

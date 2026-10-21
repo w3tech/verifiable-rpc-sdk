@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-
+import * as errors from "../src/errors";
 import {
   AttestationFailed,
   AttestationUnavailable,
@@ -25,7 +25,7 @@ import {
 } from "../src/errors";
 
 describe("errors", () => {
-  test("everyClassIsAVrpcErrorThatMayHaveExecutedByDefault", () => {
+  test("everyConcreteClassIsAVrpcErrorWithKindAndNameEqualToItsClass", () => {
     const key = `0x${"00".repeat(32)}`;
     const all: VrpcError[] = [
       new MissingHeader("vRPC-Signature"),
@@ -53,10 +53,20 @@ describe("errors", () => {
       expect(err.executed).toBe("unknown");
       expect("cause" in err).toBe(false);
     }
-    for (const err of [new RequestRejected(429, "n"), new InvalidOption("url", "r")]) {
+    const notRun = [new RequestRejected(429, "n"), new InvalidOption("url", "r")];
+    for (const err of notRun) {
       expect(err).toBeInstanceOf(VrpcError);
       expect(err.executed).toBe("no");
     }
+    const every = [...all, ...notRun, new InternalError({ cause: 1 })];
+    for (const err of every) {
+      expect([err.kind, err.name]).toEqual([err.constructor.name, err.constructor.name]);
+    }
+    const bases: unknown[] = [VrpcError, VerificationError, UnavailableError];
+    const concrete = Object.values(errors).filter(
+      (v) => typeof v === "function" && v.prototype instanceof Error && !bases.includes(v),
+    );
+    expect(new Set(every.map((err) => err.constructor))).toEqual(new Set(concrete));
   });
 
   test("invalidOptionNamesTheOptionAndReasonOnly", () => {
@@ -119,33 +129,6 @@ describe("errors", () => {
     expect(malformedAttestation instanceof Error).toBe(true);
     expect(malformedAttestation instanceof VerificationError).toBe(true);
     expect(malformedAttestation instanceof AttestationFailed).toBe(true);
-  });
-
-  test("kindFieldDiscriminates", () => {
-    const missing = new MissingHeader("vRPC-Signature");
-    expect(missing.kind).toBe("MissingHeader");
-
-    const malformed = new MalformedHeader("vRPC-Pubkey", "x", "y");
-    expect(malformed.kind).toBe("MalformedHeader");
-
-    const bad = new BadSignature({
-      signatureHex: "0x00",
-      pubkeyHex: "0x00",
-      preImageSha256: new Uint8Array(32),
-    });
-    expect(bad.kind).toBe("BadSignature");
-
-    const stale = new StaleTimestamp({
-      observedMs: 0n,
-      nowMs: 0n,
-      skewMs: 0n,
-      allowedWindowMs: 0,
-    });
-    expect(stale.kind).toBe("StaleTimestamp");
-
-    expect(new InvalidNonce("x").kind).toBe("InvalidNonce");
-    expect(new AttestationFailed("malformed", "y").kind).toBe("Attestation");
-    expect(new InvalidChainId("a b", "whitespace").kind).toBe("InvalidChainId");
   });
 
   test("invalidChainIdCarriesIdAndReason", () => {
@@ -235,29 +218,6 @@ describe("errors", () => {
     expect(MalformedHeader.prototype.constructor).toBe(MalformedHeader);
     expect(BadSignature.prototype.constructor).toBe(BadSignature);
     expect(StaleTimestamp.prototype.constructor).toBe(StaleTimestamp);
-  });
-
-  test("errorNameMatchesClassName", () => {
-    expect(new MissingHeader("h").name).toBe("MissingHeader");
-    expect(new MalformedHeader("h", "v", "r").name).toBe("MalformedHeader");
-    expect(
-      new BadSignature({
-        signatureHex: "0x",
-        pubkeyHex: "0x",
-        preImageSha256: new Uint8Array(32),
-      }).name,
-    ).toBe("BadSignature");
-    expect(
-      new StaleTimestamp({
-        observedMs: 0n,
-        nowMs: 0n,
-        skewMs: 0n,
-        allowedWindowMs: 0,
-      }).name,
-    ).toBe("StaleTimestamp");
-    expect(new InvalidNonce("x").name).toBe("InvalidNonce");
-    expect(new AttestationFailed("malformed", "y").name).toBe("AttestationFailed");
-    expect(new InvalidChainId("", "must not be empty").name).toBe("InvalidChainId");
   });
 
   test("unavailableErrorsAreNotVerificationErrors", () => {

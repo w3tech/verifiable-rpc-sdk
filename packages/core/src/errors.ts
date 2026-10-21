@@ -20,7 +20,7 @@ export type VerificationErrorKind =
   | "BadSignature"
   | "StaleTimestamp"
   | "InvalidNonce"
-  | "Attestation"
+  | "AttestationFailed"
   | "ConfidentialSignerMismatch"
   | "ConfidentialDecryptFailed"
   | "MalformedConfidentialResponse";
@@ -180,7 +180,7 @@ export type AttestationFailedReason = "malformed" | "pubkey-mismatch" | "check";
  * `chkId` names the failed `CHK-*` item and is set only for `reason "check"`.
  */
 export class AttestationFailed extends VerificationError {
-  readonly kind = "Attestation" as const;
+  readonly kind = "AttestationFailed" as const;
   declare readonly chkId?: string;
 
   constructor(

@@ -209,7 +209,7 @@ const attestationRows: Row[] = [
     install: ({ node }) =>
       node.setWire({ extraHeaders: { "vrpc-nodeid": ["n1", "n2"] }, only: "GET" }),
     status: 502,
-    kind: "Attestation",
+    kind: "AttestationFailed",
     executed: "no",
   },
   {
@@ -225,7 +225,7 @@ const attestationRows: Row[] = [
       h.verifier.failing = true;
     },
     status: 502,
-    kind: "Attestation",
+    kind: "AttestationFailed",
     executed: "no",
   },
 ];
