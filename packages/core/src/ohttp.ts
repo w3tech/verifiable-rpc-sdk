@@ -74,19 +74,7 @@ export async function nativeX25519Works(): Promise<boolean> {
   }
 }
 
-// WebCrypto X25519 prints an ExperimentalWarning on first use on Node 20.19.0-20.19.2,
-// 22.0-22.12 and 23.0-23.4; all of Node 20 stays on the JS KEM.
-export function nativeX25519Stable(nodeVersion: string): boolean {
-  const [major = 0, minor = 0] = nodeVersion.split(".").map((part) => Number.parseInt(part, 10));
-  if (major === 22) return minor >= 13;
-  if (major === 23) return minor >= 5;
-  return major >= 24;
-}
-
 export async function selectKem(): Promise<KemChoice> {
-  const node = (globalThis as { process?: { versions?: { node?: unknown } } }).process?.versions
-    ?.node;
-  if (typeof node === "string" && !nativeX25519Stable(node)) return "js";
   return (await nativeX25519Works()) ? "native" : "js";
 }
 
