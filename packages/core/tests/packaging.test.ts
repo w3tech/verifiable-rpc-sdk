@@ -166,7 +166,7 @@ describe("exact pins", () => {
 
 describe("core manifest", () => {
   test("engines, browser field and shipped license file", () => {
-    expect(core.engines?.node).toBe("^22.13.0 || >=24");
+    expect(core.engines?.node).toBe("^22.16.0 || >=24");
     expect(proxy.engines?.node).toBe(">=24");
     expect(core.browser).toEqual({ crypto: false });
     expect(core.files).toContain("THIRD_PARTY_LICENSES");

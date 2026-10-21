@@ -84,7 +84,7 @@
     "typecheck": "tsc --noEmit"
   },
   "engines": {
-    "node": "^22.13.0 || >=24"
+    "node": "^22.16.0 || >=24"
   },
   "dependencies": {
     "@w3tech.io/dstack-verify": "workspace:*",
@@ -96,7 +96,7 @@
     "@hpke/core": "1.9.0",
     "@hpke/dhkem-x25519": "1.8.0",
     "@noble/curves": "2.4.0",
-    "@types/node": "^22.13.0",
+    "@types/node": "^22.16.0",
     "@w3tech.io/vrpc-test-support": "workspace:*",
     "bhttp-ts": "0.6.1"
   }

@@ -22,7 +22,7 @@
     "bhttp-ts": "0.6.1"
   },
   "devDependencies": {
-    "@types/node": "^22.13.0",
+    "@types/node": "^22.16.0",
     "vitest": "^4.1.10"
   }
 }

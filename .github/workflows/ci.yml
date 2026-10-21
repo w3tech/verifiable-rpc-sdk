@@ -41,7 +41,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - node: '22.13.0'
+          - node: '22.16.0'
             filter: '--filter @w3tech.io/vrpc-core --filter @w3tech.io/vrpc-ethers --filter @w3tech.io/vrpc-viem --filter @w3tech.io/dstack-verify'
           - node: '24.0.0'
             filter: '--filter @w3tech.io/vrpc-proxy'
