@@ -18,17 +18,12 @@ pnpm install
 ANKR_API_KEY=<your key> pnpm example:all   # key optional — see note below
 ```
 
-Examples 01-03 send the key as an `x-api-key` header; 04 passes it to the proxy
-with `--api-key`. Without `ANKR_API_KEY`, example 04 still runs end-to-end and
-demonstrates the proxy's fail-closed refusal instead of a verified-success result.
+Without `ANKR_API_KEY`, example 04 still runs end-to-end and demonstrates the
+proxy's fail-closed refusal instead of a verified-success result.
 
-Example 05 is not part of `example:all`. It needs a key and a gateway that serves the encrypted endpoint; set `VRPC_URL` to point it at another vRPC route:
+Example 05 is not part of `example:all`; run it with `pnpm example:05-confidential`.
 
-```sh
-ANKR_API_KEY=<your key> VRPC_URL=<vRPC route> pnpm example:05-confidential
-```
-
-To point at a different chain, edit the URL (`https://rpc.ankr.com/<chain>_vrpc`)
+To point at a different chain, edit the URL (`https://rpc.ankr.com/<chain>_vrpc/<key>`)
 and chain id in the example. The URL is the explicit vRPC route, used verbatim
 for RPC; the adapters derive only the `/attestation` sub-route from it.
 

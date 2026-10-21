@@ -7,16 +7,11 @@ import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 import { createPublicClient } from "viem";
 import { arbitrum } from "viem/chains";
 
-// Set ANKR_API_KEY to send it as `x-api-key` (to the RPC and attestation legs).
-const API_KEY = process.env.ANKR_API_KEY;
-
 async function main() {
   // chain id is taken from the client's `chain` (mirrors ethers' ctor arg).
   const client = createPublicClient({
     chain: arbitrum,
-    transport: vrpcHttp("https://rpc.ankr.com/arbitrum_vrpc", {
-      headers: API_KEY ? { "x-api-key": API_KEY } : {},
-    }),
+    transport: vrpcHttp("https://rpc.ankr.com/arbitrum_vrpc/123456"),
   });
 
   const block = await client.getBlockNumber();

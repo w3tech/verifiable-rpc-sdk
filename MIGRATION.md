@@ -442,10 +442,10 @@ proxy fails closed:
 - [`examples/02-viem-client.ts`](./examples/02-viem-client.ts) — viem `vrpcHttp` transport + `createPublicClient`
 - [`examples/03-vrpc-core-walkthrough.ts`](./examples/03-vrpc-core-walkthrough.ts) — `@w3tech.io/vrpc-core` walkthrough (signed wire → `verifyResponse` → tamper→`BadSignature` → `fetchAttestation` + `TrustedVerifier`)
 - [`examples/04-proxy.ts`](./examples/04-proxy.ts) — spawns `vrpc-proxy` and calls it with a plain `fetch`
-- [`examples/05-confidential.ts`](./examples/05-confidential.ts) — Ankr Confidential RPC mode with ethers and viem; needs `ANKR_API_KEY`, not part of `example:all`
+- [`examples/05-confidential.ts`](./examples/05-confidential.ts) — Ankr Confidential RPC mode with ethers and viem; not part of `example:all`
 
 ```sh
 pnpm install
 pnpm example:all   # or: pnpm example:01-ethers-client / example:02-viem-client / example:03-vrpc-core-walkthrough / example:04-proxy
-ANKR_API_KEY=<your key> pnpm example:05-confidential
+pnpm example:05-confidential
 ```

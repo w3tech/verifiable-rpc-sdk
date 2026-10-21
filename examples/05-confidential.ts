@@ -6,20 +6,15 @@
 // the first call).
 import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
 import { vrpcHttp } from "@w3tech.io/vrpc-viem";
-import { FetchRequest } from "ethers";
 import { createPublicClient } from "viem";
 import { arbitrum } from "viem/chains";
 
-// Set ANKR_API_KEY to send it as `x-api-key`; VRPC_URL to use another vRPC route.
-const API_KEY = process.env.ANKR_API_KEY;
-const RPC_URL = process.env.VRPC_URL ?? "https://rpc.ankr.com/arbitrum_vrpc";
+const RPC_URL = "https://rpc.ankr.com/arbitrum_vrpc/123456";
 const HOLDER = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
 
 async function main() {
-  const request = new FetchRequest(RPC_URL);
-  if (API_KEY) request.setHeader("x-api-key", API_KEY);
   // The chain id is required in this mode.
-  const provider = new VrpcProvider(request, "42161", { confidential: true });
+  const provider = new VrpcProvider(RPC_URL, "42161", { confidential: true });
   await provider.confidentialReady();
   console.log("ethers pinned", provider.getConfidentialInfo());
   console.log({
@@ -31,10 +26,7 @@ async function main() {
   // The chain id comes from the client's `chain`.
   const client = createPublicClient({
     chain: arbitrum,
-    transport: vrpcHttp(RPC_URL, {
-      confidential: true,
-      headers: API_KEY ? { "x-api-key": API_KEY } : {},
-    }),
+    transport: vrpcHttp(RPC_URL, { confidential: true }),
   });
   await client.transport.ready();
   console.log("viem pinned", client.transport.getConfidentialInfo());
