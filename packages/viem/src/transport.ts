@@ -84,7 +84,8 @@ export function vrpcHttp(
   return ({ chain, timeout: injectedTimeout }) => {
     // viem chain ids are plain numbers; decimal stringification matches the sidecar config.
     const clientChainId = chain?.id == null ? undefined : String(chain.id);
-    const timeout = opts.timeout ?? injectedTimeout ?? 10_000;
+    const config = baseConfig(opts, injectedTimeout);
+    const { timeout } = config;
 
     const post = async (body: Uint8Array) => {
       const res = await fetchFn(rpcUrl, {
@@ -102,15 +103,7 @@ export function vrpcHttp(
 
     return createTransport(
       {
-        key: "vrpc-http",
-        name: "vRPC HTTP JSON-RPC",
-        type: "vrpc-http",
-        // Hardcoded; viem's injected default is ignored: buildRequest would RETRY a
-        // codeless VerificationError 3× and re-wrap it as UnknownRpcError, masking
-        // the failure. retryCount:0 lets the typed error propagate (recover via
-        // err.walk / .cause).
-        retryCount: 0,
-        timeout,
+        ...config,
         async request({ method, params }) {
           if (clientChainId !== undefined) session.pin(clientChainId);
           const payload = { jsonrpc: "2.0", id: 1, method, params };
@@ -124,6 +117,20 @@ export function vrpcHttp(
       { url: rpcUrl },
     );
   };
+}
+
+function baseConfig(opts: VrpcHttpOptions, injectedTimeout: number | undefined) {
+  return {
+    key: "vrpc-http",
+    name: "vRPC HTTP JSON-RPC",
+    type: "vrpc-http",
+    // Hardcoded; viem's injected default is ignored: buildRequest would RETRY a
+    // codeless VerificationError 3× and re-wrap it as UnknownRpcError, masking
+    // the failure. retryCount:0 lets the typed error propagate (recover via
+    // err.walk / .cause).
+    retryCount: 0,
+    timeout: opts.timeout ?? injectedTimeout ?? 10_000,
+  } as const;
 }
 
 const utf8 = new TextEncoder();
@@ -141,40 +148,37 @@ function confidentialHttp(
   opts: VrpcHttpOptions,
 ): Transport<"vrpc-http", ConfidentialValue> {
   const origin = new URL(rpcUrl).origin;
-  let client: LazyConfidentialClient | undefined;
-  let boundChainId: string | undefined;
+  let bound: { chainId: string; client: LazyConfidentialClient } | undefined;
 
   return ({ chain, timeout: injectedTimeout }) => {
     if (chain?.id == null) {
       throw new InvalidOption("chainId", "Ankr Confidential RPC mode needs the client's chain");
     }
     const chainId = String(chain.id);
-    if (boundChainId !== undefined && boundChainId !== chainId) {
+    if (bound !== undefined && bound.chainId !== chainId) {
       throw new InvalidOption("chainId", "this transport is bound to another chain");
     }
-    boundChainId = chainId;
-    client ??= new LazyConfidentialClient({
-      url: rpcUrl,
+    bound ??= {
       chainId,
-      headers: opts.headers,
-      replayWindowMs: opts.replayWindowMs,
-      pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
-      logger: opts.logger,
-      hardwareVerifier: opts.hardwareVerifier,
-      fetch: opts.fetchFn as typeof fetch | undefined,
-    });
-    const confidential = client;
-    const timeout = opts.timeout ?? injectedTimeout ?? 10_000;
+      client: new LazyConfidentialClient({
+        url: rpcUrl,
+        chainId,
+        headers: opts.headers,
+        replayWindowMs: opts.replayWindowMs,
+        pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
+        logger: opts.logger,
+        hardwareVerifier: opts.hardwareVerifier,
+        fetch: opts.fetchFn as typeof fetch | undefined,
+      }),
+    };
+    const confidential = bound.client;
+    const config = baseConfig(opts, injectedTimeout);
 
     return createTransport(
       {
-        key: "vrpc-http",
-        name: "vRPC HTTP JSON-RPC",
-        type: "vrpc-http",
-        retryCount: 0,
-        timeout,
+        ...config,
         async request({ method, params }, options) {
-          const { signal, done } = linkSignal(options?.signal, timeout);
+          const { signal, done } = linkSignal(options?.signal, config.timeout);
           try {
             const res = await confidential.request(
               {
