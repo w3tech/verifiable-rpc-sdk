@@ -73,9 +73,7 @@ describe("decodeBody", () => {
   });
 });
 
-// Gated by the SAME runtime detect the production decode layer uses — CI's
-// Node 22.14 lacks zstd (landed in Node 23.8).
-describe.skipIf(typeof zlib.zstdDecompressSync !== "function")("decodeBody (zstd)", () => {
+describe("decodeBody (zstd)", () => {
   test("zstdRoundTrip", async () => {
     const decoded = await decodeBody(zlib.zstdCompressSync(ORIGINAL), "zstd", CAP);
     expect(Buffer.compare(decoded, ORIGINAL)).toBe(0);
