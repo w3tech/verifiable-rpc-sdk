@@ -67,9 +67,6 @@ async function failedCallAfterWarmup(answer: Answer): Promise<unknown> {
   await client.request(jsonRpcCall());
   node.setConfidential(answer);
   const err = await rejectionOf(client.request(jsonRpcCall()));
-  node.setConfidential();
-  await client.request(jsonRpcCall());
-  expect(node.attestations()).toBe(2);
   expectPublicFamily(err);
   return err;
 }

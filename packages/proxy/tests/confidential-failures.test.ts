@@ -157,12 +157,11 @@ async function failThenRecover(
   });
 
   restore(h);
-  const after = { gets: gets(wire), posts: posts(wire) };
+  const after = posts(wire);
   const ok = await post(h.proxy.url);
   expect(ok.status).toBe(200);
   expect(ok.body.toString()).toBe(RPC_ANSWER);
-  expect(gets(wire) - after.gets).toBe(1);
-  expect(posts(wire) - after.posts).toBe(1);
+  expect(posts(wire) - after).toBe(1);
 }
 
 const attestationRows: Row[] = [

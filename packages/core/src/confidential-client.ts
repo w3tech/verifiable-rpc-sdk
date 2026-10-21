@@ -19,6 +19,7 @@ import {
   InternalError,
   MalformedConfidentialResponse,
   RequestRejected,
+  StaleTimestamp,
   TransportFailed,
   UnexpectedResponse,
   VrpcError,
@@ -104,6 +105,13 @@ async function open(opener: ResponseOpener, body: Uint8Array): Promise<InnerResp
     if (err instanceof MalformedInnerResponse) throw new MalformedConfidentialResponse(err.reason);
     throw err;
   }
+}
+
+// After a send, only an answer that blames the node or its key drops the pin.
+function evictsPin(err: VrpcError): boolean {
+  if (err instanceof TransportFailed || err instanceof StaleTimestamp) return false;
+  if (err instanceof RequestRejected) return err.status !== 413 && err.status !== 429;
+  return true;
 }
 
 function infoOf(pin: Pin): ConfidentialInfo {
@@ -217,7 +225,7 @@ export class ConfidentialClient {
       if (signal?.aborted && err === signal.reason) throw err;
       const e = err instanceof VrpcError ? err : new InternalError({ cause: err });
       if (!sent) e.executed = "no";
-      if (pin !== undefined) {
+      else if (pin !== undefined && evictsPin(e)) {
         this.#slot.evict(pin);
         if (this.#logger !== defaultLogger) {
           this.#logger.debug("confidential.evict", { nodeId: pin.nodeId, kind: errorKind(e) });

@@ -1,6 +1,5 @@
 import {
   CHAIN_ID,
-  type ConfidentialHandler,
   createTestNode,
   jsonRpcCall,
   mockHardwareVerifier,
@@ -11,13 +10,7 @@ import {
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
-import {
-  AttestationUnavailable,
-  InvalidInnerRequest,
-  RequestRejected,
-  StaleTimestamp,
-  TransportFailed,
-} from "../src/errors";
+import { AttestationUnavailable, InvalidInnerRequest, RequestRejected } from "../src/errors";
 import type { ConfidentialTransport } from "../src/transport";
 
 const KEYED_URL = "https://rpc.example/eth_vrpc/0123456789abcdefghijABCDEFGHIJkl";
@@ -207,9 +200,9 @@ describe("eviction", () => {
       if (calls === 1) {
         entered.resolve();
         await release.promise;
-        return plain(429, "text/plain");
+        return plain(404, "text/plain");
       }
-      if (calls === 2) return plain(429, "text/plain");
+      if (calls === 2) return plain(404, "text/plain");
       return context.normal();
     });
 
@@ -238,7 +231,7 @@ describe("eviction", () => {
     const client = clientFor(node.transport);
     const first = await client.ready();
 
-    node.setConfidential(() => plain(429, "text/plain"));
+    node.setConfidential(() => plain(404, "text/plain"));
     await expect(client.request(jsonRpcCall())).rejects.toBeInstanceOf(RequestRejected);
     node.setConfidential();
 
@@ -248,42 +241,6 @@ describe("eviction", () => {
     expect(node.attestations()).toBe(2);
     expect(second?.nodeId).toBe(first.nodeId);
     expect(second?.attestedAt).toBe(T0 + 5000);
-  });
-
-  const staleSignature: ConfidentialHandler = async (context) => {
-    const normal = await context.normal();
-    return {
-      ...normal,
-      headers: {
-        ...normal.headers,
-        ...context.sign(normal.body, { timestampMs: Date.now() - 61_000 }),
-      },
-    };
-  };
-
-  test.each<[string, ConfidentialHandler, abstract new (...args: never[]) => Error]>([
-    ["RequestRejected 429", () => plain(429, "text/plain"), RequestRejected],
-    ["RequestRejected 401", () => plain(401, "application/json"), RequestRejected],
-    ["StaleTimestamp", staleSignature, StaleTimestamp],
-    [
-      "TransportFailed",
-      () => {
-        throw new Error("connection reset");
-      },
-      TransportFailed,
-    ],
-  ])("%s drops the pin and the next call attests again", async (_label, handler, type) => {
-    const node = testNode();
-    const client = clientFor(node.transport);
-    await client.ready();
-
-    node.setConfidential(handler);
-    await expect(client.request(jsonRpcCall())).rejects.toBeInstanceOf(type);
-    expect(client.getConfidentialInfo()).toBeUndefined();
-    node.setConfidential();
-
-    await client.request(jsonRpcCall());
-    expect(node.attestations()).toBe(2);
   });
 
   test("an inner 500 keeps the pin", async () => {

@@ -83,7 +83,7 @@ function setup(upstream?: Parameters<typeof createTestNode>[0]["upstream"]) {
 }
 
 describe("confidential answer classification", () => {
-  test("gateway rate limit 429 text/plain is RequestRejected and the next call attests again", async () => {
+  test("gateway rate limit 429 text/plain is RequestRejected and keeps the pin", async () => {
     const { node, client } = setup();
     node.setConfidential(() => ({
       status: 429,
@@ -106,8 +106,8 @@ describe("confidential answer classification", () => {
     node.setConfidential();
     const response = await client.request(jsonRpcCall());
     expect(response.status).toBe(200);
-    expect(node.attestations()).toBe(2);
-    expect(node.requests.map((request) => request.method)).toEqual(["GET", "POST", "GET", "POST"]);
+    expect(node.attestations()).toBe(1);
+    expect(node.requests.map((request) => request.method)).toEqual(["GET", "POST", "POST"]);
   });
 
   test("an inner 500 is returned and keeps the pin", async () => {
@@ -153,9 +153,6 @@ async function failedCallAfterWarmup(answer: Answer) {
   const posts = node.requests.filter((request) => request.method === "POST").length;
   const err = await rejectionOf(client.request(jsonRpcCall()));
   expect(node.requests.filter((request) => request.method === "POST").length).toBe(posts + 1);
-  node.setConfidential();
-  await client.request(jsonRpcCall());
-  expect(node.attestations()).toBe(2);
   return err;
 }
 

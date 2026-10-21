@@ -245,7 +245,7 @@ describe("default transport over HTTP", () => {
     expect(h.log.some((entry) => entry.path.startsWith("/elsewhere"))).toBe(false);
   });
 
-  test("a body cut short of its Content-Length is a network failure and drops the pin", async () => {
+  test("a body cut short of its Content-Length is a network failure and keeps the pin", async () => {
     const h = await harness();
     const client = clientAt(h);
     h.setMode("cut");
@@ -257,7 +257,7 @@ describe("default transport over HTTP", () => {
 
     h.setMode("plain");
     expect((await client.request(jsonRpcCall())).status).toBe(200);
-    expect(h.node.attestations()).toBe(2);
+    expect(h.node.attestations()).toBe(1);
   });
 
   test("a chunked body that ends cleanly but short fails the signature", async () => {
