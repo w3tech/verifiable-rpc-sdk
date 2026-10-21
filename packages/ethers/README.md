@@ -175,7 +175,7 @@ errors and propagates (fail-closed).
 | ---------------- | ---------------------------- | ---------------- | ------- |
 | `pubkeyCacheTtlMs` | `number`                   | `3_600_000` (1h) | Verified-pubkey cache TTL (ms). A second read within TTL reuses the cache and skips the attestation fetch; past TTL the pubkey is re-attested (no stale trust). |
 | `hardwareVerifier` | `HardwareVerifier`         | Phala cloud verifier (vrpc-core) | Internal/advanced. Overrides the mandatory hardware-signature verifier; it cannot be disabled. |
-| `fetch`            | `typeof fetch`             | global `fetch`   | Used only by the default hardware verifier's call. |
+| `fetch`            | `typeof fetch`             | global `fetch`   | Carries the attestation GET and the default hardware verifier's call. In Ankr Confidential RPC mode the attestation GET and the sealed requests go through the `FetchRequest` instead. |
 | `logger`           | `Logger`                   | no-op (silent)   | Opt-in debug logger for the verify flow (`createConsoleLogger()` from `@w3tech.io/vrpc-core`). |
 
 > Auth/headers: set them on the `FetchRequest` you pass as the URL
