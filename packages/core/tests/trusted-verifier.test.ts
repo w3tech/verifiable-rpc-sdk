@@ -1,5 +1,6 @@
-import { AttestationError, EMPTY_ALLOWLIST } from "@w3tech.io/dstack-verify";
+import { AttestationError } from "@w3tech.io/dstack-verify";
 import {
+  attestationAnswer,
   attestationStub,
   CHAIN_ID,
   collectingLogger,
@@ -9,27 +10,22 @@ import {
   TEST_PUBKEY_HEX,
   TEST_SEED,
   thrownBy,
-  toHex,
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  AttestationCorrelationError,
   AttestationFailed,
+  AttestationUnavailable,
   InvalidOption,
-  MalformedAttestationResponse,
   VerificationError,
 } from "../src/errors";
 import type { Logger } from "../src/logger";
 import { DEFAULT_PUBKEY_CACHE_TTL_MS } from "../src/options";
-import {
-  buildVerifyPolicy,
-  TrustedVerifier,
-  type TrustedVerifierOptions,
-} from "../src/trusted-verifier";
+import { TrustedVerifier, type TrustedVerifierOptions } from "../src/trusted-verifier";
 import type { ResponseHeaders } from "../src/verify";
 
 const RPC_BASE = "https://rpc.ankr.com";
 const CHAIN = "arbitrum";
-const NONCE = new Uint8Array(32).fill(0x07);
 
 /**
  * Real-clock sleep. The TTL tests use a small real ttl + a real wait rather than
@@ -86,7 +82,6 @@ function baseOpts(overrides: Partial<TrustedVerifierOptions> = {}): TrustedVerif
     chainId: CHAIN_ID,
     replayWindowMs: 60_000,
     attestationUrl: `${RPC_BASE}/${CHAIN}_vrpc/attestation`,
-    nonceSource: () => NONCE,
     // Hardware verification is mandatory + defaults to a network cloud POST;
     // inject the no-network mock so the seam tests never touch the network.
     hardwareVerifier: mockHardwareVerifier(),
@@ -120,24 +115,15 @@ describe("TrustedVerifier / trust seam", () => {
     globalThis.fetch = savedFetch;
   });
 
-  test("buildsPolicy", () => {
-    const policy = buildVerifyPolicy(TEST_PUBKEY_HEX, NONCE);
-    expect(policy.hardwareVerifier).toBeDefined();
-    expect(policy.allowInsecureMock).toBeUndefined();
-    expect(policy.binding.expectedPubkey).toBe(TEST_PUBKEY_HEX);
-    expect(policy.binding.expectedNonce).toBe(toHex(NONCE));
-    expect(policy.allowlist).toBe(EMPTY_ALLOWLIST);
-  });
-
   test("failClosedNotCached", async () => {
     const mock = attestationStub();
     const pair = await signedPair();
     const tv = new TrustedVerifier(
       baseOpts({
         fetch: mock.fetch,
-        verifyAttestation: async () => {
-          throw new AttestationError("CHK-MOCK", "stub fail");
-        },
+        hardwareVerifier: mockHardwareVerifier({
+          fail: new AttestationError("CHK-P1", "stub fail"),
+        }),
       }),
     );
 
@@ -157,23 +143,72 @@ describe("TrustedVerifier / trust seam", () => {
     expect(mock.urls.length).toBeGreaterThanOrEqual(2);
   });
 
-  // ── Happy-path suite: real mock verifyDstackAttestation (allowInsecureMock
-  // hard-set true by buildVerifyPolicy) → no verifyAttestation override. ──────
-
-  test("attestationStatus500IsMalformedAndNotCached", async () => {
+  test("attestationStatus500IsUnavailableAndNotCached", async () => {
     const mock = attestationStub();
     mock.failNext = 500;
     const pair = await signedPair();
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
 
-    await expect(tv.verify(pair.requestBytes, pair.responseBytes, pair.headers)).rejects.toThrow(
-      MalformedAttestationResponse,
-    );
+    const err = await rejectionOf(tv.verify(pair.requestBytes, pair.responseBytes, pair.headers));
+    expect(err).toBeInstanceOf(AttestationUnavailable);
+    expect(err).toMatchObject({ reason: "status", status: 500 });
     expect(mock.urls.length).toBe(1);
 
     const verified = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
     expect(verified.verification.pubkeyHex).toBe(TEST_PUBKEY_HEX);
     expect(mock.urls.length).toBe(2);
+  });
+
+  test.each([
+    [
+      "a throwing fetch",
+      async () => {
+        throw new TypeError("fetch failed: https://k/SECRET");
+      },
+      { reason: "transport" },
+    ],
+    [
+      "a redirect",
+      async (_url: string, init?: RequestInit) =>
+        new Response(null, { status: init?.redirect === "manual" ? 302 : 200 }),
+      { reason: "status", status: 302 },
+    ],
+  ])("%s is AttestationUnavailable, not cached, global fetch untouched", async (_, send, fields) => {
+    const global = vi.spyOn(globalThis, "fetch");
+    const pair = await signedPair();
+    const tv = new TrustedVerifier(baseOpts({ fetch: send as typeof fetch }));
+    for (let i = 0; i < 2; i++) {
+      const err = await rejectionOf(tv.verify(pair.requestBytes, pair.responseBytes, pair.headers));
+      expect(err).toBeInstanceOf(AttestationUnavailable);
+      expect(err).toMatchObject(fields);
+      expect(`${String(err)} ${String((err as Error).cause)}`).not.toContain("SECRET");
+    }
+    expect(global).not.toHaveBeenCalled();
+  });
+
+  test("a quote for another key is rejected before the hardware verifier", async () => {
+    const mock = attestationStub();
+    mock.seed = new Uint8Array(32).fill(0x09);
+    const hardwareVerifier = mockHardwareVerifier();
+    const verifyHardware = vi.spyOn(hardwareVerifier, "verifyHardware");
+    const pair = await signedPair();
+    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, hardwareVerifier }));
+
+    const err = await rejectionOf(tv.verify(pair.requestBytes, pair.responseBytes, pair.headers));
+    expect(err).toBeInstanceOf(AttestationCorrelationError);
+    expect(verifyHardware).not.toHaveBeenCalled();
+  });
+
+  test("an uppercase attested pubkey equal to the signer is accepted", async () => {
+    const upper = (async (url: string) => {
+      const body = (await attestationAnswer(url).json()) as { pubkey: string };
+      return Response.json({ ...body, pubkey: `0x${body.pubkey.slice(2).toUpperCase()}` });
+    }) as typeof fetch;
+    const pair = await signedPair();
+    const tv = new TrustedVerifier(baseOpts({ fetch: upper }));
+
+    const verified = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+    expect(verified.verification.pubkeyHex).toBe(TEST_PUBKEY_HEX);
   });
 
   test("cacheMissFetchesAndVerifies", async () => {

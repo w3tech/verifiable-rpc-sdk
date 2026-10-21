@@ -12,7 +12,7 @@
 // Hardware-verifier surface re-exported from @w3tech.io/dstack-verify so adapters
 // and consumers can configure or override the (mandatory, always-on) verifier —
 // e.g. point it at a self-hosted endpoint, a future local-DCAP verifier, or a
-// test mock. The default is the Phala cloud verifier wired by buildVerifyPolicy.
+// test mock. The default is the Phala cloud verifier.
 export type { CloudVerifierConfig, HardwareVerifier } from "@w3tech.io/dstack-verify";
 export { createCloudVerifier, DEFAULT_PHALA_VERIFY_ENDPOINT } from "@w3tech.io/dstack-verify";
 export type {
@@ -20,7 +20,7 @@ export type {
   FetchAttestationOptions,
   GetQuoteResponse,
 } from "./attestation";
-export { fetchAttestation, verifyAttestationCorrelation } from "./attestation";
+export { fetchAttestation } from "./attestation";
 export type { InnerRequest, InnerResponse } from "./bhttp";
 export type {
   ConfidentialClientOptions,

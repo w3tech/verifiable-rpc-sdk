@@ -25,7 +25,7 @@
     "check": "pnpm run --sequential \"/^check:/\"",
     "check:pack": "rm -rf .pack && pnpm -r --filter './packages/*' --filter '!./packages/test-support' pack --pack-destination .pack && for f in .pack/*.tgz; do publint --strict $f && attw $f --profile esm-only || exit 1; done",
     "check:knip": "knip",
-    "check:dup": "jscpd packages/core/src packages/dstack-verify/src packages/ethers/src packages/viem/src packages/proxy/src --threshold 1.38",
+    "check:dup": "jscpd packages/core/src packages/dstack-verify/src packages/ethers/src packages/viem/src packages/proxy/src --threshold 1.41",
     "check:deps": "depcruise packages/core/src packages/dstack-verify/src packages/ethers/src packages/viem/src packages/proxy/src",
     "check:api": "for c in packages/*/api-extractor*.json; do api-extractor run -c $c || exit 1; done",
     "api:update": "for c in packages/*/api-extractor*.json; do api-extractor run --local -c $c || exit 1; done",

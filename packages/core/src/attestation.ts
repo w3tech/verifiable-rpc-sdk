@@ -1,27 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Standalone `fetchAttestation` helper — calls `GET /attestation?nonce=<hex>`
-// against the configured sidecar URL, parses the nested `attestation.quote`
-// wire shape, and returns a typed `Attestation`.
-//
-// The attestation route is unsigned by contract: the sidecar does NOT emit
-// `vRPC-*` headers for this endpoint, and the SDK MUST NOT call any
-// signature-verification machinery on the response. This file therefore does
-// not import `verifyAsync` or touch `vRPC-Signature` / `vRPC-Pubkey` /
-// `vRPC-Timestamp` at all — by construction.
+// Attest a node: GET `/attestation`, check the answer, verify the quote. The route is unsigned
+// by contract, so no `vRPC-*` signature check runs here.
 
 import { bytesToHex } from "@noble/hashes/utils.js";
+import {
+  type AttestationBundle,
+  AttestationError,
+  EMPTY_ALLOWLIST,
+  type HardwareVerifier,
+  type VerifyPolicy,
+  verifyDstackAttestation,
+} from "@w3tech.io/dstack-verify";
 
 import {
   AttestationCorrelationError,
-  AttestationNodeNotFoundError,
+  AttestationFailed,
   AttestationUnavailable,
   InvalidNonce,
   MalformedAttestationResponse,
 } from "./errors";
-import type { Logger } from "./logger";
+import { byteLen, truncateHex } from "./log-redact";
+import { defaultLogger, type Logger } from "./logger";
 import {
   type ConfidentialTransport,
+  fetchTransport,
   MAX_RESPONSE_BYTES,
   type OuterResponse,
   ResponseTooLarge,
@@ -62,23 +65,11 @@ export interface Attestation {
 
 /** Options for {@link fetchAttestation}. */
 export interface FetchAttestationOptions {
-  /**
-   * Full attestation endpoint URL (no query), e.g.
-   * `https://rpc.ankr.com/arbitrum_vrpc/attestation`. The transport layer derives
-   * this from the user URL (`deriveVrpcUrls`); the user spells the vRPC route
-   * out explicitly there, not here.
-   */
+  /** Full attestation endpoint URL (no query), e.g. `https://rpc.ankr.com/arbitrum_vrpc/attestation`. */
   attestationUrl: string;
   /** Caller-supplied 32-byte attestation nonce. */
   nonce: Uint8Array;
-  /**
-   * Serving node id (`vRPC-NodeId`). Added as `node_id` when present, OMITTED when
-   * absent. Absent + behind the gateway → the gateway can't route → error (fail-closed, catches
-   * a "behind the gateway but no routing id" misconfig); absent + direct node →
-   * `/attestation?nonce=…` works (the node is identified by the connection). NodeId
-   * is attestation ROUTING only — never part of signature verification (the trust
-   * unit is the `vRPC-Pubkey` the signature is checked against).
-   */
+  /** Serving node id (`vRPC-NodeId`), sent as `node_id` when present. Routing only, never part of signature checks. */
   nodeId?: string;
   /** Extra request headers (e.g. `x-api-key`). */
   headers?: Record<string, string>;
@@ -87,72 +78,45 @@ export interface FetchAttestationOptions {
 }
 
 /**
- * Fetch a fresh TDX attestation quote from the `/attestation` endpoint, bound to
- * the caller-supplied 32-byte nonce. The single attestation-fetch entry point —
- * used by the lazy verify seam ({@link TrustedVerifier}) and available standalone.
- *
- * Sends `GET ${attestationUrl}?nonce=<bare-lowercase-hex>`, plus `&node_id=<id>`
- * when {@link FetchAttestationOptions.nodeId} is present. The nonce is validated
- * synchronously (32 bytes) — a wrong length throws {@link InvalidNonce} BEFORE any
- * network call. The query nonce is bare hex (no `0x` prefix), matching the
- * sidecar's canonical wire convention.
- *
- * A `404` is terminal (stale/unknown node id, or a gateway route miss) and throws
- * {@link AttestationNodeNotFoundError} BEFORE parsing — the SDK does NOT retry or
- * fall back to another node. Any other non-OK status, a body that is not JSON and
- * a body of the wrong shape throw {@link MalformedAttestationResponse}. This route is
- * unsigned by contract, so no `vRPC-*` verification runs here.
+ * Fetch a TDX attestation bound to a 32-byte nonce: `GET <attestationUrl>?nonce=<hex>[&node_id=<id>]`.
+ * A nonce that is not 32 bytes throws {@link InvalidNonce} before any network call. Redirects are
+ * not followed; a transport failure or a non-2xx answer throws {@link AttestationUnavailable}, a
+ * malformed body {@link MalformedAttestationResponse}.
  */
 export async function fetchAttestation(opts: FetchAttestationOptions): Promise<Attestation> {
-  // Synchronous fast-fail BEFORE any fetch.
   if (opts.nonce.length !== 32) {
     throw new InvalidNonce(`expected 32 bytes, got ${opts.nonce.length}`);
   }
-
-  // Bare-hex (no 0x prefix) nonce; node_id only when a serving node id is known.
-  const nonceHex = bytesToHex(opts.nonce);
-  const target =
-    `${opts.attestationUrl}?nonce=${nonceHex}` +
-    (opts.nodeId === undefined ? "" : `&node_id=${encodeURIComponent(opts.nodeId)}`);
-
-  const headers: Record<string, string> = opts.headers ?? {};
-
-  const fetchImpl = opts.fetch ?? globalThis.fetch;
-  const resp = await fetchImpl(target, { headers });
-
-  // Stale/unknown node id (or gateway route miss) — terminal, no fallback or retry.
-  if (resp.status === 404) {
-    throw new AttestationNodeNotFoundError(opts.nodeId ?? "(no node_id)");
-  }
-
-  const bytes = new Uint8Array(await resp.arrayBuffer());
-  if (!resp.ok) {
-    throw new MalformedAttestationResponse(`unexpected HTTP status ${resp.status}`);
-  }
-  return parseAttestationBody(bytes);
+  const { attestation } = await getAttestation(fetchTransport(opts.fetch), {
+    attestationUrl: opts.attestationUrl,
+    nonce: opts.nonce,
+    nodeId: opts.nodeId,
+    headers: opts.headers ?? {},
+    requireNodeId: false,
+  });
+  return attestation;
 }
 
-/**
- * Attest whichever node the gateway routes to: no `node_id` is sent, and the node is identified
- * by the `vRPC-NodeId` header of the answer.
- */
-export async function fetchAttestationWithNodeId(
+interface GetAttestationOptions {
+  attestationUrl: string;
+  nonce: Uint8Array;
+  headers: Record<string, string>;
+  nodeId?: string | undefined;
+  signal?: AbortSignal | undefined;
+  requireNodeId: boolean;
+}
+
+async function getAttestation(
   transport: ConfidentialTransport,
-  opts: {
-    attestationUrl: string;
-    nonce: Uint8Array;
-    headers: Record<string, string>;
-    signal?: AbortSignal;
-  },
-): Promise<{ attestation: Attestation; nodeId: string }> {
-  if (opts.nonce.length !== 32) {
-    throw new InvalidNonce(`expected 32 bytes, got ${opts.nonce.length}`);
-  }
+  opts: GetAttestationOptions,
+): Promise<{ attestation: Attestation; nodeId: string | undefined }> {
   let response: OuterResponse;
   try {
     response = await transport({
       method: "GET",
-      url: `${opts.attestationUrl}?nonce=${bytesToHex(opts.nonce)}`,
+      url:
+        `${opts.attestationUrl}?nonce=${bytesToHex(opts.nonce)}` +
+        (opts.nodeId === undefined ? "" : `&node_id=${encodeURIComponent(opts.nodeId)}`),
       headers: opts.headers,
       ...(opts.signal === undefined ? {} : { signal: opts.signal }),
     });
@@ -168,10 +132,158 @@ export async function fetchAttestationWithNodeId(
     throw new AttestationUnavailable("status", { status: response.status });
   }
   const nodeId = getHeader(response.headers, "vRPC-NodeId");
-  if (nodeId === null || nodeId === "") {
+  if (opts.requireNodeId && (nodeId === null || nodeId === "")) {
     throw new AttestationUnavailable("node-id-missing", { status: response.status });
   }
-  return { attestation: parseAttestationBody(response.body), nodeId };
+  return { attestation: parseAttestationBody(response.body), nodeId: nodeId ?? undefined };
+}
+
+/**
+ * Attest whichever node the gateway routes to: no `node_id` is sent, and the node is identified
+ * by the `vRPC-NodeId` header of the answer.
+ */
+export async function fetchAttestationWithNodeId(
+  transport: ConfidentialTransport,
+  opts: {
+    attestationUrl: string;
+    nonce: Uint8Array;
+    headers: Record<string, string>;
+    signal?: AbortSignal;
+  },
+): Promise<{ attestation: Attestation; nodeId: string }> {
+  const { attestation, nodeId } = await getAttestation(transport, { ...opts, requireNodeId: true });
+  return { attestation, nodeId: nodeId ?? "" };
+}
+
+export interface AttestNodeOptions {
+  transport: ConfidentialTransport;
+  attestationUrl: string;
+  headers: Record<string, string>;
+  hardwareVerifier: HardwareVerifier;
+  /** Already safe-wrapped; `defaultLogger` keeps the path silent. */
+  logger: Logger;
+  signal?: AbortSignal | undefined;
+  /** Open mode: the verified signer; the attested pubkey must equal it. */
+  expectPubkey?: string;
+  /** Open mode: `vRPC-NodeId` of the signed response, sent as `node_id`. */
+  nodeId?: string | undefined;
+}
+
+export interface NodeAttestation<NodeId extends string | undefined = string | undefined> {
+  nodeId: NodeId;
+  pubkey: string;
+  composeHash: string;
+  attestedAt: number;
+}
+
+const ATTESTED_PUBKEY_RE = /^0x[0-9a-fA-F]{64}$/;
+
+/**
+ * Attest one node with a fresh nonce. With `expectPubkey` (open mode) the attested pubkey must
+ * match it before the hardware verifier runs; without it (Ankr Confidential RPC) the answer must
+ * carry `vRPC-NodeId`.
+ */
+export function attestNode(
+  opts: AttestNodeOptions & { expectPubkey: string },
+): Promise<NodeAttestation>;
+export function attestNode(
+  opts: Omit<AttestNodeOptions, "expectPubkey" | "nodeId">,
+): Promise<NodeAttestation<string>>;
+export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestation> {
+  const { logger, expectPubkey } = opts;
+  const verbose = logger !== defaultLogger;
+  const nonce = crypto.getRandomValues(new Uint8Array(32));
+  if (verbose) {
+    // The URL may carry the API key; nodeId and nonce identify the fetch.
+    logger.debug("attestation.fetch", {
+      ...(opts.nodeId === undefined ? {} : { nodeId: opts.nodeId }),
+      nonce: bytesToHex(nonce),
+    });
+  }
+  const { attestation, nodeId } = await getAttestation(opts.transport, {
+    attestationUrl: opts.attestationUrl,
+    nonce,
+    headers: opts.headers,
+    nodeId: opts.nodeId,
+    signal: opts.signal,
+    requireNodeId: expectPubkey === undefined,
+  });
+  if (!ATTESTED_PUBKEY_RE.test(attestation.pubkey)) {
+    throw new MalformedAttestationResponse("pubkey must be 0x + 64 hex chars");
+  }
+  const pubkey = attestation.pubkey.toLowerCase();
+  if (expectPubkey !== undefined) {
+    if (verbose) {
+      logger.debug("attestation.correlation", {
+        expectedPubkey: expectPubkey,
+        actualPubkey: pubkey,
+        match: pubkey === expectPubkey,
+      });
+    }
+    if (pubkey !== expectPubkey) throw new AttestationCorrelationError(expectPubkey, pubkey);
+  }
+  if (verbose) {
+    logger.debug("attestation.received", {
+      reportData: attestation.quote.report_data,
+      composeHash: attestation.composeHash,
+      pubkeyHex: pubkey,
+      quote: truncateHex(attestation.quote.quote),
+      eventLog: byteLen(attestation.quote.event_log),
+      appCompose: byteLen(new TextEncoder().encode(attestation.app_compose)),
+    });
+  }
+  try {
+    await verifyDstackAttestation(
+      mapAttestationToBundle(attestation, pubkey, nonce),
+      buildVerifyPolicy(pubkey, nonce, opts.hardwareVerifier, logger),
+    );
+  } catch (err) {
+    if (err instanceof AttestationError) {
+      throw new AttestationFailed(err.chkId, err.detail, { cause: err });
+    }
+    throw err;
+  }
+  return { nodeId, pubkey, composeHash: attestation.composeHash, attestedAt: Date.now() };
+}
+
+/** `app_compose` is self-reported by the node: CHK-A2 self-consistency only, never a trust anchor. */
+export function mapAttestationToBundle(
+  attestation: Attestation,
+  pubkeyHex: string,
+  nonce: Uint8Array,
+): AttestationBundle {
+  return {
+    quote: { ...attestation.quote },
+    pubkey: pubkeyHex,
+    nonce: bytesToHex(nonce),
+    tcbInfo: {
+      mrtd: "",
+      rtmr0: "",
+      rtmr1: "",
+      rtmr2: "",
+      rtmr3: "",
+      app_compose: attestation.app_compose,
+      event_log: [],
+      compose_hash: attestation.composeHash,
+    },
+    signature_chain: [],
+  };
+}
+
+/** Binds report_data to the pubkey and nonce; the hardware verifier always runs. */
+export function buildVerifyPolicy(
+  pubkeyHex: string,
+  nonce: Uint8Array,
+  hardwareVerifier: HardwareVerifier,
+  logger: Logger,
+): VerifyPolicy {
+  return {
+    binding: { expectedPubkey: pubkeyHex, expectedNonce: bytesToHex(nonce) },
+    allowlist: EMPTY_ALLOWLIST,
+    tcb: { allowedStatuses: [], rejectDebug: true },
+    hardwareVerifier,
+    ...(logger === defaultLogger ? {} : { logger }),
+  };
 }
 
 function parseAttestationBody(bytes: Uint8Array): Attestation {
@@ -183,37 +295,6 @@ function parseAttestationBody(bytes: Uint8Array): Attestation {
     throw new MalformedAttestationResponse("response is not valid JSON");
   }
   return narrowAttestation(body);
-}
-
-/**
- * Prove the fetched attestation belongs to the node that signed the RPC
- * response: the attestation `pubkey` must equal `signerPubkeyHex` — the
- * `vRPC-Pubkey` of the VERIFIED response (lowercase `0x`-hex, as returned in
- * `verification.pubkeyHex`). Called by {@link TrustedVerifier}'s lazy
- * attestation leg. On mismatch throws {@link AttestationCorrelationError};
- * on match returns.
- *
- * `logger` is an OPTIONAL opt-in narration sink (already safe-wrapped by the
- * caller). When present, the `attestation.correlation` event is emitted BEFORE
- * the throw-on-mismatch so a mismatch is observable before it raises. Omitted
- * (the default) keeps the silent path allocation-free.
- */
-export function verifyAttestationCorrelation(
-  attestation: Attestation,
-  signerPubkeyHex: string,
-  logger?: Logger,
-): void {
-  const expected = signerPubkeyHex;
-  if (logger) {
-    logger.debug("attestation.correlation", {
-      expectedPubkey: expected,
-      actualPubkey: attestation.pubkey,
-      match: attestation.pubkey === expected,
-    });
-  }
-  if (attestation.pubkey !== expected) {
-    throw new AttestationCorrelationError(expected, attestation.pubkey);
-  }
 }
 
 /**

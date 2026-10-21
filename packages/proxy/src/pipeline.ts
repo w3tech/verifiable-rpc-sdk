@@ -8,6 +8,7 @@
 import type http from "node:http";
 
 import {
+  AttestationUnavailable,
   byteLen,
   isSignedVrpcResponse,
   pickVrpcHeaders,
@@ -19,8 +20,10 @@ import { type Dispatcher, request } from "undici";
 import type { ProxyConfig } from "./config";
 import { decodeBody } from "./decode";
 import {
+  attestationUnavailableStatus,
   BodyTooLargeError,
   errorResponseBody,
+  isUndiciTimeout,
   ProxyError,
   UnsignedUpstreamError,
   UpstreamBodyTooLargeError,
@@ -115,12 +118,7 @@ export function buildTargetUrl(upstreamUrl: string, clientUrl: string): string {
  * (DNS, refused, reset, TLS, ...) is a connect failure → 502.
  */
 export function mapUndiciError(err: unknown): ProxyError {
-  const code = (err as { code?: string } | null | undefined)?.code;
-  if (
-    code === "UND_ERR_CONNECT_TIMEOUT" ||
-    code === "UND_ERR_HEADERS_TIMEOUT" ||
-    code === "UND_ERR_BODY_TIMEOUT"
-  ) {
+  if (isUndiciTimeout(err)) {
     return new UpstreamTimeoutError("Upstream did not respond within the configured timeout");
   }
   const detail = err instanceof Error ? err.message : String(err);
@@ -154,6 +152,10 @@ function renderError(res: http.ServerResponse, err: unknown, log: ProxyLogger): 
   let message: string;
   if (err instanceof ProxyError) {
     status = err.httpStatus;
+    kind = err.kind;
+    message = err.message;
+  } else if (err instanceof AttestationUnavailable) {
+    status = attestationUnavailableStatus(err);
     kind = err.kind;
     message = err.message;
   } else if (err instanceof VerificationError) {

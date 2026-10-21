@@ -11,18 +11,12 @@ import type { ProxyConfig } from "../../src/config";
 import type { ProxyTestOverrides } from "../../src/server";
 
 export const TEST_CHAIN_ID = "proxy-test-chain";
-const NONCE = new Uint8Array(32).fill(0x07);
 
-/**
- * The no-network TrustedVerifier injection set for `createProxyServer`:
- * attestation stub + hardware-verifier mock + pinned nonce. Zero network
- * in unit tests.
- */
+/** The no-network TrustedVerifier injection set for `createProxyServer`: attestation stub + hardware-verifier mock. */
 export function testOverrides(): ProxyTestOverrides {
   return {
     fetch: attestationStub().fetch,
     hardwareVerifier: mockHardwareVerifier(),
-    nonceSource: () => NONCE,
   };
 }
 

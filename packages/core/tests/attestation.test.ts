@@ -2,13 +2,8 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { rejectionOf } from "@w3tech.io/vrpc-test-support";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
-import { fetchAttestation, verifyAttestationCorrelation } from "../src/attestation";
-import {
-  AttestationCorrelationError,
-  AttestationNodeNotFoundError,
-  InvalidNonce,
-  MalformedAttestationResponse,
-} from "../src/errors";
+import { fetchAttestation } from "../src/attestation";
+import { AttestationUnavailable, InvalidNonce, MalformedAttestationResponse } from "../src/errors";
 
 const TEST_URL = "http://test.local:8545";
 const TEST_ATTESTATION_URL = `${TEST_URL}/attestation`;
@@ -291,7 +286,7 @@ describe("fetchAttestation", () => {
       expect(state.urls[0]).not.toContain("node_id=");
     });
 
-    test("status404ThrowsNodeNotFoundWithNoRetry", async () => {
+    test("status404IsUnavailableWithNoRetry", async () => {
       const state = installGatewayMockFetch({}, 404);
       const caught = await rejectionOf(
         fetchAttestation({
@@ -300,10 +295,8 @@ describe("fetchAttestation", () => {
           nonce: new Uint8Array(32),
         }),
       );
-      expect(caught).toBeInstanceOf(AttestationNodeNotFoundError);
-      if (caught instanceof AttestationNodeNotFoundError) {
-        expect(caught.nodeId).toBe("stale-node");
-      }
+      expect(caught).toBeInstanceOf(AttestationUnavailable);
+      expect(caught).toMatchObject({ reason: "status", status: 404 });
       // No fallback or retry.
       expect(state.calls).toBe(1);
     });
@@ -385,22 +378,13 @@ describe("fetchAttestation non-OK and non-JSON answers", () => {
     [500, "boom", "text/plain"],
     [503, "<html>unavailable</html>", "text/html"],
     [300, "", "text/plain"],
-  ])("status%iThrowsMalformedWithStatus", async (status, body, contentType) => {
+    [404, "not found", "text/plain"],
+  ])("status%iIsUnavailableWithStatus", async (status, body, contentType) => {
     installRawFetch(status, body, contentType);
-    const caught = await caughtFrom();
+    const caught = await caughtFrom("stale-node");
 
-    expect(caught).toBeInstanceOf(MalformedAttestationResponse);
-    expect(caught).not.toBeInstanceOf(SyntaxError);
-    expect((caught as MalformedAttestationResponse).reason).toBe(
-      `unexpected HTTP status ${status}`,
-    );
-  });
-
-  test("status500ReasonIsExact", async () => {
-    installRawFetch(500, "boom");
-    const caught = await caughtFrom();
-
-    expect((caught as MalformedAttestationResponse).reason).toBe("unexpected HTTP status 500");
+    expect(caught).toBeInstanceOf(AttestationUnavailable);
+    expect(caught).toMatchObject({ reason: "status", status });
   });
 
   test("status299WithGoldenFixtureParses", async () => {
@@ -433,39 +417,5 @@ describe("fetchAttestation non-OK and non-JSON answers", () => {
 
     expect(caught).toBeInstanceOf(MalformedAttestationResponse);
     expect((caught as MalformedAttestationResponse).reason).toBe("response is not valid JSON");
-  });
-
-  test("status404StillThrowsNodeNotFound", async () => {
-    installRawFetch(404, "not found");
-    const caught = await caughtFrom("stale-node");
-
-    expect(caught).toBeInstanceOf(AttestationNodeNotFoundError);
-    expect((caught as AttestationNodeNotFoundError).nodeId).toBe("stale-node");
-  });
-});
-
-describe("verifyAttestationCorrelation", () => {
-  const pubkey = "0x0000000000000000000000000000000000000000000000000000000000000000";
-
-  test("returnsOnPubkeyMatch", () => {
-    const attestation = { ...GOLDEN_FIXTURE, pubkey };
-    expect(() => verifyAttestationCorrelation(attestation, pubkey)).not.toThrow();
-  });
-
-  test("throwsCorrelationOnMismatch", () => {
-    const attestationPubkey = `0x${"ab".repeat(32)}`;
-    const responsePubkey = `0x${"cd".repeat(32)}`;
-    const attestation = { ...GOLDEN_FIXTURE, pubkey: attestationPubkey };
-    let caught: unknown;
-    try {
-      verifyAttestationCorrelation(attestation, responsePubkey);
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(AttestationCorrelationError);
-    if (caught instanceof AttestationCorrelationError) {
-      expect(caught.expectedPubkey).toBe(responsePubkey);
-      expect(caught.actualPubkey).toBe(attestationPubkey);
-    }
   });
 });

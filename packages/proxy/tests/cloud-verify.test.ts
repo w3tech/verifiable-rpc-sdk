@@ -4,7 +4,7 @@
 // these tests pin that the attestation GET and the Phala cloud verify POST go
 // through undici fetch on the proxy's Agent, never through global fetch.
 
-import type http from "node:http";
+import http from "node:http";
 import { DEFAULT_PHALA_VERIFY_ENDPOINT } from "@w3tech.io/vrpc-core";
 import { attestationBody, TEST_SEED } from "@w3tech.io/vrpc-test-support";
 import * as undici from "undici";
@@ -51,14 +51,15 @@ async function serve(server: http.Server): Promise<string> {
   return url;
 }
 
-async function postRpc(url: string): Promise<string> {
+async function postRpc(url: string): Promise<{ status: number; kind: string }> {
   const res = await rawRequest(url, {
     method: "POST",
     path: "/",
     headers: { "content-type": "application/json" },
     body: RPC_BODY,
   });
-  return (JSON.parse(res.body.toString()) as { error: { kind: string } }).error.kind;
+  const { kind } = (JSON.parse(res.body.toString()) as { error: { kind: string } }).error;
+  return { status: res.status, kind };
 }
 
 describe("cloud verify egress", () => {
@@ -68,13 +69,37 @@ describe("cloud verify egress", () => {
     cleanups.push(() => mock.close());
     const url = await serve(createProxyServer(testConfig(mock.url)));
 
-    const kind = await postRpc(url);
+    const { kind } = await postRpc(url);
     expect(globalFetch).not.toHaveBeenCalled();
     expect(kind).toBe("Attestation");
     const attestation = calls.find((c) => c.url.includes("/attestation"));
     expect(attestation?.dispatcher).toBeInstanceOf(undici.Agent);
     const phala = calls.find((c) => c.url === DEFAULT_PHALA_VERIFY_ENDPOINT);
     expect(phala?.dispatcher).toBeInstanceOf(undici.Agent);
+  });
+
+  test("open-mode attestation is bounded by --timeout", async () => {
+    const actual = await vi.importActual<typeof import("undici")>("undici");
+    vi.mocked(undici.fetch).mockImplementation(actual.fetch);
+    const globalFetch = vi.spyOn(globalThis, "fetch");
+    cleanups.push(async () => globalFetch.mockRestore());
+    const slow = http.createServer((_req, res) => {
+      const timer = setTimeout(() => res.end("{}"), 1000);
+      res.on("close", () => clearTimeout(timer));
+    });
+    const slowUrl = await serve(slow);
+    const mock = await startMockSidecar();
+    cleanups.push(() => mock.close());
+    const config = testConfig(mock.url, {
+      attestationUrl: `${slowUrl}/attestation`,
+      upstreamTimeoutMs: 200,
+    });
+    const url = await serve(createProxyServer(config));
+
+    const started = Date.now();
+    expect(await postRpc(url)).toEqual({ status: 504, kind: "AttestationUnavailable" });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(globalFetch).not.toHaveBeenCalled();
   });
 
   test("Ankr Confidential RPC verifies the attestation through the proxy Agent", async () => {

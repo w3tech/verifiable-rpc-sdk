@@ -28,11 +28,6 @@ import { type AddressInfo, createServer, type Server, type Socket } from "node:n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  type AttestationBundle,
-  type VerifyPolicy,
-  verifyDstackAttestation,
-} from "@w3tech.io/dstack-verify";
 import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { createProxyServer } from "../../src/server";
 import { testConfig } from "../support/test-overrides";
@@ -256,28 +251,21 @@ export async function spawnMockUpstream(canned?: string): Promise<MockUpstreamHa
   };
 }
 
-/**
- * `verifyAttestation` override: the REAL `verifyDstackAttestation` with the
- * bundle's `app_compose` cleared so CHK-A2 (compose-hash self-consistency)
- * dormant-skips via its own designed skip path. The upstream dstack simulator
- * fixtures are inherently self-inconsistent — `attestation.bin` bakes
- * compose_hash c143116f… while no checked-in `app-compose.json` revision ever
- * hashed to it — so CHK-A2 can never pass against a simulator quote. Every
- * other check (CHK-A1 report_data binding, quote parsing, hardware gate)
- * still runs for real. CHK-A2 is self-consistency only, not a trust anchor
- * (both fields are self-reported by the same node).
- */
-function simulatorVerifyAttestation(bundle: AttestationBundle, policy: VerifyPolicy) {
-  return verifyDstackAttestation(
-    { ...bundle, tcbInfo: { ...bundle.tcbInfo, app_compose: "" } },
-    policy,
-  );
-}
+// Simulator fixtures are self-inconsistent: drop the self-reported app_compose so CHK-A2 skips; every other check runs.
+const simulatorFetch = (async (url: string, init?: RequestInit) => {
+  const res = await globalThis.fetch(url, init);
+  if (!url.includes("/attestation") || !res.ok) return res;
+  const headers = new Headers(res.headers);
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  const body = { ...((await res.json()) as object), app_compose: "" };
+  return new Response(JSON.stringify(body), { status: res.status, headers });
+}) as typeof fetch;
 
 /**
  * Spawn the verifying proxy in-process via `createProxyServer` on an ephemeral
  * port. Injects the no-network hardware-verifier mock (a simulator quote is
- * not real TDX) and the CHK-A2-skipping attestation verifier above — the
+ * not real TDX) and the CHK-A2-skipping attestation fetch above — the
  * attestation leg still hits the real sidecar (that is what makes the suite a
  * real-wire test); everything else (attestation fetch, Ed25519 verify, replay
  * window) runs the production `TrustedVerifier` path. The attestation URL is
@@ -295,8 +283,8 @@ export async function spawnProxy(opts: {
     attestationUrl: `${opts.upstreamUrl}/attestation`,
   });
   const server = createProxyServer(config, {
+    fetch: simulatorFetch,
     hardwareVerifier: mockHardwareVerifier(),
-    verifyAttestation: simulatorVerifyAttestation,
   });
 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

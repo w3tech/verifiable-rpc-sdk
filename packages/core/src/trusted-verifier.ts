@@ -1,49 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// TrustedVerifier — the single orchestration unit that combines
-// the existing Ed25519 verify path (`verifyResponse`) with a TTL pubkey cache and
-// lazy TDX attestation: on an unknown/expired signing pubkey it fetches the node
-// attestation through the gateway, maps it to the frozen `AttestationBundle`, builds a
-// `VerifyPolicy` from client options, and calls `verifyDstackAttestation`.
-// Fail-closed: a verified pubkey is cached with a TTL ONLY after a
-// resolved attestation verify; a thrown `AttestationError` propagates and the
-// pubkey is NOT cached.
-//
-// This module composes existing primitives — it implements NO crypto: the single
-// Ed25519 path is `verifyResponse` (verify.ts, never forked), the attestation
-// fetch is `fetchAttestation`, and the pubkey correlation is
-// `verifyAttestationCorrelation` (attestation.ts). `mapAttestationToBundle` and
-// `buildVerifyPolicy` are pure mappers with no crypto.
+// TrustedVerifier: `verifyResponse`, then a TTL pubkey cache, then `attestNode` for an unknown
+// signer. A pubkey is cached only after its attestation verified.
 
 import { bytesToHex } from "@noble/hashes/utils.js";
-import {
-  type AttestationBundle,
-  AttestationError,
-  createCloudVerifier,
-  EMPTY_ALLOWLIST,
-  type HardwareVerifier,
-  type VerifyPolicy,
-  verifyDstackAttestation,
-} from "@w3tech.io/dstack-verify";
+import { createCloudVerifier, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 import { LRUCache } from "lru-cache";
 
-import { type Attestation, fetchAttestation, verifyAttestationCorrelation } from "./attestation";
-import { AttestationFailed } from "./errors";
-import { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
+import { attestNode } from "./attestation";
+import { pickVrpcHeaders, truncateHex } from "./log-redact";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
 import { checkOptions } from "./options";
+import { type ConfidentialTransport, fetchTransport } from "./transport";
 import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
 
 /** Default max distinct verified pubkeys held in the cache before LRU eviction. */
 export const DEFAULT_PUBKEY_CACHE_MAX = 1024;
 
-/**
- * Construction options for {@link TrustedVerifier}. The transport inputs
- * (`attestationUrl`/`headers`) target the attestation fetch; the test injectables
- * (`nonceSource`/`verifyAttestation`) keep fail-closed tests deterministic and
- * offline. (The policy inputs `allowlist`/`tcb`/`pccsUrl` were removed — the mock
- * verifier ignores them; a future release reintroduces them.)
- */
+/** Construction options for {@link TrustedVerifier}. */
 export interface TrustedVerifierOptions {
   /**
    * Opaque chain id string bound into the canonical pre-image as
@@ -69,10 +43,6 @@ export interface TrustedVerifierOptions {
   // mock verifier ignores them, so exposing them on the published surface is
   // misleading. A future release re-introduces them (consumer-pinned anchors) when
   // the real verifier needs them; re-adding optional fields is non-breaking.
-  /** Fresh 32-byte nonce source; default `crypto.getRandomValues`. Test-only. */
-  nonceSource?: () => Uint8Array;
-  /** Attestation verifier; default `verifyDstackAttestation`. Test-only stub. */
-  verifyAttestation?: (b: AttestationBundle, p: VerifyPolicy) => Promise<void>;
   /**
    * Hardware-signature verifier wired into the policy and run (mandatorily) by
    * `verifyDstackAttestation`. Defaults to the Phala {@link createCloudVerifier}
@@ -88,113 +58,16 @@ export interface TrustedVerifierOptions {
   logger?: Logger;
 }
 
-/**
- * Map a fetched {@link Attestation} (gateway `/attestation` wire shape) to the
- * frozen {@link AttestationBundle}. The `quote.*` fields and `pubkey` pass
- * through directly; `nonce` is the SDK-generated fetch nonce (bare hex, not from
- * the attestation body). The remaining `tcbInfo` measurement fields and
- * `signature_chain` are still mock-tolerated stubs — the mock verifier does not
- * inspect them; each records where a future release must source the real data.
- *
- * `tcbInfo.app_compose` is taken straight from the `/attestation` body
- * (`attestation.app_compose`, served verbatim next to `compose_hash`). It is `""`
- * when the sidecar does not provide it (older nodes / the simulator), in which
- * case the SDK's CHK-A2 self-consistency check dormant-skips (backward-compatible).
- *
- * NOTE: `app_compose` here comes from the SAME node that produced `compose_hash`
- * (self-reported). The pair only proves the node is internally consistent — it
- * is attacker-forgeable and is NOT a trust anchor. Anchoring it (independent
- * compose source + RTMR3 replay + DCAP) is future work.
- */
-export function mapAttestationToBundle(
-  attestation: Attestation,
-  pubkeyHex: string,
-  nonce: Uint8Array,
-): AttestationBundle {
-  return {
-    quote: {
-      quote: attestation.quote.quote,
-      event_log: attestation.quote.event_log,
-      report_data: attestation.quote.report_data,
-      vm_config: attestation.quote.vm_config,
-    },
-    pubkey: pubkeyHex,
-    nonce: bytesToHex(nonce),
-    // Future work: structural measurement fields (mrtd/rtmr0-3, event_log)
-    // for RTMR replay anchoring. The mock does not inspect them, so a stub is
-    // valid until the real DCAP/RTMR layers land.
-    tcbInfo: {
-      mrtd: "",
-      rtmr0: "",
-      rtmr1: "",
-      rtmr2: "",
-      rtmr3: "",
-      // Raw app_compose text from the /attestation body (self-reported;
-      // empty when the sidecar omits it → CHK-A2 dormant-skips).
-      app_compose: attestation.app_compose,
-      event_log: [],
-      // composeHash is available as a (recompute-only) hint, never a trust anchor.
-      compose_hash: attestation.composeHash,
-    },
-    // Future work: signature_chain from dstack get_key chain
-    // ([link0_sig, k256_signature]) — cross-repo ticket; not emitted by the
-    // current /attestation route.
-    signature_chain: [],
-  };
-}
-
-/**
- * Build a {@link VerifyPolicy} from the verified pubkey + the SDK-generated nonce.
- * `binding` carries the reportData binding (`report_data[0:32]==pubkey`,
- * `[32:64]==nonce`). `hardwareVerifier` is ALWAYS set — `verifyDstackAttestation`
- * runs it as the mandatory hardware root of trust; it defaults to the Phala
- * {@link createCloudVerifier} and is overridable (self-hosted endpoint, a future
- * local-DCAP verifier, or a no-network test mock).
- *
- * `allowlist`/`tcb` are defaulted internally. A future release reintroduces
- * consumer-pinned anchors (`allowlist`/`tcb`/`pccsUrl`) and threads them here.
- */
-export function buildVerifyPolicy(
-  pubkeyHex: string,
-  nonce: Uint8Array,
-  hardwareVerifier: HardwareVerifier = createCloudVerifier(),
-  logger?: Logger,
-): VerifyPolicy {
-  return {
-    binding: {
-      expectedPubkey: pubkeyHex,
-      expectedNonce: bytesToHex(nonce),
-    },
-    allowlist: EMPTY_ALLOWLIST,
-    tcb: { allowedStatuses: [], rejectDebug: true },
-    hardwareVerifier,
-    // Carry the verifier's logger into dstack-verify via VerifyPolicy.logger,
-    // but ONLY when a real logger is present. The no-op `defaultLogger` is
-    // treated as "no logger" so the silent path leaves `policy.logger` undefined
-    // — dstack-verify's `if (policy.logger)` guard then stays allocation-free.
-    ...(logger === undefined || logger === defaultLogger ? {} : { logger }),
-  };
-}
-
-/**
- * The verify-and-trust seam. Holds a long-lived, bounded pubkey cache
- * (`pubkeyHex` keys, fixed TTL, LRU-evicted) across `verify()` calls. On a cache
- * hit within TTL it returns the verified pair before any attestation fetch;
- * on a miss/expiry it lazily fetches + correlates + verifies the
- * attestation, caching the pubkey ONLY after a resolved attestation verify.
- */
+/** Verifies signed responses and attests each unknown signer once per cache TTL. */
 export class TrustedVerifier {
   private readonly cache: LRUCache<string, true>;
-  private readonly nonceSource: () => Uint8Array;
-  private readonly verifyAttestationImpl: (b: AttestationBundle, p: VerifyPolicy) => Promise<void>;
   private readonly chainId: string;
   private readonly replayWindowMs: number | undefined;
   private readonly attestationUrl: string;
-  private readonly headers: Record<string, string> | undefined;
-  private readonly fetchImpl: typeof fetch | undefined;
+  private readonly headers: Record<string, string>;
+  private readonly transport: ConfidentialTransport;
   private readonly hardwareVerifier: HardwareVerifier;
   private readonly logger: Logger;
-  /** Resolved pubkey-cache TTL (ms); narrated in the `cache.store` event. */
   private readonly ttlMs: number;
 
   constructor(opts: TrustedVerifierOptions) {
@@ -206,56 +79,24 @@ export class TrustedVerifier {
       updateAgeOnGet: false,
       updateAgeOnHas: false,
     });
-    this.nonceSource = opts.nonceSource ?? (() => crypto.getRandomValues(new Uint8Array(32)));
-    this.verifyAttestationImpl = opts.verifyAttestation ?? verifyDstackAttestation;
     this.chainId = chainId;
     this.replayWindowMs = replayWindowMs;
     this.attestationUrl = opts.attestationUrl;
-    this.headers = opts.headers;
-    this.fetchImpl = opts.fetch;
-    // Hardware verification is ALWAYS on. Default to the Phala CloudVerifier
-    // (threaded the same fetch override so a custom transport applies); callers
-    // override for a self-hosted endpoint, local DCAP, or a no-network test mock.
+    this.headers = opts.headers ?? {};
+    this.transport = fetchTransport(opts.fetch);
     this.hardwareVerifier =
       opts.hardwareVerifier ?? createCloudVerifier(opts.fetch ? { fetch: opts.fetch } : {});
-    // Wrap the injected logger ONCE so a throwing debug() can never break verify;
-    // default to the no-op singleton so the !== defaultLogger silent-path guard holds.
     this.logger = opts.logger ? safeLogger(opts.logger) : defaultLogger;
   }
 
-  /** True when `pubkeyHex` is cached and the entry has not expired. */
-  private isFresh(pubkeyHex: string): boolean {
-    return this.cache.has(pubkeyHex);
-  }
-
-  /** Cache `pubkeyHex` with a fresh TTL window. Called ONLY on a resolved verify. */
-  private cacheVerifiedPubkey(pubkeyHex: string): void {
-    this.cache.set(pubkeyHex, true);
-  }
-
-  /**
-   * Verify a (requestBytes, responseBytes, headers) triple and, on an
-   * unknown/expired signing pubkey, lazily attest it. Fail-closed throughout.
-   * Exact ordering:
-   *   1. `verifyResponse` (the single Ed25519 path) — throws propagate.
-   *   2. cache hit & fresh → return before any fetch.
-   *   3. nodeId is OPTIONAL — included in the attestation fetch when present,
-   *      omitted when absent (no pre-throw; the endpoint decides — fail-closed).
-   *   4. one fresh nonce, reused below (no rebinding).
-   *   5. fetch attestation via the gateway — throws propagate, cache untouched.
-   *   6. correlate att.pubkey == response signer — throws on mismatch.
-   *   7. map → bundle, build policy (same nonce).
-   *   8. attestation verify — throw skips step 9. NO try/finally.
-   *   9. cache the pubkey STRICTLY after the resolved verify; return.
-   */
+  /** `verifyResponse` (throws propagate), then the cache, then `attestNode` on a miss; caches only after success. */
   async verify(
     requestBytes: Uint8Array,
     responseBytes: Uint8Array,
     headers: ResponseHeaders,
   ): Promise<VerifiedPair> {
     if (this.logger !== defaultLogger) {
-      // Headers are flattened to a plain Record then narrowed to vrpc-* only — the
-      // raw authorization/x-api-key headers are never even emitted to `data`.
+      // Only vrpc-* headers are logged, never authorization or x-api-key.
       const headerRecord: Record<string, string> =
         headers instanceof Headers ? Object.fromEntries(headers.entries()) : { ...headers };
       this.logger.debug("verify.start", {
@@ -269,14 +110,11 @@ export class TrustedVerifier {
     const pair = await verifyResponse(requestBytes, responseBytes, headers, {
       chainId: this.chainId,
       ...(this.replayWindowMs === undefined ? {} : { replayWindowMs: this.replayWindowMs }),
-      // Thread the verifier's safe-wrapped logger so the preimage/signature/
-      // timestamp steps (points 2-4) narrate from within verifyResponse. On the
-      // silent path this is the no-op defaultLogger (verifyResponse guards on it).
       ...(this.logger === defaultLogger ? {} : { logger: this.logger }),
     });
 
     const pubkeyHex = pair.verification.pubkeyHex;
-    const fresh = this.isFresh(pubkeyHex);
+    const fresh = this.cache.has(pubkeyHex);
     if (this.logger !== defaultLogger) {
       this.logger.debug("cache.lookup", {
         pubkeyHex,
@@ -288,67 +126,17 @@ export class TrustedVerifier {
       return pair;
     }
 
-    const nonce = this.nonceSource();
-
-    // nodeId is OPTIONAL: included when the response carried vRPC-NodeId, omitted
-    // otherwise. Absent + behind the gateway → the gateway can't route → the fetch errors and
-    // propagates (fail-closed); absent + direct node → the fetch works. No pre-throw.
-    if (this.logger !== defaultLogger) {
-      // The attestation URL is intentionally NOT logged: on the public
-      // `rpc.ankr.com/<chain>/<key>` form the API key lives in the URL path, so
-      // logging it would leak the credential. nodeId + nonce are safe (routing id
-      // + fresh random) and identify the fetch.
-      this.logger.debug("attestation.fetch", {
-        ...(pair.nodeId === undefined ? {} : { nodeId: pair.nodeId }),
-        nonce: bytesToHex(nonce),
-      });
-    }
-
-    const att = await fetchAttestation({
+    await attestNode({
+      transport: this.transport,
       attestationUrl: this.attestationUrl,
-      ...(pair.nodeId === undefined ? {} : { nodeId: pair.nodeId }),
-      nonce,
-      ...(this.headers === undefined ? {} : { headers: this.headers }),
-      ...(this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl }),
+      headers: this.headers,
+      hardwareVerifier: this.hardwareVerifier,
+      logger: this.logger,
+      expectPubkey: pubkeyHex,
+      nodeId: pair.nodeId,
     });
 
-    // Pass the logger so the correlation step (point 8) is observable before
-    // a mismatch throws. On the silent path defaultLogger is a no-op.
-    verifyAttestationCorrelation(att, pubkeyHex, this.logger);
-
-    // CHK-A2 (compose-hash self-consistency) reads `att.app_compose`, served
-    // verbatim in the /attestation body next to `composeHash`. Empty on older
-    // nodes / the simulator → CHK-A2 dormant-skips (NON-FATAL).
-    if (this.logger !== defaultLogger) {
-      this.logger.debug("attestation.received", {
-        reportData: att.quote.report_data,
-        composeHash: att.composeHash,
-        pubkeyHex,
-        quote: truncateHex(att.quote.quote),
-        eventLog: byteLen(att.quote.event_log),
-        // app_compose is raw text (not hex) → count its real UTF-8 byte length.
-        appCompose: byteLen(new TextEncoder().encode(att.app_compose)),
-      });
-    }
-
-    const bundle = mapAttestationToBundle(att, pubkeyHex, nonce);
-    const policy = buildVerifyPolicy(pubkeyHex, nonce, this.hardwareVerifier, this.logger);
-
-    // dstack-verify is a dependency-free leaf: its AttestationError is a standalone
-    // Error, NOT a core VerificationError. Re-wrap it here so attestation failures
-    // surface as the same VerificationError family as every other verify failure
-    // (the SDK's public error contract). The original leaf error is kept as `cause`.
-    // A throw skips caching below — fail-closed, the pubkey is NOT trusted.
-    try {
-      await this.verifyAttestationImpl(bundle, policy);
-    } catch (err) {
-      if (err instanceof AttestationError) {
-        throw new AttestationFailed(err.chkId, err.detail, { cause: err });
-      }
-      throw err;
-    }
-
-    this.cacheVerifiedPubkey(pubkeyHex);
+    this.cache.set(pubkeyHex, true);
     if (this.logger !== defaultLogger) {
       this.logger.debug("cache.store", { pubkeyHex, ttlMs: this.ttlMs });
     }

@@ -30,15 +30,10 @@ import type { ProxyConfig } from "./config";
 import { createProxyLogger, type ProxyLogger } from "./logger";
 import { createRequestHandler } from "./pipeline";
 
-/**
- * Test seam: TrustedVerifier injectables unit tests use to keep verification
- * deterministic and offline (attestation fetch mock, hardware-verifier mock,
- * pinned nonce, attestation stub, log capture). In confidential mode only
- * `hardwareVerifier` and `logger` apply.
- */
+/** Test seam keeping verification offline; confidential mode uses only `hardwareVerifier` and `logger`. */
 export type ProxyTestOverrides = Pick<
   TrustedVerifierOptions,
-  "fetch" | "hardwareVerifier" | "nonceSource" | "verifyAttestation" | "logger"
+  "fetch" | "hardwareVerifier" | "logger"
 >;
 
 // Core calls fetch with a string URL only; the cast bridges undici's and the DOM's fetch types.
@@ -86,9 +81,6 @@ export function createProxyServer(
   if (config.pubkeyCacheTtlMs !== undefined) options.pubkeyCacheTtlMs = config.pubkeyCacheTtlMs;
   if (overrides.hardwareVerifier !== undefined)
     options.hardwareVerifier = overrides.hardwareVerifier;
-  if (overrides.nonceSource !== undefined) options.nonceSource = overrides.nonceSource;
-  if (overrides.verifyAttestation !== undefined)
-    options.verifyAttestation = overrides.verifyAttestation;
 
   const verifier = new TrustedVerifier(options);
 

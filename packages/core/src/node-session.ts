@@ -11,11 +11,14 @@ import {
 } from "@w3tech.io/dstack-verify";
 
 import { raceAbort } from "./abort";
-import { fetchAttestationWithNodeId } from "./attestation";
+import {
+  buildVerifyPolicy,
+  fetchAttestationWithNodeId,
+  mapAttestationToBundle,
+} from "./attestation";
 import { AttestationFailed, AttestationUnavailable, MalformedAttestationResponse } from "./errors";
 import { defaultLogger, type Logger } from "./logger";
 import type { ConfidentialTransport } from "./transport";
-import { buildVerifyPolicy, mapAttestationToBundle } from "./trusted-verifier";
 
 export interface AttestedNode {
   readonly nodeId: string;

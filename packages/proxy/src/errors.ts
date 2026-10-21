@@ -7,6 +7,8 @@
 // core's `VerificationError` subclasses — this file adds only the transport
 // and config kinds the proxy itself produces.
 
+import type { AttestationUnavailable } from "@w3tech.io/vrpc-core";
+
 export type ProxyErrorKind =
   | "Config"
   | "BodyTooLarge"
@@ -123,6 +125,27 @@ export class InternalProxyError extends ProxyError {
   constructor(message: string) {
     super(message, 502);
   }
+}
+
+const UNDICI_TIMEOUT_CODES = new Set([
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+]);
+
+/** True for an undici connect, headers or body timeout. */
+export function isUndiciTimeout(err: unknown): boolean {
+  return UNDICI_TIMEOUT_CODES.has((err as { code?: string } | null | undefined)?.code ?? "");
+}
+
+/** The HTTP status for an attestation that could not be obtained, in both proxy modes. */
+export function attestationUnavailableStatus(err: AttestationUnavailable): number {
+  if (err.status === 429) return 429;
+  const timedOut =
+    err.reason === "timeout" ||
+    err.cause instanceof UpstreamTimeoutError ||
+    isUndiciTimeout(err.cause);
+  return timedOut ? 504 : 503;
 }
 
 /**

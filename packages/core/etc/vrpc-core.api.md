@@ -4,12 +4,10 @@
 
 ```ts
 
-import { AttestationBundle } from '@w3tech.io/dstack-verify';
 import { CloudVerifierConfig } from '@w3tech.io/dstack-verify';
 import { createCloudVerifier } from '@w3tech.io/dstack-verify';
 import { DEFAULT_PHALA_VERIFY_ENDPOINT } from '@w3tech.io/dstack-verify';
 import { HardwareVerifier } from '@w3tech.io/dstack-verify';
-import { VerifyPolicy } from '@w3tech.io/dstack-verify';
 
 // @public
 export interface Attestation {
@@ -468,11 +466,9 @@ export interface TrustedVerifierOptions {
     hardwareVerifier?: HardwareVerifier;
     headers?: Record<string, string>;
     logger?: Logger;
-    nonceSource?: () => Uint8Array;
     pubkeyCacheMax?: number;
     pubkeyCacheTtlMs?: number;
     replayWindowMs?: number;
-    verifyAttestation?: (b: AttestationBundle, p: VerifyPolicy) => Promise<void>;
 }
 
 // @public
@@ -521,9 +517,6 @@ export interface VerifiedPair {
         preImageSha256: Uint8Array;
     };
 }
-
-// @public
-export function verifyAttestationCorrelation(attestation: Attestation, signerPubkeyHex: string, logger?: Logger): void;
 
 // @public
 export function verifyResponse(requestBytes: Uint8Array, rawResponseBytes: Uint8Array, responseHeaders: ResponseHeaders, opts: VerifyResponseOptions): Promise<VerifiedPair>;

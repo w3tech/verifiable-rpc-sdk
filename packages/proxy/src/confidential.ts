@@ -22,13 +22,13 @@ import { type Dispatcher, request } from "undici";
 import type { ProxyConfig } from "./config";
 import { decodeBody } from "./decode";
 import {
+  attestationUnavailableStatus,
   BodyTooLargeError,
   errorResponseBody,
   ProxyError,
   UnsupportedMediaTypeError,
   UpstreamBodyTooLargeError,
   UpstreamConnectError,
-  UpstreamTimeoutError,
 } from "./errors";
 import type { ProxyLogger } from "./logger";
 import { bufferStream, mapUndiciError } from "./pipeline";
@@ -111,10 +111,7 @@ export function describeConfidentialError(err: unknown): {
 
 function statusOf(err: VrpcError): number {
   if (err instanceof InvalidInnerRequest) return 400;
-  if (err instanceof AttestationUnavailable) {
-    if (err.status === 429) return 429;
-    return err.reason === "timeout" || err.cause instanceof UpstreamTimeoutError ? 504 : 503;
-  }
+  if (err instanceof AttestationUnavailable) return attestationUnavailableStatus(err);
   // Other 4xx would collide with the node's own relayed statuses.
   if (err instanceof RequestRejected && (err.status === 413 || err.status === 429)) {
     return err.status;

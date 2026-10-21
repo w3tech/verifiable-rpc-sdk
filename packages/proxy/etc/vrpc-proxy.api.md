@@ -89,7 +89,7 @@ export abstract class ProxyError extends Error {
 export type ProxyErrorKind = "Config" | "BodyTooLarge" | "UnsupportedMediaType" | "UpstreamTimeout" | "UpstreamConnect" | "UpstreamBodyTooLarge" | "UnsignedUpstream" | "DecodeFailed" | "Internal";
 
 // @public
-export type ProxyTestOverrides = Pick<TrustedVerifierOptions, "fetch" | "hardwareVerifier" | "nonceSource" | "verifyAttestation" | "logger">;
+export type ProxyTestOverrides = Pick<TrustedVerifierOptions, "fetch" | "hardwareVerifier" | "logger">;
 
 // @public
 export class UnsignedUpstreamError extends ProxyError {
