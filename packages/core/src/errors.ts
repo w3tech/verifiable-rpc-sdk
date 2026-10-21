@@ -190,10 +190,7 @@ export class AttestationFailed extends VerificationError {
     public readonly detail: string,
     options?: { chkId?: string; cause?: unknown },
   ) {
-    super(
-      `Attestation verification failed [${options?.chkId ?? reason}]: ${detail}`,
-      options?.cause === undefined ? undefined : { cause: options.cause },
-    );
+    super(`Attestation verification failed [${options?.chkId ?? reason}]: ${detail}`, options);
     if (options?.chkId !== undefined) {
       this.chkId = options.chkId;
     }
@@ -309,7 +306,7 @@ export class AttestationUnavailable extends UnavailableError {
       reason === "status"
         ? `Attestation unavailable: HTTP ${options?.status}`
         : `Attestation unavailable: ${reason}`,
-      options?.cause === undefined ? undefined : { cause: options.cause },
+      options,
     );
     if (options?.status !== undefined) {
       this.status = options.status;
