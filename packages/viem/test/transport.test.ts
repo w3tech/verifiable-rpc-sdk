@@ -327,6 +327,7 @@ describe("response classes", () => {
   const ERROR = JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32000, message: "x" } });
   test.each<[string, string, SeamOptions, unknown]>([
     ["signed 2xx → value", VALUE, {}, SINGLE_RESULT_BALANCE_HEX],
+    ["signed 2xx null body → undefined", "null", {}, undefined],
     ["signed 500 with an error member → RpcRequestError", ERROR, { status: 500 }, RpcRequestError],
     [
       "signed 502 without an error member → HttpRequestError",
@@ -358,7 +359,9 @@ describe("response classes", () => {
     const result = transport.config.request(GET_BALANCE);
     if (typeof expected !== "function") return expect(await result).toBe(expected);
     await expect(result).rejects.toBeInstanceOf(expected);
-    if (expected === HttpRequestError) await expect(result).rejects.toMatchObject({ status: 502 });
+    if (expected === HttpRequestError) {
+      await expect(result).rejects.toMatchObject({ status: 502, body: { jsonrpc: "2.0", id: 1 } });
+    }
     if (seam.unsigned) expect(attests).toEqual([]);
   });
 });

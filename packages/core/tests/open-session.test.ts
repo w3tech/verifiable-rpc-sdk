@@ -53,19 +53,19 @@ function session(chainId?: string, wideWindow = true) {
     fetch: stub.fetch,
     hardwareVerifier: mockHardwareVerifier(),
     replayWindowMs: wideWindow ? Number.MAX_SAFE_INTEGER : undefined,
-    httpError: (response) => ({ httpError: response.status }),
+    httpError: (_response, _payload, json) => ({ httpError: JSON.stringify(json) ?? "" }),
   });
   return { s, attests: stub.urls };
 }
 
-// "ok:<json>" for a result, else the error kind (`httpError` for the hook result, else the class).
-async function outcome(promise: Promise<{ json: unknown }>): Promise<string> {
+// "ok:<json>" for a result, else the error kind (`httpError<json>` for the hook result, else the class).
+async function outcome(promise: Promise<unknown>): Promise<string> {
   try {
-    return `ok:${JSON.stringify((await promise).json)}`;
+    return `ok:${JSON.stringify(await promise)}`;
   } catch (err) {
     expect(mayHaveExecuted(err)).toBe(true);
-    const e = err as { kind?: string; httpError?: number; constructor: { name: string } };
-    return e.kind ?? (e.httpError === undefined ? e.constructor.name : "httpError");
+    const e = err as { kind?: string; httpError?: string; constructor: { name: string } };
+    return e.kind ?? (e.httpError === undefined ? e.constructor.name : `httpError${e.httpError}`);
   }
 }
 
@@ -162,8 +162,8 @@ describe("createOpenSession answers", () => {
   const bom = new Uint8Array([0xef, 0xbb, 0xbf, ...utf8.encode(RESULT)]);
   test.each<[string, Answer, string]>([
     ["signed 2xx", {}, `ok:${RESULT}`],
-    ["signed non-2xx", { status: 500, body: '{"error":1}' }, 'ok:{"error":1}'],
-    ["signed non-2xx without JSON", { status: 502, body: "bad gateway" }, "ok:undefined"],
+    ["signed non-2xx", { status: 500, body: '{"error":1}' }, 'httpError{"error":1}'],
+    ["signed non-2xx without JSON", { status: 502, body: "bad gateway" }, "httpError"],
     ["tampered 2xx", { tamper: true }, "BadSignature"],
     ["tampered non-2xx", { status: 502, tamper: true }, "BadSignature"],
     ["unsigned 2xx", { unsigned: true }, "MissingHeader"],

@@ -342,16 +342,13 @@ export class MissingHeader extends VerificationError {
 export interface OpenSession<R extends PostResponse> {
     chainId(post: (body: Uint8Array) => Promise<R>): Promise<string>;
     pin(chainId: string): void;
-    send(payload: unknown, post: (body: Uint8Array) => Promise<R>): Promise<{
-        response: R;
-        json: unknown;
-    }>;
+    send(payload: unknown, post: (body: Uint8Array) => Promise<R>): Promise<unknown>;
 }
 
 // @public
 export type OpenSessionOptions<R extends PostResponse> = Omit<TrustedVerifierOptions, "chainId"> & {
     chainId?: string | undefined;
-    httpError(response: R, payload: unknown): unknown;
+    httpError(response: R, payload: unknown, json?: unknown): unknown;
 };
 
 // @public (undocumented)

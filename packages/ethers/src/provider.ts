@@ -114,7 +114,15 @@ export class VrpcProvider extends JsonRpcProvider {
       pubkeyCacheTtlMs,
       hardwareVerifier,
       logger,
-      httpError: (response: Posted) => response.fetch.assertOk(),
+      // assertOk throws for every non-2xx answer; a signed one reaches it only after verify.
+      httpError: ({ fetch }: Posted) => {
+        try {
+          fetch.assertOk();
+        } catch (err) {
+          return err;
+        }
+        return new Error(`HTTP ${fetch.statusCode}`);
+      },
     });
     if (confidential === true && chainId !== undefined) {
       // CCIP-Read would send the call data in plaintext to a URL the contract names.
@@ -148,14 +156,13 @@ export class VrpcProvider extends JsonRpcProvider {
     return this.#confidential?.getConfidentialInfo();
   }
 
-  // assertOk runs only on a verified answer, so an error never carries an unverified body.
   override async _send(
     payload: JsonRpcPayload | Array<JsonRpcPayload>,
   ): Promise<Array<JsonRpcResult>> {
     if (this.#confidential !== undefined) return sendConfidential(this.#confidential, payload);
-    const { response, json } = await this.#session.send(payload, (body) => this.#post(body));
-    response.fetch.assertOk();
-    const results = json as JsonRpcResult | Array<JsonRpcResult>;
+    const results = (await this.#session.send(payload, (body) => this.#post(body))) as
+      | JsonRpcResult
+      | Array<JsonRpcResult>;
     return Array.isArray(results) ? results : [results];
   }
 

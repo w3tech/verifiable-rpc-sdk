@@ -18,17 +18,14 @@ export interface PostResponse {
 export type OpenSessionOptions<R extends PostResponse> = Omit<TrustedVerifierOptions, "chainId"> & {
   /** Pins the chain; without it the chain id comes from a verified `eth_chainId` answer. */
   chainId?: string | undefined;
-  /** The library's own error for a non-2xx answer the session does not return; may throw it instead. */
-  httpError(response: R, payload: unknown): unknown;
+  /** The library's own error for a non-2xx answer; `json` is its parsed body, set only for a verified answer. */
+  httpError(response: R, payload: unknown, json?: unknown): unknown;
 };
 
 /** One open-mode connection: sends exactly the bytes it verifies and returns only verified answers. */
 export interface OpenSession<R extends PostResponse> {
-  /** Posts `payload` as JSON, verifies the answer and returns it with the parsed body (`undefined` for a non-JSON non-2xx body). */
-  send(
-    payload: unknown,
-    post: (body: Uint8Array) => Promise<R>,
-  ): Promise<{ response: R; json: unknown }>;
+  /** Posts `payload` as JSON, verifies the answer and returns its parsed body; a non-2xx answer throws `httpError`. */
+  send(payload: unknown, post: (body: Uint8Array) => Promise<R>): Promise<unknown>;
   /** The pinned chain id, bootstrapped through `post` when nothing is pinned yet. */
   chainId(post: (body: Uint8Array) => Promise<R>): Promise<string>;
   /** Binds the session to `chainId`; throws `InvalidOption` when it is bound to another chain. */
@@ -94,7 +91,8 @@ export function createOpenSession<R extends PostResponse>(
       } catch (err) {
         if (ok(response)) throw err;
       }
-      return { response, json };
+      if (!ok(response)) throw httpError(response, payload, json);
+      return json;
     },
     async chainId(post) {
       await current(post);

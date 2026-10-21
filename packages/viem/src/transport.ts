@@ -55,6 +55,15 @@ export function vrpcHttp(
   if (confidential) return confidentialHttp(urls.rpcUrl, opts);
   const fetchFn = opts.fetchFn ?? fetch;
   const { rpcUrl, attestationUrl } = urls;
+  // A signed JSON-RPC error is the PRESENCE of the `error` key; same class viem's http transport throws.
+  const rpcError = (body: Record<string, unknown>, json: unknown) =>
+    typeof json === "object" && json !== null && "error" in json
+      ? new RpcRequestError({
+          body,
+          error: json.error as { code: number; message: string },
+          url: rpcUrl,
+        })
+      : undefined;
   const session = createOpenSession<{ status: number; headers: Headers; body: Uint8Array }>({
     attestationUrl,
     headers: opts.headers,
@@ -63,7 +72,8 @@ export function vrpcHttp(
     pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
     hardwareVerifier: opts.hardwareVerifier,
     logger: opts.logger,
-    httpError: (response, payload) =>
+    httpError: (response, payload, json) =>
+      rpcError(payload as Record<string, unknown>, json) ??
       new HttpRequestError({
         body: payload as Record<string, unknown>,
         status: response.status,
@@ -104,30 +114,12 @@ export function vrpcHttp(
         timeout,
         async request({ method, params }) {
           if (clientChainId !== undefined) session.pin(clientChainId);
-          const { response, json } = await session.send(
-            { jsonrpc: "2.0", id: 1, method, params },
-            post,
-          );
+          const payload = { jsonrpc: "2.0", id: 1, method, params };
+          const json = await session.send(payload, post);
+          const error = rpcError(payload, json);
+          if (error) throw error;
           // biome-ignore lint/suspicious/noExplicitAny: viem request returns untyped.
-          const parsed: any = json;
-          // Signed JSON-RPC error = PRESENCE of the `error` key (not a truthy check).
-          if (parsed != null && "error" in parsed) {
-            // Same class viem's http transport throws — buildRequest maps it by code.
-            throw new RpcRequestError({
-              body: { method, params },
-              error: parsed.error,
-              url: rpcUrl,
-            });
-          }
-          if (response.status < 200 || response.status >= 300) {
-            throw new HttpRequestError({
-              body: { method, params },
-              status: response.status,
-              headers: response.headers,
-              url: rpcUrl,
-            });
-          }
-          return parsed.result;
+          return (json as { result?: any } | null)?.result;
         },
       },
       { url: rpcUrl },
