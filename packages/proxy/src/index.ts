@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
 // Public barrel — re-exports the @w3tech.io/vrpc-proxy public surface only.
-//
-// Implementation lives in:
-//   - ./server   — createProxyServer factory
-//   - ./config   — parseConfig (CLI flags + VRPC_PROXY_* env)
-//   - ./errors   — ProxyError transport taxonomy
-// (cli/pipeline/decode/headers are internal modules.)
 
 export type { ProxyConfig } from "./config";
 export { parseConfig } from "./config";
