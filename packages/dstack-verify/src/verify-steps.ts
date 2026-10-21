@@ -1,23 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Frozen verify-step signatures. computeComposeHash + parseReportData are
-// implemented (used by the active CHK-A1/CHK-A2 checks); replayRtmr +
-// extractKeyProvider remain throwing stubs until the real DCAP layers land.
+// Verify steps: computeComposeHash (CHK-A2) and parseReportData (CHK-A1).
 
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 
 import { AttestationError } from "./errors";
-import type { EventLogEntry, KeyProvider, ReportDataBinding } from "./types";
-
-/**
- * CHK-A4/P3: replay one IMR's event log to its expected RTMR
- * (SHA-384 chain, INIT_MR zero state, 48-byte right-pad). Returns the RTMR hex.
- */
-export function replayRtmr(events: EventLogEntry[]): string {
-  void events;
-  throw new Error("replayRtmr: not implemented yet");
-}
+import type { ReportDataBinding } from "./types";
 
 /**
  * CHK-A2: the dstack compose-hash of an `app_compose` string —
@@ -48,10 +37,4 @@ export function parseReportData(reportDataHex: string): ReportDataBinding {
     expectedPubkey: `0x${hex.slice(0, 64)}`,
     expectedNonce: hex.slice(64, 128),
   };
-}
-
-/** CHK-P7: extract the key-provider identity from the RTMR3 event log. */
-export function extractKeyProvider(events: EventLogEntry[]): KeyProvider {
-  void events;
-  throw new Error("extractKeyProvider: not implemented yet");
 }

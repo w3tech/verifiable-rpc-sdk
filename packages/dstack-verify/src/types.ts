@@ -8,15 +8,6 @@ export interface Logger {
   debug(event: string, data?: Record<string, unknown>): void;
 }
 
-/** One TDX event-log entry (RTMR replay input). */
-export interface EventLogEntry {
-  imr: number;
-  event_type: number;
-  digest: string;
-  event: string;
-  event_payload: string;
-}
-
 /** Attestation evidence from one node. */
 export interface AttestationBundle {
   /** DCAP quote, bare hex. */
@@ -35,12 +26,6 @@ export interface ReportDataBinding {
   expectedPubkey: string;
   /** 32 bytes, bare hex. */
   expectedNonce: string;
-}
-
-/** Key-provider identity extracted from the RTMR3 key-provider event. */
-export interface KeyProvider {
-  kind: string;
-  id: string;
 }
 
 /** What verifyDstackAttestation checks a bundle against. */

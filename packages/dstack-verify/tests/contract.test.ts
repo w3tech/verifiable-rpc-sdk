@@ -1,10 +1,10 @@
-// Frozen-contract surface tests.
+// Contract surface tests.
 //
 // Asserts: the public barrel exports every contract symbol; AttestationError is a
 // standalone `Error` (deliberately NOT a core `VerificationError` — this package
 // is a dependency-free leaf; core re-wraps it) carrying the "Attestation" kind +
-// chk/name; the CHK record enumerates the complete CHK-A1..G3 set (+ CHK-MOCK)
-// with non-empty meaning + valid disposition.
+// chk/name; the CHK record enumerates the complete CHK-A1..G3 set with non-empty
+// meaning + valid disposition.
 
 import { describe, expect, test } from "vitest";
 
@@ -22,16 +22,11 @@ describe("public contract surface", () => {
   test("exports the implemented compose-hash helper", () => {
     expect(typeof (barrel as Record<string, unknown>).computeComposeHash).toBe("function");
   });
-
-  test("does not export the unimplemented stub helpers", () => {
-    expect("replayRtmr" in barrel).toBe(false);
-    expect("extractKeyProvider" in barrel).toBe(false);
-  });
 });
 
 describe("AttestationError", () => {
   test("is a standalone Error (not a core VerificationError) carrying the Attestation kind", () => {
-    const e = new AttestationError("CHK-MOCK", "x");
+    const e = new AttestationError("CHK-P1", "x");
     expect(e instanceof Error).toBe(true);
     expect(e instanceof AttestationError).toBe(true);
     // Standalone leaf error: `kind` is the literal "Attestation" (its own type, no
@@ -39,9 +34,9 @@ describe("AttestationError", () => {
     // verifyDstackAttestation boundary (see core's trusted-verifier).
     expect(e.kind).toBe("Attestation");
     expect(e.name).toBe("AttestationError");
-    expect(e.chkId).toBe("CHK-MOCK");
+    expect(e.chkId).toBe("CHK-P1");
     expect(e.detail).toBe("x");
-    expect(e.message).toContain("CHK-MOCK");
+    expect(e.message).toContain("CHK-P1");
   });
 
   test("carries an optional cause", () => {
@@ -74,12 +69,11 @@ describe("CHK checklist completeness", () => {
     "CHK-G1",
     "CHK-G2",
     "CHK-G3",
-    "CHK-MOCK",
   ] as const;
 
-  const VALID_DISPOSITIONS = ["implement", "mock", "pinned", "out", "mock-deny"];
+  const VALID_DISPOSITIONS = ["implement", "mock", "pinned", "out"];
 
-  test("contains the complete CHK-A1..G3 set plus CHK-MOCK", () => {
+  test("contains the complete CHK-A1..G3 set", () => {
     expect(Object.keys(CHK).sort()).toEqual([...EXPECTED_CHK_IDS].sort());
   });
 
@@ -89,9 +83,5 @@ describe("CHK checklist completeness", () => {
       expect(entry.meaning.length).toBeGreaterThan(0);
       expect(VALID_DISPOSITIONS).toContain(entry.disposition);
     }
-  });
-
-  test("CHK-MOCK is the mock-deny discriminant", () => {
-    expect(CHK["CHK-MOCK"].disposition).toBe("mock-deny");
   });
 });

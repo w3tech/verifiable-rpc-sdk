@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Frozen audit vocabulary for the dstack/TDX chain-of-trust verification.
-//
-// `ChkId` enumerates the complete CHK-A1..G3 checklist (verbatim from
-// phala chain-of-trust.mdx) plus the synthetic `CHK-MOCK` id used by the
-// current release's fail-closed mock-deny path. The `CHK` const record carries
-// each item's verbatim meaning and its target disposition so the checklist is
-// queryable from code and tests. A future release fills the verification bodies
-// WITHOUT changing this set.
+// Audit vocabulary for the dstack/TDX chain-of-trust verification: `ChkId` is the
+// CHK-A1..G3 checklist (verbatim from phala chain-of-trust.mdx); `CHK` carries
+// each item's meaning and target disposition.
 
 /** Frozen string-literal union of every chain-of-trust checklist identifier. */
 export type ChkId =
@@ -31,11 +26,10 @@ export type ChkId =
   | "CHK-N3"
   | "CHK-G1"
   | "CHK-G2"
-  | "CHK-G3"
-  | "CHK-MOCK"; // synthetic id for the current release's mock-deny path
+  | "CHK-G3";
 
 /** Target disposition for each checklist item. */
-export type ChkDisposition = "implement" | "mock" | "pinned" | "out" | "mock-deny";
+export type ChkDisposition = "implement" | "mock" | "pinned" | "out";
 
 /** One checklist entry: its verbatim meaning + the target implementation disposition. */
 export interface ChkEntry {
@@ -116,9 +110,5 @@ export const CHK = Object.freeze({
   "CHK-G3": {
     meaning: "Contract ownership/upgrade mechanisms understood",
     disposition: "pinned",
-  },
-  "CHK-MOCK": {
-    meaning: "current mock: real attestation verification not implemented; default-deny",
-    disposition: "mock-deny",
   },
 } as const satisfies Record<ChkId, ChkEntry>);

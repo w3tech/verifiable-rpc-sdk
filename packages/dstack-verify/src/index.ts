@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Public barrel — re-exports the @w3tech.io/dstack-verify public surface only.
-//
-// Implementation lives in:
-//   - ./types     — AttestationBundle / VerifyPolicy + sub-types (frozen contract)
-//   - ./errors    — AttestationError (standalone Error; core re-wraps it into VerificationError)
-//   - ./checklist — ChkId union (CHK-A1..G3 + CHK-MOCK) + frozen CHK record
-//   - ./verify-steps — frozen verify-step signatures (currently throwing stubs)
-//   - ./verify    — verifyDstackAttestation entrypoint (current mock body; a future release fills it in place)
-//
 // verbatimModuleSyntax + isolatedModules require `export type { ... }` to be
 // a separate statement from `export { ... }`.
 
@@ -20,9 +11,7 @@ export type { AttestationErrorKind } from "./errors";
 export { AttestationError } from "./errors";
 export type {
   AttestationBundle,
-  EventLogEntry,
   HardwareVerifier,
-  KeyProvider,
   Logger,
   ReportDataBinding,
   VerifyPolicy,

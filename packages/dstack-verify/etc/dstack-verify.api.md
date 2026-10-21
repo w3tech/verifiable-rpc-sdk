@@ -116,14 +116,10 @@ export const CHK: Readonly<{
         readonly meaning: "Contract ownership/upgrade mechanisms understood";
         readonly disposition: "pinned";
     };
-    readonly "CHK-MOCK": {
-        readonly meaning: "current mock: real attestation verification not implemented; default-deny";
-        readonly disposition: "mock-deny";
-    };
 }>;
 
 // @public
-export type ChkDisposition = "implement" | "mock" | "pinned" | "out" | "mock-deny";
+export type ChkDisposition = "implement" | "mock" | "pinned" | "out";
 
 // @public
 export interface ChkEntry {
@@ -134,7 +130,7 @@ export interface ChkEntry {
 }
 
 // @public
-export type ChkId = "CHK-A1" | "CHK-A2" | "CHK-A3" | "CHK-A4" | "CHK-A5" | "CHK-A6" | "CHK-P1" | "CHK-P2" | "CHK-P3" | "CHK-P4" | "CHK-P5" | "CHK-P6" | "CHK-P7" | "CHK-P8" | "CHK-P9" | "CHK-N1" | "CHK-N2" | "CHK-N3" | "CHK-G1" | "CHK-G2" | "CHK-G3" | "CHK-MOCK";
+export type ChkId = "CHK-A1" | "CHK-A2" | "CHK-A3" | "CHK-A4" | "CHK-A5" | "CHK-A6" | "CHK-P1" | "CHK-P2" | "CHK-P3" | "CHK-P4" | "CHK-P5" | "CHK-P6" | "CHK-P7" | "CHK-P8" | "CHK-P9" | "CHK-N1" | "CHK-N2" | "CHK-N3" | "CHK-G1" | "CHK-G2" | "CHK-G3";
 
 // @public
 export interface CloudVerifierConfig {
@@ -153,31 +149,9 @@ export function createCloudVerifier(config?: CloudVerifierConfig): HardwareVerif
 export const DEFAULT_PHALA_VERIFY_ENDPOINT = "https://cloud-api.phala.com/api/v1/attestations/verify";
 
 // @public
-export interface EventLogEntry {
-    // (undocumented)
-    digest: string;
-    // (undocumented)
-    event: string;
-    // (undocumented)
-    event_payload: string;
-    // (undocumented)
-    event_type: number;
-    // (undocumented)
-    imr: number;
-}
-
-// @public
 export interface HardwareVerifier {
     // (undocumented)
     verifyHardware(bundle: AttestationBundle, policy: VerifyPolicy): Promise<void>;
-}
-
-// @public
-export interface KeyProvider {
-    // (undocumented)
-    id: string;
-    // (undocumented)
-    kind: string;
 }
 
 // @public
