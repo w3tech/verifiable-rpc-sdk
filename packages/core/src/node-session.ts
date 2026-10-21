@@ -6,16 +6,15 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { hexToBytes } from "@noble/hashes/utils.js";
 
 import { raceAbort } from "./abort";
-import { ATTESTATION_TIMEOUT_MS, type AttestNodeOptions, attestNode } from "./attestation";
+import {
+  ATTESTATION_TIMEOUT_MS,
+  type AttestNodeOptions,
+  attestNode,
+  type NodeAttestation,
+} from "./attestation";
 import { AttestationFailed, AttestationUnavailable } from "./errors";
 
-export interface AttestedNode {
-  readonly nodeId: string;
-  readonly pubkeyHex: string;
-  readonly nodeKey: Uint8Array;
-  readonly composeHash: string;
-  readonly attestedAt: number;
-}
+export type AttestedNode = NodeAttestation<string> & { readonly nodeKey: Uint8Array };
 
 export function nodeKeyFromEd25519(ed25519PublicKey: Uint8Array): Uint8Array {
   try {
@@ -48,7 +47,11 @@ export async function attestPin(opts: AttestOptions): Promise<AttestedNode> {
   const started = Date.now();
   logger?.debug("confidential.attest.start");
   try {
-    const node = await attest(opts);
+    const attested = await attestNode(opts);
+    const node = {
+      ...attested,
+      nodeKey: nodeKeyFromEd25519(hexToBytes(attested.pubkeyHex.slice(2))),
+    };
     logger?.debug("confidential.attest.ok", {
       nodeId: node.nodeId,
       pubkey: node.pubkeyHex,
@@ -63,11 +66,6 @@ export async function attestPin(opts: AttestOptions): Promise<AttestedNode> {
     });
     throw err;
   }
-}
-
-async function attest(opts: AttestOptions): Promise<AttestedNode> {
-  const node = await attestNode(opts);
-  return { ...node, nodeKey: nodeKeyFromEd25519(hexToBytes(node.pubkeyHex.slice(2))) };
 }
 
 export class PinSlot {

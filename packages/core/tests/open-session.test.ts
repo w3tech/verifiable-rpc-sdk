@@ -7,7 +7,8 @@ import {
 } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 import { mayHaveExecuted } from "../src/errors";
-import { createOpenSession, type PostResponse } from "../src/open-session";
+import { createOpenSession } from "../src/open-session";
+import type { OuterResponse } from "../src/transport";
 
 const utf8 = new TextEncoder();
 const READ = { jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] };
@@ -26,7 +27,7 @@ interface Answer {
 function node(read: Answer = {}, boot: Answer = {}) {
   const stats = { posts: 0, bootstraps: 0 };
   let gate: Promise<void> | undefined;
-  const post = async (request: Uint8Array): Promise<PostResponse> => {
+  const post = async (request: Uint8Array): Promise<OuterResponse> => {
     stats.posts++;
     const bootstrap = new TextDecoder().decode(request).includes('"eth_chainId"');
     if (bootstrap) {
@@ -47,7 +48,7 @@ function node(read: Answer = {}, boot: Answer = {}) {
 
 function session(chainId?: string, wideWindow = true) {
   const stub = attestationStub();
-  const s = createOpenSession<PostResponse>({
+  const s = createOpenSession<OuterResponse>({
     chainId,
     attestationUrl: "https://rpc.example/eth_vrpc/attestation",
     fetch: stub.fetch,

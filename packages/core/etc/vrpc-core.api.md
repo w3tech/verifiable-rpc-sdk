@@ -152,7 +152,7 @@ export { createCloudVerifier }
 export function createConsoleLogger(): Logger;
 
 // @public
-export function createOpenSession<R extends PostResponse>(options: OpenSessionOptions<R>): OpenSession<R>;
+export function createOpenSession<R extends OuterResponse>(options: OpenSessionOptions<R>): OpenSession<R>;
 
 export { DEFAULT_PHALA_VERIFY_ENDPOINT }
 
@@ -330,14 +330,14 @@ export class MissingHeader extends VerificationError {
 }
 
 // @public
-export interface OpenSession<R extends PostResponse> {
+export interface OpenSession<R extends OuterResponse> {
     chainId(post: (body: Uint8Array) => Promise<R>): Promise<string>;
     pin(chainId: string): void;
     send(payload: unknown, post: (body: Uint8Array) => Promise<R>): Promise<unknown>;
 }
 
 // @public
-export type OpenSessionOptions<R extends PostResponse> = Omit<TrustedVerifierOptions, "chainId"> & {
+export type OpenSessionOptions<R extends OuterResponse> = Omit<TrustedVerifierOptions, "chainId"> & {
     chainId?: string | undefined;
     httpError(response: R, payload: unknown, json?: unknown): unknown;
 };
@@ -361,11 +361,8 @@ export interface OptionsInput {
     url?: string | undefined;
 }
 
-// @public
-export function parseChainId(rawResponseBytes: Uint8Array): string;
-
-// @public
-export interface PostResponse {
+// @public (undocumented)
+export interface OuterResponse {
     // (undocumented)
     body: Uint8Array;
     // (undocumented)
@@ -373,6 +370,9 @@ export interface PostResponse {
     // (undocumented)
     status: number;
 }
+
+// @public
+export function parseChainId(rawResponseBytes: Uint8Array): string;
 
 // @public
 export class RequestRejected extends UnavailableError {

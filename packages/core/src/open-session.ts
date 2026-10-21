@@ -3,19 +3,16 @@
 // Open-mode session: chain id bootstrap and pin, one verifier, verify, response classes, decode.
 
 import { InvalidChainId, InvalidOption } from "./errors";
+import type { OuterResponse } from "./transport";
 import { TrustedVerifier, type TrustedVerifierOptions } from "./trusted-verifier";
 import { parseChainId, strictUtf8 } from "./utils";
-import { isSignedVrpcResponse, type ResponseHeaders } from "./verify";
-
-/** What an adapter's `post` returns: the status, headers and raw body bytes of one HTTP answer. */
-export interface PostResponse {
-  status: number;
-  headers: ResponseHeaders;
-  body: Uint8Array;
-}
+import { isSignedVrpcResponse } from "./verify";
 
 /** Options of {@link createOpenSession}. */
-export type OpenSessionOptions<R extends PostResponse> = Omit<TrustedVerifierOptions, "chainId"> & {
+export type OpenSessionOptions<R extends OuterResponse> = Omit<
+  TrustedVerifierOptions,
+  "chainId"
+> & {
   /** Pins the chain; without it the chain id comes from a verified `eth_chainId` answer. */
   chainId?: string | undefined;
   /** The library's own error for a non-2xx answer; `json` is its parsed body, set only for a verified answer. */
@@ -23,7 +20,7 @@ export type OpenSessionOptions<R extends PostResponse> = Omit<TrustedVerifierOpt
 };
 
 /** One open-mode connection: sends exactly the bytes it verifies and returns only verified answers. */
-export interface OpenSession<R extends PostResponse> {
+export interface OpenSession<R extends OuterResponse> {
   /** Posts `payload` as JSON, verifies the answer and returns its parsed body; a non-2xx answer throws `httpError`. */
   send(payload: unknown, post: (body: Uint8Array) => Promise<R>): Promise<unknown>;
   /** The pinned chain id, bootstrapped through `post` when nothing is pinned yet. */
@@ -36,7 +33,7 @@ const encoder = new TextEncoder();
 const ETH_CHAIN_ID = { jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] };
 
 /** Creates an {@link OpenSession}. */
-export function createOpenSession<R extends PostResponse>(
+export function createOpenSession<R extends OuterResponse>(
   options: OpenSessionOptions<R>,
 ): OpenSession<R> {
   const { chainId: configured, httpError, ...verifierOptions } = options;
