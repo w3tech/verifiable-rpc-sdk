@@ -31,6 +31,7 @@ export {
   InternalError,
   InvalidChainId,
   InvalidInnerRequest,
+  InvalidNonce,
   InvalidOption,
   MalformedConfidentialResponse,
   MalformedHeader,

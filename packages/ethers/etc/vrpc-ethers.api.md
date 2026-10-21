@@ -18,6 +18,7 @@ import { InternalError } from '@w3tech.io/vrpc-core';
 import { InvalidChainId } from '@w3tech.io/vrpc-core';
 import { InvalidInnerRequest } from '@w3tech.io/vrpc-core';
 import { InvalidInnerRequestReason } from '@w3tech.io/vrpc-core';
+import { InvalidNonce } from '@w3tech.io/vrpc-core';
 import { InvalidOption } from '@w3tech.io/vrpc-core';
 import { JsonRpcApiProviderOptions } from 'ethers';
 import { JsonRpcPayload } from 'ethers';
@@ -63,6 +64,8 @@ export { InvalidChainId }
 export { InvalidInnerRequest }
 
 export { InvalidInnerRequestReason }
+
+export { InvalidNonce }
 
 export { InvalidOption }
 

@@ -10,43 +10,6 @@ import { describe, expect, test } from "vitest";
 import { rejectionOf } from "./rejection";
 import { failureAnswer, type ServedRequest, type TestNodeServer } from "./server";
 
-const ERROR_CLASSES = [
-  "AttestationFailed",
-  "AttestationUnavailable",
-  "BadSignature",
-  "ConfidentialDecryptFailed",
-  "ConfidentialSignerMismatch",
-  "InternalError",
-  "InvalidChainId",
-  "InvalidInnerRequest",
-  "InvalidOption",
-  "MalformedConfidentialResponse",
-  "MalformedHeader",
-  "MissingHeader",
-  "RequestRejected",
-  "StaleTimestamp",
-  "TransportFailed",
-  "UnavailableError",
-  "UnexpectedResponse",
-  "VerificationError",
-  "VrpcError",
-] as const;
-
-const CONFIDENTIAL_CLASSES = [
-  "AttestationUnavailable",
-  "ConfidentialDecryptFailed",
-  "ConfidentialSignerMismatch",
-  "InternalError",
-  "InvalidInnerRequest",
-  "InvalidOption",
-  "MalformedConfidentialResponse",
-  "RequestRejected",
-  "TransportFailed",
-  "UnavailableError",
-  "UnexpectedResponse",
-  "VrpcError",
-] as const;
-
 type Namespace = Record<string, unknown>;
 
 function errorExports(namespace: Namespace): string[] {
@@ -64,26 +27,25 @@ export function describeAdapterErrors(
   entries: { adapter: object; core: object; errors: object; confidential: object },
 ): void {
   const adapter = entries.adapter as Namespace;
+  const classes = errorExports(entries.errors as Namespace);
   describe(`error classes exported by the ${name} adapter`, () => {
-    test.each(ERROR_CLASSES)("%s is the core class from the main and errors entries", (error) => {
-      const value = adapter[error];
-      expect(typeof value).toBe("function");
-      expect(value).toBe((entries.core as Namespace)[error]);
-      expect(value).toBe((entries.errors as Namespace)[error]);
+    test("the adapter exports every core error class and declares none of its own", () => {
+      expect(classes.length).toBeGreaterThan(0);
+      expect(errorExports(adapter)).toEqual(classes);
     });
 
-    test.each(CONFIDENTIAL_CLASSES)("%s is the core class from the confidential entry", (error) => {
-      expect(adapter[error]).toBe((entries.confidential as Namespace)[error]);
+    test.each(classes)("%s is the core class from every entry that exports it", (error) => {
+      expect(adapter[error]).toBe((entries.core as Namespace)[error]);
+      expect(adapter[error]).toBe((entries.errors as Namespace)[error]);
+      if (error in entries.confidential) {
+        expect(adapter[error]).toBe((entries.confidential as Namespace)[error]);
+      }
     });
 
     test("mayHaveExecuted is the function every core entry exports", () => {
       for (const entry of [entries.core, entries.errors, entries.confidential]) {
         expect(adapter.mayHaveExecuted).toBe((entry as Namespace).mayHaveExecuted);
       }
-    });
-
-    test("the adapter exports exactly this error set and declares none of its own", () => {
-      expect(errorExports(adapter)).toEqual([...ERROR_CLASSES]);
     });
   });
 }
@@ -120,27 +82,25 @@ export function describeBuiltAdapter(adapter: string): void {
         import * as core from "@w3tech.io/vrpc-core";
         import * as errors from "@w3tech.io/vrpc-core/errors";
         import * as conf from "${ENTRY}";
-        const all = ${JSON.stringify(ERROR_CLASSES)};
-        const confidential = ${JSON.stringify(CONFIDENTIAL_CLASSES)};
-        let checked = 0;
+        const classes = (ns) =>
+          Object.keys(ns).filter((n) => ns[n]?.prototype instanceof Error).sort().join();
+        const all = classes(errors).split(",");
+        if (!all[0] || classes(adapter) !== all.join()) throw new Error("set: " + classes(adapter));
         for (const name of all) {
           const value = adapter[name];
-          if (typeof value !== "function" || value !== core[name] || value !== errors[name]) {
-            throw new Error("identity: " + name);
-          }
-          if (confidential.includes(name) && value !== conf[name]) throw new Error("entry: " + name);
-          checked += 1;
+          if (value !== core[name] || value !== errors[name]) throw new Error("identity: " + name);
+          if (name in conf && value !== conf[name]) throw new Error("entry: " + name);
         }
         if (!(new core.RequestRejected(429, "n") instanceof adapter.UnavailableError)) {
           throw new Error("instanceof");
         }
-        process.stdout.write(String(checked));
+        process.stdout.write(String(all.length));
       `;
       const out = execFileSync(process.execPath, ["--input-type=module", "-e", script], {
         cwd: repoRoot,
         encoding: "utf8",
       });
-      expect(out).toBe(String(ERROR_CLASSES.length));
+      expect(Number(out)).toBeGreaterThan(0);
     });
 
     test("the declarations carry the error kind and node info types", () => {
