@@ -268,62 +268,35 @@ function narrowAttestation(body: unknown): Attestation {
     throw new AttestationFailed("malformed", "response is not a JSON object");
   }
   const obj = body as Record<string, unknown>;
-
-  if (typeof obj.pubkey !== "string") {
-    throw new AttestationFailed(
-      "malformed",
-      "pubkey" in obj ? "pubkey must be string" : "missing field: pubkey",
-    );
-  }
-  if (typeof obj.composeHash !== "string") {
-    throw new AttestationFailed(
-      "malformed",
-      "composeHash" in obj ? "composeHash must be string" : "missing field: composeHash",
-    );
-  }
+  const pubkey = str(obj, "pubkey", "pubkey");
+  const composeHash = str(obj, "composeHash", "composeHash");
   if (obj.quote === null || typeof obj.quote !== "object") {
     throw new AttestationFailed("malformed", "quote must be an object");
   }
-
   const quote = obj.quote as Record<string, unknown>;
-  if (typeof quote.quote !== "string") {
-    throw new AttestationFailed(
-      "malformed",
-      "quote" in quote ? "quote.quote must be string" : "missing field: quote.quote",
-    );
-  }
-  if (typeof quote.event_log !== "string") {
-    throw new AttestationFailed(
-      "malformed",
-      "event_log" in quote ? "quote.event_log must be string" : "missing field: quote.event_log",
-    );
-  }
-  if (typeof quote.report_data !== "string") {
-    throw new AttestationFailed(
-      "malformed",
-      "report_data" in quote
-        ? "quote.report_data must be string"
-        : "missing field: quote.report_data",
-    );
-  }
-  if (typeof quote.vm_config !== "string") {
-    throw new AttestationFailed(
-      "malformed",
-      "vm_config" in quote ? "quote.vm_config must be string" : "missing field: quote.vm_config",
-    );
-  }
 
   return {
     quote: {
-      quote: quote.quote,
-      event_log: quote.event_log,
-      report_data: quote.report_data,
-      vm_config: quote.vm_config,
+      quote: str(quote, "quote", "quote.quote"),
+      event_log: str(quote, "event_log", "quote.event_log"),
+      report_data: str(quote, "report_data", "quote.report_data"),
+      vm_config: str(quote, "vm_config", "quote.vm_config"),
     },
-    pubkey: obj.pubkey,
-    composeHash: obj.composeHash,
+    pubkey,
+    composeHash,
     // Raw verbatim app_compose, served next to composeHash. Lenient: absent or
     // non-string (older sidecars / simulator) defaults to "" → CHK-A2 dormant-skips.
     app_compose: typeof obj.app_compose === "string" ? obj.app_compose : "",
   };
+}
+
+function str(obj: Record<string, unknown>, key: string, path: string): string {
+  const value = obj[key];
+  if (typeof value !== "string") {
+    throw new AttestationFailed(
+      "malformed",
+      key in obj ? `${path} must be string` : `missing field: ${path}`,
+    );
+  }
+  return value;
 }
