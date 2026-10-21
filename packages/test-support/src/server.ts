@@ -2,8 +2,13 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Loopback HTTP server fronting an in-test node, with a request log and per-test answers.
 
-import { createServer, type IncomingHttpHeaders, type ServerResponse } from "node:http";
-import type { AddressInfo, Socket } from "node:net";
+import {
+  createServer,
+  type IncomingHttpHeaders,
+  type Server,
+  type ServerResponse,
+} from "node:http";
+import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
 import { CHAIN_ID, NODE_ID } from "./fixtures";
 import {
@@ -60,6 +65,21 @@ function flatten(headers: IncomingHttpHeaders): Record<string, string> {
   return out;
 }
 
+export function listen(server: Server): Promise<string> {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+    });
+  });
+}
+
+export function closeServer(server: Server): Promise<void> {
+  server.closeAllConnections();
+  return new Promise((resolve) => server.close(() => resolve()));
+}
+
 function acceptsGzip(value: string | undefined): boolean {
   return (value ?? "").split(",").some((item) => {
     const [coding, ...params] = item.split(";").map((part) => part.trim().toLowerCase());
@@ -72,7 +92,6 @@ export async function serveTestNode(
   options: TestNodeServerOptions = {},
 ): Promise<TestNodeServer> {
   const requests: ServedRequest[] = [];
-  const sockets = new Set<Socket>();
   let handler: ServedHandler | undefined;
   let origin = "";
 
@@ -131,12 +150,7 @@ export async function serveTestNode(
         .catch(() => res.destroy());
     });
   });
-  server.on("connection", (socket) => {
-    sockets.add(socket);
-    socket.on("close", () => sockets.delete(socket));
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  origin = await listen(server);
 
   return {
     url: origin,
@@ -144,11 +158,7 @@ export async function serveTestNode(
     answer(next) {
       handler = next;
     },
-    async close() {
-      for (const socket of sockets) socket.destroy();
-      server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    },
+    close: () => closeServer(server),
   };
 }
 

@@ -31,7 +31,7 @@ d("integration: ethers in Ankr Confidential RPC mode against the sidecar", () =>
   const providers: VrpcProvider[] = [];
 
   beforeAll(async () => {
-    env = await spawnInterop({ chainId: String(CHAIN_ID) });
+    env = await spawnInterop();
   }, 60_000);
 
   afterAll(async () => {

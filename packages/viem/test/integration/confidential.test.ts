@@ -26,7 +26,7 @@ d("integration: viem in Ankr Confidential RPC mode against the sidecar", () => {
   let env: Interop | undefined;
 
   beforeAll(async () => {
-    env = await spawnInterop({ chainId: String(arbitrum.id) });
+    env = await spawnInterop();
   }, 60_000);
 
   afterAll(async () => {

@@ -3,7 +3,6 @@
 // vrpc-proxy in Ankr Confidential RPC mode against the real sidecar.
 
 import type { Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { CHAIN_ID, mockHardwareVerifier, toHex } from "@w3tech.io/vrpc-test-support";
 import {
   INTEROP_SKIP_MESSAGE,
@@ -11,6 +10,7 @@ import {
   integrationEnabled,
   spawnInterop,
 } from "@w3tech.io/vrpc-test-support/interop";
+import { closeServer, listen } from "@w3tech.io/vrpc-test-support/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServerWith } from "../../src/server";
 import { testConfig } from "../support/test-overrides";
@@ -53,12 +53,11 @@ d("integration: vrpc-proxy in Ankr Confidential RPC mode against the sidecar", (
     });
     const server = createServerWith(config, { hardwareVerifier: mockHardwareVerifier() });
     servers.push(server);
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    return listen(server);
   }
 
   beforeAll(async () => {
-    env = await spawnInterop({ chainId: CHAIN_ID });
+    env = await spawnInterop();
     const relay = env.relay;
     sealedUrl = await startProxy(relay.url, true);
     await waitFor(() => relay.attestations() >= 1, 15_000);
@@ -66,12 +65,7 @@ d("integration: vrpc-proxy in Ankr Confidential RPC mode against the sidecar", (
   }, 60_000);
 
   afterAll(async () => {
-    for (const server of servers) {
-      await new Promise<void>((resolve) => {
-        server.close(() => resolve());
-        server.closeAllConnections();
-      });
-    }
+    for (const server of servers) await closeServer(server);
     await env?.kill();
   });
 

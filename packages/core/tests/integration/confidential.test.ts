@@ -61,7 +61,7 @@ d("integration: Ankr Confidential RPC against the sidecar", () => {
   let env: Interop | undefined;
 
   beforeAll(async () => {
-    env = await spawnInterop({ chainId: CHAIN_ID });
+    env = await spawnInterop();
   }, 60_000);
 
   afterAll(async () => {
