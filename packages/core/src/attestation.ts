@@ -138,22 +138,8 @@ async function getAttestation(
   return { attestation: parseAttestationBody(response.body), nodeId: nodeId ?? undefined };
 }
 
-/**
- * Attest whichever node the gateway routes to: no `node_id` is sent, and the node is identified
- * by the `vRPC-NodeId` header of the answer.
- */
-export async function fetchAttestationWithNodeId(
-  transport: ConfidentialTransport,
-  opts: {
-    attestationUrl: string;
-    nonce: Uint8Array;
-    headers: Record<string, string>;
-    signal?: AbortSignal;
-  },
-): Promise<{ attestation: Attestation; nodeId: string }> {
-  const { attestation, nodeId } = await getAttestation(transport, { ...opts, requireNodeId: true });
-  return { attestation, nodeId: nodeId ?? "" };
-}
+// Above the gateway's attestation timeout plus the hardware verifier's.
+export const ATTESTATION_TIMEOUT_MS = 60_000;
 
 export interface AttestNodeOptions {
   transport: ConfidentialTransport;
@@ -247,7 +233,7 @@ export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestati
 }
 
 /** `app_compose` is self-reported by the node: CHK-A2 self-consistency only, never a trust anchor. */
-export function mapAttestationToBundle(
+function mapAttestationToBundle(
   attestation: Attestation,
   pubkeyHex: string,
   nonce: Uint8Array,
@@ -271,7 +257,7 @@ export function mapAttestationToBundle(
 }
 
 /** Binds report_data to the pubkey and nonce; the hardware verifier always runs. */
-export function buildVerifyPolicy(
+function buildVerifyPolicy(
   pubkeyHex: string,
   nonce: Uint8Array,
   hardwareVerifier: HardwareVerifier,

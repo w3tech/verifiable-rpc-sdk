@@ -4,21 +4,11 @@
 
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { hexToBytes } from "@noble/hashes/utils.js";
-import {
-  AttestationError,
-  type HardwareVerifier,
-  verifyDstackAttestation,
-} from "@w3tech.io/dstack-verify";
 
 import { raceAbort } from "./abort";
-import {
-  buildVerifyPolicy,
-  fetchAttestationWithNodeId,
-  mapAttestationToBundle,
-} from "./attestation";
-import { AttestationFailed, AttestationUnavailable, MalformedAttestationResponse } from "./errors";
-import { defaultLogger, type Logger } from "./logger";
-import type { ConfidentialTransport } from "./transport";
+import { ATTESTATION_TIMEOUT_MS, type AttestNodeOptions, attestNode } from "./attestation";
+import { AttestationUnavailable, MalformedAttestationResponse } from "./errors";
+import { defaultLogger } from "./logger";
 
 export interface AttestedNode {
   readonly nodeId: string;
@@ -27,8 +17,6 @@ export interface AttestedNode {
   readonly composeHash: string;
   readonly attestedAt: number;
 }
-
-const ATTESTED_PUBKEY_RE = /^0x[0-9a-fA-F]{64}$/;
 
 export function nodeKeyFromEd25519(ed25519PublicKey: Uint8Array): Uint8Array {
   try {
@@ -54,16 +42,9 @@ export function errorKind(err: unknown): string {
   return typeof err;
 }
 
-interface AttestOptions {
-  transport: ConfidentialTransport;
-  attestationUrl: string;
-  headers: Record<string, string>;
-  hardwareVerifier: HardwareVerifier;
-  logger: Logger;
-  signal?: AbortSignal;
-}
+type AttestOptions = Omit<AttestNodeOptions, "expectPubkey" | "nodeId">;
 
-export async function attestNode(opts: AttestOptions): Promise<AttestedNode> {
+export async function attestPin(opts: AttestOptions): Promise<AttestedNode> {
   const { logger } = opts;
   if (logger === defaultLogger) return attest(opts);
   const started = Date.now();
@@ -87,40 +68,15 @@ export async function attestNode(opts: AttestOptions): Promise<AttestedNode> {
 }
 
 async function attest(opts: AttestOptions): Promise<AttestedNode> {
-  const nonce = crypto.getRandomValues(new Uint8Array(32));
-  const { attestation, nodeId } = await fetchAttestationWithNodeId(opts.transport, {
-    attestationUrl: opts.attestationUrl,
-    nonce,
-    headers: opts.headers,
-    ...(opts.signal === undefined ? {} : { signal: opts.signal }),
-  });
-  if (!ATTESTED_PUBKEY_RE.test(attestation.pubkey)) {
-    throw new MalformedAttestationResponse("pubkey must be 0x + 64 hex chars");
-  }
-  const pubkeyHex = attestation.pubkey.toLowerCase();
-  const nodeKey = nodeKeyFromEd25519(hexToBytes(pubkeyHex.slice(2)));
-  try {
-    await verifyDstackAttestation(
-      mapAttestationToBundle(attestation, pubkeyHex, nonce),
-      buildVerifyPolicy(pubkeyHex, nonce, opts.hardwareVerifier, opts.logger),
-    );
-  } catch (err) {
-    if (err instanceof AttestationError) {
-      throw new AttestationFailed(err.chkId, err.detail, { cause: err });
-    }
-    throw err;
-  }
+  const node = await attestNode(opts);
   return {
-    nodeId,
-    pubkeyHex,
-    nodeKey,
-    composeHash: attestation.composeHash,
-    attestedAt: Date.now(),
+    nodeId: node.nodeId,
+    pubkeyHex: node.pubkey,
+    nodeKey: nodeKeyFromEd25519(hexToBytes(node.pubkey.slice(2))),
+    composeHash: node.composeHash,
+    attestedAt: node.attestedAt,
   };
 }
-
-// Above the gateway's attestation timeout plus the hardware verifier's.
-const ATTESTATION_TIMEOUT_MS = 60_000;
 
 export class PinSlot {
   readonly #attest: (signal?: AbortSignal) => Promise<AttestedNode>;

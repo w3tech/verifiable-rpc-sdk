@@ -25,7 +25,7 @@ import {
   VrpcError,
 } from "./errors";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
-import { attestNode, errorKind, type Pin, PinSlot } from "./node-session";
+import { attestPin, errorKind, type Pin, PinSlot } from "./node-session";
 import {
   OhttpError,
   openResponse,
@@ -150,7 +150,7 @@ export class ConfidentialClient {
     const headers = this.#headers;
     this.#slot = new PinSlot(
       (signal) =>
-        attestNode({
+        attestPin({
           transport,
           attestationUrl: urls.attestationUrl,
           headers: { ...headers },

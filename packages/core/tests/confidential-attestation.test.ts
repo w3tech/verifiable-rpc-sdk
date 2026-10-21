@@ -148,7 +148,7 @@ describe("ConfidentialClient attestation: attested key", () => {
 
   test.each(
     unusableKeys,
-  )("an attested $reason key ($name) is rejected before the hardware verifier runs", async ({
+  )("an attested $reason key ($name) is rejected after the quote verifies", async ({
     ed25519PublicKey,
   }) => {
     const node = testNode();
@@ -168,7 +168,7 @@ describe("ConfidentialClient attestation: attested key", () => {
       "attested pubkey is not a usable encryption key",
     );
     expect((err as Error).cause).toBeUndefined();
-    expect(verifier.calls).toBe(0);
+    expect(verifier.calls).toBe(1);
     expect(posts(node)).toBe(0);
   });
 });

@@ -60,6 +60,8 @@ const EVENTS = [
   "confidential.request",
   "confidential.response",
   "confidential.evict",
+  "attestation.fetch",
+  "attestation.received",
 ];
 const CONSOLE_METHODS = ["log", "info", "warn", "error", "debug"] as const;
 const utf8 = new TextEncoder();
