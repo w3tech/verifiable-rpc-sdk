@@ -36,7 +36,11 @@ export interface VerifyPolicy {
   logger?: Logger;
 }
 
-/** Verifies the quote's hardware signature; resolves on success, throws `AttestationError` otherwise. Must not print. */
+/**
+ * Verifies the quote's hardware signature; resolves on success, throws `AttestationError` otherwise. Must not print.
+ * It must also check that the quote's own report_data equals `policy.binding` (expected pubkey ‖ nonce), as
+ * `createCloudVerifier` does; otherwise a genuine quote from another node passes.
+ */
 export interface HardwareVerifier {
   verifyHardware(bundle: AttestationBundle, policy: VerifyPolicy): Promise<void>;
 }
