@@ -5,15 +5,8 @@ import * as core from "@w3tech.io/vrpc-core";
 import * as conf from "@w3tech.io/vrpc-core/confidential";
 import * as errors from "@w3tech.io/vrpc-core/errors";
 import * as adapter from "@w3tech.io/vrpc-ethers";
-import {
-  createTestNode,
-  KEY,
-  mockHardwareVerifier,
-  rejectionOf,
-  type TestUpstreamResponse,
-} from "@w3tech.io/vrpc-test-support";
-import { describeAdapterErrors } from "@w3tech.io/vrpc-test-support/adapter";
-import { serveTestNode } from "@w3tech.io/vrpc-test-support/server";
+import { isPost, KEY, mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
+import { describeAdapterErrors, serveRpcNode } from "@w3tech.io/vrpc-test-support/adapter";
 import { afterEach, describe, expect, test } from "vitest";
 
 const cleanups: Array<() => unknown> = [];
@@ -26,20 +19,9 @@ describeAdapterErrors("ethers", { adapter, core, errors, confidential: conf });
 
 describe("an error from a live call", () => {
   test("a rejected sealed call is an instance of the classes from every entry", async () => {
-    const node = createTestNode({
-      upstream: async (request): Promise<TestUpstreamResponse> => {
-        const call = JSON.parse(await request.text()) as { id: number };
-        return {
-          status: 200,
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: call.id, result: "0x10" }),
-        };
-      },
-    });
-    const server = await serveTestNode(node);
-    cleanups.push(() => server.close());
+    const { server } = await serveRpcNode();
     server.answer((request) =>
-      request.method === "POST"
+      isPost(request)
         ? { status: 429, headers: { "content-type": "text/plain", "retry-after": "1" } }
         : undefined,
     );

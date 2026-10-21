@@ -33,14 +33,7 @@ afterEach(async () => {
 });
 
 async function serve(options: TestNodeServerOptions = {}): Promise<TestNodeServer> {
-  const node = createTestNode({
-    upstream: () => ({
-      status: 200,
-      headers: { "content-type": "application/json" },
-      body: UPSTREAM_BODY,
-    }),
-  });
-  const server = await serveTestNode(node, options);
+  const server = await serveTestNode(createTestNode(), options);
   cleanups.push(() => server.close());
   return server;
 }

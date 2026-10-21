@@ -6,11 +6,37 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, test } from "vitest";
+import { describe, expect, onTestFinished, test } from "vitest";
+import { rpcUpstream, type TestNode, type TestUpstream } from "./node";
 import { rejectionOf } from "./rejection";
-import { failureAnswer, type ServedRequest, type TestNodeServer } from "./server";
+import { failureAnswer, type ServedRequest, serveUpstream, type TestNodeServer } from "./server";
 
 type Namespace = Record<string, unknown>;
+
+export interface UpstreamSeen {
+  method: string;
+  path: string;
+  contentType: string | null;
+  body: string;
+}
+
+/** A default test node served for the test's duration, with each inner request its upstream saw. */
+export async function serveRpcNode(
+  upstream: TestUpstream = rpcUpstream(() => "0x10"),
+): Promise<{ node: TestNode; server: TestNodeServer; seen: UpstreamSeen[] }> {
+  const seen: UpstreamSeen[] = [];
+  const server = await serveUpstream(async (request) => {
+    seen.push({
+      method: request.method,
+      path: new URL(request.url).pathname,
+      contentType: request.headers.get("content-type"),
+      body: await request.clone().text(),
+    });
+    return upstream(request);
+  });
+  onTestFinished(() => server.close());
+  return { node: server.node, server, seen };
+}
 
 function errorExports(namespace: Namespace): string[] {
   return Object.keys(namespace)

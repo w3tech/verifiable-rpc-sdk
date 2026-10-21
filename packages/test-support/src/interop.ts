@@ -15,6 +15,7 @@ import { type AddressInfo, createServer as createNetServer, Socket } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CHAIN_ID } from "./fixtures";
+import { type RpcCall, rpcAnswer } from "./node";
 import { closeServer, listen } from "./server";
 
 export const integrationEnabled: boolean =
@@ -244,7 +245,10 @@ async function spawnEchoUpstream(): Promise<EchoUpstream> {
       if (!isJson) {
         json(400, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
       } else {
-        json(200, Array.isArray(parsed) ? parsed.map(rpcAnswer) : rpcAnswer(parsed));
+        json(
+          200,
+          rpcAnswer(parsed as RpcCall, (call) => RPC_RESULTS[call.method] ?? "0x0"),
+        );
       }
       return;
     }
@@ -264,12 +268,6 @@ async function spawnEchoUpstream(): Promise<EchoUpstream> {
   });
   const url = await listen(server);
   return { url, requests: () => [...records], kill: () => closeServer(server) };
-}
-
-function rpcAnswer(call: unknown): unknown {
-  const fields = typeof call === "object" && call !== null ? (call as Record<string, unknown>) : {};
-  const method = typeof fields.method === "string" ? fields.method : "";
-  return { jsonrpc: "2.0", id: fields.id ?? null, result: RPC_RESULTS[method] ?? "0x0" };
 }
 
 async function spawnRelay(sidecarUrl: string, nodeId: string): Promise<Relay> {

@@ -9,8 +9,8 @@ import {
   createTestNode,
   isPost,
   type TestNode,
-  type TestNodeOptions,
   type TestOuterResponse,
+  type TestUpstream,
 } from "./node";
 
 export interface ServedRequest {
@@ -168,7 +168,7 @@ export async function serveTestNode(
 
 /** Serves a default test node in front of `upstream`. */
 export function serveUpstream(
-  upstream: NonNullable<TestNodeOptions["upstream"]>,
+  upstream: TestUpstream,
   options?: TestNodeServerOptions,
 ): Promise<TestNodeServer> {
   return serveTestNode(createTestNode({ upstream }), options);

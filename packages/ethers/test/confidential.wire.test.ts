@@ -9,7 +9,9 @@ import {
   isPost,
   KEY,
   mockHardwareVerifier,
+  type RpcCall,
   rejectionOf,
+  rpcUpstream,
 } from "@w3tech.io/vrpc-test-support";
 import {
   describeOneRequestPerCall,
@@ -48,23 +50,6 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   vi.restoreAllMocks();
 });
-
-interface RpcCall {
-  id: number;
-  method: string;
-}
-
-function rpcUpstream(result: (call: RpcCall) => unknown) {
-  return async (request: Request) => {
-    const parsed = JSON.parse(await request.text()) as RpcCall | RpcCall[];
-    const answer = (call: RpcCall) => ({ jsonrpc: "2.0", id: call.id, result: result(call) });
-    return {
-      status: 200,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(Array.isArray(parsed) ? parsed.map(answer) : answer(parsed)),
-    };
-  };
-}
 
 async function serve(
   options: TestNodeServerOptions = {},

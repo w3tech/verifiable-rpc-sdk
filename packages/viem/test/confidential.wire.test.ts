@@ -11,10 +11,13 @@ import {
 import {
   countOf,
   isPost,
+  jsonResponse,
   KEY,
   mockHardwareVerifier,
+  type RpcCall,
   rejectionOf,
-  type TestUpstreamResponse,
+  rpcUpstream,
+  type TestUpstream,
 } from "@w3tech.io/vrpc-test-support";
 import {
   describeOneRequestPerCall,
@@ -42,35 +45,17 @@ const arbitrum = defineChain({
 
 type Mode = "client" | "fallback";
 
-interface RpcCall {
-  id: number;
-  method: string;
-}
-
-type Upstream = (call: RpcCall) => TestUpstreamResponse;
-
 const cleanups: Array<() => unknown> = [];
 
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-function result(value: (call: RpcCall) => unknown): Upstream {
-  return (call) => ({
-    status: 200,
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: call.id, result: value(call) }),
-  });
-}
-
 async function serve(
   options: TestNodeServerOptions = {},
-  upstream: Upstream = result(() => "0x10"),
+  upstream: TestUpstream = rpcUpstream(() => "0x10"),
 ): Promise<TestNodeServer> {
-  const server = await serveUpstream(
-    async (request) => upstream(JSON.parse(await request.text()) as RpcCall),
-    options,
-  );
+  const server = await serveUpstream(upstream, options);
   cleanups.push(() => server.close());
   return server;
 }
@@ -119,7 +104,7 @@ describe("wire invariant", () => {
   test("only attestation GETs and sealed POSTs leave, with no JSON-RPC in clear", async () => {
     const server = await serve(
       {},
-      result((call) => {
+      rpcUpstream((call) => {
         if (call.method === "eth_call") return "0x2a";
         if (call.method === "eth_chainId") return "0xa4b1";
         return "0x1";
@@ -211,15 +196,14 @@ describe("errors carry neither the key, the params, the inner body nor body byte
   });
 
   test("an inner error member", async () => {
-    const server = await serve({}, (call) => ({
-      status: 200,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    const server = await serve({}, async (request) => {
+      const call = (await request.json()) as RpcCall;
+      return jsonResponse({
         jsonrpc: "2.0",
         id: call.id,
         error: { code: -32000, message: "boom" },
-      }),
-    }));
+      });
+    });
     const client = keyed(server.url);
     const sent: Uint8Array[] = [];
     recordBodies(server, sent);

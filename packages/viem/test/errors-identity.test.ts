@@ -4,18 +4,11 @@
 import * as core from "@w3tech.io/vrpc-core";
 import * as conf from "@w3tech.io/vrpc-core/confidential";
 import * as errors from "@w3tech.io/vrpc-core/errors";
-import {
-  createTestNode,
-  KEY,
-  mockHardwareVerifier,
-  rejectionOf,
-  type TestUpstreamResponse,
-} from "@w3tech.io/vrpc-test-support";
-import { describeAdapterErrors } from "@w3tech.io/vrpc-test-support/adapter";
-import { serveTestNode } from "@w3tech.io/vrpc-test-support/server";
+import { isPost, KEY, mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
+import { describeAdapterErrors, serveRpcNode } from "@w3tech.io/vrpc-test-support/adapter";
 import * as adapter from "@w3tech.io/vrpc-viem";
 import { BaseError, createPublicClient, defineChain } from "viem";
-import { afterEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 const arbitrum = defineChain({
   id: 42161,
@@ -24,30 +17,13 @@ const arbitrum = defineChain({
   rpcUrls: { default: { http: ["http://127.0.0.1"] } },
 });
 
-const cleanups: Array<() => unknown> = [];
-
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-});
-
 describeAdapterErrors("viem", { adapter, core, errors, confidential: conf });
 
 describe("an error from a live call", () => {
   test("a rejected sealed call is an instance of the classes from every entry", async () => {
-    const node = createTestNode({
-      upstream: async (request): Promise<TestUpstreamResponse> => {
-        const call = JSON.parse(await request.text()) as { id: number };
-        return {
-          status: 200,
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: call.id, result: "0x10" }),
-        };
-      },
-    });
-    const server = await serveTestNode(node);
-    cleanups.push(() => server.close());
+    const { server } = await serveRpcNode();
     server.answer((request) =>
-      request.method === "POST"
+      isPost(request)
         ? { status: 429, headers: { "content-type": "text/plain", "retry-after": "1" } }
         : undefined,
     );

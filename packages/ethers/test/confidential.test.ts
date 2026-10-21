@@ -10,82 +10,28 @@ import {
   attestationStub,
   CHAIN_ID,
   countOf,
-  createTestNode,
   isGet,
   isPost,
+  jsonResponse,
   KEY,
   mockHardwareVerifier,
   NODE_ID,
+  type RpcCall,
   rejectionOf,
+  rpcUpstream,
   signedJsonHeaders,
-  type TestNode,
-  type TestUpstreamResponse,
+  type TestUpstream,
 } from "@w3tech.io/vrpc-test-support";
-import { serveTestNode, type TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
+import { serveRpcNode } from "@w3tech.io/vrpc-test-support/adapter";
+import type { TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
 import { AbiCoder, EnsResolver, FetchRequest, isError, toUtf8String } from "ethers";
 import { afterEach, describe, expect, test, vi } from "vitest";
-
-interface RpcCall {
-  jsonrpc: string;
-  id: number;
-  method: string;
-  params: unknown[];
-}
-
-interface UpstreamSeen {
-  method: string;
-  path: string;
-  contentType: string | null;
-  body: string;
-}
-
-type Upstream = (body: string) => TestUpstreamResponse;
-
-interface Harness {
-  node: TestNode;
-  server: TestNodeServer;
-  seen: UpstreamSeen[];
-}
 
 const cleanups: Array<() => unknown> = [];
 
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
-
-function json(value: unknown, status = 200): TestUpstreamResponse {
-  return { status, headers: { "content-type": "application/json" }, body: JSON.stringify(value) };
-}
-
-// Answers single objects and arrays with `results(call)`, like a JSON-RPC node.
-function rpc(results: (call: RpcCall) => unknown): Upstream {
-  return (body) => {
-    const parsed = JSON.parse(body) as RpcCall | RpcCall[];
-    const answer = (call: RpcCall) => ({ jsonrpc: "2.0", id: call.id, result: results(call) });
-    return json(Array.isArray(parsed) ? parsed.map(answer) : answer(parsed));
-  };
-}
-
-const blockNumber16 = rpc(() => "0x10");
-
-async function harness(upstream: Upstream = blockNumber16): Promise<Harness> {
-  const seen: UpstreamSeen[] = [];
-  const node = createTestNode({
-    upstream: async (request) => {
-      const body = await request.text();
-      seen.push({
-        method: request.method,
-        path: new URL(request.url).pathname,
-        contentType: request.headers.get("content-type"),
-        body,
-      });
-      return upstream(body);
-    },
-  });
-  const server = await serveTestNode(node);
-  cleanups.push(() => server.close());
-  return { node, server, seen };
-}
 
 function keyedRequest(server: TestNodeServer): FetchRequest {
   const req = new FetchRequest(`${server.url}/eth_vrpc`);
@@ -106,7 +52,7 @@ function confidentialProvider(url: string | FetchRequest, options: VrpcOptions =
 
 describe("a single call", () => {
   test("attests, then sends one sealed POST, and resolves to the upstream's value", async () => {
-    const { server, seen } = await harness();
+    const { server, seen } = await serveRpcNode();
     const provider = confidentialProvider(keyedRequest(server));
 
     await expect(provider.getBlockNumber()).resolves.toBe(16);
@@ -131,7 +77,7 @@ describe("a single call", () => {
   });
 
   test("a second call adds one POST and no attestation", async () => {
-    const { node, server } = await harness();
+    const { node, server } = await serveRpcNode();
     const provider = confidentialProvider(keyedRequest(server));
 
     await provider.getBlockNumber();
@@ -142,7 +88,7 @@ describe("a single call", () => {
   });
 
   test("a string URL carrying the key in its path sends both requests under that path", async () => {
-    const { server } = await harness();
+    const { server } = await serveRpcNode();
     const provider = confidentialProvider(`${server.url}/eth_vrpc/${KEY}`);
 
     await expect(provider.getBlockNumber()).resolves.toBe(16);
@@ -172,7 +118,7 @@ function balanceOf(call: RpcCall): string {
   return `0x${BigInt(String(call.params[0])).toString(16)}`;
 }
 
-const chainUpstream = rpc((call) => {
+const chainUpstream = rpcUpstream((call) => {
   switch (call.method) {
     case "eth_blockNumber":
       return "0x10";
@@ -188,11 +134,13 @@ const chainUpstream = rpc((call) => {
 });
 
 // Open mode over the same upstream: signed answers through the FetchRequest seam.
-function openProvider(upstream: Upstream): VrpcProvider {
+function openProvider(upstream: TestUpstream): VrpcProvider {
   const req = new FetchRequest("http://test.invalid");
   req.getUrlFunc = async (sent) => {
     const requestBytes = sent.body ?? new Uint8Array();
-    const answer = upstream(new TextDecoder().decode(requestBytes));
+    const answer = await upstream(
+      new Request("http://test.invalid", { method: "POST", body: requestBytes }),
+    );
     const body = answer.body ?? new Uint8Array();
     const responseBytes = typeof body === "string" ? utf8.encode(body) : body;
     const headers = signedJsonHeaders(CHAIN_ID, requestBytes, responseBytes, {
@@ -220,7 +168,7 @@ function textForms(err: unknown): string[] {
 
 describe("results equal open mode", () => {
   test("single calls, a batch and a null result", async () => {
-    const { server } = await harness(chainUpstream);
+    const { server } = await serveRpcNode(chainUpstream);
     const sealed = confidentialProvider(keyedRequest(server));
     const open = openProvider(chainUpstream);
 
@@ -245,7 +193,7 @@ describe("results equal open mode", () => {
 
 describe("batching", () => {
   test("two concurrent calls with batchMaxCount 2 travel as one inner array", async () => {
-    const { server, seen } = await harness(chainUpstream);
+    const { server, seen } = await serveRpcNode(chainUpstream);
     const provider = confidentialProvider(keyedRequest(server), { batchMaxCount: 2 });
     await provider.confidentialReady();
 
@@ -257,7 +205,7 @@ describe("batching", () => {
   });
 
   test("three concurrent calls with batchMaxCount 2 make two requests", async () => {
-    const { server } = await harness(chainUpstream);
+    const { server } = await serveRpcNode(chainUpstream);
     const provider = confidentialProvider(keyedRequest(server), { batchMaxCount: 2 });
     await provider.confidentialReady();
 
@@ -268,7 +216,7 @@ describe("batching", () => {
   });
 
   test("a lone call is a single JSON object, as in open mode", async () => {
-    const { seen, server } = await harness(chainUpstream);
+    const { seen, server } = await serveRpcNode(chainUpstream);
     const provider = confidentialProvider(keyedRequest(server));
 
     await provider.getBalance(ADDR);
@@ -279,13 +227,13 @@ describe("batching", () => {
   });
 
   test("answers in reverse order reach the caller with the matching id", async () => {
-    const reversed: Upstream = (body) => {
-      const calls = JSON.parse(body) as RpcCall[];
-      return json(
+    const reversed: TestUpstream = async (request) => {
+      const calls = (await request.json()) as RpcCall[];
+      return jsonResponse(
         calls.map((call) => ({ jsonrpc: "2.0", id: call.id, result: balanceOf(call) })).reverse(),
       );
     };
-    const { server, seen } = await harness(reversed);
+    const { server, seen } = await serveRpcNode(reversed);
     const provider = confidentialProvider(keyedRequest(server));
 
     const balances = await Promise.all([4, 5, 6].map((n) => provider.getBalance(address(n))));
@@ -315,7 +263,7 @@ describe("errors", () => {
     body,
     marker,
   }) => {
-    const { server } = await harness(() => ({
+    const { server } = await serveRpcNode(() => ({
       status,
       headers: { "content-type": contentType },
       body,
@@ -347,9 +295,9 @@ describe("errors", () => {
     const sentinelAddress = "0x5e17e1a15e17e1a15e17e1a15e17e1a15e17e1a1";
     let answerId: (calls: RpcCall[]) => unknown = (calls) =>
       calls.slice(0, 1).map((call) => ({ jsonrpc: "2.0", id: call.id, result: "0x7e57ab1e" }));
-    const { server } = await harness((body) => {
-      const parsed = JSON.parse(body) as RpcCall | RpcCall[];
-      return json(answerId(Array.isArray(parsed) ? parsed : [parsed]));
+    const { server } = await serveRpcNode(async (request) => {
+      const parsed = (await request.json()) as RpcCall | RpcCall[];
+      return jsonResponse(answerId(Array.isArray(parsed) ? parsed : [parsed]));
     });
     const provider = confidentialProvider(keyedRequest(server));
 
@@ -376,7 +324,7 @@ describe("errors", () => {
     { name: "an empty body", body: "" },
     { name: "a non-JSON body", body: "not json sentinel-reply" },
   ])("an inner 200 with $name rejects with UNSUPPORTED_OPERATION", async ({ body }) => {
-    const { server } = await harness(() => ({ status: 200, body }));
+    const { server } = await serveRpcNode(() => ({ status: 200, body }));
     const provider = confidentialProvider(keyedRequest(server));
 
     const err = await rejectionOf(provider.getBlockNumber());
@@ -386,7 +334,7 @@ describe("errors", () => {
   });
 
   test("a gateway error reaches every batch member as the same core error", async () => {
-    const { server } = await harness(chainUpstream);
+    const { server } = await serveRpcNode(chainUpstream);
     const provider = confidentialProvider(keyedRequest(server));
     await provider.confidentialReady();
     server.answer((request) =>
@@ -407,7 +355,7 @@ describe("errors", () => {
 
 describe("configuration errors", () => {
   test("throw from the constructor and nothing is sent or logged", async () => {
-    const { server } = await harness();
+    const { server } = await serveRpcNode();
     const spies = (["log", "info", "warn", "error", "debug"] as const).map((level) =>
       vi.spyOn(console, level).mockImplementation(() => {}),
     );
@@ -433,7 +381,7 @@ describe("configuration errors", () => {
   });
 
   test("confidential false keeps open mode", async () => {
-    const { server } = await harness();
+    const { server } = await serveRpcNode();
     const provider = new VrpcProvider(`${server.url}/eth_vrpc`, 42161, {
       confidential: false,
       hardwareVerifier: mockHardwareVerifier(),
@@ -451,7 +399,7 @@ describe("configuration errors", () => {
 
 describe("eager attestation", () => {
   test("confidentialReady attests once and getConfidentialInfo reports the pinned node", async () => {
-    const { node, server } = await harness();
+    const { node, server } = await serveRpcNode();
     const provider = confidentialProvider(keyedRequest(server));
 
     expect(provider.getConfidentialInfo()).toBeUndefined();
@@ -481,7 +429,7 @@ describe("eager attestation", () => {
 
 describe("concurrency", () => {
   test("ten concurrent first calls share one attestation", async () => {
-    const { server } = await harness(chainUpstream);
+    const { server } = await serveRpcNode(chainUpstream);
     const provider = confidentialProvider(keyedRequest(server), { batchMaxCount: 1 });
 
     const balances = await Promise.all(
@@ -512,9 +460,9 @@ describe("CCIP-Read", () => {
   }
 
   // Every eth_call reverts with OffchainLookup naming the gateway, as an off-chain resolver does.
-  function offchainLookup(gatewayUrl: string): Upstream {
-    return (body) => {
-      const parsed = JSON.parse(body) as RpcCall | RpcCall[];
+  function offchainLookup(gatewayUrl: string): TestUpstream {
+    return async (request) => {
+      const parsed = (await request.json()) as RpcCall | RpcCall[];
       const answer = (call: RpcCall) => {
         if (call.method !== "eth_call") return { jsonrpc: "2.0", id: call.id, result: "0x10" };
         const to = (call.params[0] as { to: string }).to;
@@ -532,13 +480,13 @@ describe("CCIP-Read", () => {
           error: { code: 3, message: "execution reverted", data },
         };
       };
-      return json(Array.isArray(parsed) ? parsed.map(answer) : answer(parsed));
+      return jsonResponse(Array.isArray(parsed) ? parsed.map(answer) : answer(parsed));
     };
   }
 
   test("an OffchainLookup revert fails with CALL_EXCEPTION and nothing is fetched", async () => {
     const { url, hits } = await gateway();
-    const { server } = await harness(offchainLookup(url));
+    const { server } = await serveRpcNode(offchainLookup(url));
     const provider = confidentialProvider(keyedRequest(server));
 
     const err = await rejectionOf(
@@ -552,7 +500,7 @@ describe("CCIP-Read", () => {
 
   test("an ENS name with an off-chain resolver does not resolve and nothing is fetched", async () => {
     const { url, hits } = await gateway();
-    const { server } = await harness(offchainLookup(url));
+    const { server } = await serveRpcNode(offchainLookup(url));
     const provider = confidentialProvider(keyedRequest(server));
 
     const resolver = new EnsResolver(provider, RESOLVER, "offchain.eth");

@@ -28,6 +28,10 @@ export interface TestUpstreamResponse {
   body?: Uint8Array | string;
 }
 
+export type TestUpstream = (
+  request: Request,
+) => TestUpstreamResponse | Promise<TestUpstreamResponse>;
+
 export interface TestNodeOptions {
   /** Default `NODE_SEED`. */
   seed?: Uint8Array;
@@ -35,9 +39,7 @@ export interface TestNodeOptions {
   chainId?: string;
   /** Sent as `vRPC-NodeId`; `null` omits the header. Default `NODE_ID`. */
   nodeId?: string | null;
-  upstream?:
-    | ((request: Request) => TestUpstreamResponse | Promise<TestUpstreamResponse>)
-    | undefined;
+  upstream?: TestUpstream | undefined;
 }
 
 type TestSignOptions = Omit<SignOptions, "nodeId">;
@@ -88,13 +90,33 @@ export const countOf = <R>(source: { requests: readonly R[] }, match: (request: 
 const utf8 = new TextEncoder();
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
-function defaultUpstream(): TestUpstreamResponse {
-  return {
-    status: 200,
-    headers: { "content-type": "application/json" },
-    body: '{"jsonrpc":"2.0","id":1,"result":"0x10"}',
-  };
+export interface RpcCall {
+  jsonrpc: string;
+  id: number;
+  method: string;
+  params: unknown[];
 }
+
+export function jsonResponse(value: unknown, status = 200): TestUpstreamResponse {
+  return { status, headers: { "content-type": "application/json" }, body: JSON.stringify(value) };
+}
+
+/** The JSON-RPC answer to a call or a batch, with `result(call)` for each call. */
+export function rpcAnswer(
+  parsed: RpcCall | RpcCall[],
+  result: (call: RpcCall) => unknown,
+): unknown {
+  const answer = (call: RpcCall) => ({ jsonrpc: "2.0", id: call.id, result: result(call) });
+  return Array.isArray(parsed) ? parsed.map(answer) : answer(parsed);
+}
+
+/** An upstream answering every JSON-RPC call, alone or in a batch, with `result(call)`. */
+export function rpcUpstream(result: (call: RpcCall) => unknown): TestUpstream {
+  return async (request) =>
+    jsonResponse(rpcAnswer((await request.json()) as RpcCall | RpcCall[], result));
+}
+
+const defaultUpstream = rpcUpstream(() => "0x10");
 
 export function createTestNode(options: TestNodeOptions = {}): TestNode {
   const seed = options.seed ?? NODE_SEED;
