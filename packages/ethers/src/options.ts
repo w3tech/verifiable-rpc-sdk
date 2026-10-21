@@ -33,7 +33,8 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
   /**
    * `fetch` override for the attestation GET and the default hardware verifier's call — test
    * injectable. Internal. In Ankr Confidential RPC mode the attestation GET and the sealed
-   * requests go through the `FetchRequest` instead.
+   * requests go through the `FetchRequest`, and through this `fetch` unless it has a
+   * `getUrlFunc` of its own.
    */
   fetch?: typeof fetch;
   /**

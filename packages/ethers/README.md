@@ -175,7 +175,7 @@ errors and propagates (fail-closed).
 | ---------------- | ---------------------------- | ---------------- | ------- |
 | `pubkeyCacheTtlMs` | `number`                   | `3_600_000` (1h) | Verified-pubkey cache TTL (ms). A second read within TTL reuses the cache and skips the attestation fetch; past TTL the pubkey is re-attested (no stale trust). |
 | `hardwareVerifier` | `HardwareVerifier`         | Phala cloud verifier (vrpc-core) | Internal/advanced. Overrides the mandatory hardware-signature verifier; it cannot be disabled. |
-| `fetch`            | `typeof fetch`             | global `fetch`   | Carries the attestation GET and the default hardware verifier's call. In Ankr Confidential RPC mode the attestation GET and the sealed requests go through the `FetchRequest` instead. |
+| `fetch`            | `typeof fetch`             | global `fetch`   | Carries the attestation GET and the default hardware verifier's call. In Ankr Confidential RPC mode the attestation GET and the sealed requests go through the `FetchRequest`, and through this `fetch` unless it has a `getUrlFunc` of your own. |
 | `logger`           | `Logger`                   | no-op (silent)   | Opt-in debug logger for the verify flow (`createConsoleLogger()` from `@w3tech.io/vrpc-core`). |
 
 > Auth/headers: set them on the `FetchRequest` you pass as the URL
@@ -222,8 +222,8 @@ call encrypted to an attested node.
 The chain id is required and must be decimal. `await provider.confidentialReady()`
 attests up front; `provider.getConfidentialInfo()` returns the pinned node. Auth
 headers, credentials and the timeout come from the `FetchRequest` you pass as the
-URL and apply to both requests; the `fetch` option carries only the default
-hardware verifier's call in this mode.
+URL and apply to both requests. Without a `getUrlFunc` of your own, both requests
+and the default hardware verifier's call go through the `fetch` option.
 
 **CCIP-Read is off.** CCIP-Read (EIP-3668) would send `{ sender, data }` in
 plaintext to a gateway URL the contract names, so the provider sets

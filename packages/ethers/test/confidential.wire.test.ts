@@ -260,13 +260,27 @@ describe("response size cap", () => {
   });
 });
 
-describe("hardware verifier", () => {
-  test("without a hardwareVerifier of its own the fetch option carries the cloud verify call", async () => {
+describe("the fetch option", () => {
+  test("carries the attestation GET and the sealed request without a getUrlFunc of the caller's", async () => {
+    const server = await serve();
+    const methods: string[] = [];
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      methods.push(init?.method ?? "GET");
+      return globalThis.fetch(input, init);
+    };
+    const { provider } = build("string URL", server.url, { fetch });
+
+    expect(await provider.getBlockNumber()).toBe(16);
+    expect(methods).toEqual(["GET", "POST"]);
+  });
+
+  test("without a hardwareVerifier of its own also carries the cloud verify call", async () => {
     const server = await serve();
     const seen: string[] = [];
-    const fetch: typeof globalThis.fetch = async (input) => {
+    const fetch: typeof globalThis.fetch = async (input, init) => {
       seen.push(String(input));
-      return new Response("", { status: 503 });
+      if (String(input) === DEFAULT_PHALA_VERIFY_ENDPOINT) return new Response("", { status: 503 });
+      return globalThis.fetch(input, init);
     };
     const provider = new VrpcProvider(`${server.url}/eth_vrpc/${KEY}`, 42161, {
       confidential: true,
@@ -277,7 +291,9 @@ describe("hardware verifier", () => {
 
     await rejectionOf(provider.getBlockNumber());
 
-    expect(seen).toEqual([DEFAULT_PHALA_VERIFY_ENDPOINT]);
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toContain("/attestation?nonce=");
+    expect(seen[1]).toBe(DEFAULT_PHALA_VERIFY_ENDPOINT);
     expect(countOf(server, isPost)).toBe(0);
   });
 });

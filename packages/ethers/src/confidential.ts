@@ -17,11 +17,10 @@ import {
 
 // A FetchRequest.registerGetUrl() made before this module loads is taken for the stock fetcher.
 const stockGetUrl = new FetchRequest("http://localhost").getUrlFunc;
-const send = fetchTransport();
 
 // Replaces the ethers fetchers, which buffer the whole body (and gunzip it in Node) before returning.
 const cappedGetUrl =
-  (maxBytes: number | undefined): FetchGetUrlFunc =>
+  (send: ConfidentialTransport, maxBytes: number | undefined): FetchGetUrlFunc =>
   async (req, signal) => {
     assert(signal == null || !signal.cancelled, "request cancelled before sending", "CANCELLED");
     const protocol = req.url.split(":")[0]?.toLowerCase();
@@ -83,8 +82,15 @@ function noFollowIdentity(base: FetchGetUrlFunc): FetchGetUrlFunc {
   };
 }
 
-/** Sends each outer request once through a clone of the provider's `FetchRequest`. */
-export function fetchRequestTransport(connection: () => FetchRequest): ConfidentialTransport {
+/**
+ * Sends each outer request once through a clone of the provider's `FetchRequest`; with the stock
+ * `getUrlFunc` it goes out through `fetchFn`, the global fetch when omitted.
+ */
+export function fetchRequestTransport(
+  connection: () => FetchRequest,
+  fetchFn: typeof fetch | undefined,
+): ConfidentialTransport {
+  const send = fetchTransport(fetchFn);
   return async (outer) => {
     const req = connection();
     req.url = outer.url;
@@ -94,7 +100,7 @@ export function fetchRequestTransport(connection: () => FetchRequest): Confident
     req.retryFunc = async () => false;
     req.processFunc = null;
     const own = req.getUrlFunc;
-    const base = own === stockGetUrl ? cappedGetUrl(outer.maxBytes) : own;
+    const base = own === stockGetUrl ? cappedGetUrl(send, outer.maxBytes) : own;
     req.getUrlFunc = noFollowIdentity(base);
 
     const signal = outer.signal;

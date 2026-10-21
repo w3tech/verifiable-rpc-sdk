@@ -56,7 +56,7 @@ export class VrpcProvider extends JsonRpcProvider {
     const {
       replayWindowMs,
       pubkeyCacheTtlMs,
-      fetch: attestationFetch,
+      fetch: fetchFn,
       hardwareVerifier,
       logger,
       confidential,
@@ -116,8 +116,8 @@ export class VrpcProvider extends JsonRpcProvider {
           pubkeyCacheTtlMs,
           logger,
           hardwareVerifier,
-          fetch: attestationFetch,
-          transport: fetchRequestTransport(() => this._getConnection()),
+          fetch: fetchFn,
+          transport: fetchRequestTransport(() => this._getConnection(), fetchFn),
         }),
         chainId,
       };
@@ -127,7 +127,7 @@ export class VrpcProvider extends JsonRpcProvider {
       chainId,
       attestationUrl,
       headers: attestationHeaders,
-      fetch: attestationFetch,
+      fetch: fetchFn,
       replayWindowMs,
       pubkeyCacheTtlMs,
       hardwareVerifier,
