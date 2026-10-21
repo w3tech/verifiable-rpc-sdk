@@ -8,7 +8,7 @@ import { Readable } from "node:stream";
 
 import { describe, expect, test } from "vitest";
 
-import { buildTargetUrl } from "../src/pipeline";
+import { targetUrlFor } from "../src/pipeline";
 import { bufferStream } from "../src/upstream";
 
 describe("bufferStream", () => {
@@ -24,8 +24,10 @@ describe("bufferStream", () => {
   });
 });
 
-describe("buildTargetUrl", () => {
+describe("targetUrlFor", () => {
   const UPSTREAM = "https://rpc.example.com/arbitrum_vrpc/APIKEY";
+  const buildTargetUrl = (upstreamUrl: string, clientUrl: string) =>
+    targetUrlFor(upstreamUrl)(clientUrl);
 
   test("rootPathForwardsUpstreamUrlUnchanged", () => {
     // No trailing slash appended — key-in-path upstreams stay verbatim.

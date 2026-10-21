@@ -31,25 +31,30 @@ function normalizeClientPath(clientPath: string): string {
   return new URL(`http://vrpc-proxy.invalid${rawPath}`).pathname;
 }
 
-/** Upstream path + normalized client path; the upstream query goes before the client's. */
-export function buildTargetUrl(upstreamUrl: string, clientUrl: string): string {
-  if (clientUrl === "/") return upstreamUrl;
+/**
+ * Upstream path + normalized client path; the upstream query goes before the client's.
+ * The upstream URL is parsed once; only the client request-target varies.
+ */
+export function targetUrlFor(upstreamUrl: string): (clientUrl: string) => string {
   const upstream = new URL(upstreamUrl);
-  const qIdx = clientUrl.indexOf("?");
-  const clientPath = qIdx === -1 ? clientUrl : clientUrl.slice(0, qIdx);
-  const clientQuery = qIdx === -1 ? "" : clientUrl.slice(qIdx + 1);
   const basePath = upstream.pathname.replace(/\/+$/, "");
-  // No trailing slash for a root client path: key-in-path upstreams can reject it.
-  const mergedPath =
-    clientPath === "/" || clientPath === ""
-      ? upstream.pathname
-      : basePath + normalizeClientPath(clientPath);
-  const upstreamQuery = upstream.search.startsWith("?") ? upstream.search.slice(1) : "";
-  const mergedQuery =
-    upstreamQuery !== "" && clientQuery !== ""
-      ? `${upstreamQuery}&${clientQuery}`
-      : upstreamQuery || clientQuery;
-  return `${upstream.origin}${mergedPath}${mergedQuery === "" ? "" : `?${mergedQuery}`}`;
+  const upstreamQuery = upstream.search.slice(1);
+  return (clientUrl) => {
+    if (clientUrl === "/") return upstreamUrl;
+    const qIdx = clientUrl.indexOf("?");
+    const clientPath = qIdx === -1 ? clientUrl : clientUrl.slice(0, qIdx);
+    const clientQuery = qIdx === -1 ? "" : clientUrl.slice(qIdx + 1);
+    // No trailing slash for a root client path: key-in-path upstreams can reject it.
+    const mergedPath =
+      clientPath === "/" || clientPath === ""
+        ? upstream.pathname
+        : basePath + normalizeClientPath(clientPath);
+    const mergedQuery =
+      upstreamQuery !== "" && clientQuery !== ""
+        ? `${upstreamQuery}&${clientQuery}`
+        : upstreamQuery || clientQuery;
+    return `${upstream.origin}${mergedPath}${mergedQuery === "" ? "" : `?${mergedQuery}`}`;
+  };
 }
 
 const TRACE_ID_HEADER = "x-shark-trace-id";
@@ -66,6 +71,7 @@ export function createRequestHandler(
 ): (req: http.IncomingMessage, res: http.ServerResponse, signal: AbortSignal) => Promise<void> {
   const log = ctx.logger;
   const { config, verifier } = ctx;
+  const target = targetUrlFor(config.upstreamUrl);
 
   async function handle(
     req: http.IncomingMessage,
@@ -79,7 +85,7 @@ export function createRequestHandler(
       () => new BodyTooLargeError(config.maxBodyBytes),
     );
 
-    const targetUrl = buildTargetUrl(config.upstreamUrl, req.url ?? "/");
+    const targetUrl = target(req.url ?? "/");
     const forwardHeaders = buildForwardHeaders(req.headers);
     if (config.apiKey !== undefined) {
       // Convenience injection; a client-supplied x-api-key is forwarded verbatim instead.
