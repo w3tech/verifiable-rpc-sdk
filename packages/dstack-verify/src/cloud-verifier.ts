@@ -21,6 +21,7 @@
 
 import { AttestationError } from "./errors";
 import type { AttestationBundle, HardwareVerifier, VerifyPolicy } from "./types";
+import { normHex } from "./verify-steps";
 
 /** Default Phala-hosted DCAP-quote verify endpoint. */
 export const DEFAULT_PHALA_VERIFY_ENDPOINT =
@@ -49,11 +50,6 @@ interface CloudVerifyResponse {
       mr_config_id?: string;
     };
   };
-}
-
-/** Bare lowercase hex for comparison (strip optional `0x`, lowercase). */
-function normHex(s: string): string {
-  return s.replace(/^0x/i, "").toLowerCase();
 }
 
 /**

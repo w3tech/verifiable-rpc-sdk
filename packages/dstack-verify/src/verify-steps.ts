@@ -8,6 +8,11 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { AttestationError } from "./errors";
 import type { ReportDataBinding } from "./types";
 
+/** Bare lowercase hex for comparison (strip optional `0x`, lowercase). */
+export function normHex(s: string): string {
+  return s.replace(/^0x/i, "").toLowerCase();
+}
+
 /**
  * CHK-A2: the dstack compose-hash of an `app_compose` string —
  * `sha256(utf8(appCompose))` as bare lowercase hex. No canonicalization: dstack
@@ -26,7 +31,7 @@ export function computeComposeHash(appCompose: string): string {
  * `AttestationError("CHK-A1", …)` on malformed input — never a silent slice.
  */
 export function parseReportData(reportDataHex: string): ReportDataBinding {
-  const hex = reportDataHex.replace(/^0x/i, "").toLowerCase();
+  const hex = normHex(reportDataHex);
   if (!/^[0-9a-f]{128}$/.test(hex)) {
     throw new AttestationError(
       "CHK-A1",

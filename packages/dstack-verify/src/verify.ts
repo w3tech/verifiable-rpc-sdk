@@ -16,12 +16,7 @@ import { AttestationError } from "./errors";
 import type { AttestationBundle, VerifyPolicy } from "./types";
 // computeComposeHash lives in this package (verify-steps.ts) — compose-hash is a
 // dstack/TDX concept used only by CHK-A2, so it has no reason to live in core.
-import { computeComposeHash, parseReportData } from "./verify-steps";
-
-/** Bare lowercase hex for comparison (strip optional `0x`, lowercase). */
-function normHex(s: string): string {
-  return s.replace(/^0x/i, "").toLowerCase();
-}
+import { computeComposeHash, normHex, parseReportData } from "./verify-steps";
 
 export async function verifyDstackAttestation(
   bundle: AttestationBundle,
@@ -58,7 +53,8 @@ export async function verifyDstackAttestation(
   const reportedComposeHash = bundle.composeHash;
   // Dormant-skip when EITHER side is empty/absent (older nodes / the simulator's
   // empty composeHash). Both empties are handled explicitly here — no silent pass.
-  if (appCompose !== "" && reportedComposeHash !== "") {
+  const composeChecked = appCompose !== "" && reportedComposeHash !== "";
+  if (composeChecked) {
     // computeComposeHash returns bare lowercase hex; normHex strips any 0x +
     // lowercases the reported hash so the comparison is canonical on both sides.
     if (computeComposeHash(appCompose) !== normHex(reportedComposeHash)) {
@@ -70,16 +66,11 @@ export async function verifyDstackAttestation(
   }
 
   // Narrate the field-check outcomes (point 9). Built only when a logger is
-  // injected (policy.logger is undefined on the silent path). chkA2 reports
-  // dormant-skip when EITHER side of the compose pair was empty — the same
-  // condition the CHK-A2 block above gated on.
-  if (policy.logger) {
-    const chkA2 = appCompose !== "" && reportedComposeHash !== "" ? "ok" : "dormant-skip";
-    policy.logger.debug("attestation.fieldChecks", {
-      chkA1: "reportData-binding ok",
-      chkA2,
-    });
-  }
+  // injected (policy.logger is undefined on the silent path).
+  policy.logger?.debug("attestation.fieldChecks", {
+    chkA1: "reportData-binding ok",
+    chkA2: composeChecked ? "ok" : "dormant-skip",
+  });
 
   // --- Step-4: hardware-signature verifier (→ CHK-P1) — MANDATORY ---
   // policy.hardwareVerifier IS the hardware root of trust for this call. It is
@@ -96,8 +87,6 @@ export async function verifyDstackAttestation(
   // Pre-call narration (point 10): the hardware verifier is about to run. The
   // verifier itself (e.g. CloudVerifier) emits its own hardware.verify with the
   // verdict + binds; this records the invocation regardless of verifier kind.
-  if (policy.logger) {
-    policy.logger.debug("hardware.verify", { verifier: "hardware-verifier", invoking: true });
-  }
+  policy.logger?.debug("hardware.verify", { verifier: "hardware-verifier", invoking: true });
   await policy.hardwareVerifier.verifyHardware(bundle, policy);
 }
