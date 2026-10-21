@@ -13,7 +13,7 @@ import {
   type TestNodeOptions,
 } from "@w3tech.io/vrpc-test-support";
 import type { ProxyConfig } from "../../src/config";
-import { createProxyServer, type ProxyTestOverrides } from "../../src/server";
+import { createServerWith, type ProxyTestOverrides } from "../../src/server";
 import { testConfig } from "./test-overrides";
 
 export interface WireRequest {
@@ -188,7 +188,7 @@ export async function startConfidentialProxy(
     confidential: true,
     ...configOverrides,
   });
-  const server = createProxyServer(config, {
+  const server = createServerWith(config, {
     hardwareVerifier: mockHardwareVerifier(),
     ...overrides,
   });

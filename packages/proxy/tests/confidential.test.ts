@@ -7,7 +7,7 @@ import { TEST_SEED } from "@w3tech.io/vrpc-test-support";
 import { Agent, request } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { createProxyServer, type ProxyTestOverrides } from "../src/index";
+import { createProxyServer, type ProxyTestOverrides } from "../src/server";
 
 import {
   type RunningProxy,

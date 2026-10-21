@@ -5,7 +5,6 @@
 ```ts
 
 import http from 'node:http';
-import { TrustedVerifierOptions } from '@w3tech.io/vrpc-core';
 
 // @public
 export class BodyTooLargeError extends ProxyError {
@@ -24,7 +23,7 @@ export class ConfigError extends ProxyError {
 }
 
 // @public
-export function createProxyServer(config: ProxyConfig, overrides?: ProxyTestOverrides): http.Server;
+export function createProxyServer(config: ProxyConfig): http.Server;
 
 // @public
 export class DecodeFailedError extends ProxyError {
@@ -79,9 +78,6 @@ export abstract class ProxyError extends Error {
 
 // @public (undocumented)
 export type ProxyErrorKind = "Config" | "BodyTooLarge" | "UnsupportedMediaType" | "UpstreamTimeout" | "UpstreamConnect" | "UpstreamBodyTooLarge" | "UnsignedUpstream" | "DecodeFailed" | "Internal";
-
-// @public
-export type ProxyTestOverrides = Pick<TrustedVerifierOptions, "fetch" | "hardwareVerifier" | "logger">;
 
 // @public
 export class UnsignedUpstreamError extends ProxyError {

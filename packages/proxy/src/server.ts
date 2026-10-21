@@ -64,10 +64,12 @@ function agentFetch(dispatcher: Agent): typeof fetch {
  * Create the verifying proxy server. `listen()` is the caller's job — the CLI
  * binds the configured host:port; tests bind an ephemeral port.
  */
-export function createProxyServer(
-  config: ProxyConfig,
-  overrides: ProxyTestOverrides = {},
-): http.Server {
+export function createProxyServer(config: ProxyConfig): http.Server {
+  return createServerWith(config, {});
+}
+
+/** `createProxyServer` with the test seams; the package barrel does not export it. */
+export function createServerWith(config: ProxyConfig, overrides: ProxyTestOverrides): http.Server {
   const proxyLogger = createProxyLogger(config.logLevel);
   // One sink: core events go to the proxy log at debug; below it core keeps its silent path.
   const coreLogger = overrides.logger ?? (config.logLevel === "debug" ? proxyLogger : undefined);

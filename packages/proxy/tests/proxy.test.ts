@@ -20,7 +20,7 @@ import {
 import { request } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { createProxyServer } from "../src/index";
+import { createServerWith } from "../src/server";
 import {
   type MockSidecar,
   type MockSidecarOptions,
@@ -76,7 +76,7 @@ async function startProxy(
 ): Promise<{ mock: MockSidecar; url: string }> {
   const mock = await startMockSidecar(mockOpts);
   cleanups.push(() => mock.close());
-  const server = createProxyServer(testConfig(mock.url, configOverrides), testOverrides());
+  const server = createServerWith(testConfig(mock.url, configOverrides), testOverrides());
   const url = await listen(server);
   cleanups.push(() => closeServer(server));
   return { mock, url };
@@ -345,7 +345,7 @@ describe("proxy pipeline", () => {
 
   test("upstreamConnectErrorMapsTo502", async () => {
     const port = await unboundPort();
-    const server = createProxyServer(testConfig(`http://127.0.0.1:${port}`), testOverrides());
+    const server = createServerWith(testConfig(`http://127.0.0.1:${port}`), testOverrides());
     const url = await listen(server);
     cleanups.push(() => closeServer(server));
 
@@ -360,7 +360,7 @@ describe("proxy pipeline", () => {
     const upstreamUrl = await listen(upstream);
     cleanups.push(() => closeServer(upstream));
     const config = testConfig(upstreamUrl, { upstreamTimeoutMs: 60_000 });
-    const server = createProxyServer(config, testOverrides());
+    const server = createServerWith(config, testOverrides());
     const url = await listen(server);
     cleanups.push(() => closeServer(server));
     const req = httpRequest(url, { method: "POST" });
@@ -405,7 +405,7 @@ describe("proxy pipeline", () => {
       return stub.fetch(input);
     }) as typeof globalThis.fetch;
     const overrides = { fetch, hardwareVerifier: mockHardwareVerifier() };
-    const server = createProxyServer(testConfig(mock.url, { logLevel }), overrides);
+    const server = createServerWith(testConfig(mock.url, { logLevel }), overrides);
     const url = await listen(server);
     cleanups.push(() => closeServer(server));
 

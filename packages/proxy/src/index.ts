@@ -3,7 +3,7 @@
 // Public barrel — re-exports the @w3tech.io/vrpc-proxy public surface only.
 //
 // Implementation lives in:
-//   - ./server   — createProxyServer factory + test-override seam
+//   - ./server   — createProxyServer factory
 //   - ./config   — parseConfig (CLI flags + VRPC_PROXY_* env)
 //   - ./errors   — ProxyError transport taxonomy
 // (cli/pipeline/decode/headers are internal modules.)
@@ -22,5 +22,4 @@ export {
   UpstreamConnectError,
   UpstreamTimeoutError,
 } from "./errors";
-export type { ProxyTestOverrides } from "./server";
 export { createProxyServer } from "./server";

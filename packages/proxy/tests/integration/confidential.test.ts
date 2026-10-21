@@ -12,7 +12,7 @@ import {
   spawnInterop,
 } from "@w3tech.io/vrpc-test-support/interop";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createProxyServer } from "../../src/index";
+import { createServerWith } from "../../src/server";
 import { testConfig } from "../support/test-overrides";
 
 if (!integrationEnabled) {
@@ -51,7 +51,7 @@ d("integration: vrpc-proxy in Ankr Confidential RPC mode against the sidecar", (
       attestationUrl: `${relayUrl}/attestation`,
       ...(confidential ? { confidential: true } : {}),
     });
-    const server = createProxyServer(config, { hardwareVerifier: mockHardwareVerifier() });
+    const server = createServerWith(config, { hardwareVerifier: mockHardwareVerifier() });
     servers.push(server);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

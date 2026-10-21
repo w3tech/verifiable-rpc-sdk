@@ -2,7 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Shared unit-test constants and no-network injection helpers.
 //
-// Every proxy test MUST pass `testOverrides()` into `createProxyServer`; without it the
+// Every proxy test MUST pass `testOverrides()` into `createServerWith`; without it the
 // TrustedVerifier hits the network through the proxy's Agent (attestation GET
 // and the Phala CloudVerifier) on a pubkey-cache miss.
 
@@ -12,7 +12,7 @@ import type { ProxyTestOverrides } from "../../src/server";
 
 export const TEST_CHAIN_ID = "proxy-test-chain";
 
-/** The no-network TrustedVerifier injection set for `createProxyServer`: attestation stub + hardware-verifier mock. */
+/** The no-network TrustedVerifier injection set for `createServerWith`: attestation stub + hardware-verifier mock. */
 export function testOverrides(): ProxyTestOverrides {
   return {
     fetch: attestationStub().fetch,

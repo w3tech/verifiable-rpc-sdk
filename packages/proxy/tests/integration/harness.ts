@@ -7,7 +7,7 @@
 // import is awkward under this package's tsconfig/vitest resolver). Keep the
 // shared spawn helpers byte-identical with the canonical copy; this copy adds
 // two proxy-specific extensions: request capture on the mock upstream and the
-// `spawnProxy` helper wrapping `createProxyServer`.
+// `spawnProxy` helper wrapping `createServerWith`.
 //
 // This file deliberately does NOT end in `.test.ts` — the test runner only
 // picks up `*.test.ts`, so importers can pull these helpers without the file
@@ -29,7 +29,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
-import { createProxyServer } from "../../src/server";
+import { createServerWith } from "../../src/server";
 import { testConfig } from "../support/test-overrides";
 
 /** True when all required integration env vars are set and non-empty. */
@@ -263,7 +263,7 @@ const simulatorFetch = (async (url: string, init?: RequestInit) => {
 }) as typeof fetch;
 
 /**
- * Spawn the verifying proxy in-process via `createProxyServer` on an ephemeral
+ * Spawn the verifying proxy in-process via `createServerWith` on an ephemeral
  * port. Injects the no-network hardware-verifier mock (a simulator quote is
  * not real TDX) and the CHK-A2-skipping attestation fetch above — the
  * attestation leg still hits the real sidecar (that is what makes the suite a
@@ -282,7 +282,7 @@ export async function spawnProxy(opts: {
     chainId: opts.chainId,
     attestationUrl: `${opts.upstreamUrl}/attestation`,
   });
-  const server = createProxyServer(config, {
+  const server = createServerWith(config, {
     fetch: simulatorFetch,
     hardwareVerifier: mockHardwareVerifier(),
   });
