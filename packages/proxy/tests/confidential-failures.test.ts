@@ -365,6 +365,14 @@ const postRows: Row[] = [
     kind: "MalformedHeader",
     executed: "unknown",
   },
+  {
+    title: "repeated vRPC-NodeId on the answer",
+    install: ({ node }) =>
+      node.setWire({ extraHeaders: { "vrpc-nodeid": ["n1", "n2"] }, only: "POST" }),
+    status: 502,
+    kind: "MalformedHeader",
+    executed: "unknown",
+  },
 ];
 
 describe("attestation failures", () => {

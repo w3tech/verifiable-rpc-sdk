@@ -24,6 +24,7 @@ import {
 import {
   BadSignature,
   InvalidOption,
+  MalformedHeader,
   MissingHeader,
   VerificationError,
   vrpcHttp,
@@ -61,6 +62,8 @@ interface SeamOptions {
   status?: number;
   /** Capture each call's RequestInit (e.g. to assert the timeout signal). */
   inits?: RequestInit[];
+  /** Send a second vRPC-NodeId line after signing. */
+  repeatNodeId?: boolean;
 }
 
 /**
@@ -112,7 +115,9 @@ function signingFetch(
       const flipped = ch === "9" ? "8" : String(Number(ch) + 1);
       outBody = responseBody.slice(0, idx) + flipped + responseBody.slice(idx + 1);
     }
-    return new Response(outBody, { status: seam.status ?? 200, headers });
+    const out = new Headers(headers);
+    if (seam.repeatNodeId) out.append("vRPC-NodeId", "n2");
+    return new Response(outBody, { status: seam.status ?? 200, headers: out });
   };
 }
 
@@ -343,6 +348,12 @@ describe("response classes", () => {
     ],
     ["tampered signed 502 → BadSignature", VALUE, { status: 502, tamper: true }, BadSignature],
     ["unsigned 2xx → MissingHeader", VALUE, { unsigned: true }, MissingHeader],
+    [
+      "signed 2xx with a repeated vRPC-NodeId → MalformedHeader",
+      VALUE,
+      { repeatNodeId: true },
+      MalformedHeader,
+    ],
     [
       "unsigned 502 → HttpRequestError",
       "unavailable",

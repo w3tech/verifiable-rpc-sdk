@@ -145,68 +145,30 @@ describe("verifyResponse", () => {
     }
   });
 
-  test("malformedSignatureHexThrowsMalformed", async () => {
+  const twice = (v: string) => `${v}, ${v}`;
+  test.each([
+    { label: "a short vRPC-Signature", name: "vRPC-Signature", value: () => "0xnotcorrectlength" },
+    { label: "a short vRPC-Pubkey", name: "vRPC-Pubkey", value: () => "deadbeef" },
+    { label: "a non-numeric vRPC-Timestamp", name: "vRPC-Timestamp", value: () => "nope" },
+    {
+      label: "a vRPC-Timestamp above u64",
+      name: "vRPC-Timestamp",
+      value: () => (1n << 64n).toString(),
+    },
+    { label: "a repeated vRPC-Signature", name: "vRPC-Signature", value: twice },
+    { label: "a repeated vRPC-Pubkey", name: "vRPC-Pubkey", value: twice },
+    { label: "a repeated vRPC-Timestamp", name: "vRPC-Timestamp", value: twice },
+    { label: "a repeated vRPC-NodeId", name: "vRPC-NodeId", value: () => "n1, n2" },
+    { label: "an empty vRPC-NodeId", name: "vRPC-NodeId", value: () => "" },
+  ])("$label throws MalformedHeader", async ({ name, value }) => {
     const nowMs = BigInt(Date.now());
-    const t = await signTriple(REQUEST, RESPONSE, nowMs);
-    t.headers["vRPC-Signature"] = "0xnotcorrectlength";
+    const t = await signTriple(REQUEST, RESPONSE, nowMs, { nodeId: "n1" });
+    t.headers[name] = value(t.headers[name] ?? "");
     const caught = await rejectionOf(
-      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
-        chainId: CHAIN_ID,
-        nowMs,
-      }),
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, { chainId: CHAIN_ID, nowMs }),
     );
     expect(caught).toBeInstanceOf(MalformedHeader);
-    if (caught instanceof MalformedHeader) {
-      expect(caught.headerName).toBe("vRPC-Signature");
-    }
-  });
-
-  test("malformedPubkeyHexThrowsMalformed", async () => {
-    const nowMs = BigInt(Date.now());
-    const t = await signTriple(REQUEST, RESPONSE, nowMs);
-    t.headers["vRPC-Pubkey"] = "deadbeef";
-    const caught = await rejectionOf(
-      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
-        chainId: CHAIN_ID,
-        nowMs,
-      }),
-    );
-    expect(caught).toBeInstanceOf(MalformedHeader);
-    if (caught instanceof MalformedHeader) {
-      expect(caught.headerName).toBe("vRPC-Pubkey");
-    }
-  });
-
-  test("malformedTimestampNotNumericThrowsMalformed", async () => {
-    const nowMs = BigInt(Date.now());
-    const t = await signTriple(REQUEST, RESPONSE, nowMs);
-    t.headers["vRPC-Timestamp"] = "nope";
-    const caught = await rejectionOf(
-      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
-        chainId: CHAIN_ID,
-        nowMs,
-      }),
-    );
-    expect(caught).toBeInstanceOf(MalformedHeader);
-    if (caught instanceof MalformedHeader) {
-      expect(caught.headerName).toBe("vRPC-Timestamp");
-    }
-  });
-
-  test("timestampAboveU64ThrowsMalformed", async () => {
-    const nowMs = BigInt(Date.now());
-    const t = await signTriple(REQUEST, RESPONSE, nowMs);
-    t.headers["vRPC-Timestamp"] = (1n << 64n).toString();
-    const caught = await rejectionOf(
-      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
-        chainId: CHAIN_ID,
-        nowMs,
-      }),
-    );
-    expect(caught).toBeInstanceOf(MalformedHeader);
-    if (caught instanceof MalformedHeader) {
-      expect(caught.headerName).toBe("vRPC-Timestamp");
-    }
+    expect((caught as MalformedHeader).headerName).toBe(name);
   });
 
   test("timestampAtU64MaxIsNotMalformed", async () => {
@@ -315,12 +277,12 @@ describe("verifyResponse", () => {
 
   test("nodeIdCapturedWhenHeaderPresent", async () => {
     const nowMs = BigInt(Date.now());
-    const t = await signTriple(REQUEST, RESPONSE, nowMs, { nodeId: "node-xyz" });
+    const t = await signTriple(REQUEST, RESPONSE, nowMs, { nodeId: "region/node 7" });
     const pair = await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
       chainId: CHAIN_ID,
       nowMs,
     });
-    expect(pair.nodeId).toBe("node-xyz");
+    expect(pair.nodeId).toBe("region/node 7");
   });
 
   test("nodeIdOmittedWhenHeaderAbsent", async () => {

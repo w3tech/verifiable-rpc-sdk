@@ -17,7 +17,7 @@ import { AttestationFailed, AttestationUnavailable, InvalidNonce } from "./error
 import { byteLen, truncateHex } from "./log-redact";
 import { defaultLogger, type Logger } from "./logger";
 import { type ConfidentialTransport, fetchTransport, guardedSend } from "./transport";
-import { getHeader } from "./verify";
+import { getHeader, NODE_ID_RE } from "./verify";
 
 /**
  * Inner `quote` object inside the attestation response. All fields are
@@ -120,7 +120,7 @@ async function getAttestation(
     throw new AttestationUnavailable("status", { status: response.status });
   }
   const nodeId = getHeader(response.headers, "vRPC-NodeId");
-  if (opts.requireNodeId && (nodeId === null || nodeId === "")) {
+  if (opts.requireNodeId && (nodeId === null || !NODE_ID_RE.test(nodeId))) {
     throw new AttestationUnavailable("node-id-missing", { status: response.status });
   }
   return { attestation: parseAttestationBody(response.body), nodeId: nodeId ?? undefined };

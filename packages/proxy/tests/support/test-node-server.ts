@@ -41,7 +41,7 @@ interface WireHooks {
   destroyBeforeHeaders?: boolean;
   /** Declare the full length, send this many body bytes, then close the socket. */
   cutAfterBytes?: number;
-  extraHeaders?: Record<string, string>;
+  extraHeaders?: Record<string, string | string[]>;
   only?: "GET" | "POST";
 }
 
@@ -144,7 +144,10 @@ export async function startTestNodeServer(options: TestNodeOptions): Promise<Tes
       ...(body.length > 0 ? { body } : {}),
     });
     let out = Buffer.from(answer.body);
-    const outHeaders: Record<string, string> = { ...answer.headers, ...hooks.extraHeaders };
+    const outHeaders: Record<string, string | string[]> = {
+      ...answer.headers,
+      ...hooks.extraHeaders,
+    };
     if (hooks.gzip === true && answer.status < 400) {
       out = gzipSync(out);
       outHeaders["content-encoding"] = "gzip";

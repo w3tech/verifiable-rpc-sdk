@@ -62,7 +62,7 @@ interface Row {
 const reply = (
   body: string | Uint8Array | null,
   status = 200,
-  headers: Record<string, string> = { "vRPC-NodeId": NODE_ID },
+  headers: Record<string, string> | [string, string][] = { "vRPC-NodeId": NODE_ID },
 ): Response => new Response(body, { status, headers });
 
 type Fields = Record<string, unknown> & { quote: Record<string, unknown> };
@@ -240,6 +240,16 @@ const ROWS: Row[] = [
   {
     name: "a non-JSON answer without vRPC-NodeId",
     answer: () => reply("not json", 200, {}),
+    error: unavailable("node-id-missing", 200),
+    modes: ["confidential"],
+  },
+  {
+    name: "an answer with a repeated vRPC-NodeId",
+    answer: (nonceHex) =>
+      reply(attestationBody(nonceHex), 200, [
+        ["vRPC-NodeId", NODE_ID],
+        ["vRPC-NodeId", "n2"],
+      ]),
     error: unavailable("node-id-missing", 200),
     modes: ["confidential"],
   },
