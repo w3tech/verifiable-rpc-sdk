@@ -61,7 +61,3 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
    */
   confidential?: boolean;
 }
-
-// NOTE (v6.0): `headers` was removed: set auth on the `FetchRequest` you pass as the
-// URL (`req.setHeader("x-api-key", …)`), which already covers BOTH the RPC POST
-// and the internal attestation fetch.

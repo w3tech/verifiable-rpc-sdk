@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
 // Public barrel — re-exports the SDK's public surface.
-//
-// Implementation lives in:
-//   - ./verify      — transport-agnostic verifyResponse seam
-//   - ./attestation — fetchAttestation helper + Attestation/GetQuoteResponse types
-//   - ./errors      — VerificationError abstract base + typed subclasses
-//   - ./preimage    — canonical 104-byte pre-image builder (exported for
-//                     advanced consumers and test infrastructure)
 
 // Hardware-verifier surface re-exported from @w3tech.io/dstack-verify so adapters
 // and consumers can configure or override the (mandatory, always-on) verifier —
