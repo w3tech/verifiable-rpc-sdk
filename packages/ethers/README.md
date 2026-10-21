@@ -57,7 +57,7 @@ app; the adapter never bundles its own. All verification logic is reused from
 ## Quick usage
 
 ```ts
-import { VrpcProvider, VerificationError } from "@w3tech.io/vrpc-ethers";
+import { UnavailableError, VrpcProvider, VerificationError } from "@w3tech.io/vrpc-ethers";
 import { FetchRequest } from "ethers";
 
 // Auth (x-api-key) rides on a FetchRequest — the same mechanism ethers uses for
@@ -77,6 +77,9 @@ try {
   if (err instanceof VerificationError) {
     // tampered / unsigned / stale / wrong-chain → fail-closed, no value returned
     console.error("response failed verification:", err);
+  } else if (err instanceof UnavailableError) {
+    // no verifiable answer right now (e.g. attestation unreachable) → no value returned
+    console.error("no verifiable answer:", err);
   } else {
     throw err; // ordinary ethers RPC / network error
   }
@@ -97,11 +100,13 @@ new VrpcProvider(url: string | FetchRequest, chainId?: number | bigint | string,
 - **`chainId`** — `number | bigint | string`, **optional but strongly
   recommended**. The signed pre-image binds a chain-id **string** (the exact
   value the sidecar is configured with); `number`/`bigint` args normalize to the
-  decimal string immediately (`42161` → `"42161"`, via `BigInt().toString(10)` —
-  no `number` round-trip, so ids beyond `Number.MAX_SAFE_INTEGER` bind exactly).
-  A string arg is validated (`InvalidChainId` at construction on empty /
-  whitespace / >64 bytes / non-printable-ASCII) and bound verbatim — non-EVM
-  chains pass the exact configured string (e.g. TON's global id `"-239"`).
+  decimal string immediately (`42161` → `"42161"`, via `BigInt().toString(10)`).
+  A `number` must be a safe integer (else `InvalidOption`); pass an id beyond `Number.MAX_SAFE_INTEGER`
+  as a `bigint` or a string, which bind exactly.
+  A string arg is trimmed and validated (`InvalidOption("chainId")` at
+  construction on empty / >64 bytes / inner whitespace / non-printable-ASCII),
+  then bound — non-EVM chains pass the exact configured string (e.g. TON's
+  global id `"-239"`).
   The chain-id string is hashed into the 104-byte pre-image; version gate: SDK
   `>=0.3.0` requires sidecar `>=0.5.0` (older sidecars sign the legacy
   pre-image and verification fails closed).
@@ -115,7 +120,7 @@ new VrpcProvider(url: string | FetchRequest, chainId?: number | bigint | string,
     chain. The id must be an integer `BigInt()` parses (`"42161"`, `"0x89"`,
     `"-239"`); any other string, such as a CAIP-2 style `"eip155:42161"`, throws
     `InvalidOption` at construction, because ethers cannot hold it as a network.
-    The verifier still binds the exact string. To pass options without pinning a
+    The verifier still binds the trimmed string. To pass options without pinning a
     chain id, use
     `new VrpcProvider(url, undefined, { ... })`.
   - **Omitted (auto-derive)** — `new VrpcProvider(url)`. On first use the
@@ -140,7 +145,7 @@ passed through to `super(...)` unchanged. The vRPC-specific fields:
 
 | Field            | Type                                  | Default          | Meaning |
 | ---------------- | ------------------------------------- | ---------------- | ------- |
-| `replayWindowMs` | `number`                              | vrpc-core (60s)  | Freshness window forwarded to `verifyResponse`. Omit in production. Do **not** set `0` outside fixture tests — it always rejects on clock skew. |
+| `replayWindowMs` | `number`                              | vrpc-core (60s)  | Freshness window forwarded to `verifyResponse`. Omit in production. Must be a positive whole number of milliseconds; `0`, a negative, fractional or non-finite value throws `InvalidOption` at construction. |
 
 Spread order is enforced so `staticNetwork` cannot be overridden away.
 
@@ -165,8 +170,9 @@ which lazily fetches + correlates the serving node's TDX attestation on an
 default 1h). This is **always-on**: the attestation endpoint is **derived from
 the single URL** you pass (the SDK appends the `/attestation` sub-route), so
 there is **no** `attestationBaseUrl` / `chainSlug`
-to set and no opt-out — verification is fail-closed. The chainId bootstrap
-always stays on plain `verifyResponse`.
+to set and no opt-out — verification is fail-closed. The `eth_chainId`
+bootstrap answer goes through the same `TrustedVerifier`, so its signer is
+attested too.
 
 The serving node id (`vRPC-NodeId`) is **optional**: it is included in the
 attestation fetch when the response carries it and omitted when absent. A gateway
@@ -189,7 +195,7 @@ errors and propagates (fail-closed).
 // those headers for BOTH the RPC POST and the internal attestation fetch — there
 // is no separate apiKey option. Attestation is always-on, derived from the URL.
 const req = new FetchRequest("https://rpc.ankr.com/arbitrum_vrpc");
-req.setHeader("x-api-key", process.env.ANKR_API_KEY); // covers both legs (never logged)
+req.setHeader("x-api-key", process.env.ANKR_API_KEY!); // covers both legs (never logged)
 const provider = new VrpcProvider(req, 42161, {
   pubkeyCacheTtlMs: 3_600_000, // 1h (default)
 });
@@ -287,29 +293,37 @@ throws.
 ## Error handling
 
 - **Tampered or wrong-chain response** → `BadSignature`.
-- **Unsigned response** (missing required `vRPC-*` headers, or empty body) →
+- **Unsigned response** (missing required `vRPC-*` headers) →
   `MissingHeader` — broadcast and poll paths are **not** exempt; nothing is
   special-cased around verification.
 - **Stale signed timestamp** → `StaleTimestamp`.
 - **Signed JSON-RPC `{error}`** (e.g. `execution reverted`) → the signature
   verifies first, then ethers surfaces an **ordinary RPC error** — it is *not*
   downgraded into or confused with a `VerificationError`.
-- **HTTP 4xx/5xx** → ethers `SERVER_ERROR` (from `assertOk`), never a
+- **Unsigned HTTP 4xx/5xx** → ethers `SERVER_ERROR` (from `assertOk`), not a
   `VerificationError`.
+- **Signed HTTP 4xx/5xx** → the signature is verified first, then ethers
+  `SERVER_ERROR`; a forged one is `BadSignature`.
 
 Verification is always fail-closed: a `VerificationError` propagates out of
 `_send` and no unverified value is ever returned. Non-`VerificationError`s
 propagate too.
 
 ```ts
-import { BadSignature, MissingHeader, VerificationError } from "@w3tech.io/vrpc-ethers";
+import {
+  BadSignature,
+  MissingHeader,
+  UnavailableError,
+  VerificationError,
+} from "@w3tech.io/vrpc-ethers";
 
 try {
   await provider.getLogs({ address, fromBlock });
 } catch (err) {
   if (err instanceof BadSignature) {/* bytes tampered / wrong chain */}
   else if (err instanceof MissingHeader) {/* response was unsigned */}
-  else if (err instanceof VerificationError) {/* stale / malformed header */}
+  else if (err instanceof VerificationError) {/* stale / malformed header / attestation failed */}
+  else if (err instanceof UnavailableError) {/* attestation or verifier unreachable; transient */}
   else throw err; // ethers RPC or network error
 }
 ```

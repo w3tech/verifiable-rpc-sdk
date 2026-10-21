@@ -53,10 +53,12 @@ async function main() {
   );
 
   // 4 — anchor the signing key to the TEE: the attestation pubkey must equal the
-  // key that signed our response.
+  // key that signed our response. Behind the gateway, `nodeId` routes the fetch to
+  // the node that signed it.
   const attestation = await fetchAttestation({
     attestationUrl: `${URL}/attestation`,
     nonce: crypto.randomBytes(32),
+    ...(verified.nodeId === undefined ? {} : { nodeId: verified.nodeId }),
   });
   // TrustedVerifier does this automatically.
   if (attestation.pubkey.toLowerCase() !== verified.verification.pubkeyHex) {

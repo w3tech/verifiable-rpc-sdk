@@ -109,8 +109,10 @@ state-changing call can run more than once.
 
 ### Use it
 
-The client ships in its own entry, `@w3tech.io/vrpc-core/confidential`; the main
-`@w3tech.io/vrpc-core` entry does not include it or its encryption libraries.
+The client ships in its own entry, `@w3tech.io/vrpc-core/confidential`. The main
+`@w3tech.io/vrpc-core` entry does not bundle it or its encryption libraries; it
+exports `LazyConfidentialClient` instead, which loads them on first use (see
+below).
 
 ```ts
 import { ConfidentialClient } from "@w3tech.io/vrpc-core/confidential";
@@ -137,7 +139,14 @@ const res = await client.request({
 client.getConfidentialInfo(); // { nodeId, pubkey, composeHash, attestedAt }, or undefined when nothing is pinned
 ```
 
-`ready()` and `request()` take an optional `{ signal }` second argument.
+`request()` takes an optional `{ signal }` second argument; `ready()` takes it as
+its only argument.
+
+`LazyConfidentialClient` from the main entry takes the same options and has the
+same three methods. It checks the options at construction and loads the client
+code and its crypto on the first `ready()` or `request()`. A failed load is
+`InternalError` with `executed: "no"` and is retried on the next call.
+`getConfidentialInfo()` returns `undefined` until the code is loaded.
 
 - `url`: the vRPC endpoint, used as given (the SDK does not append `_vrpc`);
   `/attestation` and `/confidential` are appended to it. Both forms work: the
@@ -156,13 +165,19 @@ client.getConfidentialInfo(); // { nodeId, pubkey, composeHash, attestedAt }, or
 - `pubkeyCacheTtlMs`: how long a pin is kept (default 1 hour). Finite positive
   integer milliseconds; anything else, `Infinity` included, throws
   `InvalidOption`.
-- `transport`: replaces `fetch` for both outer requests. It must send the bytes
-  as given, never follow a redirect, never retry, honour the signal and return
-  the content-decoded body. `fetchTransport(fetchFn)` from
-  `@w3tech.io/vrpc-core` builds one over your own fetch; it is the default
-  transport over the global fetch. A transport of your own should stop reading
-  at the request's `maxBytes` (1 MiB for the attestation GET, 192 MiB when
-  unset); a larger body fails the call with `TransportFailed` (reason
+- `fetch`: replaces the global `fetch` for the attestation GET, the sealed
+  requests and the default hardware verifier's call. `transport` and
+  `hardwareVerifier` replace it for their own legs.
+- `transport`: replaces the fetch-based transport for both outer requests, the
+  attestation GET and the sealed POST. It must send the bytes as given, never
+  follow a redirect, never retry, honour the signal and return the
+  content-decoded body. `fetchTransport(fetchFn)` from `@w3tech.io/vrpc-core`
+  builds one over your own fetch; the default is `fetchTransport` over the
+  `fetch` option, or over the global fetch when `fetch` is unset. Each request
+  carries `maxBytes`: 1 MiB for the attestation GET, 192 MiB for the sealed POST.
+  A transport of your own should stop reading there; core checks the size again
+  after the read. A larger attestation answer fails with `AttestationUnavailable`
+  (reason `too-large`), a larger sealed answer with `TransportFailed` (reason
   `too-large`).
 
 The inner request is `{ method, path, contentType?, accept?, body? }`. A `GET`
@@ -233,7 +248,7 @@ A call that got no verifiable answer throws an `UnavailableError`; its
 
 | Class | `kind` | `executed` | Thrown when |
 | ----- | ------ | ---------- | ----------- |
-| `AttestationUnavailable` | `"AttestationUnavailable"` | `"no"` | The node could not be attested, so the call was not sent. `.reason`: `status` (`.status`), `transport`, `too-large`, `node-id-missing`, `timeout`, `verifier` |
+| `AttestationUnavailable` | `"AttestationUnavailable"` | `"no"` from `request()`, `"unknown"` from `ready()` | The node could not be attested, so the call was not sent. `.reason`: `status` (`.status`), `transport`, `too-large`, `node-id-missing`, `timeout`, `verifier` |
 | `RequestRejected` | `"RequestRejected"` | `"no"` | A 4xx that is not an encrypted answer: the gateway or node refused this attempt. `.status/.nodeId/.contentType` |
 | `UnexpectedResponse` | `"UnexpectedResponse"` | `"unknown"` | The endpoint answered with something other than an encrypted answer (not a 4xx). `.status/.nodeId/.contentType` |
 | `TransportFailed` | `"TransportFailed"` | `"unknown"` | The request failed in transport, or the answer passed 192 MiB. `.reason`: `network`, `too-large`; `.nodeId` |
@@ -250,7 +265,8 @@ Ankr Confidential RPC mode adds these errors (`InvalidInnerRequest` extends
 | `MalformedConfidentialResponse` | `"MalformedConfidentialResponse"` | A validly signed answer is too short to open or its inner response does not decode. `.reason`: `too-short`, `framing`, `informational`, `decode-failed` |
 
 The open-mode classes `BadSignature`, `StaleTimestamp`, `MissingHeader`,
-`MalformedHeader`, `AttestationFailed` and `InvalidChainId` apply too; see the open-mode Errors section below.
+`MalformedHeader` and `AttestationFailed` apply too; see the open-mode Errors section below.
+A bad `chainId` is `InvalidOption` at construction, never `InvalidChainId`.
 
 Rule of thumb: an `UnavailableError` means nothing was verified, and retrying is
 the caller's choice. A `VerificationError` means a broken or hostile path, and
@@ -303,8 +319,8 @@ import { verifyResponse, VerificationError } from "@w3tech.io/vrpc-core";
 const requestBytes = new TextEncoder().encode(
   JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }),
 );
-const responseBytes = /* Uint8Array of the exact response body bytes */;
-const responseHeaders = resp.headers; // Headers | Record<string, string>
+declare const responseBytes: Uint8Array; // the exact response body bytes
+declare const responseHeaders: Headers | Record<string, string>;
 
 try {
   const pair = await verifyResponse(requestBytes, responseBytes, responseHeaders, {
@@ -330,10 +346,11 @@ The SDK is **silent by default** — nothing is emitted unless you inject a
 debug level it narrates every step the verifier takes on each response. Pass a
 logger through the adapter `logger` option (the primary drop-in surface) or
 directly into `TrustedVerifier`. `createConsoleLogger()` is a ready-made
-`console.debug` sink prefixed with `[vrpc]`. The logger never throws-through (it
-is safe-wrapped in core) and logs only `vrpc-*` headers (every other header is
-dropped) plus truncated byte fields — so it is observability only and never part
-of the verify decision.
+`console.debug` sink: it prints each verification as a bordered block with
+✅/❌ markers, and any other event as a `[vrpc] <event> {json}` line. The logger
+never throws-through (it is safe-wrapped in core) and logs only `vrpc-*` headers
+(every other header is dropped) plus truncated byte fields — so it is
+observability only and never part of the verify decision.
 
 ```ts
 import { createConsoleLogger } from "@w3tech.io/vrpc-core";
@@ -351,12 +368,12 @@ provider — a plain ethers/viem provider stays silent):
 
 | Event | What it shows |
 | --- | --- |
-| `verify.start` | truncated request/response bytes + the `vrpc-*` headers |
-| `preimage.computed` | chainId, timestamp, the 104-byte pre-image hash |
-| `signature.checked` | Ed25519 result, the signature + signing pubkey |
+| `verify.start` | chainId, truncated request/response bytes + the `vrpc-*` headers |
+| `preimage.computed` | the sha256 of the 104-byte pre-image |
+| `signature.checked` | the Ed25519 result |
 | `timestamp.checked` | clock skew vs the replay window |
 | `cache.lookup` | is this pubkey already trusted? (hit → skip attestation) |
-| `attestation.fetch` | attestation URL + fresh nonce (only on a cache miss) |
+| `attestation.fetch` | fresh nonce + node id, when the response carried one (only on a cache miss); not the URL, which may carry the API key |
 | `attestation.correlation` | the signing pubkey matches the attested pubkey |
 | `attestation.received` | compose hash, pubkey, a few quote bytes |
 | `attestation.fieldChecks` | CHK-A1 (reportData binding) + CHK-A2 (compose hash) |
@@ -366,6 +383,18 @@ provider — a plain ethers/viem provider stays silent):
 The first request on a new node runs the full attestation + hardware verify;
 later requests hit the pubkey cache and skip straight to per-response signature
 verification.
+
+In Ankr Confidential RPC mode `verify.start`, `cache.*` and
+`attestation.correlation` do not fire. The client adds these events:
+
+| Event | What it shows |
+| --- | --- |
+| `confidential.attest.start` | the client starts attesting a node |
+| `confidential.attest.ok` | node id, pubkey, compose hash, duration |
+| `confidential.attest.fail` | the error `kind`, duration |
+| `confidential.request` | node id, sealed request size |
+| `confidential.response` | node id, outer status, content type, response size, duration |
+| `confidential.evict` | node id and error `kind` of a failure that dropped the pin |
 
 ---
 
@@ -397,6 +426,7 @@ plain records. `vRPC-NodeId` is optional (older proxies omit it).
 | `chainId`        | `string`  | — (required)       | Validated (`validateChainId`) then hashed into the pre-image. Invalid → `InvalidChainId`; mismatch → `BadSignature`. |
 | `replayWindowMs` | `number`  | `60_000`           | Allowed clock skew. `0` requires an exact-ms match (tests only). |
 | `nowMs`          | `bigint`  | `BigInt(Date.now())` | Injected wall clock for deterministic tests.                |
+| `logger`         | `Logger`  | — (silent)         | Narrates `preimage.computed`, `signature.checked` and `timestamp.checked`. Called as given: unlike in `TrustedVerifier`, a throwing `debug()` is not swallowed. |
 
 **`VerifiedPair`** → `{ responseBytes, nodeId?, verification }` where
 `verification = { signatureHex, pubkeyHex, timestampMs, preImageSha256 }`.
@@ -435,9 +465,12 @@ followed; a transport failure, any non-2xx (including `404`) or a body over
 1 MiB throws `AttestationUnavailable`. The nonce must be exactly 32 bytes or
 `InvalidNonce` is thrown **before** any network call. This route is unsigned by
 contract — no `vRPC-*` verification runs, and a malformed body throws
-`AttestationFailed` (reason `malformed`). `TrustedVerifier` calls it lazily for
-every new pubkey and checks that `attestation.pubkey` equals the response's
-`vRPC-Pubkey` (`AttestationFailed`, reason `pubkey-mismatch`).
+`AttestationFailed` (reason `malformed`). `fetchAttestation` sets no deadline.
+`TrustedVerifier` does not call it; it runs the same fetch internally for every
+new pubkey with a fresh nonce, under a 60 s deadline (`AttestationUnavailable`,
+reason `timeout`). It then checks that `attestation.pubkey` equals the
+response's `vRPC-Pubkey` (`AttestationFailed`, reason `pubkey-mismatch`) and runs
+the hardware verifier.
 
 `Attestation` = `{ quote: GetQuoteResponse, pubkey, composeHash, app_compose }`,
 where `app_compose` is a required field carrying the raw verbatim app-compose text
@@ -450,15 +483,28 @@ fields; some empty under the dstack simulator).
 
 | Export | Kind | Notes |
 | ------ | ---- | ----- |
-| `TrustedVerifier` | class | Verifier that fetches the signing pubkey via per-call attestation (lazy attestation seam, see `fetchAttestation` below) and caches it. |
+| `TrustedVerifier` | class | Runs `verifyResponse`, attests each new signing pubkey once (see Attestation above) and caches it for `pubkeyCacheTtlMs`. |
 | `TrustedVerifierOptions` | type | Options for `TrustedVerifier`. |
 | `DEFAULT_PUBKEY_CACHE_TTL_MS` | const | Default TTL for the `TrustedVerifier` pubkey cache. |
 | `deriveVrpcUrls(...)` | function | Derives the vRPC endpoint URL set from a base. |
 | `VrpcUrls` | type | Shape returned by `deriveVrpcUrls`. |
 | `parseChainId(...)` | function | Decodes a decimal-string chainId (e.g. `"42161"`) from the raw bytes of a signed `eth_chainId` response (the auto-derive bootstrap used by the ethers/viem adapters); throws `InvalidChainId` on invalid JSON, a non-0x-hex `result` or a decimal id over 64 bytes. |
 | `validateChainId(...)` | function | Validates a chain id string (sidecar-identical rules: non-empty, ≤64 bytes, printable ASCII, no inner whitespace) and returns the trimmed value; throws `InvalidChainId`. Client options are checked with the same rules and throw `InvalidOption`. |
-| `isSignedVrpcResponse(...)` | function | Predicate: whether a response carries the `vRPC-*` signing headers. |
-| `fetchTransport(fetchFn?)` | function | A confidential `transport` over `fetchFn` (the global fetch when omitted): no redirect, no retry, body capped at 192 MiB, errors without the URL. |
+| `isSignedVrpcResponse(...)` | function | Predicate: whether a response carries the `vRPC-Signature` header. |
+| `fetchTransport(fetchFn?)` | function | A confidential `transport` over `fetchFn` (the global fetch when omitted): no redirect, no retry, reads at most the request's `maxBytes` (192 MiB when unset). It passes a fetch error through as is; core wraps it in `AttestationUnavailable` or `TransportFailed` with a `cause` that has a fixed message and no URL. |
+| `LazyConfidentialClient` | class | Ankr Confidential RPC client in the main entry; loads its code and crypto on first use (see [Use it](#use-it)). |
+| `ConfidentialClientOptions`, `ConfidentialInfo`, `ConfidentialResponse`, `InnerRequest`, `InnerResponse` | type | Options, pinned node, answer and inner request/response of the confidential clients. |
+| `createOpenSession(options)` | function | The open-mode session the ethers and viem adapters build on. `send(payload, post)` posts `payload` as JSON through your `post`, verifies the answer with a `TrustedVerifier` and returns the parsed body; a non-2xx or unparsable answer throws your `httpError`. Without `chainId` it bootstraps the chain id from a verified `eth_chainId` answer. |
+| `OpenSession`, `OpenSessionOptions`, `OuterResponse` | type | The session, its options (`TrustedVerifierOptions` with an optional `chainId`, plus `httpError`) and the `{ status, headers, body }` that `post` resolves to. |
+| `checkOptions(input, required?)` | function | The synchronous option check the clients run on `url`, `chainId`, `headers`, `replayWindowMs`, `pubkeyCacheTtlMs` and `confidential`. Returns them normalized (`urls` from `deriveVrpcUrls`, a decimal-string chain id, the default TTL); throws `InvalidOption`. |
+| `CheckedOptions`, `OptionsInput` | type | Result and input of `checkOptions`. |
+| `DEFAULT_REPLAY_WINDOW_MS` | const | Default replay window, `60_000` ms. |
+| `createCloudVerifier(config?)` | function | Builds the default hardware verifier (Phala cloud), re-exported from `@w3tech.io/dstack-verify`. `config` sets `endpoint`, `timeoutMs` (default 10 s) and `fetch`; pass the result as `hardwareVerifier`. |
+| `DEFAULT_PHALA_VERIFY_ENDPOINT` | const | Default `endpoint` of `createCloudVerifier`. |
+| `HardwareVerifier`, `CloudVerifierConfig` | type | The hardware-verifier seam and the `createCloudVerifier` config. |
+| `Logger`, `createConsoleLogger()` | type, function | The opt-in logger seam and its console sink; see Debug logging. |
+| `ResponseHeaders`, `VerifiedPair`, `VerifyResponseOptions` | type | Types of `verifyResponse`. |
+| `mayHaveExecuted(err)` | function | `false` only when the first `VrpcError` on `err` or its `.cause` chain has `executed: "no"`; see Errors. |
 
 ---
 
@@ -469,6 +515,14 @@ Every verification failure throws a subclass of the abstract `VerificationError`
 attestation that cannot be fetched or checked right now throws
 `AttestationUnavailable` (an `UnavailableError`), and invalid client options
 throw `InvalidOption`; neither is a `VerificationError`.
+
+Every error is a `VrpcError` and carries `executed` (`"no"` or `"unknown"`, as in
+the Ankr Confidential RPC Errors section). Retry only when `mayHaveExecuted(err)`
+returns `false`; it reads `executed` through the `.cause` chain. `InvalidOption`
+has `"no"`; the errors `TrustedVerifier` and `verifyResponse` throw have
+`"unknown"`. The error classes and `mayHaveExecuted` are exported from the main
+entry, from `@w3tech.io/vrpc-core/errors` and from
+`@w3tech.io/vrpc-core/confidential`.
 
 | Class                          | `kind`                          | Thrown when                                                       |
 | ------------------------------ | ------------------------------- | ----------------------------------------------------------------- |
@@ -483,13 +537,18 @@ throw `InvalidOption`; neither is a `VerificationError`.
 ```ts
 import { VerificationError, BadSignature, TrustedVerifier } from "@w3tech.io/vrpc-core";
 
+// The bytes and headers you captured, as in Quick usage.
+declare const requestBytes: Uint8Array;
+declare const responseBytes: Uint8Array;
+declare const responseHeaders: Headers | Record<string, string>;
+
 const tv = new TrustedVerifier({
   chainId: "1",
   attestationUrl: "https://rpc.ankr.com/eth_vrpc/attestation",
 });
 
 try {
-  await tv.verify(requestBytes, responseBytes, res.headers);
+  await tv.verify(requestBytes, responseBytes, responseHeaders);
 } catch (err) {
   if (err instanceof BadSignature) {
     // err.signatureHex / err.pubkeyHex / err.preImageSha256 — safe to log (all public)
@@ -518,9 +577,11 @@ from the ethers provider is the same class you catch here.
   give it — feed it the decoded body, not gzip wire bytes, matching what the
   sidecar signs (`v0.2.0` signs the content-decoded body).
 - **Replay window is a clock contract.** Large client/server skew → `StaleTimestamp`.
-- **No JSON-RPC re-implementation.** The SDK ships no JSON-RPC client —
-  `TrustedVerifier`/`verifyResponse` are transport-agnostic and verify the bytes
-  you hand them; batching, retries, and error envelopes are the consumer's job.
+- **No JSON-RPC client.** `TrustedVerifier`/`verifyResponse` are
+  transport-agnostic and verify the bytes you hand them. The one JSON-aware
+  helper, `createOpenSession`, only serializes your payload, parses the verified
+  answer and runs the `eth_chainId` bootstrap; batching, retries, and error
+  envelopes are the consumer's job.
 
 ---
 

@@ -1,7 +1,7 @@
 # Publishing
 
-Releasing the four `@w3tech.io/*` packages (`vrpc-core`, `vrpc-ethers`, `vrpc-viem`,
-`dstack-verify`) is **tag-driven**: to release, push a `vX.Y.Z` (or prerelease
+Releasing the five `@w3tech.io/*` packages (`vrpc-core`, `vrpc-ethers`, `vrpc-viem`,
+`dstack-verify`, `vrpc-proxy`) is **tag-driven**: to release, push a `vX.Y.Z` (or prerelease
 `vX.Y.Z-<suffix>`) git tag (or run the `publish.yml` workflow manually with a `tag`
 input). The workflow does **not** create tags — the tag is the single trigger **and**
 the version source.
@@ -20,12 +20,13 @@ the version source.
    ```
 
    Or trigger `Publish` manually from the Actions tab with a `tag` input (e.g. `v0.2.0`).
+   A manual run publishes the npm packages only: the `docker` job runs on a tag push
+   alone, so no image is built and the GitHub Release has no "Container image" section.
 
-2. **Trigger.** The push of a `v*.*.*` tag triggers **two** workflows in parallel:
-   `.github/workflows/publish.yml` (npm packages, below) and
-   the `docker` job (the `ghcr.io/w3tech/vrpc-proxy` container
-   image — see "Docker image release"). The two are independent; either can succeed or
-   fail on its own.
+2. **Trigger.** The push of a `v*.*.*` tag starts `.github/workflows/publish.yml`. Its
+   **two** publish jobs run in parallel: `npm` (npm packages, below) and `docker` (the
+   `ghcr.io/w3tech/vrpc-proxy` container image — see "Docker image release"). The two
+   are independent; either can succeed or fail on its own.
 
 3. **Version + dist-tag derive.** The version is derived from the tag
    (`VERSION=${GITHUB_REF_NAME#v}`) and validated for shape only:
@@ -39,8 +40,8 @@ the version source.
    - prerelease (`-<suffix>`) → the leading alphabetic id of the suffix (`rc`, `beta`,
      `alpha`, …); a numeric-only suffix → `pre`. Never `latest`.
 
-4. **Lockstep version stamp.** `pnpm version "$VERSION" --no-git-tag-version -r` stamps the
-   derived version into all four `package.json` files and resolves `workspace:*` to concrete
+4. **Lockstep version stamp.** `pnpm version "$VERSION" --no-git-tag-version --allow-same-version -r`
+   stamps the derived version into every workspace `package.json` and resolves `workspace:*` to concrete
    versions at publish time. This runs in the runner only — `--no-git-tag-version` means **no
    git commit/tag is created and the bump is not committed back to `main`**.
 
@@ -50,7 +51,8 @@ the version source.
    `HEAD` at the tag.
 
 6. **GitHub Release.** A dedicated `github-release` job creates the GitHub Release
-   only after BOTH publish legs (npm + container image) succeed — immutable releases
+   only after BOTH publish legs (npm + container image) succeed, or after `npm` alone on a
+   manual run — immutable releases
    make a release final at creation, so it must never point at a failed publish.
    Notes are auto-generated and PR-label-categorized (`.github/release.yml`), with a
    "Container image" section on top: the pushed image ref by digest plus the
@@ -96,35 +98,18 @@ are no Changesets `.md` files and no conventional-commit discipline.
   produced even before the labels exist in the repo.
 - `dependabot` and the release bot are excluded; PRs labeled `ignore-for-release` are dropped.
 
-## Bootstrap-then-tokenless authentication
+## Tokenless authentication
 
-The release job references `environment: prod` and sets `NODE_AUTH_TOKEN` from the temporary
-`NPMJS_TOKEN` secret. npm tries OIDC (Trusted Publishing) first — because the job has
-`id-token: write` — and falls back to the token only when no per-package trusted-publisher is
-registered yet. This lets the **same** workflow bootstrap the first publish (token) and then
-run fully tokenless (OIDC) afterwards.
+The `npm` job references `environment: prod` and has `id-token: write`. npm exchanges the
+job's OIDC token (Trusted Publishing) for a short-lived publish credential. The workflow holds
+no npm token and sets no `NODE_AUTH_TOKEN`.
 
-After the first publish, for each published package register a per-package
-trusted-publisher on npmjs.com:
+Each published package has a per-package trusted-publisher on npmjs.com:
 
 - Provider: **GitHub Actions**
 - Repository: **`w3tech/verifiable-rpc-sdk`**
 - Workflow filename: **`publish.yml`** (this filename must stay exactly `publish.yml` — the
   npmjs.com trusted-publisher config references it case-sensitively; never rename it)
 
-Then remove the `NODE_AUTH_TOKEN` line from `publish.yml` → fully tokenless OIDC + provenance.
-
 > Provenance attestations attach only when **both** the source repo and the package are
 > public. Until then, provenance does not attach — this is expected, not an error.
-
-## Migration from Changesets
-
-This repo previously used Changesets. The pending changes that were tracked in `.changeset/`
-will surface in the first release's notes via their PR titles:
-
-- **`deriveVrpcUrls` path-key URL support** — supports `rpc.ankr.com/<chain>/<key>` (inserts
-  `_vrpc` on the chain segment while preserving the key).
-- **Removal of the `apiKey` option** across the options types — authentication is header-only.
-- **Trimming of `allowlist` / `tcb` / `pccsUrl`** from the options types, plus removal of the
-  redundant `headers` field from ethers' `VrpcOptions` (set auth on the `FetchRequest` instead).
-  viem's `VrpcHttpOptions` keeps `headers` as a deliberate passthrough.
