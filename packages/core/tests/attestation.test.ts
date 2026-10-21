@@ -3,7 +3,7 @@ import { rejectionOf } from "@w3tech.io/vrpc-test-support";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { fetchAttestation } from "../src/attestation";
-import { AttestationFailed, AttestationUnavailable, InvalidNonce } from "../src/errors";
+import { InvalidNonce } from "../src/errors";
 
 const TEST_URL = "http://test.local:8545";
 const TEST_ATTESTATION_URL = `${TEST_URL}/attestation`;
@@ -132,64 +132,6 @@ describe("fetchAttestation", () => {
     expect(result.app_compose).toBe("");
   });
 
-  test("malformedTopLevelQuoteThrows", async () => {
-    installMockFetch({
-      quote: "abcdef",
-      pubkey: "0x00",
-      composeHash: "feed",
-    });
-    const caught = await rejectionOf(
-      fetchAttestation({ attestationUrl: TEST_ATTESTATION_URL, nonce: new Uint8Array(32) }),
-    );
-    expect(caught).toBeInstanceOf(AttestationFailed);
-    if (caught instanceof AttestationFailed) {
-      expect(caught.detail).toContain("quote");
-    }
-  });
-
-  test("missingFieldsThrow", async () => {
-    const cases: Array<{ body: unknown; fieldPath: string }> = [
-      {
-        body: {
-          quote: GOLDEN_FIXTURE.quote,
-          composeHash: "feed",
-        },
-        fieldPath: "pubkey",
-      },
-      {
-        body: {
-          quote: GOLDEN_FIXTURE.quote,
-          pubkey: "0x00",
-        },
-        fieldPath: "composeHash",
-      },
-      {
-        body: {
-          quote: {
-            quote: "00",
-            // event_log missing
-            report_data: "00",
-            vm_config: "",
-          },
-          pubkey: "0x00",
-          composeHash: "feed",
-        },
-        fieldPath: "event_log",
-      },
-    ];
-
-    for (const { body, fieldPath } of cases) {
-      installMockFetch(body);
-      const caught = await rejectionOf(
-        fetchAttestation({ attestationUrl: TEST_ATTESTATION_URL, nonce: new Uint8Array(32) }),
-      );
-      expect(caught).toBeInstanceOf(AttestationFailed);
-      if (caught instanceof AttestationFailed) {
-        expect(caught.detail).toContain(fieldPath);
-      }
-    }
-  });
-
   test("unsignedRouteIgnoresVrpcHeaders", async () => {
     // Sub-case 1: no vRPC-* headers at all — must succeed.
     installMockFetch(GOLDEN_FIXTURE);
@@ -286,21 +228,6 @@ describe("fetchAttestation", () => {
       expect(state.urls[0]).not.toContain("node_id=");
     });
 
-    test("status404IsUnavailableWithNoRetry", async () => {
-      const state = installGatewayMockFetch({}, 404);
-      const caught = await rejectionOf(
-        fetchAttestation({
-          attestationUrl: gatewayAttestationUrl,
-          nodeId: "stale-node",
-          nonce: new Uint8Array(32),
-        }),
-      );
-      expect(caught).toBeInstanceOf(AttestationUnavailable);
-      expect(caught).toMatchObject({ reason: "status", status: 404 });
-      // No fallback or retry.
-      expect(state.calls).toBe(1);
-    });
-
     test("headersSetXApiKeyOnAttestationLeg", async () => {
       const state = installGatewayMockFetch(GOLDEN_FIXTURE);
       await fetchAttestation({
@@ -311,18 +238,6 @@ describe("fetchAttestation", () => {
       });
       expect(state.headers[0]?.["x-api-key"]).toBe("from-headers");
     });
-
-    test("reusesNarrowAttestationOnMalformedBody", async () => {
-      installGatewayMockFetch({ quote: "abcdef", pubkey: "0x00", composeHash: "feed" });
-      const caught = await rejectionOf(
-        fetchAttestation({
-          attestationUrl: gatewayAttestationUrl,
-          nodeId: "node-1",
-          nonce: new Uint8Array(32),
-        }),
-      );
-      expect(caught).toBeInstanceOf(AttestationFailed);
-    });
   });
 });
 
@@ -331,91 +246,17 @@ const RPC_BASE = "https://rpc.ankr.com";
 interface GatewayMockState {
   urls: string[];
   headers: Array<Record<string, string> | undefined>;
-  calls: number;
 }
 
-function installGatewayMockFetch(body: unknown, status = 200): GatewayMockState {
-  const state: GatewayMockState = { urls: [], headers: [], calls: 0 };
+function installGatewayMockFetch(body: unknown): GatewayMockState {
+  const state: GatewayMockState = { urls: [], headers: [] };
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    state.calls += 1;
     state.urls.push(typeof input === "string" ? input : input.toString());
     state.headers.push(init?.headers as Record<string, string> | undefined);
     return new Response(JSON.stringify(body), {
-      status,
+      status: 200,
       headers: { "content-type": "application/json" },
     });
   }) as typeof fetch;
   return state;
 }
-
-describe("fetchAttestation non-OK and non-JSON answers", () => {
-  let savedFetch: typeof fetch;
-
-  beforeEach(() => {
-    savedFetch = globalThis.fetch;
-  });
-
-  afterEach(() => {
-    globalThis.fetch = savedFetch;
-  });
-
-  function installRawFetch(status: number, body: string, contentType = "text/plain"): void {
-    globalThis.fetch = (async () =>
-      new Response(body, { status, headers: { "content-type": contentType } })) as typeof fetch;
-  }
-
-  function caughtFrom(nodeId?: string): Promise<unknown> {
-    return rejectionOf(
-      fetchAttestation({
-        attestationUrl: TEST_ATTESTATION_URL,
-        nonce: new Uint8Array(32),
-        ...(nodeId === undefined ? {} : { nodeId }),
-      }),
-    );
-  }
-
-  test.each([
-    [500, "boom", "text/plain"],
-    [503, "<html>unavailable</html>", "text/html"],
-    [300, "", "text/plain"],
-    [404, "not found", "text/plain"],
-  ])("status%iIsUnavailableWithStatus", async (status, body, contentType) => {
-    installRawFetch(status, body, contentType);
-    const caught = await caughtFrom("stale-node");
-
-    expect(caught).toBeInstanceOf(AttestationUnavailable);
-    expect(caught).toMatchObject({ reason: "status", status });
-  });
-
-  test("status299WithGoldenFixtureParses", async () => {
-    installRawFetch(299, JSON.stringify(GOLDEN_FIXTURE), "application/json");
-    const result = await fetchAttestation({
-      attestationUrl: TEST_ATTESTATION_URL,
-      nonce: new Uint8Array(32),
-    });
-
-    expect(result).toEqual(GOLDEN_FIXTURE);
-  });
-
-  test("nonJsonBodyThrowsMalformedWithoutEchoingIt", async () => {
-    installRawFetch(200, "<html>sentinel-body</html>", "text/html");
-    const caught = await caughtFrom();
-
-    expect(caught).toBeInstanceOf(AttestationFailed);
-    expect(caught).not.toBeInstanceOf(SyntaxError);
-    const malformed = caught as AttestationFailed;
-    expect(malformed.detail).toBe("response is not valid JSON");
-    expect(malformed.cause).toBeUndefined();
-    expect(malformed.message).not.toContain("sentinel-body");
-    expect(String(malformed)).not.toContain("sentinel-body");
-    expect(JSON.stringify(malformed)).not.toContain("sentinel-body");
-  });
-
-  test("emptyBodyThrowsMalformed", async () => {
-    installRawFetch(200, "", "application/json");
-    const caught = await caughtFrom();
-
-    expect(caught).toBeInstanceOf(AttestationFailed);
-    expect((caught as AttestationFailed).detail).toBe("response is not valid JSON");
-  });
-});

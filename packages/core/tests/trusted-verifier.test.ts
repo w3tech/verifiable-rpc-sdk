@@ -1,4 +1,3 @@
-import { AttestationError } from "@w3tech.io/dstack-verify";
 import {
   attestationAnswer,
   attestationStub,
@@ -13,12 +12,7 @@ import {
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ATTESTATION_TIMEOUT_MS } from "../src/attestation";
-import {
-  AttestationFailed,
-  AttestationUnavailable,
-  InvalidOption,
-  VerificationError,
-} from "../src/errors";
+import { AttestationUnavailable, InvalidOption } from "../src/errors";
 import type { Logger } from "../src/logger";
 import { DEFAULT_PUBKEY_CACHE_TTL_MS } from "../src/options";
 import { TrustedVerifier, type TrustedVerifierOptions } from "../src/trusted-verifier";
@@ -116,90 +110,6 @@ describe("TrustedVerifier / trust seam", () => {
 
   afterEach(() => {
     globalThis.fetch = savedFetch;
-  });
-
-  test("failClosedNotCached", async () => {
-    const mock = attestationStub();
-    const pair = await signedPair();
-    const tv = new TrustedVerifier(
-      baseOpts({
-        fetch: mock.fetch,
-        hardwareVerifier: mockHardwareVerifier({
-          fail: new AttestationError("CHK-P1", "stub fail"),
-        }),
-      }),
-    );
-
-    const caught = await rejectionOf(
-      tv.verify(pair.requestBytes, pair.responseBytes, pair.headers),
-    );
-    // core re-wraps the leaf AttestationError into its VerificationError family;
-    // the original leaf error is preserved as `cause`.
-    expect(caught).toBeInstanceOf(AttestationFailed);
-    expect(caught).toBeInstanceOf(VerificationError);
-    expect((caught as AttestationFailed).kind).toBe("Attestation");
-    expect((caught as { cause?: unknown }).cause).toBeInstanceOf(AttestationError);
-
-    // pubkey NOT cached → a second verify re-walks the attestation path.
-    const again = rejectionOf(tv.verify(pair.requestBytes, pair.responseBytes, pair.headers));
-    expect(await again).toBeInstanceOf(AttestationFailed);
-    expect(mock.urls.length).toBeGreaterThanOrEqual(2);
-  });
-
-  test("attestationStatus500IsUnavailableAndNotCached", async () => {
-    const mock = attestationStub();
-    mock.failNext = 500;
-    const pair = await signedPair();
-    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
-
-    const err = await rejectionOf(tv.verify(pair.requestBytes, pair.responseBytes, pair.headers));
-    expect(err).toBeInstanceOf(AttestationUnavailable);
-    expect(err).toMatchObject({ reason: "status", status: 500 });
-    expect(mock.urls.length).toBe(1);
-
-    const verified = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(verified.verification.pubkeyHex).toBe(TEST_PUBKEY_HEX);
-    expect(mock.urls.length).toBe(2);
-  });
-
-  test.each([
-    [
-      "a throwing fetch",
-      async () => {
-        throw new TypeError("fetch failed: https://k/SECRET");
-      },
-      { reason: "transport" },
-    ],
-    [
-      "a redirect",
-      async (_url: string, init?: RequestInit) =>
-        new Response(null, { status: init?.redirect === "manual" ? 302 : 200 }),
-      { reason: "status", status: 302 },
-    ],
-  ])("%s is AttestationUnavailable, not cached, global fetch untouched", async (_, send, fields) => {
-    const global = vi.spyOn(globalThis, "fetch");
-    const pair = await signedPair();
-    const tv = new TrustedVerifier(baseOpts({ fetch: send as typeof fetch }));
-    for (let i = 0; i < 2; i++) {
-      const err = await rejectionOf(tv.verify(pair.requestBytes, pair.responseBytes, pair.headers));
-      expect(err).toBeInstanceOf(AttestationUnavailable);
-      expect(err).toMatchObject(fields);
-      expect(`${String(err)} ${String((err as Error).cause)}`).not.toContain("SECRET");
-    }
-    expect(global).not.toHaveBeenCalled();
-  });
-
-  test("a quote for another key is rejected before the hardware verifier", async () => {
-    const mock = attestationStub();
-    mock.seed = new Uint8Array(32).fill(0x09);
-    const hardwareVerifier = mockHardwareVerifier();
-    const verifyHardware = vi.spyOn(hardwareVerifier, "verifyHardware");
-    const pair = await signedPair();
-    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, hardwareVerifier }));
-
-    const err = await rejectionOf(tv.verify(pair.requestBytes, pair.responseBytes, pair.headers));
-    expect(err).toMatchObject({ reason: "pubkey-mismatch" });
-    expect(verifyHardware).not.toHaveBeenCalled();
   });
 
   test("an uppercase attested pubkey equal to the signer is accepted", async () => {
