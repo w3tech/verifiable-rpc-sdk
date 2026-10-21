@@ -431,11 +431,6 @@ describe("configuration errors", () => {
     expect(make(42161, { confidential: "true" })).toThrow(
       expect.objectContaining({ name: "InvalidOption", option: "confidential" }),
     );
-    for (const option of ["replayWindowMs", "pubkeyCacheTtlMs"]) {
-      expect(make(42161, { confidential: true, [option]: 0 })).toThrow(
-        expect.objectContaining({ name: "InvalidOption", option }),
-      );
-    }
 
     await new Promise((resolve) => setTimeout(resolve, 1500));
     expect(server.requests).toHaveLength(0);

@@ -488,22 +488,25 @@ describe("constructor options", () => {
     });
   });
 
-  test("open-mode millisecond options and the confidential flag are checked before any request", async () => {
-    const cases = [
-      ["replayWindowMs", CHAIN_ID, { replayWindowMs: 0 }],
-      ["pubkeyCacheTtlMs", undefined, { pubkeyCacheTtlMs: Number.POSITIVE_INFINITY }],
-      ["confidential", CHAIN_ID, { confidential: "yes" }],
-    ] as const;
-    for (const [option, chainId, options] of cases) {
-      const url = autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX));
-      url.getUrlFunc = async (req) => {
-        sent.push(req.url);
-        throw new Error("nothing may be sent");
-      };
-      const make = () => new VrpcProvider(url, chainId, { ...counting, ...(options as object) });
-      expect(invalidOption(make)).toMatchObject({ option });
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+  test.each(
+    [false, true].flatMap((confidential) =>
+      ["replayWindowMs", "pubkeyCacheTtlMs"].flatMap((option) =>
+        [0, -1, 1.5, Number.POSITIVE_INFINITY].map((value) => ({ confidential, option, value })),
+      ),
+    ),
+  )("confidential=$confidential $option=$value throws InvalidOption and sends nothing", ({
+    confidential,
+    option,
+    value,
+  }) => {
+    const url = new FetchRequest("http://test.invalid");
+    url.getUrlFunc = async (req) => {
+      sent.push(req.url);
+      throw new Error("nothing may be sent");
+    };
+    const make = () =>
+      new VrpcProvider(url, CHAIN_ID, { ...counting, confidential, [option]: value });
+    expect(invalidOption(make)).toMatchObject({ option, executed: "no" });
     expect(sent).toEqual([]);
   });
 
