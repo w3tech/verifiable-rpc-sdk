@@ -2,7 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC client: attest and pin a node, seal each request to it, verify and open the answer.
 
-import { createCloudVerifier, type HardwareVerifier } from "@w3tech.io/dstack-verify";
+import type { HardwareVerifier } from "@w3tech.io/dstack-verify";
 
 import {
   decodeInnerResponse,
@@ -23,7 +23,7 @@ import {
   UnexpectedResponse,
   VrpcError,
 } from "./errors";
-import { type Logger, safeLogger } from "./logger";
+import type { Logger } from "./logger";
 import { attestPin, errorKind, type Pin, PinSlot } from "./node-session";
 import {
   OhttpError,
@@ -32,14 +32,9 @@ import {
   type SealedRequest,
   sealRequest,
 } from "./ohttp";
-import { checkOptions, withoutContentType } from "./options";
-import {
-  type ConfidentialTransport,
-  defaultTransport,
-  guardedSend,
-  MAX_RESPONSE_BYTES,
-} from "./transport";
-import { getHeader, verifyResponse } from "./verify";
+import { checkOptions, resolveSeams, withoutContentType } from "./options";
+import { type ConfidentialTransport, guardedSend, MAX_RESPONSE_BYTES } from "./transport";
+import { getHeader, type VerifyResponseOptions, verifyResponse } from "./verify";
 
 export interface ConfidentialClientOptions {
   /** The vRPC endpoint, with the API key in the path or passed in `headers`. */
@@ -56,7 +51,10 @@ export interface ConfidentialClientOptions {
   pubkeyCacheTtlMs?: number | undefined;
   logger?: Logger | undefined;
   hardwareVerifier?: HardwareVerifier | undefined;
-  /** Used by the default hardware verifier's call; ignored with a custom `hardwareVerifier`. */
+  /**
+   * Carries the attestation GET, the sealed requests and the default hardware verifier's call;
+   * `transport` and `hardwareVerifier` replace it for their legs.
+   */
   fetch?: typeof fetch | undefined;
   transport?: ConfidentialTransport | undefined;
 }
@@ -121,12 +119,11 @@ function mediaType(value: string | null): string {
 
 /** Client for Ankr Confidential RPC: only ciphertext leaves the process, and only answers signed by the attested node are opened. */
 export class ConfidentialClient {
-  readonly #chainId: string;
-  readonly #replayWindowMs: number | undefined;
   readonly #confidentialUrl: string;
   readonly #headers: Record<string, string>;
   readonly #transport: ConfidentialTransport;
   readonly #logger: Logger | undefined;
+  readonly #verifyOptions: VerifyResponseOptions;
   readonly #slot: PinSlot;
 
   constructor(options: ConfidentialClientOptions) {
@@ -135,16 +132,15 @@ export class ConfidentialClient {
       { ...options, headers: this.#headers },
       ["url", "chainId"],
     );
-    this.#chainId = chainId;
-    this.#replayWindowMs = replayWindowMs;
     this.#confidentialUrl = urls.confidentialUrl;
-    const transport = options.transport ?? defaultTransport;
+    const { transport, hardwareVerifier, logger, verifyOptions } = resolveSeams(
+      options,
+      chainId,
+      replayWindowMs,
+    );
     this.#transport = transport;
-    const hardwareVerifier =
-      options.hardwareVerifier ??
-      createCloudVerifier(options.fetch === undefined ? {} : { fetch: options.fetch });
-    const logger = options.logger && safeLogger(options.logger);
     this.#logger = logger;
+    this.#verifyOptions = verifyOptions;
     const headers = this.#headers;
     this.#slot = new PinSlot(
       (signal) =>
@@ -251,11 +247,12 @@ export class ConfidentialClient {
       if (status >= 400 && status <= 499) throw new RequestRejected(status, pin.nodeId, reported);
       throw new UnexpectedResponse(status, pin.nodeId, reported);
     }
-    const verified = await verifyResponse(sealed.body, response.body, response.headers, {
-      chainId: this.#chainId,
-      ...(this.#replayWindowMs === undefined ? {} : { replayWindowMs: this.#replayWindowMs }),
-      ...(this.#logger === undefined ? {} : { logger: this.#logger }),
-    });
+    const verified = await verifyResponse(
+      sealed.body,
+      response.body,
+      response.headers,
+      this.#verifyOptions,
+    );
     if (verified.verification.pubkeyHex !== pin.pubkeyHex) {
       throw new ConfidentialSignerMismatch(pin.pubkeyHex, verified.verification.pubkeyHex);
     }

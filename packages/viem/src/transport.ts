@@ -6,7 +6,6 @@
 import {
   checkOptions,
   createOpenSession,
-  fetchTransport,
   InvalidOption,
   LazyConfidentialClient,
 } from "@w3tech.io/vrpc-core";
@@ -157,7 +156,6 @@ function confidentialHttp(
     client ??= new LazyConfidentialClient({
       url: rpcUrl,
       chainId,
-      transport: fetchTransport(opts.fetchFn),
       headers: opts.headers,
       replayWindowMs: opts.replayWindowMs,
       pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,

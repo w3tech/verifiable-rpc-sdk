@@ -137,5 +137,3 @@ export async function guardedSend(
   if (response.body.byteLength > maxBytes) throw fail(true);
   return response;
 }
-
-export const defaultTransport: ConfidentialTransport = fetchTransport();

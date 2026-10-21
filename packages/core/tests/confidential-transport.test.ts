@@ -25,7 +25,7 @@ import {
 } from "../src/errors";
 import {
   type ConfidentialTransport,
-  defaultTransport,
+  fetchTransport,
   MAX_RESPONSE_BYTES,
   ResponseTooLarge,
   readCappedBody,
@@ -358,7 +358,7 @@ describe("default transport over HTTP", () => {
         if (entered === calls) allEntered.resolve();
         await gate.promise;
       }
-      return defaultTransport(request);
+      return fetchTransport()(request);
     };
     const client = new ConfidentialClient({
       url: `${h.origin}/eth_vrpc/${KEY}`,
@@ -394,7 +394,7 @@ function opaqueRedirect(): Response {
 describe("default transport fetch contract", () => {
   test("an opaqueredirect result becomes status 0 with no headers and no body", async () => {
     vi.stubGlobal("fetch", async () => opaqueRedirect());
-    const out = await defaultTransport({
+    const out = await fetchTransport()({
       method: "POST",
       url: "http://127.0.0.1:9/x",
       headers: {},
@@ -437,8 +437,8 @@ describe("default transport fetch contract", () => {
     const headers = { "x-api-key": "k", "content-type": "message/ohttp-req" };
     const body = new Uint8Array([1, 2, 3]);
     const signal = new AbortController().signal;
-    await defaultTransport({ method: "POST", url: "http://127.0.0.1:9/c", headers, body, signal });
-    await defaultTransport({ method: "GET", url: "http://127.0.0.1:9/a", headers: {} });
+    await fetchTransport()({ method: "POST", url: "http://127.0.0.1:9/c", headers, body, signal });
+    await fetchTransport()({ method: "GET", url: "http://127.0.0.1:9/a", headers: {} });
 
     const [post, get] = seen;
     expect(post?.url).toBe("http://127.0.0.1:9/c");

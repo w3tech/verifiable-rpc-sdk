@@ -4,16 +4,15 @@
 // unknown signer, bounded by a deadline. A pubkey is cached only after its attestation verified.
 
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { createCloudVerifier, type HardwareVerifier } from "@w3tech.io/dstack-verify";
+import type { HardwareVerifier } from "@w3tech.io/dstack-verify";
 import { LRUCache } from "lru-cache";
 
 import { raceAbort } from "./abort";
 import { ATTESTATION_TIMEOUT_MS, attestNode } from "./attestation";
 import { AttestationUnavailable } from "./errors";
 import { pickVrpcHeaders, truncateHex } from "./log-redact";
-import { type Logger, safeLogger } from "./logger";
-import { checkOptions } from "./options";
-import { type ConfidentialTransport, fetchTransport } from "./transport";
+import type { Logger } from "./logger";
+import { checkOptions, resolveSeams, type Seams } from "./options";
 import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
 
 /** Default max distinct verified pubkeys held in the cache before LRU eviction. */
@@ -60,13 +59,9 @@ export interface TrustedVerifierOptions {
 export class TrustedVerifier {
   private readonly cache: LRUCache<string, true>;
   private readonly inflight = new Map<string, Promise<void>>();
-  private readonly chainId: string;
-  private readonly replayWindowMs: number | undefined;
   private readonly attestationUrl: string;
   private readonly headers: Record<string, string>;
-  private readonly transport: ConfidentialTransport;
-  private readonly hardwareVerifier: HardwareVerifier;
-  private readonly logger: Logger | undefined;
+  private readonly seams: Seams;
   private readonly ttlMs: number;
 
   constructor(opts: TrustedVerifierOptions) {
@@ -78,14 +73,9 @@ export class TrustedVerifier {
       updateAgeOnGet: false,
       updateAgeOnHas: false,
     });
-    this.chainId = chainId;
-    this.replayWindowMs = replayWindowMs;
     this.attestationUrl = opts.attestationUrl;
     this.headers = opts.headers ?? {};
-    this.transport = fetchTransport(opts.fetch);
-    this.hardwareVerifier =
-      opts.hardwareVerifier ?? createCloudVerifier(opts.fetch ? { fetch: opts.fetch } : {});
-    this.logger = opts.logger && safeLogger(opts.logger);
+    this.seams = resolveSeams(opts, chainId, replayWindowMs);
   }
 
   /** `verifyResponse` (throws propagate), then the cache, then a shared `attestNode` on a miss; caches only after success. */
@@ -94,27 +84,24 @@ export class TrustedVerifier {
     responseBytes: Uint8Array,
     headers: ResponseHeaders,
   ): Promise<VerifiedPair> {
-    if (this.logger) {
+    const { logger, verifyOptions } = this.seams;
+    if (logger) {
       // Only vrpc-* headers are logged, never authorization or x-api-key.
       const headerRecord: Record<string, string> =
         headers instanceof Headers ? Object.fromEntries(headers.entries()) : { ...headers };
-      this.logger.debug("verify.start", {
-        chainId: this.chainId,
+      logger.debug("verify.start", {
+        chainId: verifyOptions.chainId,
         req: truncateHex(bytesToHex(requestBytes)),
         res: truncateHex(bytesToHex(responseBytes)),
         headers: pickVrpcHeaders(headerRecord),
       });
     }
 
-    const pair = await verifyResponse(requestBytes, responseBytes, headers, {
-      chainId: this.chainId,
-      ...(this.replayWindowMs === undefined ? {} : { replayWindowMs: this.replayWindowMs }),
-      ...(this.logger === undefined ? {} : { logger: this.logger }),
-    });
+    const pair = await verifyResponse(requestBytes, responseBytes, headers, verifyOptions);
 
     const pubkeyHex = pair.verification.pubkeyHex;
     const fresh = this.cache.has(pubkeyHex);
-    this.logger?.debug("cache.lookup", {
+    logger?.debug("cache.lookup", {
       pubkeyHex,
       hit: fresh,
       ...(fresh ? { note: "cached → skip attestation" } : {}),
@@ -143,11 +130,11 @@ export class TrustedVerifier {
       // The hardware verifier takes no signal, so the deadline also settles the attestation itself.
       await raceAbort(
         attestNode({
-          transport: this.transport,
+          transport: this.seams.transport,
           attestationUrl: this.attestationUrl,
           headers: this.headers,
-          hardwareVerifier: this.hardwareVerifier,
-          logger: this.logger,
+          hardwareVerifier: this.seams.hardwareVerifier,
+          logger: this.seams.logger,
           signal: deadline.signal,
           expectPubkey: pubkeyHex,
           nodeId,
@@ -158,6 +145,6 @@ export class TrustedVerifier {
       clearTimeout(timer);
     }
     this.cache.set(pubkeyHex, true);
-    this.logger?.debug("cache.store", { pubkeyHex, ttlMs: this.ttlMs });
+    this.seams.logger?.debug("cache.store", { pubkeyHex, ttlMs: this.ttlMs });
   }
 }

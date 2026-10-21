@@ -381,7 +381,8 @@ viem:
 
 - Ankr Confidential RPC: entry `@w3tech.io/vrpc-core/confidential`
   (`ConfidentialClient`, `ConfidentialInfo`), `LazyConfidentialClient` in the main
-  entry.
+  entry. Their `fetch` option carries the attestation GET and the sealed requests
+  too, not only the default hardware verifier's call.
 - ethers: `new VrpcProvider(url, chainId, { confidential: true })`,
   `confidentialReady()`, `getConfidentialInfo()`.
 - viem: `vrpcHttp(url, { confidential: true })`.

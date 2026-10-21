@@ -2,8 +2,13 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // One synchronous check of client options, before any network or crypto; it throws only InvalidOption.
 
+import { createCloudVerifier, type HardwareVerifier } from "@w3tech.io/dstack-verify";
+
 import { InvalidChainId, InvalidOption } from "./errors";
+import { type Logger, safeLogger } from "./logger";
 import { validateChainId } from "./preimage";
+import { type ConfidentialTransport, fetchTransport } from "./transport";
+import type { VerifyResponseOptions } from "./verify";
 import { deriveVrpcUrls, type VrpcUrls } from "./vrpc-url";
 
 /** Default pubkey-cache TTL: 1 hour in ms. */
@@ -78,6 +83,42 @@ export function withoutContentType(headers: Record<string, string> = {}): Record
   return Object.fromEntries(
     Object.entries(headers).filter(([name]) => name.toLowerCase() !== "content-type"),
   );
+}
+
+export interface Seams {
+  transport: ConfidentialTransport;
+  hardwareVerifier: HardwareVerifier;
+  logger: Logger | undefined;
+  verifyOptions: VerifyResponseOptions;
+}
+
+/**
+ * The seams of a core client. `fetch` carries the attestation GET, the sealed requests and the
+ * default hardware verifier's call; `transport` and `hardwareVerifier` replace it for their legs.
+ */
+export function resolveSeams(
+  options: {
+    fetch?: typeof fetch | undefined;
+    transport?: ConfidentialTransport | undefined;
+    hardwareVerifier?: HardwareVerifier | undefined;
+    logger?: Logger | undefined;
+  },
+  chainId: string,
+  replayWindowMs: number | undefined,
+): Seams {
+  const logger = options.logger && safeLogger(options.logger);
+  return {
+    transport: options.transport ?? fetchTransport(options.fetch),
+    hardwareVerifier:
+      options.hardwareVerifier ??
+      createCloudVerifier(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    logger,
+    verifyOptions: {
+      chainId,
+      ...(replayWindowMs === undefined ? {} : { replayWindowMs }),
+      ...(logger === undefined ? {} : { logger }),
+    },
+  };
 }
 
 function isPositiveMs(value: number): boolean {
