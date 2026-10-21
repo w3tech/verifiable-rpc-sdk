@@ -4,7 +4,7 @@
 
 import { InvalidChainId, InvalidOption } from "./errors";
 import { TrustedVerifier, type TrustedVerifierOptions } from "./trusted-verifier";
-import { parseChainId } from "./utils";
+import { parseChainId, strictUtf8 } from "./utils";
 import { isSignedVrpcResponse, type ResponseHeaders } from "./verify";
 
 /** What an adapter's `post` returns: the status, headers and raw body bytes of one HTTP answer. */
@@ -36,7 +36,6 @@ export interface OpenSession<R extends PostResponse> {
 }
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder("utf-8", { fatal: true });
 const ETH_CHAIN_ID = { jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] };
 
 /** Creates an {@link OpenSession}. */
@@ -89,7 +88,7 @@ export function createOpenSession<R extends PostResponse>(
       await (await current(post)).verify(body, response.body, response.headers);
       let json: unknown;
       try {
-        json = JSON.parse(decoder.decode(response.body));
+        json = JSON.parse(strictUtf8.decode(response.body));
       } catch (err) {
         if (ok(response)) throw err;
       }
