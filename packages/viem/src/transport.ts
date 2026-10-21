@@ -104,7 +104,10 @@ export function vrpcHttp(
         timeout,
         async request({ method, params }) {
           if (clientChainId !== undefined) session.pin(clientChainId);
-          const { json } = await session.send({ jsonrpc: "2.0", id: 1, method, params }, post);
+          const { response, json } = await session.send(
+            { jsonrpc: "2.0", id: 1, method, params },
+            post,
+          );
           // biome-ignore lint/suspicious/noExplicitAny: viem request returns untyped.
           const parsed: any = json;
           // Signed JSON-RPC error = PRESENCE of the `error` key (not a truthy check).
@@ -113,6 +116,14 @@ export function vrpcHttp(
             throw new RpcRequestError({
               body: { method, params },
               error: parsed.error,
+              url: rpcUrl,
+            });
+          }
+          if (response.status < 200 || response.status >= 300) {
+            throw new HttpRequestError({
+              body: { method, params },
+              status: response.status,
+              headers: response.headers,
               url: rpcUrl,
             });
           }

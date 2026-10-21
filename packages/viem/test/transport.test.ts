@@ -34,6 +34,7 @@ import {
   encodeFunctionResult,
   HttpRequestError,
   parseAbi,
+  RpcRequestError,
 } from "viem";
 import { describe, expect, test } from "vitest";
 import { APP_COMPOSE, jsonResult, SINGLE_RESULT_BALANCE_HEX, WIDE_WINDOW } from "./fixtures";
@@ -461,6 +462,48 @@ describe("vrpcHttp transport wiring", () => {
     await expect(transport.config.request(GET_BALANCE)).rejects.toBeInstanceOf(BadSignature);
     await expect(transport.config.request(GET_BALANCE)).resolves.toBe(SINGLE_RESULT_BALANCE_HEX);
     expect(bootstraps).toBe(2);
+  });
+});
+
+describe("response classes", () => {
+  const VALUE = jsonResult(SINGLE_RESULT_BALANCE_HEX);
+  const ERROR = JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32000, message: "x" } });
+  test.each<[string, string, SeamOptions, unknown]>([
+    ["signed 2xx → value", VALUE, {}, SINGLE_RESULT_BALANCE_HEX],
+    ["tampered signed 2xx → BadSignature", VALUE, { tamper: true }, BadSignature],
+    ["signed 500 with an error member → RpcRequestError", ERROR, { status: 500 }, RpcRequestError],
+    [
+      "signed 502 without an error member → HttpRequestError",
+      VALUE,
+      { status: 502 },
+      HttpRequestError,
+    ],
+    [
+      "signed 502 with a non-JSON body → HttpRequestError",
+      "bad gateway",
+      { status: 502 },
+      HttpRequestError,
+    ],
+    ["tampered signed 502 → BadSignature", VALUE, { status: 502, tamper: true }, BadSignature],
+    ["unsigned 2xx → MissingHeader", VALUE, { unsigned: true }, MissingHeader],
+    [
+      "unsigned 502 → HttpRequestError",
+      "unavailable",
+      { unsigned: true, status: 502 },
+      HttpRequestError,
+    ],
+  ])("%s", async (_, body, seam, expected) => {
+    const attests: string[] = [];
+    const node = signingFetch(body, seam);
+    const transport = pinnedTransport((url, init) => {
+      if (url.includes("/attestation")) attests.push(url);
+      return node(url, init);
+    });
+    const result = transport.config.request(GET_BALANCE);
+    if (typeof expected !== "function") return expect(await result).toBe(expected);
+    await expect(result).rejects.toBeInstanceOf(expected);
+    if (expected === HttpRequestError) await expect(result).rejects.toMatchObject({ status: 502 });
+    if (seam.unsigned) expect(attests).toEqual([]);
   });
 });
 
