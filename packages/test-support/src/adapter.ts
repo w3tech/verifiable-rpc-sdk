@@ -194,6 +194,9 @@ interface OneRequestCase {
   fetched?: (() => number) | undefined;
 }
 
+/** Every status `describeOneRequestPerCall` answers the sealed POST with. */
+export const SEALED_POST_FAILURES = [429, 301, 302, 303, 307, 308, 500, 502, 503, 504];
+
 /** One outer request per call whatever the gateway answers; `vrpcError` finds the core error in the adapter's. */
 export function describeOneRequestPerCall(
   title: string,
@@ -215,9 +218,9 @@ export function describeOneRequestPerCall(
   }
 
   describe(title, () => {
-    test.each([
-      429, 301, 302, 303, 307, 308, 500, 502, 503, 504,
-    ])("the sealed POST answered %i is sent once and no redirect is followed", async (status) => {
+    test.each(
+      SEALED_POST_FAILURES,
+    )("the sealed POST answered %i is sent once and no redirect is followed", async (status) => {
       expect(await failedOnce("POST", status)).toMatchObject(
         status === 429
           ? { kind: "RequestRejected", status, executed: "no" }

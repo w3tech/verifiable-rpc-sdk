@@ -3,9 +3,7 @@
 
 import {
   CHAIN_ID,
-  countOf,
   createTestNode,
-  isGet,
   isPost,
   jsonRpcCall,
   KEY,
@@ -13,8 +11,11 @@ import {
   rejectionOf,
 } from "@w3tech.io/vrpc-test-support";
 import {
+  describeOneRequestPerCall,
+  SEALED_POST_FAILURES,
+} from "@w3tech.io/vrpc-test-support/adapter";
+import {
   failureAnswer,
-  type ServedRequest,
   serveTestNode,
   type TestNodeServer,
   type TestNodeServerOptions,
@@ -25,6 +26,7 @@ import { AttestationUnavailable, RequestRejected, UnexpectedResponse } from "../
 
 const UPSTREAM_BODY = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 const text = new TextDecoder();
+const coreClass = { RequestRejected, UnexpectedResponse, AttestationUnavailable };
 
 async function serve(options: TestNodeServerOptions = {}): Promise<TestNodeServer> {
   const server = await serveTestNode(createTestNode(), options);
@@ -40,53 +42,30 @@ function clientAt(server: TestNodeServer): ConfidentialClient {
   });
 }
 
-const isElsewhere = (r: ServedRequest) => r.path === "/elsewhere";
-
-describe("one request per call with the default transport", () => {
-  test.each([
-    429, 301, 302, 303, 307, 308, 500, 502, 503, 504,
-  ])("the sealed POST answered %i is sent once and the next call succeeds", async (status) => {
+describeOneRequestPerCall(
+  "one request per call with the default transport",
+  async () => {
     const server = await serve();
     const client = clientAt(server);
-    await client.ready();
-    server.requests.splice(0);
-    server.answer((request) => (isPost(request) ? failureAnswer(server, status) : undefined));
+    return { server, call: () => client.request(jsonRpcCall()), ready: () => client.ready() };
+  },
+  (err) => {
+    expect(err).toBeInstanceOf(coreClass[(err as { kind: keyof typeof coreClass }).kind]);
+    return err;
+  },
+);
 
-    const err = await rejectionOf(client.request(jsonRpcCall()));
+test.each(
+  SEALED_POST_FAILURES,
+)("after the sealed POST answered %i the next call succeeds", async (status) => {
+  const server = await serve();
+  const client = clientAt(server);
+  server.answer((request) => (isPost(request) ? failureAnswer(server, status) : undefined));
+  await rejectionOf(client.request(jsonRpcCall()));
 
-    expect(server.requests).toHaveLength(1);
-    expect(countOf(server, isPost)).toBe(1);
-    expect(countOf(server, isElsewhere)).toBe(0);
-    if (status === 429) {
-      expect(err).toBeInstanceOf(RequestRejected);
-      expect((err as RequestRejected).status).toBe(429);
-      expect((err as RequestRejected).executed).toBe("no");
-    } else {
-      expect(err).toBeInstanceOf(UnexpectedResponse);
-      expect((err as UnexpectedResponse).status).toBe(status);
-    }
-
-    server.answer();
-    const response = await client.request(jsonRpcCall());
-    expect(text.decode(response.body)).toBe(UPSTREAM_BODY);
-  });
-
-  test.each([
-    429, 302, 307, 502,
-  ])("the cold attestation answered %i is sent once and nothing is sealed", async (status) => {
-    const server = await serve();
-    const client = clientAt(server);
-    server.answer((request) => (isGet(request) ? failureAnswer(server, status) : undefined));
-
-    const err = await rejectionOf(client.request(jsonRpcCall()));
-
-    expect(countOf(server, isGet)).toBe(1);
-    expect(countOf(server, isPost)).toBe(0);
-    expect(countOf(server, isElsewhere)).toBe(0);
-    expect(err).toBeInstanceOf(AttestationUnavailable);
-    expect((err as AttestationUnavailable).reason).toBe("status");
-    expect((err as AttestationUnavailable).status).toBe(status);
-  });
+  server.answer();
+  const response = await client.request(jsonRpcCall());
+  expect(text.decode(response.body)).toBe(UPSTREAM_BODY);
 });
 
 describe("encoding", () => {
