@@ -6,10 +6,8 @@
 
 import { Readable } from "node:stream";
 
-import { MalformedHeader } from "@w3tech.io/vrpc-core";
 import { describe, expect, test } from "vitest";
 
-import { flattenForVerify } from "../src/headers";
 import { buildTargetUrl } from "../src/pipeline";
 import { bufferStream } from "../src/upstream";
 
@@ -82,29 +80,5 @@ describe("buildTargetUrl", () => {
 
   test("traversalWithQueryStillContainedAndQueryPreserved", () => {
     expect(buildTargetUrl(UPSTREAM, "/../foo?x=1")).toBe(`${UPSTREAM}/foo?x=1`);
-  });
-});
-
-describe("flattenForVerify", () => {
-  test("lowercasesNamesAndPassesSingleValues", () => {
-    expect(
-      flattenForVerify({ "vRPC-Signature": "0xabc", "Content-Type": "application/json" }),
-    ).toEqual({ "vrpc-signature": "0xabc", "content-type": "application/json" });
-  });
-
-  test("repeatedVrpcHeaderFailsClosedWithMalformedHeader", () => {
-    expect(() => flattenForVerify({ "vrpc-signature": ["0xaaa", "0xbbb"] })).toThrow(
-      MalformedHeader,
-    );
-  });
-
-  test("repeatedNonVrpcHeaderTakesFirstElement", () => {
-    expect(flattenForVerify({ "set-cookie": ["a=1", "b=2"] })).toEqual({ "set-cookie": "a=1" });
-  });
-
-  test("repeatedContentEncodingFailsClosedWithMalformedHeader", () => {
-    // Verify decodes under flatHeaders["content-encoding"]; a multi-value
-    // header would relay a different coding declaration than was verified.
-    expect(() => flattenForVerify({ "content-encoding": ["gzip", "br"] })).toThrow(MalformedHeader);
   });
 });

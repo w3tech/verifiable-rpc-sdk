@@ -5,18 +5,13 @@
 
 import type http from "node:http";
 
-import {
-  byteLen,
-  isSignedVrpcResponse,
-  pickVrpcHeaders,
-  type TrustedVerifier,
-} from "@w3tech.io/vrpc-core";
+import { byteLen, isSignedVrpcResponse, type TrustedVerifier } from "@w3tech.io/vrpc-core";
 import type { Dispatcher } from "undici";
 
 import type { ProxyConfig } from "./config";
 import { decodeBody } from "./decode";
 import { BodyTooLargeError, UnsignedUpstreamError, upstreamError } from "./errors";
-import { buildForwardHeaders, buildRelayHeaders, flattenForVerify } from "./headers";
+import { buildForwardHeaders, buildRelayHeaders } from "./headers";
 import type { ProxyLogger } from "./logger";
 import { bufferStream, sendUpstream, type UpstreamResponse } from "./upstream";
 
@@ -85,9 +80,9 @@ export function buildTargetUrl(upstreamUrl: string, clientUrl: string): string {
  * the header is absent.
  */
 const TRACE_ID_HEADER = "x-shark-trace-id";
-function attachUpstreamTraceId(err: unknown, headers: Record<string, string>): unknown {
-  const traceId = headers[TRACE_ID_HEADER];
-  if (traceId !== undefined && traceId !== "" && err instanceof Error) {
+function attachUpstreamTraceId(err: unknown, headers: Headers): unknown {
+  const traceId = headers.get(TRACE_ID_HEADER);
+  if (traceId !== null && traceId !== "" && err instanceof Error) {
     (err as { traceId?: string }).traceId = traceId;
   }
   return err;
@@ -152,10 +147,10 @@ export function createRequestHandler(
 
     // From here the upstream has answered — any failure below carries its
     // trace id (when present) for correlation with upstream logs.
-    const flatHeaders = flattenForVerify(upstreamRes.rawHeaders);
+    const headers = upstreamRes.headers;
     try {
       // 4. No vRPC headers → fail closed whether the upstream answered 200 or 5xx.
-      if (!isSignedVrpcResponse(flatHeaders)) {
+      if (!isSignedVrpcResponse(headers)) {
         throw new UnsignedUpstreamError(upstreamRes.status);
       }
 
@@ -163,13 +158,12 @@ export function createRequestHandler(
       //    from step 1; the signature covers the content-decoded response body.
       const decodedCopy = await decodeBody(
         upstreamRes.body,
-        flatHeaders["content-encoding"],
+        headers.get("content-encoding") ?? undefined,
         config.maxBodyBytes,
       );
-      await verifier.verify(requestBytes, decodedCopy, flatHeaders);
+      await verifier.verify(requestBytes, decodedCopy, headers);
       log.debug("proxy.verified", {
         status: upstreamRes.status,
-        headers: pickVrpcHeaders(flatHeaders),
         bodyBytes: byteLen(decodedCopy),
       });
 
@@ -180,7 +174,7 @@ export function createRequestHandler(
       );
       res.end(upstreamRes.body);
     } catch (err) {
-      throw attachUpstreamTraceId(err, flatHeaders);
+      throw attachUpstreamTraceId(err, headers);
     }
   }
 

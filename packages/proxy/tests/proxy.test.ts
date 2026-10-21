@@ -208,12 +208,30 @@ describe("proxy pipeline", () => {
     await expectErrorKind(res, 502, "StaleTimestamp");
   });
 
-  test("timestampAboveU64IsMalformedHeader", async () => {
-    const { url } = await startProxy({
+  test.each([
+    {
+      name: "vRPC-Timestamp above u64",
       extraHeaders: { "vRPC-Timestamp": "18446744073709551616" },
+    },
+    { name: "a repeated vRPC-NodeId", extraHeaders: { "vrpc-nodeid": ["n1", "n2"] } },
+    {
+      name: "a repeated vRPC-Signature",
+      extraHeaders: { "vrpc-signature": `0x${"ab".repeat(64)}` },
+    },
+  ])("$name fails closed with MalformedHeader", async ({ extraHeaders }) => {
+    const { url } = await startProxy({ extraHeaders });
+    await expectErrorKind(await post(url, RPC_REQUEST), 502, "MalformedHeader");
+  });
+
+  test("repeatedContentEncodingIsDecodedAsAListAndRelayedVerbatim", async () => {
+    const { mock, url } = await startProxy({
+      encoding: "gzip",
+      extraHeaders: { "content-encoding": ["gzip", "identity"] },
     });
     const res = await post(url, RPC_REQUEST);
-    await expectErrorKind(res, 502, "MalformedHeader");
+    expect(res.status).toBe(200);
+    expect(Buffer.compare(res.body, mock.lastCompressedBody)).toBe(0);
+    expect(res.headers["content-encoding"]).toEqual(["gzip", "identity"]);
   });
 
   test("wrongChainIdFailsClosedWithBadSignature", async () => {

@@ -42,7 +42,7 @@ export interface MockSidecarOptions {
   /** Delay before responding, for upstream-timeout tests. */
   delayMs?: number;
   /** Extra response headers (e.g. an upstream gateway trace id). */
-  extraHeaders?: Record<string, string>;
+  extraHeaders?: Record<string, string | string[]>;
 }
 
 export interface MockSidecar {
@@ -111,7 +111,7 @@ export async function startMockSidecar(opts: MockSidecarOptions = {}): Promise<M
         wire[0] = (wire[0] ?? 0) ^ 0xff;
       }
 
-      const headers: Record<string, string> = tamper === "unsigned" ? {} : signed;
+      const headers: Record<string, string | string[]> = tamper === "unsigned" ? {} : signed;
       if (tamper === "drop-timestamp-header") {
         delete headers["vRPC-Timestamp"];
       }

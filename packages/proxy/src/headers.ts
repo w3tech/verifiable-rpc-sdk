@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
 // Header utilities for the two proxy legs: hop-by-hop stripping (RFC 7230
-// §6.1), undici header flattening for verification, and relay header
-// construction. Bodies are always fully buffered, so transfer-encoding is
-// never forwarded in either direction.
+// §6.1) and relay header construction. Bodies are always fully buffered, so
+// transfer-encoding is never forwarded in either direction.
 
 import type { IncomingHttpHeaders } from "node:http";
-
-import { MalformedHeader } from "@w3tech.io/vrpc-core";
 
 /** RFC 7230 §6.1 hop-by-hop headers (lowercase), stripped on both legs. */
 const HOP_BY_HOP: ReadonlySet<string> = new Set([
@@ -40,33 +37,6 @@ export function buildForwardHeaders(
     if (value === undefined) continue;
     const lower = name.toLowerCase();
     if (HOP_BY_HOP.has(lower) || lower === "host" || lower === "content-length") continue;
-    out[lower] = value;
-  }
-  return out;
-}
-
-/**
- * Flatten undici response headers (`string | string[]`) into the
- * `Record<string, string>` shape core's verify expects. A repeated header the
- * verify path READS is ambiguous (the relay would carry both values while
- * verification saw one): repeated `vRPC-*` is ambiguous signing material, a
- * repeated `content-encoding` would make the proxy decode under a different
- * coding chain than the relayed declaration — both fail closed with
- * `MalformedHeader`. Other repeated headers take the first element — verify
- * does not read them.
- */
-export function flattenForVerify(headers: RawHeaders): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [name, value] of Object.entries(headers)) {
-    if (value === undefined) continue;
-    const lower = name.toLowerCase();
-    if (Array.isArray(value)) {
-      if (lower.startsWith("vrpc-") || lower === "content-encoding") {
-        throw new MalformedHeader(lower, value.join(", "), "repeated header");
-      }
-      if (value[0] !== undefined) out[lower] = value[0];
-      continue;
-    }
     out[lower] = value;
   }
   return out;
