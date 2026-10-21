@@ -4,7 +4,7 @@
 
 import { BHttpDecoder, BHttpEncoder, decodeVli, vliEncodedLength } from "bhttp-ts";
 
-import { InvalidInnerRequest } from "./errors";
+import { InvalidInnerRequest, MalformedConfidentialResponse } from "./errors";
 
 export interface InnerRequest {
   method: string;
@@ -22,20 +22,6 @@ export interface InnerResponse {
   status: number;
   contentType?: string;
   body: Uint8Array;
-}
-
-export type MalformedInnerResponseReason = "framing" | "informational" | "decode-failed";
-
-export class MalformedInnerResponse extends Error {
-  readonly kind = "MalformedInnerResponse" as const;
-
-  constructor(
-    readonly reason: MalformedInnerResponseReason,
-    options?: { cause?: unknown },
-  ) {
-    super(`Inner response malformed: ${reason}`, options);
-    this.name = "MalformedInnerResponse";
-  }
 }
 
 const TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
@@ -134,18 +120,18 @@ function firstStatus(bytes: Uint8Array): number {
   let status: ReturnType<typeof decodeVli>;
   try {
     status = decodeVli(bytes, 1);
-  } catch (cause) {
-    throw new MalformedInnerResponse("decode-failed", { cause });
+  } catch {
+    throw new MalformedConfidentialResponse("decode-failed");
   }
-  if (status === undefined) throw new MalformedInnerResponse("decode-failed");
+  if (status === undefined) throw new MalformedConfidentialResponse("decode-failed");
   return status.value;
 }
 
 export async function decodeInnerResponse(bytes: Uint8Array): Promise<InnerResponse> {
-  if (bytes[0] !== KNOWN_LENGTH_RESPONSE) throw new MalformedInnerResponse("framing");
+  if (bytes[0] !== KNOWN_LENGTH_RESPONSE) throw new MalformedConfidentialResponse("framing");
   // bhttp-ts skips 1xx responses silently, so the first status is checked here.
   const status = firstStatus(bytes);
-  if (status >= 100 && status < 200) throw new MalformedInnerResponse("informational");
+  if (status >= 100 && status < 200) throw new MalformedConfidentialResponse("informational");
   try {
     const response = new BHttpDecoder().decodeResponse(bytes);
     const body =
@@ -156,7 +142,7 @@ export async function decodeInnerResponse(bytes: Uint8Array): Promise<InnerRespo
     return contentType === null
       ? { status: response.status, body }
       : { status: response.status, contentType, body };
-  } catch (cause) {
-    throw new MalformedInnerResponse("decode-failed", { cause });
+  } catch {
+    throw new MalformedConfidentialResponse("decode-failed");
   }
 }

@@ -7,7 +7,8 @@ import rfc9292 from "@w3tech.io/vrpc-test-support/vectors/rfc9292-section5.json"
 import appendixA from "@w3tech.io/vrpc-test-support/vectors/rfc9458-appendix-a.json";
 import sidecar from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { decodeInnerResponse, encodeInnerRequest, MalformedInnerResponse } from "../src/bhttp";
+import { decodeInnerResponse, encodeInnerRequest } from "../src/bhttp";
+import { MalformedConfidentialResponse } from "../src/errors";
 import { nodeKeyFromEd25519 } from "../src/node-session";
 import {
   createSuite,
@@ -110,8 +111,8 @@ describe("in a browser without WebCrypto X25519", () => {
     ]);
     expect(result?.status).toBe("rejected");
     const error = (result as PromiseRejectedResult).reason;
-    expect(error).toBeInstanceOf(MalformedInnerResponse);
-    expect((error as MalformedInnerResponse).reason).toBe("framing");
+    expect(error).toBeInstanceOf(MalformedConfidentialResponse);
+    expect((error as MalformedConfidentialResponse).reason).toBe("framing");
   });
 
   test("the sidecar post-json-rpc vector encodes and its response opens and decodes", async () => {

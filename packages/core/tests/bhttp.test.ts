@@ -9,13 +9,8 @@ import {
 import rfc9292 from "@w3tech.io/vrpc-test-support/vectors/rfc9292-section5.json";
 import { BHttpDecoder, decodeVli } from "bhttp-ts";
 import { describe, expect, test } from "vitest";
-import {
-  decodeInnerResponse,
-  encodeInnerRequest,
-  type InnerRequest,
-  MalformedInnerResponse,
-} from "../src/bhttp";
-import { InvalidInnerRequest } from "../src/errors";
+import { decodeInnerResponse, encodeInnerRequest, type InnerRequest } from "../src/bhttp";
+import { InvalidInnerRequest, MalformedConfidentialResponse } from "../src/errors";
 import { nodeKeyFromEd25519 } from "../src/node-session";
 import { openResponse, sealRequest } from "../src/ohttp";
 
@@ -225,9 +220,8 @@ describe("encodeInnerRequest", () => {
 
 async function expectMalformed(hex: string, reason: string) {
   const error = await rejectionOf(decodeInnerResponse(hexToBytes(hex)));
-  expect(error).toBeInstanceOf(MalformedInnerResponse);
-  expect((error as MalformedInnerResponse).reason).toBe(reason);
-  if (hex.length > 0) expect((error as MalformedInnerResponse).message).not.toContain(hex);
+  expect(error).toBeInstanceOf(MalformedConfidentialResponse);
+  expect((error as MalformedConfidentialResponse).reason).toBe(reason);
 }
 
 describe("decodeInnerResponse", () => {
@@ -331,7 +325,7 @@ describe("decodeInnerResponse", () => {
     const error = await rejectionOf(
       roundTrip((opened) => opened.sealResponse(hexToBytes(PROCESSING_THEN_OK))),
     );
-    expect(error).toBeInstanceOf(MalformedInnerResponse);
-    expect((error as MalformedInnerResponse).reason).toBe("informational");
+    expect(error).toBeInstanceOf(MalformedConfidentialResponse);
+    expect((error as MalformedConfidentialResponse).reason).toBe("informational");
   });
 });

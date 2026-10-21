@@ -37,7 +37,7 @@ import {
   UnexpectedResponse,
   type VrpcError,
 } from "../src/errors";
-import { OhttpError, sealRequest } from "../src/ohttp";
+import { sealRequest } from "../src/ohttp";
 import { type OuterResponse, ResponseTooLarge } from "../src/transport";
 
 vi.mock("../src/ohttp", async (importOriginal) => {
@@ -174,8 +174,8 @@ const rows: Row[] = [
     verifierFailure: verifierTypeError,
     cause: verifierTypeError,
   }),
-  ...[new OhttpError("seal-failed"), new TypeError("no subtle"), new RangeError("bad length")].map(
-    (e) => row(`seal ${e.name}`, InternalError, "no", "keep", { seal: e, cause: e }),
+  ...[new TypeError("no subtle"), new RangeError("bad length")].map((e) =>
+    row(`seal ${e.name}`, InternalError, "no", "keep", { seal: e, cause: e }),
   ),
   row("transport TypeError", TransportFailed, "unknown", "keep", {
     onPost: throwing(new TypeError("fetch failed")),

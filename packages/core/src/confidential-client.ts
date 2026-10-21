@@ -9,14 +9,11 @@ import {
   encodeInnerRequest,
   type InnerRequest,
   type InnerResponse,
-  MalformedInnerResponse,
   NULL_BODY_STATUSES,
 } from "./bhttp";
 import {
-  ConfidentialDecryptFailed,
   ConfidentialSignerMismatch,
   InternalError,
-  MalformedConfidentialResponse,
   RequestRejected,
   StaleTimestamp,
   TransportFailed,
@@ -25,13 +22,7 @@ import {
 } from "./errors";
 import type { Logger } from "./logger";
 import { attestPin, errorKind, type Pin, PinSlot } from "./node-session";
-import {
-  OhttpError,
-  openResponse,
-  type ResponseOpener,
-  type SealedRequest,
-  sealRequest,
-} from "./ohttp";
+import { openResponse, type SealedRequest, sealRequest } from "./ohttp";
 import { checkOptions, resolveSeams, withoutContentType } from "./options";
 import { type ConfidentialTransport, guardedSend, MAX_RESPONSE_BYTES } from "./transport";
 import { getHeader, type VerifyResponseOptions, verifyResponse } from "./verify";
@@ -77,25 +68,6 @@ export type ConfidentialResponse = InnerResponse;
 
 const OHTTP_REQUEST = "message/ohttp-req";
 const OHTTP_RESPONSE = "message/ohttp-res";
-
-async function open(opener: ResponseOpener, body: Uint8Array): Promise<InnerResponse> {
-  let inner: Uint8Array;
-  try {
-    inner = await openResponse(opener, body);
-  } catch (err) {
-    if (err instanceof OhttpError) {
-      if (err.reason === "response-too-short") throw new MalformedConfidentialResponse("too-short");
-      throw new ConfidentialDecryptFailed();
-    }
-    throw err;
-  }
-  try {
-    return await decodeInnerResponse(inner);
-  } catch (err) {
-    if (err instanceof MalformedInnerResponse) throw new MalformedConfidentialResponse(err.reason);
-    throw err;
-  }
-}
 
 // After a send, only an answer that blames the node or its key drops the pin.
 function evictsPin(err: VrpcError): boolean {
@@ -256,6 +228,6 @@ export class ConfidentialClient {
       throw new ConfidentialSignerMismatch(pin.pubkeyHex, verified.verification.pubkeyHex);
     }
 
-    return open(sealed.opener, response.body);
+    return decodeInnerResponse(await openResponse(sealed.opener, response.body));
   }
 }

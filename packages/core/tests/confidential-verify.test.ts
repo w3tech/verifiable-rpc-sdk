@@ -16,7 +16,6 @@ import {
 } from "@w3tech.io/vrpc-test-support";
 import vectors from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { MalformedInnerResponse } from "../src/bhttp";
 import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
 import {
   BadSignature,
@@ -28,7 +27,6 @@ import {
   StaleTimestamp,
   VerificationError,
 } from "../src/errors";
-import { OhttpError } from "../src/ohttp";
 
 const OHTTP_RES = { "content-type": "message/ohttp-res" };
 const text = new TextDecoder();
@@ -49,13 +47,6 @@ function setup(upstream?: () => TestUpstreamResponse) {
   return { node, client };
 }
 
-function expectPublicFamily(err: unknown): void {
-  expect(err).toBeInstanceOf(VerificationError);
-  expect(err).not.toBeInstanceOf(OhttpError);
-  expect(err).not.toBeInstanceOf(MalformedInnerResponse);
-  expect(["OhttpError", "MalformedInnerResponse"]).not.toContain((err as VerificationError).kind);
-}
-
 type Answer = (context: ConfidentialContext) => TestOuterResponse | Promise<TestOuterResponse>;
 
 async function failedCallAfterWarmup(answer: Answer): Promise<unknown> {
@@ -63,7 +54,7 @@ async function failedCallAfterWarmup(answer: Answer): Promise<unknown> {
   await client.request(jsonRpcCall());
   node.setConfidential(answer);
   const err = await rejectionOf(client.request(jsonRpcCall()));
-  expectPublicFamily(err);
+  expect(err).toBeInstanceOf(VerificationError);
   return err;
 }
 
@@ -154,7 +145,6 @@ describe("signed confidential answers that fail verification", () => {
 
     const err = await rejectionOf(client.request(jsonRpcCall()));
     expect(err).toBeInstanceOf(BadSignature);
-    expectPublicFamily(err);
 
     node.setConfidential();
     await client.request(jsonRpcCall());
