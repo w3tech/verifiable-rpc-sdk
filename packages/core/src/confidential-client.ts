@@ -222,9 +222,10 @@ export class ConfidentialClient {
         headers: { ...this.#headers, "content-type": OHTTP_REQUEST },
         body: sealed.body,
         ...(signal === undefined ? {} : { signal }),
+        maxBytes: MAX_RESPONSE_BYTES,
       },
-      MAX_RESPONSE_BYTES,
-      (reason, cause) => new TransportFailed(reason, pin.nodeId, { cause }),
+      (tooLarge, cause) =>
+        new TransportFailed(tooLarge ? "too-large" : "network", pin.nodeId, { cause }),
     );
     const contentType = mediaType(getHeader(response.headers, "content-type"));
     this.#logger.debug("confidential.response", {

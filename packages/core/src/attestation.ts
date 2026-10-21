@@ -110,11 +110,12 @@ async function getAttestation(
         (opts.nodeId === undefined ? "" : `&node_id=${encodeURIComponent(opts.nodeId)}`),
       headers: opts.headers,
       ...(opts.signal === undefined ? {} : { signal: opts.signal }),
+      maxBytes: MAX_ATTESTATION_BYTES,
     },
-    MAX_ATTESTATION_BYTES,
-    (reason, cause) =>
-      new AttestationUnavailable(reason === "network" ? "transport" : "too-large", { cause }),
+    (tooLarge, cause) =>
+      new AttestationUnavailable(tooLarge ? "too-large" : "transport", { cause }),
   );
+  // The size cap comes first: an oversize 429 is unavailable without a status (503 in the proxy).
   if (response.status < 200 || response.status > 299) {
     throw new AttestationUnavailable("status", { status: response.status });
   }

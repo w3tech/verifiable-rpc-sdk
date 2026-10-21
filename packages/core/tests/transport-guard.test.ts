@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 import {
   type ConfidentialTransport,
   guardedSend,
-  type OuterRequest,
   type OuterResponse,
   ResponseTooLarge,
 } from "../src/transport";
@@ -15,8 +14,7 @@ function answer(bytes: number): OuterResponse {
   return { status: 200, headers: new Headers(), body: new Uint8Array(bytes) };
 }
 
-const fail = (failure: string, cause?: unknown) =>
-  Object.assign(new Error(failure), { failure, cause });
+const fail = (tooLarge: boolean, cause?: Error) => Object.assign(new Error(), { tooLarge, cause });
 
 interface Row {
   name: string;
@@ -33,8 +31,8 @@ function messages(err: unknown): string {
 
 function sanitisedTo(code?: string): Row["expected"] {
   return (err) => {
-    const { failure, cause } = err as { failure: string; cause: Error };
-    expect(failure).toBe("network");
+    const { tooLarge, cause } = err as { tooLarge: boolean; cause: Error };
+    expect(tooLarge).toBe(false);
     expect(cause.message).toBe("The request failed.");
     expect((cause as { code?: string }).code).toBe(code);
     expect(messages(err)).not.toMatch(/eth_vrpc|k3y-secret/);
@@ -50,14 +48,14 @@ const rows: Row[] = [
   {
     name: "a body of maxBytes + 1 fails too-large without a cause",
     transport: () => async () => answer(MAX + 1),
-    expected: (err) => expect(err).toMatchObject({ failure: "too-large", cause: undefined }),
+    expected: (err) => expect(err).toMatchObject({ tooLarge: true, cause: undefined }),
   },
   {
     name: "a transport over its own size cap fails too-large",
     transport: () => async () => {
       throw new ResponseTooLarge();
     },
-    expected: (err) => expect(err).toMatchObject({ failure: "too-large", cause: undefined }),
+    expected: (err) => expect(err).toMatchObject({ tooLarge: true, cause: undefined }),
   },
   {
     name: "a signal aborted before the call never reaches the transport",
@@ -115,14 +113,13 @@ describe("guardedSend", () => {
       calls += 1;
       return inner(request);
     };
-    const request: OuterRequest = {
-      method: "POST",
-      url: "https://rpc.example/eth_vrpc",
-      headers: {},
-      signal: controller.signal,
-    };
+    const request = { method: "POST" as const, url: "https://rpc.example/eth_vrpc", headers: {} };
 
-    const err = await guardedSend(transport, request, MAX, fail).then(
+    const err = await guardedSend(
+      transport,
+      { ...request, signal: controller.signal, maxBytes: MAX },
+      fail,
+    ).then(
       () => undefined,
       (e: unknown) => e,
     );

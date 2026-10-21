@@ -3,7 +3,6 @@
 // Outer HTTP seam of the Ankr Confidential RPC client.
 
 import { raceAbort } from "./abort";
-import type { TransportFailedReason } from "./errors";
 import type { ResponseHeaders } from "./verify";
 
 // 192 MiB: above the 160 MiB gateway response cap, so it never fires first on a relayed answer.
@@ -123,20 +122,19 @@ export function fetchTransport(
 /** Sends one outer request through an injected transport, enforcing the signal, the size cap and sanitised errors. */
 export async function guardedSend(
   transport: ConfidentialTransport,
-  request: OuterRequest,
-  maxBytes: number,
-  fail: (reason: TransportFailedReason, cause?: unknown) => Error,
+  request: OuterRequest & { maxBytes: number },
+  fail: (tooLarge: boolean, cause?: Error) => Error,
 ): Promise<OuterResponse> {
-  const { signal } = request;
+  const { signal, maxBytes } = request;
   if (signal?.aborted) throw signal.reason;
   let response: OuterResponse;
   try {
-    response = await raceAbort(transport({ ...request, maxBytes }), signal);
+    response = await raceAbort(transport(request), signal);
   } catch (err) {
     if (signal?.aborted) throw signal.reason;
-    throw err instanceof ResponseTooLarge ? fail("too-large") : fail("network", sanitised(err));
+    throw err instanceof ResponseTooLarge ? fail(true) : fail(false, sanitised(err));
   }
-  if (response.body.byteLength > maxBytes) throw fail("too-large");
+  if (response.body.byteLength > maxBytes) throw fail(true);
   return response;
 }
 
