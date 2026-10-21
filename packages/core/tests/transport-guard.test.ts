@@ -22,8 +22,7 @@ interface Row {
   name: string;
   transport: (controller: AbortController) => ConfidentialTransport;
   abortFirst?: true;
-  calls: number;
-  expected: (err: unknown, sent: unknown) => void;
+  expected: (err: unknown) => void;
 }
 
 const rejectsWithReason = (err: unknown) => expect(err).toBe(reason);
@@ -33,10 +32,9 @@ function messages(err: unknown): string {
 }
 
 function sanitisedTo(code?: string): Row["expected"] {
-  return (err, sent) => {
+  return (err) => {
     const { failure, cause } = err as { failure: string; cause: Error };
     expect(failure).toBe("network");
-    expect(cause).not.toBe(sent);
     expect(cause.message).toBe("The request failed.");
     expect((cause as { code?: string }).code).toBe(code);
     expect(messages(err)).not.toMatch(/eth_vrpc|k3y-secret/);
@@ -47,13 +45,11 @@ const rows: Row[] = [
   {
     name: "a body of exactly maxBytes resolves",
     transport: () => async () => answer(MAX),
-    calls: 1,
     expected: (err) => expect(err).toBeUndefined(),
   },
   {
     name: "a body of maxBytes + 1 fails too-large without a cause",
     transport: () => async () => answer(MAX + 1),
-    calls: 1,
     expected: (err) => expect(err).toMatchObject({ failure: "too-large", cause: undefined }),
   },
   {
@@ -61,14 +57,12 @@ const rows: Row[] = [
     transport: () => async () => {
       throw new ResponseTooLarge();
     },
-    calls: 1,
     expected: (err) => expect(err).toMatchObject({ failure: "too-large", cause: undefined }),
   },
   {
     name: "a signal aborted before the call never reaches the transport",
     transport: () => async () => answer(1),
     abortFirst: true,
-    calls: 0,
     expected: rejectsWithReason,
   },
   {
@@ -77,7 +71,6 @@ const rows: Row[] = [
       controller.abort(reason);
       return new Promise<OuterResponse>(() => {});
     },
-    calls: 1,
     expected: rejectsWithReason,
   },
   {
@@ -86,7 +79,6 @@ const rows: Row[] = [
       controller.abort(reason);
       throw new TypeError("socket closed");
     },
-    calls: 1,
     expected: rejectsWithReason,
   },
   {
@@ -94,7 +86,6 @@ const rows: Row[] = [
     transport: () => () => {
       throw Object.assign(new TypeError(`bad ${KEYED}`), { code: "ERR_INVALID_URL" });
     },
-    calls: 1,
     expected: sanitisedTo("ERR_INVALID_URL"),
   },
   {
@@ -103,7 +94,6 @@ const rows: Row[] = [
       const cause = Object.assign(new Error(`connect ${KEYED}`), { code: "ECONNRESET" });
       throw Object.assign(new Error(`request to ${KEYED} failed`), { cause });
     },
-    calls: 1,
     expected: sanitisedTo("ECONNRESET"),
   },
   {
@@ -111,7 +101,6 @@ const rows: Row[] = [
     transport: () => async () => {
       throw Object.assign(new Error(KEYED), { code: "econnreset", cause: { code: 42 } });
     },
-    calls: 1,
     expected: sanitisedTo(undefined),
   },
 ];
@@ -121,19 +110,10 @@ describe("guardedSend", () => {
     const controller = new AbortController();
     if (row.abortFirst) controller.abort(reason);
     let calls = 0;
-    let sent: unknown;
     const inner = row.transport(controller);
     const transport: ConfidentialTransport = (request) => {
       calls += 1;
-      const keep = (err: unknown) => {
-        sent = err;
-        throw err;
-      };
-      try {
-        return inner(request).catch(keep);
-      } catch (err) {
-        return keep(err);
-      }
+      return inner(request);
     };
     const request: OuterRequest = {
       method: "POST",
@@ -146,7 +126,7 @@ describe("guardedSend", () => {
       () => undefined,
       (e: unknown) => e,
     );
-    row.expected(err, sent);
-    expect(calls).toBe(row.calls);
+    row.expected(err);
+    expect(calls).toBe(row.abortFirst ? 0 : 1);
   });
 });

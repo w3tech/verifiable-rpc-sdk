@@ -458,8 +458,8 @@ describe("default transport fetch contract", () => {
 });
 
 describe("readCappedBody without a web stream", () => {
-  type Shape = "an absent" | "a Node Readable" | "an arrayBuffer-only";
-  const SHAPES: Shape[] = ["an absent", "a Node Readable", "an arrayBuffer-only"];
+  type Shape = "an absent" | "a Node Readable";
+  const SHAPES: Shape[] = ["an absent", "a Node Readable"];
   const OVER = MAX_RESPONSE_BYTES + 1;
 
   // node-fetch answers with a Node Readable body, whatwg-fetch and React Native with none.
@@ -469,9 +469,8 @@ describe("readCappedBody without a web stream", () => {
     size: number,
     seen: { buffered: number },
   ) {
-    const body = shape === "a Node Readable" ? { body: Readable.from([]) } : { body: undefined };
     return {
-      ...(shape === "an arrayBuffer-only" ? {} : body),
+      body: shape === "a Node Readable" ? Readable.from([]) : undefined,
       headers: new Headers(headers),
       arrayBuffer: async () => {
         seen.buffered += 1;

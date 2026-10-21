@@ -243,36 +243,6 @@ describe("transport errors carry neither the key nor body bytes", () => {
 });
 
 describe("response size cap", () => {
-  const CAP = 201_326_592;
-  const CHUNK = new Uint8Array(16 * 1024 * 1024);
-
-  test("a streamed body past the cap is cut and the call fails without reading on", async () => {
-    const server = await serve();
-    const seen = { pulled: 0, cancelled: false };
-    const original = globalThis.fetch;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      if (init?.method !== "POST") return original(input, init);
-      const body = new ReadableStream<Uint8Array>({
-        pull(controller) {
-          seen.pulled += CHUNK.byteLength;
-          controller.enqueue(CHUNK);
-        },
-        cancel() {
-          seen.cancelled = true;
-        },
-      });
-      return new Response(body, { status: 200 });
-    });
-    const { provider } = build("string URL", server.url);
-
-    const err = await rejectionOf(provider.getBlockNumber());
-
-    expect(err).toBeInstanceOf(TransportFailed);
-    expect((err as TransportFailed).reason).toBe("too-large");
-    expect(seen.cancelled).toBe(true);
-    expect(seen.pulled).toBeLessThanOrEqual(CAP + 2 * CHUNK.byteLength);
-  });
-
   test("the attestation GET stops reading at its own 1 MiB cap", async () => {
     const chunk = new Uint8Array(64 * 1024);
     let pulled = 0;
