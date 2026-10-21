@@ -7,7 +7,7 @@ import vectors from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.j
 import { describe, expect, test } from "vitest";
 import { decodeInnerResponse, encodeInnerRequest } from "../src/bhttp";
 import { InvalidInnerRequest } from "../src/errors";
-import { nodeKeyFromEd25519 } from "../src/node-key";
+import { nodeKeyFromEd25519 } from "../src/node-session";
 import {
   createSuite,
   OhttpError,

@@ -16,7 +16,7 @@ import {
   MalformedInnerResponse,
 } from "../src/bhttp";
 import { InvalidInnerRequest } from "../src/errors";
-import { nodeKeyFromEd25519 } from "../src/node-key";
+import { nodeKeyFromEd25519 } from "../src/node-session";
 import { openResponse, sealRequest } from "../src/ohttp";
 
 const PINNED_REQUEST =

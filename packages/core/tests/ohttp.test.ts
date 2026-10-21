@@ -3,7 +3,7 @@ import { createRecipient, NODE_SEED, rejectionOf } from "@w3tech.io/vrpc-test-su
 import appendixA from "@w3tech.io/vrpc-test-support/vectors/rfc9458-appendix-a.json";
 import { describe, expect, test } from "vitest";
 import { decodeInnerResponse, encodeInnerRequest } from "../src/bhttp";
-import { InvalidNodeKey, nodeKeyFromEd25519 } from "../src/node-key";
+import { nodeKeyFromEd25519 } from "../src/node-session";
 import {
   createSuite,
   type KemChoice,
@@ -42,12 +42,12 @@ async function replyTo(sealed: SealedRequest, body = RESPONSE_BODY): Promise<Uin
 
 function expectTypedError(
   error: unknown,
-  type: typeof InvalidNodeKey | typeof OhttpError,
+  type: typeof OhttpError,
   reason: string,
   secrets: readonly Uint8Array[],
 ): void {
   expect(error).toBeInstanceOf(type);
-  const typed = error as InvalidNodeKey | OhttpError;
+  const typed = error as OhttpError;
   expect(typed.reason).toBe(reason);
   for (const secret of secrets) {
     if (secret.length > 0) expect(typed.message).not.toContain(bytesToHex(secret));
@@ -167,21 +167,23 @@ describe("openResponse rejects", () => {
 
 describe("sealing to an unusable node key", () => {
   const cases = [
-    { name: "a small-order X25519 key", key: new Uint8Array(32), reason: "encap-failed" },
-    { name: "a 31-byte key", key: nodeKey.slice(0, 31), reason: "malformed" },
+    { name: "a small-order X25519 key", key: new Uint8Array(32) },
+    { name: "a 31-byte key", key: nodeKey.slice(0, 31) },
   ];
 
-  test.each(cases)("sealRequest rejects $name", async ({ key, reason }) => {
+  test.each(cases)("sealRequest rejects $name", async ({ key }) => {
     const inner = await jsonRpcRequest();
     const error = await rejectionOf(sealRequest(key, inner));
-    expectTypedError(error, InvalidNodeKey, reason, [key, inner]);
+    expectTypedError(error, OhttpError, "seal-failed", [key, inner]);
+    expect((error as OhttpError).cause).toBeDefined();
   });
 
   describe.each(KEMS)("with the %s KEM", (kem) => {
-    test.each(cases)("seal rejects $name", async ({ key, reason }) => {
+    test.each(cases)("seal rejects $name", async ({ key }) => {
       const inner = await jsonRpcRequest();
       const error = await rejectionOf(seal(createSuite(kem), 0x00, key, inner));
-      expectTypedError(error, InvalidNodeKey, reason, [key, inner]);
+      expectTypedError(error, OhttpError, "seal-failed", [key, inner]);
+      expect((error as OhttpError).cause).toBeDefined();
     });
   });
 });

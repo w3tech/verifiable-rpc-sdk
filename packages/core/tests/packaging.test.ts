@@ -266,7 +266,6 @@ describe("bundling", () => {
       ...config,
       config: false,
       entry: {
-        "node-key": fileURLToPath(new URL("../src/node-key.ts", import.meta.url)),
         ohttp: fileURLToPath(new URL("../src/ohttp.ts", import.meta.url)),
         bhttp: fileURLToPath(new URL("../src/bhttp.ts", import.meta.url)),
       },

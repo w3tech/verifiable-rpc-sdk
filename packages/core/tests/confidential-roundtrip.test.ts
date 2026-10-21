@@ -2,7 +2,7 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { createRecipient, NODE_SEED } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 import { decodeInnerResponse, encodeInnerRequest } from "../src/bhttp";
-import { nodeKeyFromEd25519 } from "../src/node-key";
+import { nodeKeyFromEd25519 } from "../src/node-session";
 import { openResponse, sealRequest } from "../src/ohttp";
 
 const REQUEST_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';

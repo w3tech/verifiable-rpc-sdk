@@ -8,7 +8,7 @@ import appendixA from "@w3tech.io/vrpc-test-support/vectors/rfc9458-appendix-a.j
 import sidecar from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { decodeInnerResponse, encodeInnerRequest, MalformedInnerResponse } from "../src/bhttp";
-import { nodeKeyFromEd25519 } from "../src/node-key";
+import { nodeKeyFromEd25519 } from "../src/node-session";
 import {
   createSuite,
   nativeX25519Works,

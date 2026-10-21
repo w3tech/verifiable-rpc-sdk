@@ -28,7 +28,6 @@ import {
   StaleTimestamp,
   VerificationError,
 } from "../src/errors";
-import { InvalidNodeKey } from "../src/node-key";
 import { OhttpError } from "../src/ohttp";
 
 const OHTTP_RES = { "content-type": "message/ohttp-res" };
@@ -54,10 +53,7 @@ function expectPublicFamily(err: unknown): void {
   expect(err).toBeInstanceOf(VerificationError);
   expect(err).not.toBeInstanceOf(OhttpError);
   expect(err).not.toBeInstanceOf(MalformedInnerResponse);
-  expect(err).not.toBeInstanceOf(InvalidNodeKey);
-  expect(["OhttpError", "MalformedInnerResponse", "InvalidNodeKey"]).not.toContain(
-    (err as VerificationError).kind,
-  );
+  expect(["OhttpError", "MalformedInnerResponse"]).not.toContain((err as VerificationError).kind);
 }
 
 type Answer = (context: ConfidentialContext) => TestOuterResponse | Promise<TestOuterResponse>;

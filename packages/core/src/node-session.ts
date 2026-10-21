@@ -2,6 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Attest one node and hold the pinned result for the Ankr Confidential RPC client.
 
+import { ed25519 } from "@noble/curves/ed25519.js";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import {
   AttestationError,
@@ -13,7 +14,6 @@ import { raceAbort } from "./abort";
 import { fetchAttestationWithNodeId } from "./attestation";
 import { AttestationFailed, AttestationUnavailable, MalformedAttestationResponse } from "./errors";
 import { defaultLogger, type Logger } from "./logger";
-import { InvalidNodeKey, nodeKeyFromEd25519 } from "./node-key";
 import type { ConfidentialTransport } from "./transport";
 import { buildVerifyPolicy, mapAttestationToBundle } from "./trusted-verifier";
 
@@ -27,15 +27,16 @@ export interface AttestedNode {
 
 const ATTESTED_PUBKEY_RE = /^0x[0-9a-fA-F]{64}$/;
 
-function attestedNodeKey(pubkeyHex: string): Uint8Array {
+export function nodeKeyFromEd25519(ed25519PublicKey: Uint8Array): Uint8Array {
   try {
-    return nodeKeyFromEd25519(hexToBytes(pubkeyHex.slice(2)));
-  } catch (err) {
-    if (err instanceof InvalidNodeKey) {
-      throw new MalformedAttestationResponse("attested pubkey is not a usable encryption key");
+    const point = ed25519.Point.fromBytes(ed25519PublicKey);
+    if (!point.isSmallOrder() && point.isTorsionFree()) {
+      return ed25519.utils.toMontgomery(ed25519PublicKey);
     }
-    throw err;
+  } catch {
+    // a malformed point or a failed conversion is rejected below
   }
+  throw new MalformedAttestationResponse("attested pubkey is not a usable encryption key");
 }
 
 export type Pin = AttestedNode & { readonly expiresAt: number };
@@ -94,7 +95,7 @@ async function attest(opts: AttestOptions): Promise<AttestedNode> {
     throw new MalformedAttestationResponse("pubkey must be 0x + 64 hex chars");
   }
   const pubkeyHex = attestation.pubkey.toLowerCase();
-  const nodeKey = attestedNodeKey(pubkeyHex);
+  const nodeKey = nodeKeyFromEd25519(hexToBytes(pubkeyHex.slice(2)));
   try {
     await verifyDstackAttestation(
       mapAttestationToBundle(attestation, pubkeyHex, nonce),

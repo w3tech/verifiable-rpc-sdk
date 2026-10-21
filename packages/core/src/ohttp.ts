@@ -15,7 +15,6 @@ import { DhkemX25519HkdfSha256 as JsX25519 } from "@hpke/dhkem-x25519";
 import { extract } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, concatBytes, hexToBytes } from "@noble/hashes/utils.js";
-import { InvalidNodeKey } from "./node-key";
 
 export type KemChoice = "native" | "js";
 
@@ -133,7 +132,7 @@ export async function seal(
   try {
     recipientPublicKey = await suite.kem.deserializePublicKey(nodeKey);
   } catch (cause) {
-    throw new InvalidNodeKey("malformed", { cause });
+    throw new OhttpError("seal-failed", { cause });
   }
 
   let context: SenderContext;
@@ -142,7 +141,7 @@ export async function seal(
     if (ekm !== undefined) params.ekm = ekm;
     context = await suite.createSenderContext(params);
   } catch (cause) {
-    throw new InvalidNodeKey("encap-failed", { cause });
+    throw new OhttpError("seal-failed", { cause });
   }
 
   let ct: Uint8Array;
