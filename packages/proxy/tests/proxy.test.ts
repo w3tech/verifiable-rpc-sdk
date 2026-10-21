@@ -3,12 +3,12 @@
 // End-to-end pipeline tests against the signing mock sidecar: happy paths
 // (identity/gzip/zstd), the fail-closed tamper matrix, byte-exact request
 // forwarding, verbatim relay, body caps, transport error
-// kinds, and the silent-by-default guarantee. All requests use undici.request
+// kinds, and the silent-by-default guarantee. All requests use a node:http client
 // (raw wire bytes — global fetch would auto-decompress); all verification legs
 // are injected via testOverrides(), so no test touches the network.
 
 import { createServer, request as httpRequest } from "node:http";
-import type { AddressInfo, Socket } from "node:net";
+import type { Socket } from "node:net";
 import * as zlib from "node:zlib";
 import { verifyAsync } from "@noble/ed25519";
 import { buildPreImage } from "@w3tech.io/vrpc-core";
@@ -18,7 +18,6 @@ import {
   TEST_PUBKEY_HEX,
 } from "@w3tech.io/vrpc-test-support";
 import { closeServer, listen } from "@w3tech.io/vrpc-test-support/server";
-import { request } from "undici";
 import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { createServerWith } from "../src/server";
 import {
@@ -26,36 +25,24 @@ import {
   type MockSidecarOptions,
   startMockSidecar,
 } from "./support/mock-sidecar";
+import { errorOf, headerValues, type RawResponse, rawRequest } from "./support/proxy";
 import { TEST_CHAIN_ID, testConfig, testOverrides } from "./support/test-overrides";
 
-interface RawResponse {
-  status: number;
-  headers: Record<string, string | string[] | undefined>;
-  body: Buffer;
-}
-
 /** POST raw bytes to the proxy and collect the raw (non-decoded) response. */
-async function post(
+function post(
   url: string,
   body: Buffer | string,
   headers: Record<string, string> = {},
 ): Promise<RawResponse> {
-  const res = await request(url, { method: "POST", headers, body });
-  const chunks: Buffer[] = [];
-  for await (const chunk of res.body) {
-    chunks.push(chunk as Buffer);
-  }
-  return { status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) };
+  return rawRequest(url, { method: "POST", path: "/", headers, body });
 }
 
 /** Reserve a loopback port and release it — a guaranteed-unbound upstream. */
 async function unboundPort(): Promise<number> {
   const srv = createServer();
-  const port = await new Promise<number>((resolve) => {
-    srv.listen(0, "127.0.0.1", () => resolve((srv.address() as AddressInfo).port));
-  });
-  await new Promise<void>((resolve) => srv.close(() => resolve()));
-  return port;
+  const { port } = new URL(await listen(srv));
+  await closeServer(srv);
+  return Number(port);
 }
 
 afterEach(() => {
@@ -76,12 +63,6 @@ async function startProxy(
 }
 
 const RPC_REQUEST = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
-
-async function expectErrorKind(res: RawResponse, status: number, kind: string): Promise<void> {
-  expect(res.status).toBe(status);
-  const parsed = JSON.parse(res.body.toString()) as { error: { kind: string; message: string } };
-  expect(parsed.error.kind).toBe(kind);
-}
 
 describe("proxy pipeline", () => {
   test("happyPathIdentityRelaysVerbatimWithVrpcHeaders", async () => {
@@ -135,29 +116,15 @@ describe("proxy pipeline", () => {
 
     // Raw node:http client — undici refuses to set hop-by-hop headers, and
     // this test plants client hop-by-hop markers to prove they are stripped.
-    const status = await new Promise<number>((resolve, reject) => {
-      const req = httpRequest(
-        url,
-        {
-          method: "POST",
-          headers: {
-            "content-type": "application/octet-stream",
-            "accept-encoding": "gzip, br",
-            connection: "close",
-            "proxy-authorization": "Basic Zm9v",
-            te: "trailers",
-          },
-        },
-        (res) => {
-          res.resume();
-          res.on("end", () => resolve(res.statusCode ?? 0));
-        },
-      );
-      req.on("error", reject);
-      req.end(sent);
+    const res = await post(url, sent, {
+      "content-type": "application/octet-stream",
+      "accept-encoding": "gzip, br",
+      connection: "close",
+      "proxy-authorization": "Basic Zm9v",
+      te: "trailers",
     });
 
-    expect(status).toBe(200);
+    expect(res.status).toBe(200);
     expect(mock.received).toHaveLength(1);
     const received = mock.received[0];
     if (received === undefined) throw new Error("unreachable");
@@ -183,7 +150,7 @@ describe("proxy pipeline", () => {
 
     const res = await post(url, RPC_REQUEST);
 
-    await expectErrorKind(res, 502, "BadSignature");
+    expect(errorOf(res)).toMatchObject({ status: 502, kind: "BadSignature" });
     // Fail-closed body withholding (R3): no fragment of the upstream
     // plaintext may appear in the error response.
     expect(res.body.toString()).not.toContain(marker);
@@ -192,13 +159,13 @@ describe("proxy pipeline", () => {
   test("droppedTimestampHeaderFailsClosedWithMissingHeader", async () => {
     const { url } = await startProxy({ tamper: "drop-timestamp-header" });
     const res = await post(url, RPC_REQUEST);
-    await expectErrorKind(res, 502, "MissingHeader");
+    expect(errorOf(res)).toMatchObject({ status: 502, kind: "MissingHeader" });
   });
 
   test("staleTimestampFailsClosedWithStaleTimestamp", async () => {
     const { url } = await startProxy({ tamper: "stale-timestamp" });
     const res = await post(url, RPC_REQUEST);
-    await expectErrorKind(res, 502, "StaleTimestamp");
+    expect(errorOf(res)).toMatchObject({ status: 502, kind: "StaleTimestamp" });
   });
 
   test.each([
@@ -213,7 +180,10 @@ describe("proxy pipeline", () => {
     },
   ])("$name fails closed with MalformedHeader", async ({ extraHeaders }) => {
     const { url } = await startProxy({ extraHeaders });
-    await expectErrorKind(await post(url, RPC_REQUEST), 502, "MalformedHeader");
+    expect(errorOf(await post(url, RPC_REQUEST))).toMatchObject({
+      status: 502,
+      kind: "MalformedHeader",
+    });
   });
 
   test("repeatedContentEncodingIsDecodedAsAListAndRelayedVerbatim", async () => {
@@ -224,7 +194,7 @@ describe("proxy pipeline", () => {
     const res = await post(url, RPC_REQUEST);
     expect(res.status).toBe(200);
     expect(Buffer.compare(res.body, mock.lastCompressedBody)).toBe(0);
-    expect(res.headers["content-encoding"]).toEqual(["gzip", "identity"]);
+    expect(headerValues(res, "content-encoding")).toEqual(["gzip", "identity"]);
   });
 
   test("wrongChainIdFailsClosedWithBadSignature", async () => {
@@ -232,18 +202,18 @@ describe("proxy pipeline", () => {
     // different chain fails as BadSignature.
     const { url } = await startProxy({ tamper: "wrong-chain" });
     const res = await post(url, RPC_REQUEST);
-    await expectErrorKind(res, 502, "BadSignature");
+    expect(errorOf(res)).toMatchObject({ status: 502, kind: "BadSignature" });
   });
 
   test("unsignedUpstreamFailsClosedRegardlessOfUpstreamStatus", async () => {
     const ok = await startProxy({ tamper: "unsigned", status: 200 });
     const res200 = await post(ok.url, RPC_REQUEST);
-    await expectErrorKind(res200, 502, "UnsignedUpstream");
+    expect(errorOf(res200)).toMatchObject({ status: 502, kind: "UnsignedUpstream" });
     expect(JSON.parse(res200.body.toString()).error.message).toContain("200");
 
     const err = await startProxy({ tamper: "unsigned", status: 503 });
     const res503 = await post(err.url, RPC_REQUEST);
-    await expectErrorKind(res503, 502, "UnsignedUpstream");
+    expect(errorOf(res503)).toMatchObject({ status: 502, kind: "UnsignedUpstream" });
     expect(JSON.parse(res503.body.toString()).error.message).toContain("503");
   });
 
@@ -258,7 +228,7 @@ describe("proxy pipeline", () => {
       extraHeaders: { location: "/elsewhere" },
     });
     const res = await post(url, RPC_REQUEST);
-    await expectErrorKind(res, 502, "UnsignedUpstream");
+    expect(errorOf(res)).toMatchObject({ status: 502, kind: "UnsignedUpstream" });
     expect(JSON.parse(res.body.toString()).error.message).toContain("302");
     // Exactly one upstream request — nothing chased the Location target.
     expect(mock.received).toHaveLength(1);
@@ -310,14 +280,14 @@ describe("proxy pipeline", () => {
   test("unsupportedUpstreamEncodingFailsClosed", async () => {
     const { url } = await startProxy({ encoding: { rawToken: "snappy" } });
     const res = await post(url, RPC_REQUEST);
-    await expectErrorKind(res, 502, "DecodeFailed");
+    expect(errorOf(res)).toMatchObject({ status: 502, kind: "DecodeFailed" });
   });
 
   test("undecodableGzipBodyFailsClosedWithDecodeFailed", async () => {
     // content-encoding claims gzip but the bytes are uncompressed plaintext.
     const { url } = await startProxy({ encoding: { rawToken: "gzip" } });
     const res = await post(url, RPC_REQUEST);
-    await expectErrorKind(res, 502, "DecodeFailed");
+    expect(errorOf(res)).toMatchObject({ status: 502, kind: "DecodeFailed" });
   });
 
   test("oversizedRequestBodyRejectedBeforeUpstreamIO", async () => {
@@ -325,7 +295,7 @@ describe("proxy pipeline", () => {
 
     const res = await post(url, Buffer.alloc(4096, 0x61));
 
-    await expectErrorKind(res, 413, "BodyTooLarge");
+    expect(errorOf(res)).toMatchObject({ status: 413, kind: "BodyTooLarge" });
     // Cap enforced before any upstream I/O.
     expect(mock.received).toHaveLength(0);
   });
@@ -333,7 +303,7 @@ describe("proxy pipeline", () => {
   test("upstreamTimeoutMapsTo504", async () => {
     const { url } = await startProxy({ stall: true }, { upstreamTimeoutMs: 200 });
     const res = await post(url, RPC_REQUEST);
-    await expectErrorKind(res, 504, "UpstreamTimeout");
+    expect(errorOf(res)).toMatchObject({ status: 504, kind: "UpstreamTimeout" });
   });
 
   test("upstreamConnectErrorMapsTo502", async () => {
@@ -344,7 +314,7 @@ describe("proxy pipeline", () => {
 
     const res = await post(url, RPC_REQUEST);
 
-    await expectErrorKind(res, 502, "UpstreamConnect");
+    expect(errorOf(res)).toMatchObject({ status: 502, kind: "UpstreamConnect" });
   });
 
   test("aClientDisconnectAbortsTheUpstreamRequest", async () => {
@@ -374,7 +344,7 @@ describe("proxy pipeline", () => {
 
     const res = await post(url, RPC_REQUEST, { "accept-encoding": "gzip" });
 
-    await expectErrorKind(res, 502, "DecodeFailed");
+    expect(errorOf(res)).toMatchObject({ status: 502, kind: "DecodeFailed" });
   });
 
   test.each([
@@ -403,8 +373,11 @@ describe("proxy pipeline", () => {
     onTestFinished(() => closeServer(server));
 
     const sends = Array.from({ length: 10 }, () =>
-      post(`${url}/sentinel-path?key=sentinel-query`, RPC_REQUEST, {
-        "content-type": "application/json",
+      rawRequest(url, {
+        method: "POST",
+        path: "/sentinel-path?key=sentinel-query",
+        headers: { "content-type": "application/json" },
+        body: RPC_REQUEST,
       }),
     );
     const statuses = (await Promise.all(sends)).map((res) => res.status);

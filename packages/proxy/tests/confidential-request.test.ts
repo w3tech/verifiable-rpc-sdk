@@ -10,6 +10,8 @@ import {
 } from "@w3tech.io/vrpc-test-support/server";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  errorOf,
+  postRpc,
   type RawRequestOptions,
   type RunningProxy,
   rawRequest,
@@ -76,17 +78,8 @@ async function setup(maxBodyBytes?: number): Promise<{ node: TestNodeServer; url
   return { node, url: proxy.url };
 }
 
-function errorOf(body: Buffer): { kind: string; message: string } {
-  return (JSON.parse(body.toString()) as { error: { kind: string; message: string } }).error;
-}
-
 async function expectNextRequestRelayed(node: TestNodeServer, url: string): Promise<void> {
-  const res = await rawRequest(url, {
-    method: "POST",
-    path: "/",
-    headers: { "content-type": "application/json" },
-    body: JSON_BODY,
-  });
+  const res = await postRpc(url);
   expect(res.status).toBe(200);
   expect(res.body.toString()).toBe(ANSWER);
   expect(countOf(node, isGet)).toBe(1);
@@ -174,7 +167,7 @@ describe("refused locally", () => {
     const { node, url } = await setup();
     const res = await rawRequest(url, options);
     expect(res.status).toBe(415);
-    expect(errorOf(res.body).kind).toBe("UnsupportedMediaType");
+    expect(errorOf(res).kind).toBe("UnsupportedMediaType");
     expect(node.requests).toHaveLength(1);
     expect(seen).toHaveLength(0);
     await expectNextRequestRelayed(node, url);
@@ -199,7 +192,7 @@ describe("refused locally", () => {
     const { node, url } = await setup();
     const res = await rawRequest(url, options);
     expect(res.status).toBe(400);
-    const error = errorOf(res.body);
+    const error = errorOf(res);
     expect(error.kind).toBe("InvalidInnerRequest");
     expect(error.message.startsWith("Inner request rejected:")).toBe(true);
     for (const leak of ["upstream.example", "/a/../b", "//x"]) {
@@ -234,7 +227,7 @@ describe("refused locally", () => {
       body: Buffer.alloc(2048, 0x61),
     });
     expect(res.status).toBe(413);
-    expect(errorOf(res.body).kind).toBe("BodyTooLarge");
+    expect(errorOf(res).kind).toBe("BodyTooLarge");
     expect(node.requests).toHaveLength(1);
     expect(seen).toHaveLength(0);
   });

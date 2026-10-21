@@ -12,15 +12,13 @@ import * as undici from "undici";
 import { describe, expect, onTestFinished, test, vi } from "vitest";
 import { createProxyServer } from "../src/index";
 import { startMockSidecar } from "./support/mock-sidecar";
-import { rawRequest } from "./support/proxy";
+import { errorOf, postRpc } from "./support/proxy";
 import { TEST_CHAIN_ID, testConfig } from "./support/test-overrides";
 
 vi.mock("undici", async (importOriginal) => {
   const actual = await importOriginal<typeof import("undici")>();
   return { ...actual, fetch: vi.fn(actual.fetch) };
 });
-
-const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 
 /** Mock the network: global fetch fails, undici fetch answers attestation and refuses Phala. */
 function mockNetwork() {
@@ -47,17 +45,6 @@ async function serve(server: http.Server): Promise<string> {
   return url;
 }
 
-async function postRpc(url: string): Promise<{ status: number; kind: string }> {
-  const res = await rawRequest(url, {
-    method: "POST",
-    path: "/",
-    headers: { "content-type": "application/json" },
-    body: RPC_BODY,
-  });
-  const { kind } = (JSON.parse(res.body.toString()) as { error: { kind: string } }).error;
-  return { status: res.status, kind };
-}
-
 describe("cloud verify egress", () => {
   test("open mode verifies the attestation through the proxy Agent", async () => {
     const { globalFetch, calls } = mockNetwork();
@@ -65,9 +52,9 @@ describe("cloud verify egress", () => {
     onTestFinished(() => mock.close());
     const url = await serve(createProxyServer(testConfig(mock.url)));
 
-    const { status, kind } = await postRpc(url);
+    const res = await postRpc(url);
     expect(globalFetch).not.toHaveBeenCalled();
-    expect({ status, kind }).toEqual({ status: 503, kind: "AttestationUnavailable" });
+    expect(errorOf(res)).toMatchObject({ status: 503, kind: "AttestationUnavailable" });
     const attestation = calls.find((c) => c.url.includes("/attestation"));
     expect(attestation?.dispatcher).toBeInstanceOf(undici.Agent);
     const phala = calls.find((c) => c.url === DEFAULT_PHALA_VERIFY_ENDPOINT);
@@ -89,7 +76,10 @@ describe("cloud verify egress", () => {
     });
     const url = await serve(createProxyServer(config));
 
-    expect(await postRpc(url)).toEqual({ status: 504, kind: "AttestationUnavailable" });
+    expect(errorOf(await postRpc(url))).toMatchObject({
+      status: 504,
+      kind: "AttestationUnavailable",
+    });
     expect(globalFetch).not.toHaveBeenCalled();
   });
 
@@ -100,7 +90,10 @@ describe("cloud verify egress", () => {
     const config = testConfig(`${node.url}/test_vrpc`, { confidential: true });
     const url = await serve(createProxyServer(config));
 
-    await postRpc(url);
+    expect(errorOf(await postRpc(url))).toMatchObject({
+      status: 503,
+      kind: "AttestationUnavailable",
+    });
     expect(globalFetch).not.toHaveBeenCalled();
     const phala = calls.find((c) => c.url === DEFAULT_PHALA_VERIFY_ENDPOINT);
     expect(phala?.dispatcher).toBeInstanceOf(undici.Agent);

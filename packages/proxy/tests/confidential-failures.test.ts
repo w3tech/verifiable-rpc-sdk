@@ -30,14 +30,15 @@ import { beforeEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { createConfidentialTransport } from "../src/confidential";
 import type { ProxyConfig } from "../src/config";
 import {
+  errorOf,
+  postRpc,
   type RawResponse,
+  RPC_BODY,
   type RunningProxy,
-  rawRequest,
   startConfidentialProxy,
 } from "./support/proxy";
 import { TEST_CHAIN_ID, testConfig } from "./support/test-overrides";
 
-const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const RPC_ANSWER = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 const OHTTP_KEY_PROBLEM =
   '{"type":"https://iana.org/assignments/http-problem-types#ohttp-key","title":"Oblivious HTTP key configuration not acceptable"}';
@@ -97,15 +98,6 @@ const repeatedNodeId =
     return { ...normal, headers: { ...normal.headers, "vrpc-nodeid": ["n1", "n2"] } };
   };
 
-function post(url: string): Promise<RawResponse> {
-  return rawRequest(url, {
-    method: "POST",
-    path: "/",
-    headers: { "content-type": "application/json" },
-    body: RPC_BODY,
-  });
-}
-
 async function startHarness(options: {
   config?: Partial<ProxyConfig>;
   beforeListen?: (h: Omit<Harness, "proxy">) => void | Promise<void>;
@@ -150,15 +142,12 @@ async function expectTypedError(
   kind: string,
   executed: "no" | "unknown" | undefined,
 ): Promise<void> {
-  expect(res.status).toBe(status);
   expect(res.headers["content-type"]).toBe("application/json");
-  const body = JSON.parse(res.body.toString()) as {
-    error: { kind: string; message: string; executed?: string; traceId?: string };
-  };
-  expect(body.error.kind).toBe(kind);
-  expect(typeof body.error.message).toBe("string");
-  expect(body.error.executed).toBe(executed);
-  expect(body.error).not.toHaveProperty("traceId");
+  const error = errorOf(res);
+  expect(error).toMatchObject({ status, kind });
+  expect(typeof error.message).toBe("string");
+  expect(error.executed).toBe(executed);
+  expect(error).not.toHaveProperty("traceId");
 }
 
 /** One failed request with its upstream count, then a recovered request that attests again. */
@@ -168,7 +157,7 @@ async function failThenRecover(
   attempt: { gets: number; posts: number },
 ): Promise<void> {
   const before = { gets: countOf(h.node, isGet), posts: countOf(h.node, isPost) };
-  const res = await post(h.proxy.url);
+  const res = await postRpc(h.proxy.url);
   await expectTypedError(res, expected.status, expected.kind, expected.executed);
   await vi.waitFor(() => {
     expect(countOf(h.node, isGet) - before.gets).toBe(attempt.gets);
@@ -177,7 +166,7 @@ async function failThenRecover(
 
   restore(h);
   const after = countOf(h.node, isPost);
-  const ok = await post(h.proxy.url);
+  const ok = await postRpc(h.proxy.url);
   expect(ok.status).toBe(200);
   expect(ok.body.toString()).toBe(RPC_ANSWER);
   expect(countOf(h.node, isPost) - after).toBe(1);
@@ -315,7 +304,7 @@ const postRows: Row[] = [
         outerLength = normal.body.byteLength;
         return normal;
       });
-      expect((await post(proxy.url)).status).toBe(200);
+      expect((await postRpc(proxy.url)).status).toBe(200);
       node.node.setConfidential();
       node.answer(async (request, forward) =>
         isPost(request)
@@ -498,7 +487,7 @@ describe("concurrent and interrupted requests", () => {
     const requested = vi.spyOn(ConfidentialClient.prototype, "request");
     onTestFinished(async () => requested.mockRestore());
 
-    const pending = Array.from({ length: 20 }, () => post(proxy.url));
+    const pending = Array.from({ length: 20 }, () => postRpc(proxy.url));
     await vi.waitFor(() => expect(requested).toHaveBeenCalledTimes(20));
     answerAttestation(plain(503, "text/plain", "unavailable"));
     const responses = await Promise.all(pending);
@@ -509,7 +498,7 @@ describe("concurrent and interrupted requests", () => {
     expect(countOf(node, isPost)).toBe(0);
 
     node.node.setAttestation();
-    const ok = await post(proxy.url);
+    const ok = await postRpc(proxy.url);
     expect(ok.status).toBe(200);
     expect(countOf(node, isGet)).toBe(2);
     expect(countOf(node, isPost)).toBe(1);
@@ -542,7 +531,7 @@ describe("concurrent and interrupted requests", () => {
     expect(countOf(h.node, isGet)).toBe(1);
 
     h.node.answer();
-    const ok = await post(h.proxy.url);
+    const ok = await postRpc(h.proxy.url);
     expect(ok.status).toBe(200);
     expect(countOf(h.node, isGet)).toBe(1);
     expect(countOf(h.node, isPost)).toBe(2);

@@ -8,9 +8,10 @@
 // byte-exact request forwarding (R2). Sync zlib is acceptable — test-only.
 
 import { createServer, type IncomingHttpHeaders } from "node:http";
-import type { AddressInfo } from "node:net";
+import { buffer } from "node:stream/consumers";
 import * as zlib from "node:zlib";
 import { signResponse } from "@w3tech.io/vrpc-test-support";
+import { closeServer, listen } from "@w3tech.io/vrpc-test-support/server";
 
 import { TEST_CHAIN_ID } from "./test-overrides";
 
@@ -71,11 +72,7 @@ export async function startMockSidecar(opts: MockSidecarOptions = {}): Promise<M
 
   const server = createServer((req, res) => {
     void (async () => {
-      const chunks: Buffer[] = [];
-      for await (const chunk of req) {
-        chunks.push(chunk as Buffer);
-      }
-      const bytes = Buffer.concat(chunks);
+      const bytes = await buffer(req);
       received.push({ bytes, headers: req.headers });
 
       // Sign the plaintext over the request bytes exactly as received.
@@ -128,19 +125,12 @@ export async function startMockSidecar(opts: MockSidecarOptions = {}): Promise<M
     })();
   });
 
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address() as AddressInfo;
-
   return {
-    url: `http://127.0.0.1:${address.port}`,
+    url: await listen(server),
     received,
     get lastCompressedBody(): Buffer {
       return state.lastCompressedBody;
     },
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        server.closeAllConnections();
-        server.close((err) => (err ? reject(err) : resolve()));
-      }),
+    close: () => closeServer(server),
   };
 }

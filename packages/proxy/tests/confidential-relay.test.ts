@@ -14,14 +14,14 @@ import {
 import { serveTestNode, type TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
-  type RawResponse,
+  headerValues,
+  postRpc,
   type RunningProxy,
   rawRequest,
   startConfidentialProxy,
 } from "./support/proxy";
 import { TEST_CHAIN_ID } from "./support/test-overrides";
 
-const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const RPC_ANSWER = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 const BATCH_BODY =
   '[{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]},' +
@@ -91,19 +91,6 @@ async function setup(): Promise<{ node: TestNodeServer; url: string }> {
   return { node, url: proxy.url };
 }
 
-function post(url: string, body = RPC_BODY): Promise<RawResponse> {
-  return rawRequest(url, {
-    method: "POST",
-    path: "/",
-    headers: { "content-type": "application/json" },
-    body,
-  });
-}
-
-function headerCount(res: RawResponse, name: string): number {
-  return res.rawHeaders.filter((_, i) => i % 2 === 0 && _.toLowerCase() === name).length;
-}
-
 describe("relayed answers", () => {
   test("a JSON-RPC batch reaches the node unchanged and its array answer is relayed byte for byte", async () => {
     answer = () => ({
@@ -112,7 +99,7 @@ describe("relayed answers", () => {
       body: BATCH_ANSWER,
     });
     const { url } = await setup();
-    const res = await post(url, BATCH_BODY);
+    const res = await postRpc(url, BATCH_BODY);
     expect(seen).toHaveLength(1);
     expect(seen[0]?.method).toBe("POST");
     expect(seen[0]?.body.equals(Buffer.from(BATCH_BODY))).toBe(true);
@@ -144,12 +131,12 @@ describe("relayed answers", () => {
   test("an inner 500 is delivered as the node's answer and keeps the pin", async () => {
     answer = () => ({ status: 500, headers: { "content-type": "text/plain" }, body: "boom" });
     const { node, url } = await setup();
-    const res = await post(url);
+    const res = await postRpc(url);
     expect(res.status).toBe(500);
     expect(res.headers["content-type"]).toBe("text/plain");
     expect(res.body.toString()).toBe("boom");
     answer = jsonAnswer;
-    expect((await post(url)).status).toBe(200);
+    expect((await postRpc(url)).status).toBe(200);
     expect(countOf(node, isGet)).toBe(1);
   });
 
@@ -160,12 +147,12 @@ describe("relayed answers", () => {
       body: PROBLEM,
     });
     const { node, url } = await setup();
-    const res = await post(url);
+    const res = await postRpc(url);
     expect(res.status).toBe(413);
     expect(res.headers["content-type"]).toBe("application/problem+json");
     expect(res.body.toString()).toBe(PROBLEM);
     answer = jsonAnswer;
-    expect((await post(url)).status).toBe(200);
+    expect((await postRpc(url)).status).toBe(200);
     expect(countOf(node, isGet)).toBe(1);
   });
 });
@@ -176,7 +163,7 @@ describe("relay framing", () => {
   ])("an inner %i carries neither content-length nor transfer-encoding", async (status) => {
     answer = () => ({ status });
     const { url } = await setup();
-    const res = await post(url);
+    const res = await postRpc(url);
     expect(res.status).toBe(status);
     expect(res.headers["content-length"]).toBeUndefined();
     expect(res.headers["transfer-encoding"]).toBeUndefined();
@@ -186,7 +173,7 @@ describe("relay framing", () => {
   test("an inner 205 carries content-length 0 and no transfer-encoding", async () => {
     answer = () => ({ status: 205 });
     const { url } = await setup();
-    const res = await post(url);
+    const res = await postRpc(url);
     expect(res.status).toBe(205);
     expect(res.headers["content-length"]).toBe("0");
     expect(res.headers["transfer-encoding"]).toBeUndefined();
@@ -212,7 +199,7 @@ describe("relay framing", () => {
       body: big,
     });
     const { url } = await setup();
-    const res = await post(url);
+    const res = await postRpc(url);
     expect(res.status).toBe(200);
     expect(res.headers["content-length"]).toBe("1048576");
     expect(res.body.equals(big)).toBe(true);
@@ -238,9 +225,9 @@ describe("relay framing", () => {
         body: sealed,
       };
     });
-    const res = await post(url);
+    const res = await postRpc(url);
     expect(res.status).toBe(200);
-    expect(headerCount(res, "content-type")).toBe(1);
+    expect(headerValues(res, "content-type")).toHaveLength(1);
     expect(res.headers["content-type"]).toBe("application/json, text/plain");
     expect(res.body.toString()).toBe("{}");
   });
@@ -253,7 +240,7 @@ describe("outer answer never relayed", () => {
       const normal = await forward();
       return { ...normal, headers: { ...normal.headers, "x-upstream-extra": "sentinel-extra" } };
     });
-    const res = await post(url);
+    const res = await postRpc(url);
     expect(res.status).toBe(200);
     const names = res.rawHeaders.filter((_, i) => i % 2 === 0).map((n) => n.toLowerCase());
     expect(names).not.toContain("x-upstream-extra");
@@ -275,7 +262,7 @@ describe("outer answer never relayed", () => {
         body: gzipSync(normal.body),
       };
     });
-    const res = await post(url);
+    const res = await postRpc(url);
     expect(res.status).toBe(200);
     expect(res.headers["content-encoding"]).toBeUndefined();
     expect(res.headers["content-type"]).toBe("application/json");

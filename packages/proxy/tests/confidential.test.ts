@@ -5,14 +5,13 @@
 import { ConfidentialClient, InvalidOption } from "@w3tech.io/vrpc-core/confidential";
 import { countOf, createTestNode, isGet, isPost, NODE_ID } from "@w3tech.io/vrpc-test-support";
 import { serveTestNode, type TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
-import { Agent, request } from "undici";
+import { Agent } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createProxyServer, type ProxyTestOverrides } from "../src/server";
-import { type RunningProxy, startConfidentialProxy } from "./support/proxy";
+import { postRpc, RPC_BODY, type RunningProxy, startConfidentialProxy } from "./support/proxy";
 import { TEST_CHAIN_ID, testConfig } from "./support/test-overrides";
 
 const API_KEY = "test-api-key-1";
-const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const RPC_ANSWER = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 
 interface SeenInner {
@@ -65,21 +64,6 @@ async function startProxy(
     overrides,
   );
   return proxy;
-}
-
-async function postRpc(url: string): Promise<{
-  status: number;
-  headers: Record<string, string | string[] | undefined>;
-  body: Buffer;
-}> {
-  const res = await request(`${url}/`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: RPC_BODY,
-  });
-  const chunks: Buffer[] = [];
-  for await (const chunk of res.body) chunks.push(chunk as Buffer);
-  return { status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) };
 }
 
 describe("confidential mode", () => {

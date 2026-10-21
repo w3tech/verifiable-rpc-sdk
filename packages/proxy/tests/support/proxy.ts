@@ -3,6 +3,7 @@
 // Proxy test helpers: a confidential proxy in front of a test node server, and raw HTTP requests.
 
 import http from "node:http";
+import { buffer } from "node:stream/consumers";
 import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import {
   closeServer,
@@ -33,14 +34,6 @@ export interface RawResponse {
   headers: http.IncomingHttpHeaders;
   rawHeaders: string[];
   body: Buffer;
-}
-
-async function readAll(stream: AsyncIterable<Buffer | Uint8Array>): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of stream) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks);
 }
 
 /** Header names of a captured request as sent, lowercased, in wire order. */
@@ -77,7 +70,7 @@ export function rawRequest(baseUrl: string, options: RawRequestOptions): Promise
         headers: options.headers ?? {},
       },
       (res) => {
-        readAll(res).then(
+        buffer(res).then(
           (body) =>
             resolve({
               status: res.statusCode ?? 0,
@@ -92,4 +85,36 @@ export function rawRequest(baseUrl: string, options: RawRequestOptions): Promise
     req.on("error", reject);
     req.end(options.body);
   });
+}
+
+export const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
+
+/** POSTs a JSON body, by default an `eth_blockNumber` call, to the proxy root. */
+export function postRpc(url: string, body: string = RPC_BODY): Promise<RawResponse> {
+  return rawRequest(url, {
+    method: "POST",
+    path: "/",
+    headers: { "content-type": "application/json" },
+    body,
+  });
+}
+
+interface ProxyError {
+  kind: string;
+  message: string;
+  executed?: string;
+  traceId?: string;
+}
+
+/** The status and the `error` fields of a proxy error answer. */
+export function errorOf(res: RawResponse): ProxyError & { status: number } {
+  const { error } = JSON.parse(res.body.toString()) as { error: ProxyError };
+  return { status: res.status, ...error };
+}
+
+/** Every value of header `name` as sent, one per header line. */
+export function headerValues(res: RawResponse, name: string): string[] {
+  return res.rawHeaders.filter(
+    (_, i) => i % 2 === 1 && res.rawHeaders[i - 1]?.toLowerCase() === name,
+  );
 }
