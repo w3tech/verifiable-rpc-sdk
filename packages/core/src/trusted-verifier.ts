@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// TrustedVerifier: `verifyResponse`, then a TTL pubkey cache, then `attestNode` for an unknown
-// signer. A pubkey is cached only after its attestation verified.
+// TrustedVerifier: `verifyResponse`, then a TTL pubkey cache, then one shared `attestNode` per
+// unknown signer, bounded by a deadline. A pubkey is cached only after its attestation verified.
 
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { createCloudVerifier, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 import { LRUCache } from "lru-cache";
 
-import { attestNode } from "./attestation";
+import { raceAbort } from "./abort";
+import { ATTESTATION_TIMEOUT_MS, attestNode } from "./attestation";
+import { AttestationUnavailable } from "./errors";
 import { pickVrpcHeaders, truncateHex } from "./log-redact";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
 import { checkOptions } from "./options";
@@ -61,6 +63,7 @@ export interface TrustedVerifierOptions {
 /** Verifies signed responses and attests each unknown signer once per cache TTL. */
 export class TrustedVerifier {
   private readonly cache: LRUCache<string, true>;
+  private readonly inflight = new Map<string, Promise<void>>();
   private readonly chainId: string;
   private readonly replayWindowMs: number | undefined;
   private readonly attestationUrl: string;
@@ -89,7 +92,7 @@ export class TrustedVerifier {
     this.logger = opts.logger ? safeLogger(opts.logger) : defaultLogger;
   }
 
-  /** `verifyResponse` (throws propagate), then the cache, then `attestNode` on a miss; caches only after success. */
+  /** `verifyResponse` (throws propagate), then the cache, then a shared `attestNode` on a miss; caches only after success. */
   async verify(
     requestBytes: Uint8Array,
     responseBytes: Uint8Array,
@@ -126,20 +129,43 @@ export class TrustedVerifier {
       return pair;
     }
 
-    await attestNode({
-      transport: this.transport,
-      attestationUrl: this.attestationUrl,
-      headers: this.headers,
-      hardwareVerifier: this.hardwareVerifier,
-      logger: this.logger,
-      expectPubkey: pubkeyHex,
-      nodeId: pair.nodeId,
-    });
+    // No await between the cache check and registering the flight: concurrent callers share it.
+    let flight = this.inflight.get(pubkeyHex);
+    if (flight === undefined) {
+      flight = this.attest(pubkeyHex, pair.nodeId).finally(() => this.inflight.delete(pubkeyHex));
+      this.inflight.set(pubkeyHex, flight);
+    }
+    await flight;
+    return pair;
+  }
 
+  private async attest(pubkeyHex: string, nodeId: string | undefined): Promise<void> {
+    const deadline = new AbortController();
+    const timer = setTimeout(
+      () => deadline.abort(new AttestationUnavailable("timeout")),
+      ATTESTATION_TIMEOUT_MS,
+    );
+    try {
+      // The hardware verifier takes no signal, so the deadline also settles the attestation itself.
+      await raceAbort(
+        attestNode({
+          transport: this.transport,
+          attestationUrl: this.attestationUrl,
+          headers: this.headers,
+          hardwareVerifier: this.hardwareVerifier,
+          logger: this.logger,
+          signal: deadline.signal,
+          expectPubkey: pubkeyHex,
+          nodeId,
+        }),
+        deadline.signal,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
     this.cache.set(pubkeyHex, true);
     if (this.logger !== defaultLogger) {
       this.logger.debug("cache.store", { pubkeyHex, ttlMs: this.ttlMs });
     }
-    return pair;
   }
 }

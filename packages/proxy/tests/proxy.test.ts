@@ -12,7 +12,11 @@ import type { AddressInfo } from "node:net";
 import * as zlib from "node:zlib";
 import { verifyAsync } from "@noble/ed25519";
 import { buildPreImage } from "@w3tech.io/vrpc-core";
-import { TEST_PUBKEY_HEX } from "@w3tech.io/vrpc-test-support";
+import {
+  attestationStub,
+  mockHardwareVerifier,
+  TEST_PUBKEY_HEX,
+} from "@w3tech.io/vrpc-test-support";
 import { request } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -356,6 +360,29 @@ describe("proxy pipeline", () => {
     const res = await post(url, RPC_REQUEST, { "accept-encoding": "gzip" });
 
     await expectErrorKind(res, 502, "DecodeFailed");
+  });
+
+  test("concurrentColdRequestsShareOneAttestation", async () => {
+    const mock = await startMockSidecar();
+    cleanups.push(() => mock.close());
+    const stub = attestationStub();
+    // Answers once every request has reached the upstream.
+    const fetch = (async (input: string) => {
+      await vi.waitFor(() => expect(mock.received).toHaveLength(10), { interval: 1 });
+      return stub.fetch(input);
+    }) as typeof globalThis.fetch;
+    const overrides = { fetch, hardwareVerifier: mockHardwareVerifier() };
+    const server = createProxyServer(testConfig(mock.url), overrides);
+    const url = await listen(server);
+    cleanups.push(() => closeServer(server));
+
+    const sends = Array.from({ length: 10 }, () =>
+      post(url, RPC_REQUEST, { "content-type": "application/json" }),
+    );
+    const statuses = (await Promise.all(sends)).map((res) => res.status);
+
+    expect(statuses).toEqual(Array(10).fill(200));
+    expect(stub.urls).toHaveLength(1);
   });
 
   test("silentLevelProducesZeroConsoleOutput", async () => {
