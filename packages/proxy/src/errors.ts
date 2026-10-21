@@ -125,15 +125,6 @@ export class DecodeFailedError extends ProxyError {
   }
 }
 
-/** Unexpected internal failure — generic message, no details leaked. */
-export class InternalProxyError extends ProxyError {
-  readonly kind = "Internal" as const;
-
-  constructor(message: string) {
-    super(message, 502);
-  }
-}
-
 const UNDICI_TIMEOUT_CODES = new Set([
   "UND_ERR_CONNECT_TIMEOUT",
   "UND_ERR_HEADERS_TIMEOUT",
@@ -227,31 +218,13 @@ export function renderError(res: http.ServerResponse, err: unknown, log: ProxyLo
     res.destroy();
     return;
   }
-  const body = errorResponseBody(kind, message, traceId, executed);
+  // Only the strings: core's StaleTimestamp carries bigint fields that JSON.stringify rejects.
+  const body = JSON.stringify({
+    error: { kind, message, ...(traceId ? { traceId } : {}), ...(executed ? { executed } : {}) },
+  });
   res.writeHead(status, {
     "content-type": "application/json",
     "content-length": String(Buffer.byteLength(body)),
   });
   res.end(body);
-}
-
-/**
- * Serialize an error into the typed JSON error body. Only `kind` and
- * `message` are serialized — core's StaleTimestamp carries bigint fields, so
- * stringifying an error object raw would throw.
- */
-export function errorResponseBody(
-  kind: string,
-  message: string,
-  traceId?: string,
-  executed?: "no" | "unknown",
-): string {
-  return JSON.stringify({
-    error: {
-      kind,
-      message,
-      ...(traceId ? { traceId } : {}),
-      ...(executed ? { executed } : {}),
-    },
-  });
 }

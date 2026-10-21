@@ -15,8 +15,6 @@ export {
   BodyTooLargeError,
   ConfigError,
   DecodeFailedError,
-  errorResponseBody,
-  InternalProxyError,
   ProxyError,
   UnsignedUpstreamError,
   UnsupportedMediaTypeError,

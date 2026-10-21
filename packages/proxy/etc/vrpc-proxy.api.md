@@ -36,16 +36,6 @@ export class DecodeFailedError extends ProxyError {
 }
 
 // @public
-export function errorResponseBody(kind: string, message: string, traceId?: string, executed?: "no" | "unknown"): string;
-
-// @public
-export class InternalProxyError extends ProxyError {
-    constructor(message: string);
-    // (undocumented)
-    readonly kind: "Internal";
-}
-
-// @public
 export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig;
 
 // @public

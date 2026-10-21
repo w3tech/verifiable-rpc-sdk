@@ -26,7 +26,6 @@ import { describe, expect, test } from "vitest";
 import {
   BodyTooLargeError,
   describeError,
-  errorResponseBody,
   UnsignedUpstreamError,
   UnsupportedMediaTypeError,
   upstreamError,
@@ -217,21 +216,4 @@ describe("anything else", () => {
 test("a traceId on the error is kept", () => {
   const err = Object.assign(new UnsignedUpstreamError(200), { traceId: "t" });
   expect(describeError(err).traceId).toBe("t");
-});
-
-describe("errorResponseBody", () => {
-  test("carries executed after the message when given", () => {
-    const body = errorResponseBody("RequestRejected", "m", undefined, "no");
-    expect(body).toBe('{"error":{"kind":"RequestRejected","message":"m","executed":"no"}}');
-  });
-
-  test("has neither executed nor traceId by default", () => {
-    expect(JSON.parse(errorResponseBody("K", "m"))).toEqual({ error: { kind: "K", message: "m" } });
-  });
-
-  test("keeps the traceId", () => {
-    expect(JSON.parse(errorResponseBody("K", "m", "t"))).toEqual({
-      error: { kind: "K", message: "m", traceId: "t" },
-    });
-  });
 });
