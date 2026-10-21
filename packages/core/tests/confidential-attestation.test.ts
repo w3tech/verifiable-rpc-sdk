@@ -189,6 +189,7 @@ describe("ConfidentialClient attestation: quote verification", () => {
     expect(err).toBeInstanceOf(AttestationFailed);
     expect(err).toBeInstanceOf(VerificationError);
     expect((err as AttestationFailed).chkId).toBe("CHK-P1");
+    expect((err as AttestationFailed).executed).toBe("no");
     expect((err as Error).cause).toBe(failure);
     expect(posts(node)).toBe(0);
 
@@ -269,6 +270,7 @@ describe("ConfidentialClient attestation: gateway answers", () => {
     expect(err).toBeInstanceOf(MalformedAttestationResponse);
     const malformed = err as MalformedAttestationResponse;
     expect(malformed.reason).toBe("response is not valid JSON");
+    expect(malformed.executed).toBe("no");
     expect(malformed.cause).toBeUndefined();
     expect(malformed.message).not.toContain("sentinel-body");
     expect(String(malformed)).not.toContain("sentinel-body");
@@ -396,5 +398,21 @@ describe("ConfidentialClient attestation: request", () => {
     }
     expect(node.attestations()).toBe(1);
     expect(posts(node)).toBe(0);
+  });
+
+  test("ready and request waiting on one failed attestation reject with the same error, not executed", async () => {
+    const node = testNode();
+    const client = clientFor(node.transport, {
+      hardwareVerifier: mockHardwareVerifier({ fail: new AttestationError("CHK-P1", "down") }),
+    });
+    const [ready, call] = await Promise.all([
+      rejectionOf(client.ready()),
+      rejectionOf(client.request(jsonRpcCall())),
+    ]);
+
+    expect(call).toBeInstanceOf(AttestationFailed);
+    expect(ready).toBe(call);
+    expect((call as AttestationFailed).executed).toBe("no");
+    expect(node.attestations()).toBe(1);
   });
 });

@@ -62,8 +62,6 @@ export class AttestationUnavailable extends UnavailableError {
         cause?: unknown;
     });
     // (undocumented)
-    readonly executed: "no";
-    // (undocumented)
     readonly kind: "AttestationUnavailable";
     // (undocumented)
     readonly reason: AttestationUnavailableReason;
@@ -114,8 +112,6 @@ export class ConfidentialSealFailed extends UnavailableError {
     constructor(options?: {
         cause?: unknown;
     });
-    // (undocumented)
-    readonly executed: "no";
     // (undocumented)
     readonly kind: "ConfidentialSealFailed";
 }
@@ -196,7 +192,7 @@ export class InvalidChainId extends VerificationError {
 }
 
 // @public
-export class InvalidInnerRequest extends VerificationError {
+export class InvalidInnerRequest extends VrpcError {
     constructor(reason: InvalidInnerRequestReason);
     // (undocumented)
     readonly kind: "InvalidInnerRequest";
@@ -282,8 +278,6 @@ export class RequestRejected extends UnavailableError {
     // (undocumented)
     readonly contentType?: string;
     // (undocumented)
-    readonly executed: "no";
-    // (undocumented)
     readonly kind: "RequestRejected";
     // (undocumented)
     readonly nodeId: string;
@@ -331,8 +325,6 @@ export class TransportFailed extends UnavailableError {
         cause?: unknown;
     });
     // (undocumented)
-    readonly executed: "unknown";
-    // (undocumented)
     readonly kind: "TransportFailed";
     // (undocumented)
     readonly nodeId: string;
@@ -368,11 +360,7 @@ export interface TrustedVerifierOptions {
 }
 
 // @public
-export abstract class UnavailableError extends Error {
-    constructor(message: string, options?: {
-        cause?: unknown;
-    });
-    abstract readonly executed: "no" | "unknown";
+export abstract class UnavailableError extends VrpcError {
     // (undocumented)
     abstract readonly kind: UnavailableErrorKind;
 }
@@ -386,8 +374,6 @@ export class UnexpectedResponse extends UnavailableError {
     // (undocumented)
     readonly contentType?: string;
     // (undocumented)
-    readonly executed: "unknown";
-    // (undocumented)
     readonly kind: "UnexpectedResponse";
     // (undocumented)
     readonly nodeId: string;
@@ -399,14 +385,13 @@ export class UnexpectedResponse extends UnavailableError {
 export function validateChainId(chainId: string): string;
 
 // @public
-export abstract class VerificationError extends Error {
-    constructor(message: string);
+export abstract class VerificationError extends VrpcError {
     // (undocumented)
     abstract readonly kind: VerificationErrorKind;
 }
 
 // @public (undocumented)
-export type VerificationErrorKind = "MissingHeader" | "MalformedHeader" | "InvalidChainId" | "BadSignature" | "StaleTimestamp" | "InvalidNonce" | "MalformedAttestationResponse" | "AttestationNodeNotFound" | "AttestationCorrelation" | "Attestation" | "ConfidentialSignerMismatch" | "InvalidInnerRequest" | "ConfidentialDecryptFailed" | "MalformedConfidentialResponse";
+export type VerificationErrorKind = "MissingHeader" | "MalformedHeader" | "InvalidChainId" | "BadSignature" | "StaleTimestamp" | "InvalidNonce" | "MalformedAttestationResponse" | "AttestationNodeNotFound" | "AttestationCorrelation" | "Attestation" | "ConfidentialSignerMismatch" | "ConfidentialDecryptFailed" | "MalformedConfidentialResponse";
 
 // @public (undocumented)
 export interface VerifiedPair {
@@ -433,6 +418,16 @@ export interface VerifyResponseOptions {
     logger?: Logger;
     nowMs?: bigint;
     replayWindowMs?: number;
+}
+
+// @public
+export abstract class VrpcError extends Error {
+    constructor(message: string, options?: {
+        cause?: unknown;
+    });
+    executed: "no" | "unknown";
+    // (undocumented)
+    abstract readonly kind: string;
 }
 
 // @public

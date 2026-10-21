@@ -19,8 +19,8 @@ import {
   RequestRejected,
   StaleTimestamp,
   TransportFailed,
-  UnavailableError,
   UnexpectedResponse,
+  VrpcError,
 } from "@w3tech.io/vrpc-core";
 import { describe, expect, test } from "vitest";
 
@@ -44,7 +44,8 @@ function expectRow(
   const result = describeConfidentialError(err);
   expect(result.status).toBe(status);
   expect(result.kind).toBe(kind);
-  expect("executed" in result).toBe(err instanceof UnavailableError || executed !== undefined);
+  expect("executed" in result).toBe(err instanceof VrpcError);
+  if (err instanceof VrpcError) expect(result.executed).toBe(err.executed);
   if (executed !== undefined) expect(result.executed).toBe(executed);
   return result;
 }
@@ -64,8 +65,10 @@ describe("proxy-side rejections", () => {
     "header",
     "content-type-required",
     "encode-failed",
-  ])("InvalidInnerRequest %s is 400", (reason) => {
-    const result = expectRow(new InvalidInnerRequest(reason), 400, "InvalidInnerRequest");
+  ])("InvalidInnerRequest %s is 400 executed no", (reason) => {
+    const err = new InvalidInnerRequest(reason);
+    err.executed = "no";
+    const result = expectRow(err, 400, "InvalidInnerRequest", "no");
     expect(result.message).toBe(`Inner request rejected: ${reason}`);
   });
 });
@@ -92,6 +95,7 @@ describe("AttestationUnavailable", () => {
       503,
     ],
   ])("%s", (_name, err, status) => {
+    err.executed = "no";
     expectRow(err, status, "AttestationUnavailable", "no");
   });
 });
@@ -141,23 +145,21 @@ describe("TransportFailed", () => {
 });
 
 test("seal failure is 500 executed no", () => {
-  expectRow(
-    new ConfidentialSealFailed({ cause: new Error("x") }),
-    500,
-    "ConfidentialSealFailed",
-    "no",
-  );
+  const err = new ConfidentialSealFailed({ cause: new Error("x") });
+  err.executed = "no";
+  expectRow(err, 500, "ConfidentialSealFailed", "no");
 });
 
 describe("verification failures", () => {
   const sig = `0x${"ab".repeat(64)}`;
   const key = `0x${"cd".repeat(32)}`;
-  test.each<[string, Error]>([
+  test.each<[string, VrpcError]>([
     ["Attestation", new AttestationFailed("CHK-1", "detail")],
     ["MalformedAttestationResponse", new MalformedAttestationResponse("r")],
     ["InvalidNonce", new InvalidNonce("r")],
-  ])("%s is 502 with its own kind and no executed", (kind, err) => {
-    const result = expectRow(err, 502, kind);
+  ])("%s before sending is 502 with its own kind, executed no", (kind, err) => {
+    err.executed = "no";
+    const result = expectRow(err, 502, kind, "no");
     expect(result.message).toBe(err.message);
   });
 

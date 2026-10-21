@@ -214,6 +214,7 @@ const attestationRows: Row[] = [
     },
     status: 502,
     kind: "Attestation",
+    executed: "no",
   },
 ];
 

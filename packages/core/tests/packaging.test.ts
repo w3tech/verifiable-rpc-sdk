@@ -242,7 +242,12 @@ describe("bundling", () => {
         expect(namesBundledPackage(specifier), specifier).toBe(false);
       }
       const outputs = readdirSync(entriesDir).filter((name) => name.endsWith(".js"));
-      for (const name of ["VerificationError", "UnavailableError", "ResponseTooLarge"]) {
+      for (const name of [
+        "VrpcError",
+        "VerificationError",
+        "UnavailableError",
+        "ResponseTooLarge",
+      ]) {
         const declaring = outputs.filter((file) => CLASS_DECLARATION(name).test(read(file)));
         expect(declaring, name).toHaveLength(1);
       }

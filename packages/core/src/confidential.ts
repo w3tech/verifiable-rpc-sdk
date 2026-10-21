@@ -36,5 +36,6 @@ export {
   UnavailableError,
   UnexpectedResponse,
   VerificationError,
+  VrpcError,
 } from "./errors";
 export type { ConfidentialTransport, OuterRequest, OuterResponse } from "./transport";

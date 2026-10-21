@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Typed verification errors thrown by the vrpc-core verification APIs.
+// Typed errors thrown by vrpc-core; every class extends the root `VrpcError`.
 //
 // Discriminated union via the `kind` field plus a class hierarchy:
 //   try { ... } catch (err: unknown) {
@@ -25,25 +25,34 @@ export type VerificationErrorKind =
   | "AttestationCorrelation"
   | "Attestation"
   | "ConfidentialSignerMismatch"
-  | "InvalidInnerRequest"
   | "ConfidentialDecryptFailed"
   | "MalformedConfidentialResponse";
+
+/** Root of every error class in vrpc-core. */
+export abstract class VrpcError extends Error {
+  abstract readonly kind: string;
+  /**
+   * `"no"`: the gateway or node did not run this attempt; an edge proxy retry may have run an earlier attempt of the same call.
+   * `"unknown"`: the call may or may not have run; check state before resending a state-changing call.
+   */
+  executed: "no" | "unknown" = "unknown";
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options?.cause === undefined ? undefined : { cause: options.cause });
+    // `this.constructor.name` reflects the concrete subclass at runtime, so
+    // `JSON.stringify`-style serialisation and logging report e.g. "BadSignature"
+    // rather than the abstract "VerificationError" or the v8 default "Error".
+    this.name = this.constructor.name;
+  }
+}
 
 /**
  * Abstract base for all verification errors. The `kind` discriminator is set
  * by each concrete subclass to a literal type, so consumers can narrow via
  * `if (err.kind === "BadSignature") { ... }` without `instanceof` chains.
  */
-export abstract class VerificationError extends Error {
-  abstract readonly kind: VerificationErrorKind;
-
-  constructor(message: string) {
-    super(message);
-    // `this.constructor.name` reflects the concrete subclass at runtime, so
-    // `JSON.stringify`-style serialisation and logging report e.g. "BadSignature"
-    // rather than the abstract "VerificationError" or the v8 default "Error".
-    this.name = this.constructor.name;
-  }
+export abstract class VerificationError extends VrpcError {
+  abstract override readonly kind: VerificationErrorKind;
 }
 
 /** Required `vRPC-*` response header was absent from the signed response. */
@@ -226,10 +235,7 @@ export class AttestationFailed extends VerificationError {
     public readonly detail: string,
     options?: { cause?: unknown },
   ) {
-    super(`Attestation verification failed [${chkId}]: ${detail}`);
-    if (options?.cause !== undefined) {
-      (this as { cause?: unknown }).cause = options.cause;
-    }
+    super(`Attestation verification failed [${chkId}]: ${detail}`, options);
   }
 }
 
@@ -253,7 +259,7 @@ export type InvalidInnerRequestReason =
   | "encode-failed";
 
 /** The caller's inner request cannot be sent; rejected before any network call. */
-export class InvalidInnerRequest extends VerificationError {
+export class InvalidInnerRequest extends VrpcError {
   readonly kind = "InvalidInnerRequest" as const;
 
   constructor(public readonly reason: InvalidInnerRequestReason) {
@@ -293,21 +299,8 @@ export type UnavailableErrorKind =
   | "ConfidentialSealFailed";
 
 /** Base of the errors raised when a confidential call got no verifiable answer. */
-export abstract class UnavailableError extends Error {
-  abstract readonly kind: UnavailableErrorKind;
-  /**
-   * `"no"`: the gateway or node did not run this attempt; an edge proxy retry may have run an earlier attempt of the same call.
-   * `"unknown"`: the call may or may not have run; check state before resending a state-changing call.
-   */
-  abstract readonly executed: "no" | "unknown";
-
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message);
-    this.name = this.constructor.name;
-    if (options?.cause !== undefined) {
-      (this as { cause?: unknown }).cause = options.cause;
-    }
-  }
+export abstract class UnavailableError extends VrpcError {
+  abstract override readonly kind: UnavailableErrorKind;
 }
 
 export type AttestationUnavailableReason = "status" | "transport" | "node-id-missing" | "timeout";
@@ -318,7 +311,6 @@ export type AttestationUnavailableReason = "status" | "transport" | "node-id-mis
  */
 export class AttestationUnavailable extends UnavailableError {
   readonly kind = "AttestationUnavailable" as const;
-  readonly executed = "no" as const;
   declare readonly status?: number;
 
   constructor(
@@ -340,7 +332,6 @@ export class AttestationUnavailable extends UnavailableError {
 /** The confidential endpoint answered with something other than a sealed response. */
 export class UnexpectedResponse extends UnavailableError {
   readonly kind = "UnexpectedResponse" as const;
-  readonly executed = "unknown" as const;
   declare readonly contentType?: string;
 
   constructor(
@@ -358,7 +349,6 @@ export class UnexpectedResponse extends UnavailableError {
 /** A 4xx that is not an encrypted answer: the gateway or node refused this attempt. */
 export class RequestRejected extends UnavailableError {
   readonly kind = "RequestRejected" as const;
-  readonly executed = "no" as const;
   declare readonly contentType?: string;
 
   constructor(
@@ -367,6 +357,7 @@ export class RequestRejected extends UnavailableError {
     contentType?: string,
   ) {
     super(`Confidential request rejected: HTTP ${status}`);
+    this.executed = "no";
     if (contentType !== undefined) {
       this.contentType = contentType;
     }
@@ -378,7 +369,6 @@ export type TransportFailedReason = "network" | "too-large";
 /** The confidential request failed in transport, or its answer exceeded the response size cap. */
 export class TransportFailed extends UnavailableError {
   readonly kind = "TransportFailed" as const;
-  readonly executed = "unknown" as const;
 
   constructor(
     public readonly reason: TransportFailedReason,
@@ -392,7 +382,6 @@ export class TransportFailed extends UnavailableError {
 /** The local crypto runtime failed while sealing the request, so nothing was sent; `cause` holds the runtime error. */
 export class ConfidentialSealFailed extends UnavailableError {
   readonly kind = "ConfidentialSealFailed" as const;
-  readonly executed = "no" as const;
 
   constructor(options?: { cause?: unknown }) {
     super("Confidential request could not be sealed by the local crypto runtime", options);

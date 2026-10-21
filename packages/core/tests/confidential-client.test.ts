@@ -187,6 +187,7 @@ describe("ConfidentialClient", () => {
     expect(err).toBeInstanceOf(VerificationError);
     const mismatch = err as ConfidentialSignerMismatch;
     expect(mismatch.kind).toBe("ConfidentialSignerMismatch");
+    expect(mismatch.executed).toBe("unknown");
     expect(mismatch.expectedPubkey).toBe(node.pubkeyHex);
     expect(mismatch.actualPubkey).toBe(TEST_PUBKEY_HEX);
   });
@@ -212,9 +213,10 @@ describe("ConfidentialClient call surface", () => {
     const err = await rejectionOf(clientFor(node.transport).request(inner));
 
     expect(err).toBeInstanceOf(InvalidInnerRequest);
-    expect(err).toBeInstanceOf(VerificationError);
+    expect(err).not.toBeInstanceOf(VerificationError);
     const invalid = err as InvalidInnerRequest;
     expect(invalid.kind).toBe("InvalidInnerRequest");
+    expect(invalid.executed).toBe("no");
     expect(invalid.reason).toBe(reason);
     expect(invalid.message).not.toContain(inner.path);
     expect(node.requests).toHaveLength(0);

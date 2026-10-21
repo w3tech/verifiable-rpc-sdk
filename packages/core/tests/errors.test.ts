@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   AttestationCorrelationError,
+  AttestationFailed,
   AttestationNodeNotFoundError,
   AttestationUnavailable,
   BadSignature,
@@ -21,9 +22,46 @@ import {
   UnavailableError,
   UnexpectedResponse,
   VerificationError,
+  VrpcError,
 } from "../src/errors";
 
 describe("errors", () => {
+  test("everyClassIsAVrpcErrorThatMayHaveExecutedByDefault", () => {
+    const key = `0x${"00".repeat(32)}`;
+    const all: VrpcError[] = [
+      new MissingHeader("vRPC-Signature"),
+      new MalformedHeader("vRPC-Pubkey", "x", "y"),
+      new InvalidChainId("", "empty"),
+      new BadSignature({
+        signatureHex: `0x${"00".repeat(64)}`,
+        pubkeyHex: key,
+        preImageSha256: new Uint8Array(32),
+      }),
+      new StaleTimestamp({ observedMs: 1n, nowMs: 2n, skewMs: -1n, allowedWindowMs: 1 }),
+      new InvalidNonce("r"),
+      new MalformedAttestationResponse("r"),
+      new AttestationNodeNotFoundError("n"),
+      new AttestationCorrelationError(key, key),
+      new AttestationFailed("CHK-1", "d"),
+      new ConfidentialSignerMismatch(key, key),
+      new InvalidInnerRequest("path"),
+      new ConfidentialDecryptFailed(),
+      new MalformedConfidentialResponse("framing"),
+      new AttestationUnavailable("timeout"),
+      new UnexpectedResponse(502, "n"),
+      new TransportFailed("network", "n"),
+      new ConfidentialSealFailed(),
+    ];
+    for (const err of all) {
+      expect(err).toBeInstanceOf(VrpcError);
+      expect(err.executed).toBe("unknown");
+      expect("cause" in err).toBe(false);
+    }
+    const rejected = new RequestRejected(429, "n");
+    expect(rejected).toBeInstanceOf(VrpcError);
+    expect(rejected.executed).toBe("no");
+  });
+
   test("subclassesAreInstanceOfVerificationErrorAndError", () => {
     const missing = new MissingHeader("vRPC-Signature");
     expect(missing instanceof Error).toBe(true);
@@ -234,7 +272,7 @@ describe("errors", () => {
       expect(err instanceof UnavailableError).toBe(true);
       expect(err instanceof VerificationError).toBe(false);
     }
-    expect(attestation.executed).toBe("no");
+    expect(attestation.executed).toBe("unknown");
     expect(unexpected.executed).toBe("unknown");
     expect(attestation.name).toBe("AttestationUnavailable");
     expect(unexpected.name).toBe("UnexpectedResponse");
@@ -276,9 +314,11 @@ describe("errors", () => {
     expect(err.actualPubkey).toBe(actual);
   });
 
-  test("invalidInnerRequestIsAVerificationError", () => {
+  test("invalidInnerRequestIsNeitherAVerificationNorAnUnavailableError", () => {
     const err = new InvalidInnerRequest("content-type-required");
-    expect(err instanceof VerificationError).toBe(true);
+    expect(err instanceof VrpcError).toBe(true);
+    expect(err instanceof VerificationError).toBe(false);
+    expect(err instanceof UnavailableError).toBe(false);
     expect(err.kind).toBe("InvalidInnerRequest");
     expect(err.name).toBe("InvalidInnerRequest");
     expect(err.reason).toBe("content-type-required");
@@ -315,14 +355,13 @@ describe("errors", () => {
     expect("cause" in new TransportFailed("too-large", "node-1")).toBe(false);
   });
 
-  test("confidentialSealFailedIsUnavailableNotExecutedAndKeepsCause", () => {
+  test("confidentialSealFailedIsUnavailableAndKeepsCause", () => {
     const cause = new Error("platform crypto failure");
     const err = new ConfidentialSealFailed({ cause });
     expect(err instanceof UnavailableError).toBe(true);
     expect(err instanceof VerificationError).toBe(false);
     expect(err.kind).toBe("ConfidentialSealFailed");
     expect(err.name).toBe("ConfidentialSealFailed");
-    expect(err.executed).toBe("no");
     expect(err.cause).toBe(cause);
     expect(err.message).toBe(
       "Confidential request could not be sealed by the local crypto runtime",

@@ -79,6 +79,7 @@ describe("@w3tech.io/vrpc-core/confidential", () => {
 
   test("every error the client throws is the same value in the entry", () => {
     const names = [
+      "VrpcError",
       "VerificationError",
       "UnavailableError",
       "BadSignature",

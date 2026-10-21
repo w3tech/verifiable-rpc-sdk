@@ -44,7 +44,7 @@ const EVENT_FIELDS: Record<string, { required: string[]; optional: string[] }> =
     optional: [],
   },
   "proxy.error": { required: ["kind", "status", "message"], optional: ["executed"] },
-  "proxy.attestFailed": { required: ["kind", "message"], optional: ["executed"] },
+  "proxy.attestFailed": { required: ["kind", "message"], optional: [] },
   "proxy.clientAborted": { required: [], optional: [] },
 };
 

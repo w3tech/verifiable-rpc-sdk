@@ -10,8 +10,7 @@ import {
   InvalidInnerRequest,
   RequestRejected,
   TransportFailed,
-  UnavailableError,
-  VerificationError,
+  VrpcError,
 } from "@w3tech.io/vrpc-core";
 import type {
   ConfidentialClient,
@@ -90,17 +89,6 @@ export function createConfidentialTransport(
   };
 }
 
-// Raised on the answer to the sealed request, so the node may have run the call.
-const AFTER_SEND_KINDS: ReadonlySet<string> = new Set([
-  "BadSignature",
-  "StaleTimestamp",
-  "MissingHeader",
-  "MalformedHeader",
-  "ConfidentialSignerMismatch",
-  "ConfidentialDecryptFailed",
-  "MalformedConfidentialResponse",
-]);
-
 /** Status, kind and message of the typed JSON error for a failed confidential request. */
 export function describeConfidentialError(err: unknown): {
   status: number;
@@ -111,36 +99,29 @@ export function describeConfidentialError(err: unknown): {
   if (err instanceof ProxyError) {
     return { status: err.httpStatus, kind: err.kind, message: err.message };
   }
-  // A VerificationError subclass, so it must precede the generic verification row.
-  if (err instanceof InvalidInnerRequest) {
-    return { status: 400, kind: err.kind, message: err.message };
+  if (!(err instanceof VrpcError)) {
+    return { status: 502, kind: "Internal", message: "Internal proxy error" };
   }
-  if (err instanceof AttestationUnavailable) {
-    const timedOut = err.reason === "timeout" || err.cause instanceof UpstreamTimeoutError;
-    const status = err.status === 429 ? 429 : timedOut ? 504 : 503;
-    return { status, kind: err.kind, message: err.message, executed: err.executed };
-  }
-  if (err instanceof RequestRejected) {
-    // Other 4xx would collide with the node's own relayed statuses.
-    const status = err.status === 413 || err.status === 429 ? err.status : 502;
-    return { status, kind: err.kind, message: err.message, executed: err.executed };
-  }
+  const { executed } = err;
   if (err instanceof TransportFailed && err.cause instanceof ProxyError) {
     const { httpStatus, kind, message } = err.cause;
-    return { status: httpStatus, kind, message, executed: err.executed };
+    return { status: httpStatus, kind, message, executed };
   }
-  if (err instanceof ConfidentialSealFailed) {
-    return { status: 500, kind: err.kind, message: err.message, executed: err.executed };
+  return { status: statusOf(err), kind: err.kind, message: err.message, executed };
+}
+
+function statusOf(err: VrpcError): number {
+  if (err instanceof InvalidInnerRequest) return 400;
+  if (err instanceof AttestationUnavailable) {
+    if (err.status === 429) return 429;
+    return err.reason === "timeout" || err.cause instanceof UpstreamTimeoutError ? 504 : 503;
   }
-  if (err instanceof UnavailableError) {
-    return { status: 502, kind: err.kind, message: err.message, executed: err.executed };
+  // Other 4xx would collide with the node's own relayed statuses.
+  if (err instanceof RequestRejected && (err.status === 413 || err.status === 429)) {
+    return err.status;
   }
-  if (err instanceof VerificationError) {
-    return AFTER_SEND_KINDS.has(err.kind)
-      ? { status: 502, kind: err.kind, message: err.message, executed: "unknown" }
-      : { status: 502, kind: err.kind, message: err.message };
-  }
-  return { status: 502, kind: "Internal", message: "Internal proxy error" };
+  if (err instanceof ConfidentialSealFailed) return 500;
+  return 502;
 }
 
 // Built from scratch: nothing from the outer answer reaches the client.

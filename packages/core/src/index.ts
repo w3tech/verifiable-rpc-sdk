@@ -53,6 +53,7 @@ export {
   UnavailableError,
   UnexpectedResponse,
   VerificationError,
+  VrpcError,
 } from "./errors";
 export { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
 export type { Logger } from "./logger";

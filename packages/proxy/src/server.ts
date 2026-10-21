@@ -160,12 +160,8 @@ function createConfidentialServer(
             durationMs: Math.round(performance.now() - started),
           }),
         (err: unknown) => {
-          const { kind, message, executed } = describeConfidentialError(err);
-          proxyLogger.error("proxy.attestFailed", {
-            kind,
-            message,
-            ...(executed ? { executed } : {}),
-          });
+          const { kind, message } = describeConfidentialError(err);
+          proxyLogger.error("proxy.attestFailed", { kind, message });
         },
       )
       // A failing log sink must not end the process.

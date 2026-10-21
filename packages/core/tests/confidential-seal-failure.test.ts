@@ -53,4 +53,24 @@ describe("sealing failures", () => {
     await client.request(jsonRpcCall());
     expect(node.attestations()).toBe(2);
   });
+
+  test("an abort while sealing rejects with the reason, sends nothing and keeps the pin", async () => {
+    const { node, client } = setup();
+    await client.request(jsonRpcCall());
+    const controller = new AbortController();
+    const reason = new Error("caller gave up");
+    vi.mocked(sealRequest).mockImplementationOnce(async (key, bhttp) => {
+      controller.abort(reason);
+      return (await vi.importActual<typeof import("../src/ohttp")>("../src/ohttp")).sealRequest(
+        key,
+        bhttp,
+      );
+    });
+
+    const err = await rejectionOf(client.request(jsonRpcCall(), { signal: controller.signal }));
+    expect(err).toBe(reason);
+    expect("executed" in reason).toBe(false);
+    expect(node.requests.filter((r) => r.method === "POST")).toHaveLength(1);
+    expect(client.getConfidentialInfo()).toBeDefined();
+  });
 });

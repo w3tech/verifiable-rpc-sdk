@@ -21,6 +21,7 @@ import {
   RequestRejected,
   TransportFailed,
   UnexpectedResponse,
+  VrpcError,
 } from "./errors";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
 import { attestNode, errorKind, type Pin, PinSlot } from "./node-session";
@@ -204,19 +205,27 @@ export class ConfidentialClient {
    * Sends one inner request sealed to the pinned node; any inner status is returned, not thrown.
    * An abort rejects with `signal.reason`; aborting after the request was sent leaves the outcome unknown.
    * A failure of the local crypto runtime while sealing is `ConfidentialSealFailed`; nothing was sent.
+   * Every failure raised before the request was handed to the transport has `executed: "no"`.
    */
   async request(
     inner: InnerRequest,
     options?: { signal?: AbortSignal },
   ): Promise<ConfidentialResponse> {
     const signal = options?.signal;
-    if (signal?.aborted) throw signal.reason;
-    const bhttp = await encodeInnerRequest(inner);
-    const pin = await this.#slot.acquire(signal);
+    let pin: Pin | undefined;
+    let sent = false;
     try {
-      return await this.#exchange(pin, bhttp, signal);
+      if (signal?.aborted) throw signal.reason;
+      const bhttp = await encodeInnerRequest(inner);
+      pin = await this.#slot.acquire(signal);
+      const sealed = await seal(pin.nodeKey, bhttp);
+      if (signal?.aborted) throw signal.reason;
+      sent = true;
+      return await this.#exchange(pin, sealed, signal);
     } catch (err) {
-      if (!(signal?.aborted && err === signal.reason)) {
+      if (signal?.aborted && err === signal.reason) throw err;
+      if (!sent && err instanceof VrpcError) err.executed = "no";
+      if (pin !== undefined) {
         this.#slot.evict(pin);
         if (this.#logger !== defaultLogger) {
           this.#logger.debug("confidential.evict", { nodeId: pin.nodeId, kind: errorKind(err) });
@@ -228,11 +237,9 @@ export class ConfidentialClient {
 
   async #exchange(
     pin: Pin,
-    bhttp: Uint8Array,
+    sealed: SealedRequest,
     signal: AbortSignal | undefined,
   ): Promise<ConfidentialResponse> {
-    const sealed = await seal(pin.nodeKey, bhttp);
-    if (signal?.aborted) throw signal.reason;
     const logger = this.#logger === defaultLogger ? undefined : this.#logger;
     const started = logger === undefined ? 0 : Date.now();
     logger?.debug("confidential.request", {
