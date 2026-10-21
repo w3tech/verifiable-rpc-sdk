@@ -142,6 +142,19 @@ describe("ConfidentialClient attestation: gateway answers", () => {
   });
 });
 
+describe("ConfidentialClient attestation: a transport that ignores the size cap", () => {
+  test.each([
+    [200, { reason: "too-large" }],
+  ])("a %i answer over 1 MiB is AttestationUnavailable", async (status, fields) => {
+    const node = testNode();
+    node.setAttestation(() => answer(status, new Uint8Array(1_048_577)));
+    const err = await rejectionOf(clientFor(node.transport).ready());
+
+    expect(err).toBeInstanceOf(AttestationUnavailable);
+    expect(err).toMatchObject(fields);
+  });
+});
+
 describe("ConfidentialClient attestation: quote binding and compose", () => {
   test("an app_compose that does not hash to composeHash is AttestationFailed CHK-A2", async () => {
     const node = testNode();

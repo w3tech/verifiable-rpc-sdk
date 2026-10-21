@@ -7,6 +7,8 @@ import { InvalidNonce } from "../src/errors";
 
 const TEST_URL = "http://test.local:8545";
 const TEST_ATTESTATION_URL = `${TEST_URL}/attestation`;
+const MiB = 1_048_576;
+const CHUNK = 65_536;
 
 /**
  * Canonical hand-crafted golden fixture — mirrors the sidecar's Rust unit
@@ -151,6 +153,37 @@ describe("fetchAttestation", () => {
       nonce: new Uint8Array(32),
     });
     expect(b.composeHash).toBe("deadbeef");
+  });
+
+  test.each([
+    {
+      name: "a declared length over 1 MiB",
+      headers: { "content-length": String(MiB + 1) },
+      max: 0,
+    },
+    { name: "an endless body", headers: {}, max: MiB + CHUNK },
+  ])("the 1 MiB cap stops reading $name", async ({ headers, max }) => {
+    let read = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull: (controller) => {
+          read += CHUNK;
+          controller.enqueue(new Uint8Array(CHUNK));
+        },
+        cancel: () => {
+          cancelled = true;
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const fetch = (async () => new Response(body, { headers })) as typeof globalThis.fetch;
+    const err = await rejectionOf(
+      fetchAttestation({ attestationUrl: TEST_ATTESTATION_URL, nonce: new Uint8Array(32), fetch }),
+    );
+    expect(err).toMatchObject({ reason: "too-large" });
+    expect(cancelled).toBe(true);
+    expect(read).toBeLessThanOrEqual(max);
   });
 
   // ── Gateway-routed attestation: the former via-gateway helper's describe,

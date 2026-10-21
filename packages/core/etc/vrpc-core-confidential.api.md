@@ -213,6 +213,7 @@ export interface OuterRequest {
     body?: Uint8Array;
     // (undocumented)
     headers: Record<string, string>;
+    maxBytes?: number;
     // (undocumented)
     method: "GET" | "POST";
     // (undocumented)

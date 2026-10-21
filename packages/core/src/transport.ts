@@ -13,6 +13,8 @@ export interface OuterRequest {
   headers: Record<string, string>;
   body?: Uint8Array;
   signal?: AbortSignal;
+  /** Answer size cap for this request; a transport that ignores it is checked after the read. */
+  maxBytes?: number;
 }
 
 export interface OuterResponse {
@@ -35,22 +37,25 @@ export class ResponseTooLarge extends Error {
   }
 }
 
-/** Reads a fetch `Response` body for a `ConfidentialTransport`, stopping at the response size cap. */
-export async function readCappedBody(response: Response): Promise<Uint8Array> {
+/** Reads a fetch `Response` body for a `ConfidentialTransport`, stopping at `maxBytes` (default: the response size cap). */
+export async function readCappedBody(
+  response: Response,
+  maxBytes = MAX_RESPONSE_BYTES,
+): Promise<Uint8Array> {
   const body = response.body as ReadableStream<Uint8Array> | null | undefined;
   // node-fetch hands over a Node Readable, whatwg-fetch and React Native no body at all.
   const stream = typeof body?.getReader === "function" ? body : undefined;
   // With an encoding, content-length is the encoded size; the runtime hands over decoded bytes.
   const encoding = (response.headers.get("content-encoding") ?? "identity").trim().toLowerCase();
   const declared = Number(response.headers.get("content-length"));
-  if ((encoding === "" || encoding === "identity") && declared > MAX_RESPONSE_BYTES) {
+  if ((encoding === "" || encoding === "identity") && declared > maxBytes) {
     await stream?.cancel();
     throw new ResponseTooLarge();
   }
   if (body === null) return new Uint8Array(0);
   if (stream === undefined) {
     const buffered = new Uint8Array(await response.arrayBuffer());
-    if (buffered.byteLength > MAX_RESPONSE_BYTES) throw new ResponseTooLarge();
+    if (buffered.byteLength > maxBytes) throw new ResponseTooLarge();
     return buffered;
   }
   const reader = stream.getReader();
@@ -60,7 +65,7 @@ export async function readCappedBody(response: Response): Promise<Uint8Array> {
     const { done, value } = await reader.read();
     if (done) break;
     total += value.byteLength;
-    if (total > MAX_RESPONSE_BYTES) {
+    if (total > maxBytes) {
       await reader.cancel();
       throw new ResponseTooLarge();
     }
@@ -109,7 +114,7 @@ export function fetchTransport(
       return {
         status: response.status,
         headers: response.headers,
-        body: await readCappedBody(response),
+        body: await readCappedBody(response, request.maxBytes),
       };
     } catch (err) {
       if (request.signal?.aborted) throw request.signal.reason;

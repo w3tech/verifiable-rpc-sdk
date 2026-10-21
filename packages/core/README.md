@@ -160,8 +160,9 @@ client.getConfidentialInfo(); // { nodeId, pubkey, composeHash, attestedAt }, or
   the content-decoded body. `fetchTransport(fetchFn)` from
   `@w3tech.io/vrpc-core` builds one over your own fetch; it is the default
   transport over the global fetch. A transport of your own reads the body with
-  `readCappedBody(response)`, which stops at the 192 MiB cap and then fails the
-  call with `TransportFailed` (reason `too-large`).
+  `readCappedBody(response, request.maxBytes)`, which stops at the request's
+  `maxBytes` (1 MiB for the attestation GET, 192 MiB when unset) and then fails
+  the call with `TransportFailed` (reason `too-large`).
 
 The inner request is `{ method, path, contentType?, accept?, body? }`. A `GET`
 without a body is allowed; a request body requires `contentType`. Only
@@ -458,7 +459,7 @@ fields; some empty under the dstack simulator).
 | `validateChainId(...)` | function | Validates a chain id string (sidecar-identical rules: non-empty, ≤64 bytes, printable ASCII, no inner whitespace) and returns the trimmed value; throws `InvalidChainId`. |
 | `isSignedVrpcResponse(...)` | function | Predicate: whether a response carries the `vRPC-*` signing headers. |
 | `fetchTransport(fetchFn?)` | function | A confidential `transport` over `fetchFn` (the global fetch when omitted): no redirect, no retry, body capped at 192 MiB, errors without the URL. |
-| `readCappedBody(response)` | function | Reads a fetch `Response` body for a custom confidential `transport`; throws `ResponseTooLarge` past 192 MiB. |
+| `readCappedBody(response, maxBytes?)` | function | Reads a fetch `Response` body for a custom confidential `transport`; throws `ResponseTooLarge` past `maxBytes` (default 192 MiB). |
 | `ResponseTooLarge` | class | Thrown by `readCappedBody`; the client turns it into `TransportFailed` (reason `too-large`). |
 
 ---

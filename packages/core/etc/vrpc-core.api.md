@@ -361,7 +361,7 @@ export function parseChainId(rawResponseBytes: Uint8Array): string;
 export function pickVrpcHeaders(headers: Record<string, string>): Record<string, string>;
 
 // @public
-export function readCappedBody(response: Response): Promise<Uint8Array>;
+export function readCappedBody(response: Response, maxBytes?: number): Promise<Uint8Array>;
 
 // @public
 export class RequestRejected extends UnavailableError {

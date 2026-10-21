@@ -114,6 +114,7 @@ async function getAttestation(
         `${opts.attestationUrl}?nonce=${bytesToHex(opts.nonce)}` +
         (opts.nodeId === undefined ? "" : `&node_id=${encodeURIComponent(opts.nodeId)}`),
       headers: opts.headers,
+      maxBytes: MAX_ATTESTATION_BYTES,
       ...(opts.signal === undefined ? {} : { signal: opts.signal }),
     });
   } catch (cause) {
@@ -121,6 +122,7 @@ async function getAttestation(
     if (cause instanceof ResponseTooLarge) throw new AttestationUnavailable("too-large");
     throw new AttestationUnavailable("transport", { cause });
   }
+  // Backstop for a transport that ignores maxBytes.
   if (response.body.byteLength > MAX_ATTESTATION_BYTES) {
     throw new AttestationUnavailable("too-large");
   }
