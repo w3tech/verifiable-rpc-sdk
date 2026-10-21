@@ -3,8 +3,8 @@
 Both adapters are **one-line swaps**. You keep your existing ethers `Provider` /
 viem `Client` API surface unchanged; every HTTP JSON-RPC response now arrives
 Ed25519-verified over its raw content-decoded bytes before the value reaches
-your code. In the default `strict` mode a verification failure is thrown, never
-silently passed through.
+your code. A verification failure is always thrown, never silently passed
+through.
 
 Upgrading from 0.3.2? See [Upgrading from 0.3 to 0.4](#upgrading-from-03-to-04).
 
@@ -122,7 +122,7 @@ chain ids above `Number.MAX_SAFE_INTEGER` (2^53−1) bind exactly and do not
 produce false `BadSignature` rejections). Non-EVM chains pass the exact
 configured string (e.g. TON's global id `"-239"`, or Stellar's network id — the
 sha256 of its passphrase, a 64-char hex string) — an invalid string throws
-`InvalidChainId` at construction.
+`InvalidOption` at construction.
 
 **Why set it explicitly (recommended).** When the chain id is omitted (no
 positional `chainId` for ethers, no `chain` on the viem client), each adapter
@@ -199,13 +199,15 @@ vrpc-core default 60s). viem additionally accepts `headers`, `fetchFn`, and
 
 The failure type is the **same shared `VerificationError` family** across both
 adapters (`MissingHeader`, `MalformedHeader`, `BadSignature`, `StaleTimestamp`,
-`InvalidNonce`, `MalformedAttestationResponse` — each carries a discriminator
-`kind`). What differs is only how you reach it from each library's error
-plumbing.
+`InvalidNonce`, `AttestationFailed` — each carries a discriminator `kind`).
+Attestation that cannot be fetched right now is `AttestationUnavailable`, an
+`UnavailableError`. Every error carries `executed`; a retry is safe only when
+`mayHaveExecuted(err)` returns `false`. What differs is only how you reach it
+from each library's error plumbing.
 
 ### ethers — `instanceof`
 
-In `strict` mode the `VerificationError` propagates straight out of the call.
+The `VerificationError` propagates straight out of the call.
 Catch it and test with `instanceof`:
 
 ```ts
@@ -293,6 +295,107 @@ The error changes apply to the same classes re-exported by
 | `errorResponseBody`, `InternalProxyError` | Removed | Delete the references |
 | `new UpstreamBodyTooLargeError(maxBodyBytes)` with `maxBodyBytes` | `new UpstreamBodyTooLargeError()`, no `maxBodyBytes` | Read the limit from your `ProxyConfig.maxBodyBytes` |
 
+### Behaviour changes
+
+Errors (core, ethers, viem, proxy):
+
+- Every error has `executed: "no" | "unknown"` (was absent). A retry is safe
+  only when `mayHaveExecuted(err)` returns `false`:
+  `if (!mayHaveExecuted(err)) retry();`
+- Bad options throw `InvalidOption { option, reason }` synchronously from
+  `new VrpcProvider`, `vrpcHttp`, `new TrustedVerifier` and the proxy CLI. Before:
+  `TypeError` for a bad URL, `RangeError` or `InvalidChainId` for a bad configured
+  chain id, and `replayWindowMs` 0, negative, fractional, `NaN` or `Infinity`,
+  `pubkeyCacheTtlMs` `NaN`, `Infinity` or fractional, and invalid headers were
+  accepted. Catch `InvalidOption` where you build the client.
+- `InvalidChainId` now means only a chain id that came from the node (the
+  `eth_chainId` bootstrap) or the input of `verifyResponse` / `validateChainId`.
+  An unparsable `eth_chainId` body is `InvalidChainId` (was `MalformedHeader`).
+- Attestation that cannot be fetched or checked right now throws
+  `AttestationUnavailable` (an `UnavailableError`, not a `VerificationError`):
+  transport failure, any non-2xx including 404 and 3xx (redirects are not
+  followed), the 60 s deadline, a response over 1 MiB, a Phala verifier outage.
+  Before: raw `TypeError`, `MalformedAttestationResponse` or
+  `AttestationNodeNotFoundError`. `catch (e instanceof VerificationError)` no
+  longer catches these; treat `AttestationUnavailable` as transient and
+  `AttestationFailed` as a hard failure.
+- A custom `HardwareVerifier` that throws anything other than `AttestationError`
+  gives `AttestationFailed` with `reason: "check"`, `chkId: "CHK-P1"` (was
+  rethrown as is).
+- `vRPC-Timestamp` longer than 20 digits or above 2^64−1 is `MalformedHeader`
+  (was `RangeError`).
+- A repeated `vRPC-*` header, or an empty `vRPC-NodeId`, is `MalformedHeader`
+  (was accepted with the joined value).
+
+ethers:
+
+- A signed non-2xx response is verified before `SERVER_ERROR`; a forged signed
+  4xx/5xx is `BadSignature` (was `SERVER_ERROR` with the unverified body).
+- Invalid UTF-8 in a signed 2xx body is `TypeError` (was `INVALID_ARGUMENT`).
+
+viem:
+
+- A custom `fetchFn` receives `init.body` as a `Uint8Array` (the signed request
+  bytes), not a string. Pass it to `fetch` unchanged.
+- One transport serves one chain: the first client's `chain`, or the verified
+  `eth_chainId` bootstrap. A client with another `chain.id` gets
+  `InvalidOption("chainId")` and nothing is sent (was `BadSignature` or the other
+  chain's data). Create one `vrpcHttp` per chain.
+- A signed non-2xx without a JSON-RPC `error`, and a non-2xx bootstrap, are
+  `HttpRequestError` (was `undefined`, the body's `result`, or
+  `MalformedHeader`). `HttpRequestError.body` of an unsigned non-2xx is the full
+  JSON-RPC payload (was `{ method, params }`).
+- Invalid UTF-8 in a signed 2xx body is `TypeError` (was decoded to U+FFFD).
+
+@w3tech.io/vrpc-proxy:
+
+- `--timeout` also bounds the attestation GET and the Phala cloud verify; both go
+  through the proxy's HTTP agent.
+- Attestation errors: `AttestationUnavailable` is 503, 504 on timeout, 429 when
+  the attestation endpoint returned 429 (was 502 `MalformedAttestationResponse`,
+  `AttestationNodeNotFound`, `Attestation` or `Internal`). Attestation failure is
+  502 `kind: "AttestationFailed"` (was `Attestation` or `AttestationCorrelation`).
+- An overflowing `vRPC-Timestamp` is 502 `MalformedHeader` (was `Internal`); any
+  other `UnavailableError` is 502 with its own `kind` (was `Internal`).
+- Every error body from a `VrpcError` carries `executed`.
+- Network error messages are fixed: `Upstream request failed`, `Upstream response
+  body exceeds the size limit`. The original error code is only in the
+  `proxy.error` log line. An invalid upstream header is 502 `UpstreamConnect`.
+- A client disconnect aborts the upstream request.
+- The upstream URL query is forwarded (was dropped).
+- A bad `--chain-id` prints `Invalid chainId: <reason>` (the value is no longer
+  echoed).
+- `--log-level debug` writes core events as `[vrpc-proxy] debug <event> {json}`
+  lines to stderr (was multi-line `console.debug` output on stdout).
+
+@w3tech.io/dstack-verify:
+
+- `createCloudVerifier`: a Phala outage (transport, timeout including the body
+  read, 5xx, 429, 408, non-JSON 2xx) throws `AttestationError` with
+  `unavailable: true`; core turns it into `AttestationUnavailable` with
+  `reason: "verifier"` (was a `CHK-P1` failure). A well-formed rejection still
+  fails closed.
+
+### New in 0.4
+
+- Ankr Confidential RPC: entry `@w3tech.io/vrpc-core/confidential`
+  (`ConfidentialClient`, `ConfidentialInfo`), `LazyConfidentialClient` in the main
+  entry.
+- ethers: `new VrpcProvider(url, chainId, { confidential: true })`,
+  `confidentialReady()`, `getConfidentialInfo()`.
+- viem: `vrpcHttp(url, { confidential: true })`.
+- Proxy: `--confidential` / `VRPC_PROXY_CONFIDENTIAL`, `ProxyConfig.confidential`,
+  `UnsupportedMediaTypeError`, `code` on `DecodeFailedError` and
+  `UpstreamBodyTooLargeError`.
+- Errors: `VrpcError`, `UnavailableError` (`AttestationUnavailable`,
+  `RequestRejected`, `UnexpectedResponse`, `TransportFailed`, `InternalError`),
+  `InvalidOption`, `mayHaveExecuted`, the confidential error classes.
+- ethers and viem re-export everything in `@w3tech.io/vrpc-core/errors`,
+  including `InvalidNonce`, `BadSignatureContext`, `StaleTimestampContext`,
+  `VerificationErrorKind` and `OptionName`.
+- Core: `createOpenSession`, `checkOptions`, `fetchTransport`, `readCappedBody`.
+- dstack-verify: `AttestationError.unavailable`.
+
 ---
 
 ## Runnable examples
@@ -304,8 +407,9 @@ returned):
 - [`examples/01-ethers-client.ts`](./examples/01-ethers-client.ts) — drop-in ethers `VrpcProvider`
 - [`examples/02-viem-client.ts`](./examples/02-viem-client.ts) — viem `vrpcHttp` transport + `createPublicClient`
 - [`examples/03-vrpc-core-walkthrough.ts`](./examples/03-vrpc-core-walkthrough.ts) — `@w3tech.io/vrpc-core` walkthrough (signed wire → `verifyResponse` → tamper→`BadSignature` → `fetchAttestation` + `TrustedVerifier`)
+- [`examples/04-proxy.ts`](./examples/04-proxy.ts) — spawns `vrpc-proxy` and calls it with a plain `fetch`
 
 ```sh
 pnpm install
-pnpm example:all   # or: pnpm example:01-ethers-client / example:02-viem-client / example:03-vrpc-core-walkthrough
+pnpm example:all   # or: pnpm example:01-ethers-client / example:02-viem-client / example:03-vrpc-core-walkthrough / example:04-proxy
 ```
