@@ -428,8 +428,11 @@ describe("configuration errors", () => {
         expect.objectContaining({ name: "InvalidOption", option: "chainId" }),
       );
     }
-    expect(make(42161, { confidential: "true" })).toThrow(TypeError);
-    expect(make(42161, { confidential: 1 })).toThrow(TypeError);
+    for (const confidential of ["true", 1]) {
+      expect(make(42161, { confidential })).toThrow(
+        expect.objectContaining({ name: "InvalidOption", option: "confidential" }),
+      );
+    }
     for (const option of ["replayWindowMs", "pubkeyCacheTtlMs"]) {
       for (const value of [0, -1, 1.5, Number.POSITIVE_INFINITY]) {
         expect(make(42161, { confidential: true, [option]: value })).toThrow(
@@ -444,8 +447,7 @@ describe("configuration errors", () => {
     } catch (err) {
       urlError = err;
     }
-    expect(urlError).toBeInstanceOf(TypeError);
-    expect((urlError as Error).message).toBe("Invalid vRPC URL");
+    expect(urlError).toMatchObject({ name: "InvalidOption", option: "url" });
     for (const form of textForms(urlError)) expect(form).not.toContain("sentinel-key");
 
     await new Promise((resolve) => setTimeout(resolve, 1500));

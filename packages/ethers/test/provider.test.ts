@@ -15,6 +15,7 @@
 import {
   BadSignature,
   InvalidChainId,
+  InvalidOption,
   MalformedHeader,
   MissingHeader,
   StaleTimestamp,
@@ -589,9 +590,79 @@ describe("VrpcProvider._send wiring", () => {
     expect(() => new VrpcProvider("http://test.invalid", "-239", WIDE_OPTIONS)).not.toThrow();
   });
 
-  test("invalid string chainId throws InvalidChainId at construction", () => {
-    expect(() => new VrpcProvider("http://test.invalid", " ", WIDE_OPTIONS)).toThrow(
-      InvalidChainId,
+  test("an auto-derived chain id over 64 bytes is InvalidChainId after the bootstrap", async () => {
+    const provider = new VrpcProvider(
+      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
+        bootstrapChainId: `1${"0".repeat(70)}`,
+        bootstrapUnsigned: true,
+      }),
+      undefined,
+      WIDE_OPTIONS,
     );
+    const err = await provider.getBalance(ADDR).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(InvalidChainId);
+    expect(err).toMatchObject({ executed: "unknown" });
+  });
+});
+
+describe("constructor options", () => {
+  const sent: string[] = [];
+  const counting = {
+    ...WIDE_OPTIONS,
+    fetch: (async (input: string | URL | Request) => {
+      sent.push(String(input));
+      return ATT.fetch(input);
+    }) as typeof fetch,
+  };
+
+  function invalidOption(make: () => unknown): InvalidOption {
+    let caught: unknown;
+    try {
+      make();
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(InvalidOption);
+    return caught as InvalidOption;
+  }
+
+  test("a bad URL is InvalidOption in both modes and its message omits the URL", () => {
+    for (const confidential of [false, true]) {
+      const err = invalidOption(() => new VrpcProvider("::bad SECRETKEY42", 1, { confidential }));
+      expect(err).toMatchObject({ option: "url", executed: "no" });
+      expect(`${String(err)} ${JSON.stringify(err)}`).not.toContain("SECRETKEY42");
+    }
+  });
+
+  test("a fractional number or an invalid string chain id is InvalidOption", () => {
+    for (const chainId of [1.5, " "]) {
+      expect(invalidOption(() => new VrpcProvider("http://test.invalid", chainId))).toMatchObject({
+        option: "chainId",
+      });
+    }
+  });
+
+  test("open-mode millisecond options and the confidential flag are checked before any request", async () => {
+    const cases = [
+      ["replayWindowMs", CHAIN_ID, { replayWindowMs: 0 }],
+      ["pubkeyCacheTtlMs", undefined, { pubkeyCacheTtlMs: Number.POSITIVE_INFINITY }],
+      ["confidential", CHAIN_ID, { confidential: "yes" }],
+    ] as const;
+    for (const [option, chainId, options] of cases) {
+      const url = autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX));
+      url.getUrlFunc = async (req) => {
+        sent.push(req.url);
+        throw new Error("nothing may be sent");
+      };
+      const make = () => new VrpcProvider(url, chainId, { ...counting, ...(options as object) });
+      expect(invalidOption(make)).toMatchObject({ option });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sent).toEqual([]);
+  });
+
+  test("confidentialReady in open mode still rejects with TypeError", async () => {
+    const provider = new VrpcProvider("http://test.invalid", CHAIN_ID, WIDE_OPTIONS);
+    await expect(provider.confidentialReady()).rejects.toBeInstanceOf(TypeError);
   });
 });

@@ -9,9 +9,7 @@
 // `buildRequest` maps it by code.
 
 import {
-  type ConfidentialInfo,
   checkOptions,
-  deriveVrpcUrls,
   fetchTransport,
   InvalidOption,
   isSignedVrpcResponse,
@@ -20,6 +18,7 @@ import {
   TrustedVerifier,
   type TrustedVerifierOptions,
 } from "@w3tech.io/vrpc-core";
+import type { ConfidentialInfo } from "@w3tech.io/vrpc-core/confidential";
 import { createTransport, HttpRequestError, RpcRequestError, type Transport } from "viem";
 
 import { linkSignal, mapInnerResponse } from "./confidential";
@@ -60,14 +59,16 @@ export function vrpcHttp(
   url: string,
   opts: VrpcHttpOptions = {},
 ): Transport<"vrpc-http"> | Transport<"vrpc-http", ConfidentialValue> {
-  if (opts.confidential !== undefined && typeof opts.confidential !== "boolean") {
-    throw new TypeError("confidential must be a boolean");
-  }
-  if (opts.confidential === true) return confidentialHttp(url, opts);
+  const { urls, confidential } = checkOptions({
+    url,
+    headers: opts.headers,
+    replayWindowMs: opts.replayWindowMs,
+    pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
+    confidential: opts.confidential,
+  });
+  if (confidential) return confidentialHttp(urls.rpcUrl, opts);
   const fetchFn = opts.fetchFn ?? fetch;
-
-  // Derive the `/attestation` sub-route from the single URL.
-  const { rpcUrl, attestationUrl } = deriveVrpcUrls(url);
+  const { rpcUrl, attestationUrl } = urls;
 
   // Pinned from the viem client's chain.id (seeded in the factory below), or
   // auto-derived lazily when no chain is set; the in-flight bootstrap promise is
@@ -243,15 +244,9 @@ export interface ConfidentialValue {
 }
 
 function confidentialHttp(
-  url: string,
+  rpcUrl: string,
   opts: VrpcHttpOptions,
 ): Transport<"vrpc-http", ConfidentialValue> {
-  const { rpcUrl } = checkOptions({
-    url,
-    headers: opts.headers,
-    replayWindowMs: opts.replayWindowMs,
-    pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
-  }).urls;
   const origin = new URL(rpcUrl).origin;
   let client: LazyConfidentialClient | undefined;
   let boundChainId: string | undefined;

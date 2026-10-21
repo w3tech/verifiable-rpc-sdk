@@ -671,3 +671,41 @@ describe("vrpcHttp transport wiring", () => {
     expect(bootstrapHits.n).toBe(0);
   });
 });
+
+describe("vrpcHttp options", () => {
+  function invalidOption(make: () => unknown): InvalidOption {
+    let caught: unknown;
+    try {
+      make();
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(InvalidOption);
+    return caught as InvalidOption;
+  }
+
+  test("a bad URL is InvalidOption in both modes and its message omits the URL", () => {
+    for (const confidential of [false, true]) {
+      const err = invalidOption(() => vrpcHttp("::bad SECRETKEY42", { confidential }));
+      expect(err).toMatchObject({ option: "url", executed: "no" });
+      expect(`${String(err)} ${JSON.stringify(err)}`).not.toContain("SECRETKEY42");
+    }
+  });
+
+  test("a non-boolean confidential flag and an open-mode TTL are checked before any request", () => {
+    const sent: string[] = [];
+    const fetchFn = async (url: string) => {
+      sent.push(url);
+      throw new Error("nothing may be sent");
+    };
+    const url = "http://test.invalid/eth_vrpc";
+
+    expect(invalidOption(() => vrpcHttp(url, { confidential: "yes" } as never))).toMatchObject({
+      option: "confidential",
+    });
+    expect(
+      invalidOption(() => vrpcHttp(url, { fetchFn, pubkeyCacheTtlMs: Number.POSITIVE_INFINITY })),
+    ).toMatchObject({ option: "pubkeyCacheTtlMs" });
+    expect(sent).toEqual([]);
+  });
+});

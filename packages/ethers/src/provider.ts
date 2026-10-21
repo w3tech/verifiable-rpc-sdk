@@ -7,14 +7,12 @@
 // unverified data is ever returned.
 
 import {
-  deriveVrpcUrls,
+  checkOptions,
   InvalidOption,
   LazyConfidentialClient,
   parseChainId,
   TrustedVerifier,
   type TrustedVerifierOptions,
-  type VrpcUrls,
-  validateChainId,
 } from "@w3tech.io/vrpc-core";
 import type { ConfidentialInfo } from "@w3tech.io/vrpc-core/confidential";
 import {
@@ -74,22 +72,18 @@ export class VrpcProvider extends JsonRpcProvider {
       ...ethersOpts
     } = options;
 
-    if (confidential !== undefined && typeof confidential !== "boolean") {
-      throw new TypeError("confidential must be a boolean");
-    }
-
-    // Derive `/attestation` from the single URL (the URL is the explicit vRPC
-    // route, used verbatim for RPC); for a FetchRequest, clone it so the
-    // consumer's auth/headers ride along.
-    let urls: VrpcUrls;
-    try {
-      urls = deriveVrpcUrls(typeof url === "string" ? url : url.url);
-    } catch (err) {
-      // The platform error echoes the URL, which may carry the API key.
-      if (confidential === true) throw new TypeError("Invalid vRPC URL");
-      throw err;
-    }
+    // A FetchRequest's headers (e.g. `x-api-key`) also authenticate the attestation leg, as in viem.
+    const attestationHeaders = typeof url === "string" ? undefined : url.headers;
+    const { urls, chainId } = checkOptions({
+      url: typeof url === "string" ? url : url.url,
+      chainId: chainIdArg ?? undefined,
+      headers: attestationHeaders,
+      replayWindowMs,
+      pubkeyCacheTtlMs,
+      confidential,
+    });
     const attestationUrl = urls.attestationUrl;
+    // A FetchRequest is cloned so the consumer's auth and headers ride along.
     let superUrl: string | FetchRequest = urls.rpcUrl;
     if (typeof url !== "string") {
       const clone = url.clone();
@@ -97,25 +91,6 @@ export class VrpcProvider extends JsonRpcProvider {
       superUrl = clone;
     }
 
-    // Reuse the connection FetchRequest's headers (e.g. `x-api-key`) for the
-    // attestation leg, so a single auth set on the URL covers BOTH legs — parity
-    // with viem, where `headers` feed the RPC POST and the attestation fetch
-    // alike. Without this the attestation GET goes out unauthenticated and a
-    // gateway route rejects it (fail-closed). A string URL carries no headers.
-    const attestationHeaders = typeof url === "string" ? undefined : url.headers;
-
-    // Normalize to the canonical decimal string the pre-image binds. number and
-    // bigint args are adapter ergonomics only: BigInt(...).toString(10) — no
-    // `number` round-trip (chain ids can exceed 2^53) and fail-fast on
-    // non-integer numbers. A string arg is validated by core's `validateChainId`
-    // (sidecar-identical rules) and the returned trimmed value is what binds.
-    let chainId: string | undefined;
-    if (chainIdArg != null) {
-      chainId =
-        typeof chainIdArg === "string"
-          ? validateChainId(chainIdArg)
-          : BigInt(chainIdArg).toString(10);
-    }
     if (confidential === true) {
       if (chainId === undefined) {
         throw new InvalidOption("chainId", "Ankr Confidential RPC mode needs a pinned chain id");

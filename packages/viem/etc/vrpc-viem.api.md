@@ -10,7 +10,6 @@ import { AttestationUnavailableReason } from '@w3tech.io/vrpc-core';
 import { BadSignature } from '@w3tech.io/vrpc-core';
 import { ConfidentialDecryptFailed } from '@w3tech.io/vrpc-core';
 import { ConfidentialInfo } from '@w3tech.io/vrpc-core/confidential';
-import { ConfidentialInfo as ConfidentialInfo_2 } from '@w3tech.io/vrpc-core';
 import { ConfidentialSignerMismatch } from '@w3tech.io/vrpc-core';
 import { HardwareVerifier } from '@w3tech.io/vrpc-core';
 import { InternalError } from '@w3tech.io/vrpc-core';

@@ -519,12 +519,12 @@ describe("configuration errors", () => {
     expect(server.requests.map((r) => r.method)).toEqual(["GET", "POST", "POST"]);
   });
 
-  test("a non-boolean confidential option throws TypeError", async () => {
+  test("a non-boolean confidential option throws InvalidOption", async () => {
     const { server } = await harness();
     const consoleCalls = spyConsole();
 
     expect(() => vrpcHttp(`${server.url}/eth_vrpc`, { confidential: "true" } as never)).toThrow(
-      TypeError,
+      InvalidOption,
     );
     expect(server.requests).toEqual([]);
     expect(consoleCalls()).toBe(0);
