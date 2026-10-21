@@ -163,6 +163,8 @@ variables set.
 | Change how a node is attested                 | `packages/core/src/attestation.ts` (`attestNode`) |
 | Change what core enforces on an injected transport | `packages/core/src/transport.ts` (`guardedSend`) |
 | Change open-mode bootstrap, verify or status handling | `packages/core/src/open-session.ts` (`createOpenSession`) |
+| Change how the proxy calls the upstream       | `packages/proxy/src/upstream.ts` (`sendUpstream`) |
+| Change a proxy error status or body           | `packages/proxy/src/errors.ts` (`describeError`) |
 
 ## Conventions
 
