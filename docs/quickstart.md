@@ -85,69 +85,61 @@ The SDK is in **alpha**. The design is the full four-step chain above; here is w
 
 ## Quickstart - run the SDK
 
-Repos:
+### ethers
 
-- **SDK** - https://github.com/w3tech/verifiable-rpc-sdk (TypeScript, Apache-2.0) - you are here
-- **Sidecar** - https://github.com/w3tech/verifiable-rpc-sidecar (Rust, AGPL-3.0)
-
-### The one-line swap
-
-```ts
-// ethers v6 - was:  new ethers.JsonRpcProvider(url)
-import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
-const provider = new VrpcProvider(url, chainId);
-
-// viem - was:  http(url)
-import { vrpcHttp } from "@w3tech.io/vrpc-viem";
-const client = createPublicClient({ chain, transport: vrpcHttp(url) });
+```bash
+pnpm add @w3tech.io/vrpc-ethers ethers
 ```
 
-You pass **one** URL — the explicit vRPC route (e.g. `https://rpc.ankr.com/arbitrum_vrpc`). The SDK uses it verbatim for RPC and derives the `/attestation` route itself - there is no second base URL to configure. `chainId` is optional (the SDK can derive it from a *signed* `eth_chainId`) but passing it is recommended: it pins your expected chain and skips a round-trip.
+```ts
+import { VrpcProvider } from "@w3tech.io/vrpc-ethers";
+const provider = new VrpcProvider("https://rpc.ankr.com/arbitrum_vrpc", 42161); // was: new JsonRpcProvider(url)
+```
 
-Everything downstream - `getBalance`, `eth_call`, `getLogs`, contract reads, `estimateGas` - works exactly as before, now verified.
+### viem
 
-### Get it running
+```bash
+pnpm add @w3tech.io/vrpc-viem viem
+```
+
+```ts
+import { createPublicClient } from "viem";
+import { arbitrum } from "viem/chains";
+import { vrpcHttp } from "@w3tech.io/vrpc-viem";
+const client = createPublicClient({ chain: arbitrum, transport: vrpcHttp("https://rpc.ankr.com/arbitrum_vrpc") }); // was: http(url)
+```
+
+### Any client - the proxy
+
+```bash
+npx @w3tech.io/vrpc-proxy --upstream https://rpc.ankr.com/arbitrum_vrpc --chain-id 42161
+```
+
+Then point your client at `http://127.0.0.1:8969`. Docker: `docker run -p 8969:8969 ghcr.io/w3tech/vrpc-proxy --upstream https://rpc.ankr.com/arbitrum_vrpc --chain-id 42161`.
+
+That is all: every response is verified fail-closed before your code sees it, and everything downstream - `getBalance`, `eth_call`, `getLogs`, contract reads, `estimateGas` - works as before.
+
+You pass **one** URL — the explicit vRPC route. The SDK uses it verbatim for RPC and derives the `/attestation` route itself. The chain id is optional (the SDK can derive it from a *signed* `eth_chainId`), but passing it pins your expected chain and skips a round-trip. Auth headers, options and error handling: the [ethers](../packages/ethers/README.md), [viem](../packages/viem/README.md) and [proxy](../packages/proxy/README.md) READMEs. Upgrading from 0.3: [MIGRATION.md](../MIGRATION.md#upgrading-from-03-to-04).
+
+### Run the examples
+
+Repos: **SDK** - https://github.com/w3tech/verifiable-rpc-sdk (TypeScript, Apache-2.0); **Sidecar** - https://github.com/w3tech/verifiable-rpc-sidecar (Rust, AGPL-3.0).
 
 ```bash
 git clone https://github.com/w3tech/verifiable-rpc-sdk
 cd verifiable-rpc-sdk
 pnpm install
-```
-
-The repo ships runnable examples, wired to `pnpm` scripts:
-
-```bash
 pnpm example:01-ethers-client          # ethers drop-in
 pnpm example:02-viem-client            # viem transport
 pnpm example:03-vrpc-core-walkthrough  # the core primitives, step by step
+pnpm example:04-proxy                  # the proxy in front of a plain fetch
 ```
 
-The packages are published to npm under the `@w3tech.io` scope (`pnpm add @w3tech.io/vrpc-ethers ethers` or `pnpm add @w3tech.io/vrpc-viem viem`). See the per-adapter [package READMEs](../packages) and [MIGRATION.md](../MIGRATION.md) for pointing the examples at a live vRPC endpoint and key.
-
-### Run the proxy (no code change, any client)
-
-Don't want to touch your application code? Run `vrpc-proxy` as a verifying reverse proxy
-and route your RPC traffic through it — any client, any language (Go, Rust, Python, curl,
-existing TypeScript apps), any backend architecture. It forwards to the upstream vRPC
-endpoint, verifies every response fail-closed, and returns verified bytes only. Your
-traffic is vRPC-protected with zero code change.
-
-```bash
-# via Docker (production; amd64)
-docker run -p 8969:8969 ghcr.io/w3tech/vrpc-proxy \
-  --upstream https://rpc.ankr.com/arbitrum_vrpc --chain-id 42161
-
-# or via npx (no Docker)
-npx @w3tech.io/vrpc-proxy \
-  --upstream https://rpc.ankr.com/arbitrum_vrpc --chain-id 42161
-```
-
-Then point your client at `http://127.0.0.1:8969`. The image is signed (cosign) and
-carries build provenance — see [`packages/proxy/README.md`](../packages/proxy/README.md).
+The proxy image is signed (cosign) and carries build provenance — see [`packages/proxy/README.md`](../packages/proxy/README.md).
 
 ### Inspect mode
 
-Beyond the automatic per-call verification, the SDK exposes the proof: `fetchAttestation()` returns the raw quote, signing pubkey, and compose hash, and `verifyAttestationCorrelation()` checks the attestation pubkey against a response signer — the same correlation `TrustedVerifier` runs lazily on every new pubkey. (Behind a load balancer the attestation fetch needs the node id from a prior response - the verified path supplies it automatically.)
+Beyond the automatic per-call verification, the SDK exposes the proof: `fetchAttestation()` returns the raw quote, signing pubkey, and compose hash; `TrustedVerifier` fetches it lazily for every new pubkey and checks that the attestation pubkey is the response signer. (Behind a load balancer the attestation fetch needs the node id from a prior response - the verified path supplies it automatically.)
 
 ---
 

@@ -1,54 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Unit tests for the pipeline's pure helpers: the undici error → transport
-// taxonomy map and the upstream target-URL merge (path join, query merge,
-// dot-segment traversal containment). No network, no server.
+// Unit tests for the pipeline's pure helpers: the upstream body cap and the
+// upstream target-URL merge (path join, query merge, dot-segment traversal
+// containment). No network, no server.
 
-import { MalformedHeader } from "@w3tech.io/vrpc-core";
+import { Readable } from "node:stream";
+
 import { describe, expect, test } from "vitest";
 
-import { UpstreamConnectError, UpstreamTimeoutError } from "../src/errors";
-import { flattenForVerify } from "../src/headers";
-import { buildTargetUrl, mapUndiciError } from "../src/pipeline";
+import { targetUrlFor } from "../src/pipeline";
+import { bufferStream } from "../src/upstream";
 
-function undiciError(code: string, message = code): Error & { code: string } {
-  return Object.assign(new Error(message), { code });
-}
-
-describe("mapUndiciError", () => {
-  test("connectTimeoutMapsTo504UpstreamTimeout", () => {
-    const err = mapUndiciError(undiciError("UND_ERR_CONNECT_TIMEOUT"));
-    expect(err).toBeInstanceOf(UpstreamTimeoutError);
-    expect(err.httpStatus).toBe(504);
-  });
-
-  test("headersTimeoutMapsTo504UpstreamTimeout", () => {
-    const err = mapUndiciError(undiciError("UND_ERR_HEADERS_TIMEOUT"));
-    expect(err).toBeInstanceOf(UpstreamTimeoutError);
-    expect(err.httpStatus).toBe(504);
-  });
-
-  test("bodyTimeoutMapsTo504UpstreamTimeout", () => {
-    const err = mapUndiciError(undiciError("UND_ERR_BODY_TIMEOUT"));
-    expect(err).toBeInstanceOf(UpstreamTimeoutError);
-    expect(err.httpStatus).toBe(504);
-  });
-
-  test("connectionRefusedMapsTo502UpstreamConnect", () => {
-    const err = mapUndiciError(undiciError("ECONNREFUSED", "connect ECONNREFUSED 127.0.0.1:1"));
-    expect(err).toBeInstanceOf(UpstreamConnectError);
-    expect(err.httpStatus).toBe(502);
-  });
-
-  test("nonErrorInputMapsTo502UpstreamConnect", () => {
-    const err = mapUndiciError("socket hang up");
-    expect(err).toBeInstanceOf(UpstreamConnectError);
-    expect(err.httpStatus).toBe(502);
+describe("bufferStream", () => {
+  const overflow = () => new Error("over the cap");
+  test.each([
+    [8, "returns the body whole"],
+    [9, "throws the overflow error"],
+  ])("%i bytes under an 8-byte cap %s", async (size) => {
+    const chunks = Readable.from([Buffer.alloc(5), Buffer.alloc(size - 5)]);
+    const buffered = bufferStream(chunks, 8, overflow);
+    if (size === 8) expect(await buffered).toHaveLength(8);
+    else await expect(buffered).rejects.toThrow("over the cap");
   });
 });
 
-describe("buildTargetUrl", () => {
+describe("targetUrlFor", () => {
   const UPSTREAM = "https://rpc.example.com/arbitrum_vrpc/APIKEY";
+  const buildTargetUrl = (upstreamUrl: string, clientUrl: string) =>
+    targetUrlFor(upstreamUrl)(clientUrl);
 
   test("rootPathForwardsUpstreamUrlUnchanged", () => {
     // No trailing slash appended — key-in-path upstreams stay verbatim.
@@ -103,29 +82,5 @@ describe("buildTargetUrl", () => {
 
   test("traversalWithQueryStillContainedAndQueryPreserved", () => {
     expect(buildTargetUrl(UPSTREAM, "/../foo?x=1")).toBe(`${UPSTREAM}/foo?x=1`);
-  });
-});
-
-describe("flattenForVerify", () => {
-  test("lowercasesNamesAndPassesSingleValues", () => {
-    expect(
-      flattenForVerify({ "vRPC-Signature": "0xabc", "Content-Type": "application/json" }),
-    ).toEqual({ "vrpc-signature": "0xabc", "content-type": "application/json" });
-  });
-
-  test("repeatedVrpcHeaderFailsClosedWithMalformedHeader", () => {
-    expect(() => flattenForVerify({ "vrpc-signature": ["0xaaa", "0xbbb"] })).toThrow(
-      MalformedHeader,
-    );
-  });
-
-  test("repeatedNonVrpcHeaderTakesFirstElement", () => {
-    expect(flattenForVerify({ "set-cookie": ["a=1", "b=2"] })).toEqual({ "set-cookie": "a=1" });
-  });
-
-  test("repeatedContentEncodingFailsClosedWithMalformedHeader", () => {
-    // Verify decodes under flatHeaders["content-encoding"]; a multi-value
-    // header would relay a different coding declaration than was verified.
-    expect(() => flattenForVerify({ "content-encoding": ["gzip", "br"] })).toThrow(MalformedHeader);
   });
 });

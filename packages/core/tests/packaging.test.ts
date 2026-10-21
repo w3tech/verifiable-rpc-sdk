@@ -3,12 +3,12 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import testSupportManifest from "@w3tech.io/vrpc-test-support/package.json";
 import { build, type Options } from "tsup";
 import { afterAll, describe, expect, test } from "vitest";
 import rootManifest from "../../../package.json";
 import dstackVerifyManifest from "../../dstack-verify/package.json";
 import proxyManifest from "../../proxy/package.json";
-import testSupportManifest from "../../test-support/package.json";
 import coreManifest from "../package.json";
 import tsupConfig from "../tsup.config";
 
@@ -57,9 +57,12 @@ const distDir = join(coreDir, "dist");
 
 // Matches `from "x"`, `import "x"` and `import("x")`.
 const SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g;
+// Matches `from "x"` and `import "x"` only.
+const STATIC_SPECIFIER = /(?:\bfrom\s*|\bimport\s+)["']([^"']+)["']/g;
+const DYNAMIC_LOCAL = /\bimport\s*\(\s*["']\.\/([^"']+)["']/g;
 
 const BHTTP_REQUEST_LABEL = "message/bhttp request";
-const CLASS_DECLARATION = (name: string) => new RegExp(`class ${name}\\b|${name} = class`);
+const CLASS_DECLARATION = (name: string) => new RegExp(`\\bclass ${name}\\b|\\b${name} = class`);
 
 function importSpecifiers(dir: string): string[] {
   const specifiers = new Set<string>();
@@ -71,12 +74,12 @@ function importSpecifiers(dir: string): string[] {
   return [...specifiers];
 }
 
-function closure(dir: string, entry: string): string[] {
+function closure(dir: string, entry: string, pattern = SPECIFIER): string[] {
   const seen = new Set<string>();
   const visit = (file: string) => {
     if (seen.has(file)) return;
     seen.add(file);
-    for (const match of readFileSync(join(dir, file), "utf8").matchAll(SPECIFIER)) {
+    for (const match of readFileSync(join(dir, file), "utf8").matchAll(pattern)) {
       const specifier = match[1];
       if (specifier?.startsWith("./")) visit(specifier.slice(2));
     }
@@ -150,20 +153,21 @@ describe("exact pins", () => {
     }
   });
 
-  test("browser test packages are exact root devDependencies matching the installed vitest", () => {
+  test("browser test and coverage packages are exact root devDependencies matching the installed vitest", () => {
     const vitest = JSON.parse(
       readFileSync(new URL("../../../node_modules/vitest/package.json", import.meta.url), "utf8"),
     ) as { version: string };
     expect(root.devDependencies?.["@vitest/browser-playwright"]).toBe("4.1.10");
     expect(root.devDependencies?.["@vitest/browser-playwright"]).toBe(vitest.version);
+    expect(root.devDependencies?.["@vitest/coverage-v8"]).toBe(vitest.version);
     expect(root.devDependencies?.playwright).toBe("1.64.0");
   });
 });
 
 describe("core manifest", () => {
   test("engines, browser field and shipped license file", () => {
-    expect(core.engines?.node).toBe(">=20.19.0");
-    expect(proxy.engines?.node).toBe(">=22.19.0");
+    expect(core.engines?.node).toBe("^22.16.0 || >=24");
+    expect(proxy.engines?.node).toBe(">=24");
     expect(core.browser).toEqual({ crypto: false });
     expect(core.files).toContain("THIRD_PARTY_LICENSES");
   });
@@ -209,7 +213,7 @@ describe("bundling", () => {
     );
   });
 
-  test("the confidential code is reachable only from the confidential entry", async () => {
+  test("the confidential code is reachable statically only from the confidential entry", async () => {
     const entriesDir = mkdtempSync(join(tmpdir(), "vrpc-core-entries-"));
     try {
       await build({
@@ -227,21 +231,28 @@ describe("bundling", () => {
         skipNodeModulesBundle: true,
       });
       const read = (file: string) => readFileSync(join(entriesDir, file), "utf8");
+      const hasBhttp = (entry: string) =>
+        closure(entriesDir, entry).some((file) => read(file).includes(BHTTP_REQUEST_LABEL));
       for (const entry of ["index.js", "errors.js"]) {
-        for (const file of closure(entriesDir, entry)) {
+        for (const file of closure(entriesDir, entry, STATIC_SPECIFIER)) {
           expect(read(file), `${file} from ${entry}`).not.toContain(BHTTP_REQUEST_LABEL);
         }
       }
-      expect(
-        closure(entriesDir, "confidential.js").some((file) =>
-          read(file).includes(BHTTP_REQUEST_LABEL),
-        ),
-      ).toBe(true);
+      const lazy = [...read("index.js").matchAll(DYNAMIC_LOCAL)].map((match) => match[1] ?? "");
+      expect(lazy.some(hasBhttp), "index.js loads the confidential client on demand").toBe(true);
+      expect(hasBhttp("confidential.js")).toBe(true);
       for (const specifier of importSpecifiers(entriesDir)) {
         expect(namesBundledPackage(specifier), specifier).toBe(false);
       }
       const outputs = readdirSync(entriesDir).filter((name) => name.endsWith(".js"));
-      for (const name of ["VerificationError", "UnavailableError", "ResponseTooLarge"]) {
+      for (const name of [
+        "VrpcError",
+        "ConfidentialClient",
+        "VerificationError",
+        "UnavailableError",
+        "InternalError",
+        "ResponseTooLarge",
+      ]) {
         const declaring = outputs.filter((file) => CLASS_DECLARATION(name).test(read(file)));
         expect(declaring, name).toHaveLength(1);
       }
@@ -255,7 +266,6 @@ describe("bundling", () => {
       ...config,
       config: false,
       entry: {
-        "node-key": fileURLToPath(new URL("../src/node-key.ts", import.meta.url)),
         ohttp: fileURLToPath(new URL("../src/ohttp.ts", import.meta.url)),
         bhttp: fileURLToPath(new URL("../src/bhttp.ts", import.meta.url)),
       },

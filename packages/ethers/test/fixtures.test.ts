@@ -5,9 +5,9 @@
 // which `packages/core/tests/verify.test.ts` already covers.
 
 import { verifyResponse } from "@w3tech.io/vrpc-core";
+import { CHAIN_ID } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
-
-import { CHAIN_ID, SINGLE_RESULT } from "./fixtures";
+import { SINGLE_RESULT } from "./fixtures";
 import { fixtureRequest } from "./helpers";
 
 describe("offline fixture scaffold", () => {

@@ -146,8 +146,8 @@ Spread order is enforced so `staticNetwork` cannot be overridden away.
 
 > [!NOTE]
 > Hardware attestation is **always-on and fail-closed**. By default
-> `TrustedVerifier` wires the real Phala CloudVerifier (`createCloudVerifier()`,
-> via vrpc-core's `buildVerifyPolicy`); it **cannot be disabled**. Override the
+> `TrustedVerifier` wires the real Phala CloudVerifier (`createCloudVerifier()`);
+> it **cannot be disabled**. Override the
 > internal `hardwareVerifier` option only to point at a self-hosted endpoint, a
 > future local-DCAP verifier, or a no-network test mock. The `report_data →
 > pubkey/nonce` binding check (CHK-A1) runs unconditionally; the compose-hash
@@ -174,13 +174,13 @@ errors and propagates (fail-closed).
 | Field            | Type                         | Default          | Meaning |
 | ---------------- | ---------------------------- | ---------------- | ------- |
 | `pubkeyCacheTtlMs` | `number`                   | `3_600_000` (1h) | Verified-pubkey cache TTL (ms). A second read within TTL reuses the cache and skips the attestation fetch; past TTL the pubkey is re-attested (no stale trust). |
+| `hardwareVerifier` | `HardwareVerifier`         | Phala cloud verifier (vrpc-core) | Internal/advanced. Overrides the mandatory hardware-signature verifier; it cannot be disabled. |
+| `fetch`            | `typeof fetch`             | global `fetch`   | Carries the attestation GET and the default hardware verifier's call. In Ankr Confidential RPC mode the attestation GET and the sealed requests go through the `FetchRequest`, and through this `fetch` unless it has a `getUrlFunc` of your own. |
+| `logger`           | `Logger`                   | no-op (silent)   | Opt-in debug logger for the verify flow (`createConsoleLogger()` from `@w3tech.io/vrpc-core`). |
 
 > Auth/headers: set them on the `FetchRequest` you pass as the URL
 > (`req.setHeader("x-api-key", …)`) — those cover BOTH the RPC POST and the
-> attestation fetch. (v6.0 removed the inert `allowlist`/`tcb`/`pccsUrl` options —
-> they were trust-anchor knobs the verifier does not yet consume — and the
-> redundant `headers` option; v7.0 reintroduces the trust-anchor options for
-> local-DCAP verification.)
+> attestation fetch.
 
 ```ts
 // Auth the idiomatic ethers way: set it on the FetchRequest. The SDK reuses
@@ -198,19 +198,11 @@ await provider.getBalance("0x0000000000000000000000000000000000000000");
 
 ### Re-exported error family
 
-For `instanceof` checks without importing core directly, the shared error family
-is re-exported: `VerificationError` (base) and `BadSignature`, `MissingHeader`,
-`MalformedHeader`, `StaleTimestamp`, `InvalidChainId`. This is the same family
-the viem adapter reuses — one error family across both adapters.
-
-For Ankr Confidential RPC mode the adapter also re-exports the
-`VerificationError` subclasses `AttestationFailed`,
-`MalformedAttestationResponse`, `ConfidentialSignerMismatch`,
-`ConfidentialDecryptFailed`, `MalformedConfidentialResponse`,
-`InvalidInnerRequest`; the `UnavailableError` base with `AttestationUnavailable`,
-`RequestRejected`, `UnexpectedResponse`, `TransportFailed`,
-`ConfidentialSealFailed`; and the types `UnavailableErrorKind` and
-`ConfidentialInfo`. Each is the same class `@w3tech.io/vrpc-core` exports.
+For `instanceof` checks without importing core directly, the adapter re-exports
+everything in `@w3tech.io/vrpc-core/errors` — `VrpcError`, the `VerificationError`
+and `UnavailableError` families, `InvalidOption`, `InvalidInnerRequest`,
+`mayHaveExecuted` and their types — plus the type `ConfidentialInfo`. Each is the
+same class `@w3tech.io/vrpc-core` exports, shared with the viem adapter.
 
 ## Batching
 
@@ -230,8 +222,8 @@ call encrypted to an attested node.
 The chain id is required and must be decimal. `await provider.confidentialReady()`
 attests up front; `provider.getConfidentialInfo()` returns the pinned node. Auth
 headers, credentials and the timeout come from the `FetchRequest` you pass as the
-URL and apply to both requests; the `fetch` option carries only the default
-hardware verifier's call in this mode.
+URL and apply to both requests. Without a `getUrlFunc` of your own, both requests
+and the default hardware verifier's call go through the `fetch` option.
 
 **CCIP-Read is off.** CCIP-Read (EIP-3668) would send `{ sender, data }` in
 plaintext to a gateway URL the contract names, so the provider sets
@@ -276,7 +268,7 @@ answer first, so the limit is checked only after the answer is in memory.
   `err.response.body`, not in the message.
 - A call that got no verifiable answer throws an `UnavailableError`
   (`AttestationUnavailable`, `RequestRejected`, `UnexpectedResponse`,
-  `TransportFailed`, `ConfidentialSealFailed`); its `executed` field is `"no"` or
+  `TransportFailed`, `InternalError`); its `executed` field is `"no"` or
   `"unknown"`.
 - A failed signature, attestation or decryption check is a `VerificationError`
   subclass.

@@ -2,18 +2,19 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode: logs and error bodies carry no path, query, plaintext, key or client header.
 
-import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
-import { afterEach, describe, expect, test, vi } from "vitest";
-
-import type { TestOuterResponse } from "../../test-support/src/index";
-import type { LogLevel } from "../src/logger";
+import { AttestationError } from "@w3tech.io/dstack-verify";
 import {
-  type RawResponse,
-  rawRequest,
-  startConfidentialProxy,
-  startTestNodeServer,
-} from "./support/test-node-server";
-import { TEST_CHAIN_ID, TEST_SEED } from "./support/test-overrides";
+  createTestNode,
+  isPost,
+  mockHardwareVerifier,
+  type TestOuterResponse,
+} from "@w3tech.io/vrpc-test-support";
+import { expectNoSecrets } from "@w3tech.io/vrpc-test-support/adapter";
+import { holdPosts, serveTestNode } from "@w3tech.io/vrpc-test-support/server";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
+import type { LogLevel } from "../src/logger";
+import { type RawResponse, rawRequest, startConfidentialProxy } from "./support/proxy";
+import { TEST_CHAIN_ID } from "./support/test-overrides";
 
 const API_KEY = "abcdef0123456789".repeat(4);
 const PLAINTEXT_HEX = "73656e74696e656c2d706c61696e74657874";
@@ -37,11 +38,11 @@ const TIMEOUT_MS = 300;
 const EVENT_FIELDS: Record<string, { required: string[]; optional: string[] }> = {
   "proxy.attested": { required: ["nodeId", "durationMs"], optional: [] },
   "proxy.relay": {
-    required: ["status", "requestBytes", "responseBytes", "durationMs", "nodeId"],
+    required: ["status", "requestBytes", "responseBytes", "durationMs"],
     optional: [],
   },
-  "proxy.error": { required: ["kind", "status", "message"], optional: ["executed"] },
-  "proxy.attestFailed": { required: ["kind", "message"], optional: ["executed"] },
+  "proxy.error": { required: ["kind", "status", "message"], optional: ["executed", "code"] },
+  "proxy.attestFailed": { required: ["kind", "message"], optional: [] },
   "proxy.clientAborted": { required: [], optional: [] },
 };
 
@@ -49,24 +50,13 @@ const CONSOLE_METHODS = ["log", "info", "warn", "error", "debug"] as const;
 
 interface Capture {
   stderr: string[];
-  console: { method: string; text: string }[];
+  console: { method: string; args: unknown[] }[];
   errorBodies: string[];
 }
 
-const cleanups: (() => Promise<void>)[] = [];
-
-afterEach(async () => {
+afterEach(() => {
   vi.restoreAllMocks();
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
-
-function stringify(value: unknown): string {
-  if (typeof value === "string") return value;
-  return (
-    JSON.stringify(value, (_, v: unknown) => (typeof v === "bigint" ? v.toString() : v)) ??
-    String(value)
-  );
-}
 
 function plain(status: number, body: string): TestOuterResponse {
   return { status, headers: { "content-type": "application/json" }, body: Buffer.from(body) };
@@ -80,7 +70,7 @@ function capture(): Capture {
   });
   for (const method of CONSOLE_METHODS) {
     vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
-      out.console.push({ method, text: args.map(stringify).join(" ") });
+      out.console.push({ method, args });
     });
   }
   return out;
@@ -95,17 +85,17 @@ function keep(out: Capture, res: RawResponse): RawResponse {
 
 /** Every scenario of the sweep at one log level; returns what was written and answered. */
 async function drive(logLevel: LogLevel): Promise<Capture> {
-  const node = await startTestNodeServer({
-    seed: TEST_SEED,
-    chainId: TEST_CHAIN_ID,
-    nodeId: "logging-node-1",
-    upstream: () => ({
-      status: 200,
-      headers: { "content-type": "application/json" },
-      body: '{"jsonrpc":"2.0","id":1,"result":"0x10"}',
+  const node = await serveTestNode(
+    createTestNode({
+      chainId: TEST_CHAIN_ID,
+      upstream: () => ({
+        status: 200,
+        headers: { "content-type": "application/json" },
+        body: '{"jsonrpc":"2.0","id":1,"result":"0x10"}',
+      }),
     }),
-  });
-  cleanups.push(() => node.close());
+  );
+  onTestFinished(() => node.close());
   const out = capture();
   const config = { logLevel, upstreamTimeoutMs: TIMEOUT_MS };
 
@@ -113,7 +103,7 @@ async function drive(logLevel: LogLevel): Promise<Capture> {
     ...config,
     upstreamUrl: `${node.url}/${API_KEY}`,
   });
-  cleanups.push(() => proxy.close());
+  onTestFinished(() => proxy.close());
   await vi.waitFor(() => expect(node.node.attestations()).toBe(1));
 
   const send = async (method: string, path: string, body?: string, contentType?: string) =>
@@ -149,34 +139,35 @@ async function drive(logLevel: LogLevel): Promise<Capture> {
   ).toBe(502);
   node.node.setConfidential();
 
-  node.setWire({ delayMs: 1000, only: "POST" });
+  holdPosts(node);
   expect(
     (await send("POST", "/sentinel-path/rpc?sentinel-query=1", RPC_BODY, "application/json"))
       .status,
   ).toBe(504);
-  node.setWire({ cutAfterBytes: 10, only: "POST" });
+  node.answer(async (request, forward) =>
+    isPost(request) ? { ...(await forward()), cutAfter: 10 } : undefined,
+  );
   expect(
     (await send("POST", "/sentinel-path/rpc?sentinel-query=1", RPC_BODY, "application/json"))
       .status,
   ).toBe(502);
-  node.setWire();
+  node.answer();
 
   const unreachable = await startConfidentialProxy(node, {
     ...config,
     upstreamUrl: `http://127.0.0.1:9/${API_KEY}`,
   });
-  cleanups.push(() => unreachable.close());
-  const failing: HardwareVerifier = {
-    async verifyHardware() {
-      throw new AttestationError("CHK-P1", "hardware check failed");
-    },
-  };
+  onTestFinished(() => unreachable.close());
   const unverified = await startConfidentialProxy(
     node,
     { ...config, upstreamUrl: `${node.url}/${API_KEY}` },
-    { hardwareVerifier: failing },
+    {
+      hardwareVerifier: mockHardwareVerifier({
+        fail: new AttestationError("CHK-P1", "hardware check failed"),
+      }),
+    },
   );
-  cleanups.push(() => unverified.close());
+  onTestFinished(() => unverified.close());
   for (const target of [unreachable, unverified]) {
     const res = keep(
       out,
@@ -198,10 +189,8 @@ async function drive(logLevel: LogLevel): Promise<Capture> {
 }
 
 function expectNoSentinel(out: Capture): void {
-  const texts = [...out.stderr, ...out.console.map((c) => c.text), ...out.errorBodies];
-  for (const text of texts) {
-    for (const sentinel of SENTINELS) expect(text).not.toContain(sentinel);
-  }
+  const written = [...out.stderr, ...out.console.flatMap((c) => c.args), ...out.errorBodies];
+  expectNoSecrets(written, SENTINELS, []);
 }
 
 function parseLine(line: string): {
@@ -224,25 +213,33 @@ describe("confidential logging", () => {
     const out = await drive("debug");
     expectNoSentinel(out);
     expect(out.errorBodies.length).toBeGreaterThanOrEqual(6);
-    expect(out.console.some((c) => c.method === "debug")).toBe(true);
+    expect(out.console).toEqual([]);
 
     const lines = out.stderr.filter((l) => l.startsWith("[vrpc-proxy] "));
     expect(lines).toHaveLength(out.stderr.length);
     const seen = new Set<string>();
     for (const line of lines) {
       const { event, fields } = parseLine(line);
-      const spec = EVENT_FIELDS[event];
-      expect(spec, event).toBeDefined();
       const keys = Object.keys(fields);
-      for (const key of spec?.required ?? []) expect(keys, event).toContain(key);
-      for (const key of keys) {
-        expect([...(spec?.required ?? []), ...(spec?.optional ?? [])], event).toContain(key);
+      if (event.startsWith("proxy.")) {
+        const spec = EVENT_FIELDS[event];
+        expect(spec, event).toBeDefined();
+        for (const key of spec?.required ?? []) expect(keys, event).toContain(key);
+        for (const key of keys) {
+          expect([...(spec?.required ?? []), ...(spec?.optional ?? [])], event).toContain(key);
+        }
       }
       expect(keys).not.toContain("url");
       expect(keys).not.toContain("method");
       seen.add(event);
     }
-    for (const event of ["proxy.attested", "proxy.relay", "proxy.error", "proxy.attestFailed"]) {
+    for (const event of [
+      "proxy.attested",
+      "proxy.relay",
+      "proxy.error",
+      "proxy.attestFailed",
+      "confidential.attest.ok",
+    ]) {
       expect(seen).toContain(event);
     }
   }, 20_000);

@@ -3,28 +3,41 @@
 // Ankr Confidential RPC mode: every upstream failure is one typed error after one upstream attempt.
 
 import http from "node:http";
-import type { AddressInfo } from "node:net";
-
+import { gzipSync } from "node:zlib";
 import { getPublicKeyAsync } from "@noble/ed25519";
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 import { ConfidentialClient } from "@w3tech.io/vrpc-core/confidential";
-import { afterEach, describe, expect, test, vi } from "vitest";
-
-import type { TestOuterResponse, TestUpstreamResponse } from "../../test-support/src/index";
-import type { ProxyConfig } from "../src/config";
-
+import type { TestOuterResponse, TestUpstreamResponse } from "@w3tech.io/vrpc-test-support";
 import {
-  type RawResponse,
-  type RunningProxy,
-  rawRequest,
-  startConfidentialProxy,
-  startTestNodeServer,
+  countOf,
+  createTestNode,
+  isGet,
+  isPost,
+  rejectionOf,
+  toHex,
+} from "@w3tech.io/vrpc-test-support";
+import {
+  closeServer,
+  holdPosts,
+  listen,
+  type ServedRequest,
+  serveTestNode,
   type TestNodeServer,
-  type WireRequest,
-} from "./support/test-node-server";
-import { TEST_CHAIN_ID, TEST_SEED, toHex } from "./support/test-overrides";
+} from "@w3tech.io/vrpc-test-support/server";
+import { getGlobalDispatcher } from "undici";
+import { beforeEach, describe, expect, onTestFinished, test, vi } from "vitest";
+import { createConfidentialTransport } from "../src/confidential";
+import type { ProxyConfig } from "../src/config";
+import {
+  errorOf,
+  postRpc,
+  type RawResponse,
+  RPC_BODY,
+  type RunningProxy,
+  startConfidentialProxy,
+} from "./support/proxy";
+import { TEST_CHAIN_ID, testConfig } from "./support/test-overrides";
 
-const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const RPC_ANSWER = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 const OHTTP_KEY_PROBLEM =
   '{"type":"https://iana.org/assignments/http-problem-types#ohttp-key","title":"Oblivious HTTP key configuration not acceptable"}';
@@ -59,10 +72,8 @@ const jsonAnswer = (): TestUpstreamResponse => ({
 
 let answer: () => TestUpstreamResponse = jsonAnswer;
 let events: string[] = [];
-const cleanups: (() => Promise<void>)[] = [];
 
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+beforeEach(() => {
   answer = jsonAnswer;
   events = [];
 });
@@ -75,30 +86,29 @@ function plain(status: number, contentType: string | undefined, body: string): T
   };
 }
 
-const gets = (wire: WireRequest[]) => wire.filter((r) => r.method === "GET").length;
-const posts = (wire: WireRequest[]) => wire.filter((r) => r.method === "POST").length;
+/** Never answers; only the proxy's own timeout or abort ends the request. */
+const stalled = (method: string) => (request: ServedRequest) =>
+  request.method === method ? new Promise<undefined>(() => {}) : undefined;
 
-function post(url: string): Promise<RawResponse> {
-  return rawRequest(url, {
-    method: "POST",
-    path: "/",
-    headers: { "content-type": "application/json" },
-    body: RPC_BODY,
-  });
-}
+const repeatedNodeId =
+  (method: string) => async (request: ServedRequest, forward: () => Promise<TestOuterResponse>) => {
+    if (request.method !== method) return undefined;
+    const normal = await forward();
+    return { ...normal, headers: { ...normal.headers, "vrpc-nodeid": ["n1", "n2"] } };
+  };
 
 async function startHarness(options: {
   config?: Partial<ProxyConfig>;
   beforeListen?: (h: Omit<Harness, "proxy">) => void | Promise<void>;
   startup: "ok" | "fail";
 }): Promise<Harness> {
-  const node = await startTestNodeServer({
-    seed: TEST_SEED,
-    chainId: TEST_CHAIN_ID,
-    nodeId: "failure-node-1",
-    upstream: () => answer(),
-  });
-  cleanups.push(() => node.close());
+  const node = await serveTestNode(
+    createTestNode({
+      chainId: TEST_CHAIN_ID,
+      upstream: () => answer(),
+    }),
+  );
+  onTestFinished(() => node.close());
   const verifier: TogglingVerifier = {
     failing: false,
     async verifyHardware() {
@@ -110,7 +120,7 @@ async function startHarness(options: {
     hardwareVerifier: verifier,
     logger: { debug: (event) => void events.push(event) },
   });
-  cleanups.push(() => proxy.close());
+  onTestFinished(() => proxy.close());
   const event = options.startup === "ok" ? "confidential.attest.ok" : "confidential.attest.fail";
   // The failing startup attestation takes the upstream timeout; leave headroom under full load.
   await vi.waitFor(() => expect(events).toContain(event), { timeout: 3000 });
@@ -120,7 +130,7 @@ async function startHarness(options: {
 function restore(h: Harness): void {
   h.node.node.setConfidential();
   h.node.node.setAttestation();
-  h.node.setWire();
+  h.node.answer();
   h.verifier.failing = false;
   answer = jsonAnswer;
 }
@@ -131,15 +141,12 @@ async function expectTypedError(
   kind: string,
   executed: "no" | "unknown" | undefined,
 ): Promise<void> {
-  expect(res.status).toBe(status);
   expect(res.headers["content-type"]).toBe("application/json");
-  const body = JSON.parse(res.body.toString()) as {
-    error: { kind: string; message: string; executed?: string; traceId?: string };
-  };
-  expect(body.error.kind).toBe(kind);
-  expect(typeof body.error.message).toBe("string");
-  expect(body.error.executed).toBe(executed);
-  expect(body.error).not.toHaveProperty("traceId");
+  const error = errorOf(res);
+  expect(error).toMatchObject({ status, kind });
+  expect(typeof error.message).toBe("string");
+  expect(error.executed).toBe(executed);
+  expect(error).not.toHaveProperty("traceId");
 }
 
 /** One failed request with its upstream count, then a recovered request that attests again. */
@@ -148,22 +155,20 @@ async function failThenRecover(
   expected: { status: number; kind: string; executed?: "no" | "unknown" },
   attempt: { gets: number; posts: number },
 ): Promise<void> {
-  const wire = h.node.wire;
-  const before = { gets: gets(wire), posts: posts(wire) };
-  const res = await post(h.proxy.url);
+  const before = { gets: countOf(h.node, isGet), posts: countOf(h.node, isPost) };
+  const res = await postRpc(h.proxy.url);
   await expectTypedError(res, expected.status, expected.kind, expected.executed);
   await vi.waitFor(() => {
-    expect(gets(wire) - before.gets).toBe(attempt.gets);
-    expect(posts(wire) - before.posts).toBe(attempt.posts);
+    expect(countOf(h.node, isGet) - before.gets).toBe(attempt.gets);
+    expect(countOf(h.node, isPost) - before.posts).toBe(attempt.posts);
   });
 
   restore(h);
-  const after = { gets: gets(wire), posts: posts(wire) };
-  const ok = await post(h.proxy.url);
+  const after = countOf(h.node, isPost);
+  const ok = await postRpc(h.proxy.url);
   expect(ok.status).toBe(200);
   expect(ok.body.toString()).toBe(RPC_ANSWER);
-  expect(gets(wire) - after.gets).toBe(1);
-  expect(posts(wire) - after.posts).toBe(1);
+  expect(countOf(h.node, isPost) - after).toBe(1);
 }
 
 const attestationRows: Row[] = [
@@ -202,8 +207,15 @@ const attestationRows: Row[] = [
     executed: "no",
   },
   {
+    title: "attestation with a repeated node id",
+    install: ({ node }) => node.answer(repeatedNodeId("GET")),
+    status: 502,
+    kind: "AttestationFailed",
+    executed: "no",
+  },
+  {
     title: "attestation slower than the timeout",
-    install: ({ node }) => node.setWire({ delayMs: 1000, only: "GET" }),
+    install: ({ node }) => node.answer(stalled("GET")),
     status: 504,
     kind: "AttestationUnavailable",
     executed: "no",
@@ -214,7 +226,8 @@ const attestationRows: Row[] = [
       h.verifier.failing = true;
     },
     status: 502,
-    kind: "Attestation",
+    kind: "AttestationFailed",
+    executed: "no",
   },
 ];
 
@@ -265,14 +278,18 @@ const postRows: Row[] = [
   },
   {
     title: "node answer slower than the timeout",
-    install: ({ node }) => node.setWire({ delayMs: 1000, only: "POST" }),
+    install: ({ node }) => node.answer(stalled("POST")),
     status: 504,
     kind: "UpstreamTimeout",
     executed: "unknown",
   },
   {
     title: "connection closed before the status line",
-    install: ({ node }) => node.setWire({ destroyBeforeHeaders: true, only: "POST" }),
+    install: ({ node }) =>
+      node.answer((request) => {
+        if (isPost(request)) request.socket.destroy();
+        return undefined;
+      }),
     status: 502,
     kind: "UpstreamConnect",
     executed: "unknown",
@@ -286,9 +303,13 @@ const postRows: Row[] = [
         outerLength = normal.body.byteLength;
         return normal;
       });
-      expect((await post(proxy.url)).status).toBe(200);
+      expect((await postRpc(proxy.url)).status).toBe(200);
       node.node.setConfidential();
-      node.setWire({ cutAfterBytes: Math.floor(outerLength / 2), only: "POST" });
+      node.answer(async (request, forward) =>
+        isPost(request)
+          ? { ...(await forward()), cutAfter: Math.floor(outerLength / 2) }
+          : undefined,
+      );
     },
     status: 502,
     kind: "UpstreamConnect",
@@ -310,7 +331,16 @@ const postRows: Row[] = [
   },
   {
     title: "corrupt gzip answer",
-    install: ({ node }) => node.setWire({ corruptGzip: true, only: "POST" }),
+    install: ({ node }) =>
+      node.answer(async (request, forward) => {
+        if (!isPost(request)) return undefined;
+        const normal = await forward();
+        return {
+          ...normal,
+          headers: { ...normal.headers, "content-encoding": "gzip" },
+          body: Buffer.concat([Buffer.from("not gzip:"), normal.body]),
+        };
+      }),
     status: 502,
     kind: "DecodeFailed",
     executed: "unknown",
@@ -347,6 +377,27 @@ const postRows: Row[] = [
     kind: "BadSignature",
     executed: "unknown",
   },
+  {
+    title: "vRPC-Timestamp above u64",
+    install: ({ node }) =>
+      node.node.setConfidential(async (context) => {
+        const normal = await context.normal();
+        return {
+          ...normal,
+          headers: { ...normal.headers, "vRPC-Timestamp": "18446744073709551616" },
+        };
+      }),
+    status: 502,
+    kind: "MalformedHeader",
+    executed: "unknown",
+  },
+  {
+    title: "repeated vRPC-NodeId on the answer",
+    install: ({ node }) => node.answer(repeatedNodeId("POST")),
+    status: 502,
+    kind: "MalformedHeader",
+    executed: "unknown",
+  },
 ];
 
 describe("attestation failures", () => {
@@ -376,15 +427,8 @@ describe("sealed request failures", () => {
       redirected += 1;
       res.end();
     });
-    await new Promise<void>((resolve) => target.listen(0, "127.0.0.1", resolve));
-    cleanups.push(
-      () =>
-        new Promise<void>((resolve) => {
-          target.closeAllConnections();
-          target.close(() => resolve());
-        }),
-    );
-    const location = `http://127.0.0.1:${(target.address() as AddressInfo).port}/elsewhere`;
+    const location = `${await listen(target)}/elsewhere`;
+    onTestFinished(() => closeServer(target));
     const h = await startHarness({ startup: "ok", config: { upstreamTimeoutMs: TIMEOUT_MS } });
     h.node.node.setConfidential(() => ({
       status: 302,
@@ -400,40 +444,56 @@ describe("sealed request failures", () => {
   });
 });
 
+describe("outer read cap", () => {
+  test.each([
+    ["identity", Buffer.alloc(128), "UPSTREAM_BODY_TOO_LARGE"],
+    ["gzip", gzipSync(Buffer.alloc(4096)), "DECODE_FAILED"],
+  ])("an answer past the request's own maxBytes is cut at it (%s)", async (encoding, body, code) => {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { "content-encoding": encoding }).end(body);
+    });
+    const url = await listen(server);
+    onTestFinished(() => closeServer(server));
+    const transport = createConfidentialTransport(testConfig(url), getGlobalDispatcher());
+
+    const err = await rejectionOf(transport({ method: "GET", url, headers: {}, maxBytes: 64 }));
+
+    expect(err).toMatchObject({ code });
+  });
+});
+
 describe("concurrent and interrupted requests", () => {
   test("twenty requests share one pending attestation and all fail with it", async () => {
-    let answerAttestation: (response: TestOuterResponse) => void = () => {};
-    const gate = new Promise<TestOuterResponse>((resolve) => {
-      answerAttestation = resolve;
-    });
-    const node = await startTestNodeServer({
-      seed: TEST_SEED,
-      chainId: TEST_CHAIN_ID,
-      nodeId: "failure-node-1",
-      upstream: () => answer(),
-    });
-    cleanups.push(() => node.close());
+    const { promise: gate, resolve: answerAttestation } =
+      Promise.withResolvers<TestOuterResponse>();
+    const node = await serveTestNode(
+      createTestNode({
+        chainId: TEST_CHAIN_ID,
+        upstream: () => answer(),
+      }),
+    );
+    onTestFinished(() => node.close());
     node.node.setAttestation(() => gate);
     const proxy = await startConfidentialProxy(node);
-    cleanups.push(() => proxy.close());
+    onTestFinished(() => proxy.close());
     const requested = vi.spyOn(ConfidentialClient.prototype, "request");
-    cleanups.push(async () => requested.mockRestore());
+    onTestFinished(async () => requested.mockRestore());
 
-    const pending = Array.from({ length: 20 }, () => post(proxy.url));
+    const pending = Array.from({ length: 20 }, () => postRpc(proxy.url));
     await vi.waitFor(() => expect(requested).toHaveBeenCalledTimes(20));
     answerAttestation(plain(503, "text/plain", "unavailable"));
     const responses = await Promise.all(pending);
     for (const res of responses) {
       await expectTypedError(res, 503, "AttestationUnavailable", "no");
     }
-    expect(gets(node.wire)).toBe(1);
-    expect(posts(node.wire)).toBe(0);
+    expect(countOf(node, isGet)).toBe(1);
+    expect(countOf(node, isPost)).toBe(0);
 
     node.node.setAttestation();
-    const ok = await post(proxy.url);
+    const ok = await postRpc(proxy.url);
     expect(ok.status).toBe(200);
-    expect(gets(node.wire)).toBe(2);
-    expect(posts(node.wire)).toBe(1);
+    expect(countOf(node, isGet)).toBe(2);
+    expect(countOf(node, isPost)).toBe(1);
   });
 
   test("a client that disconnects mid-request leaves the proxy serving with its pin", async () => {
@@ -442,34 +502,50 @@ describe("concurrent and interrupted requests", () => {
       stderr.push(String(chunk));
       return true;
     });
-    cleanups.push(async () => write.mockRestore());
+    onTestFinished(async () => write.mockRestore());
     const h = await startHarness({ startup: "ok", config: { logLevel: "debug" } });
-    h.node.setWire({ delayMs: 200, only: "POST" });
+    h.node.answer(stalled("POST"));
     const target = new URL(h.proxy.url);
-    const aborted = new Promise<void>((resolve) => {
-      const req = http.request({
-        host: target.hostname,
-        port: target.port,
-        method: "POST",
-        path: "/",
-        headers: { "content-type": "application/json" },
-        signal: AbortSignal.timeout(50),
-      });
-      req.on("error", () => resolve());
-      req.on("response", () => resolve());
-      req.end(RPC_BODY);
+    const req = http.request({
+      host: target.hostname,
+      port: target.port,
+      method: "POST",
+      path: "/",
+      headers: { "content-type": "application/json" },
     });
-    await aborted;
+    req.on("error", () => {});
+    req.end(RPC_BODY);
+    await vi.waitFor(() => expect(countOf(h.node, isPost)).toBe(1));
+    req.destroy();
     await vi.waitFor(() =>
       expect(stderr.some((l) => / proxy\.(relay|clientAborted|error)\b/.test(l))).toBe(true),
     );
-    expect(posts(h.node.wire)).toBe(1);
-    expect(gets(h.node.wire)).toBe(1);
+    expect(countOf(h.node, isGet)).toBe(1);
 
-    h.node.setWire();
-    const ok = await post(h.proxy.url);
+    h.node.answer();
+    const ok = await postRpc(h.proxy.url);
     expect(ok.status).toBe(200);
-    expect(gets(h.node.wire)).toBe(1);
-    expect(posts(h.node.wire)).toBe(2);
+    expect(countOf(h.node, isGet)).toBe(1);
+    expect(countOf(h.node, isPost)).toBe(2);
+  });
+
+  test("a client disconnect aborts the upstream request", async () => {
+    const h = await startHarness({ startup: "ok" });
+    holdPosts(h.node);
+    const target = new URL(h.proxy.url);
+    const req = http.request({
+      host: target.hostname,
+      port: target.port,
+      method: "POST",
+      path: "/",
+      headers: { "content-type": "application/json" },
+    });
+    req.on("error", () => {});
+    req.end(RPC_BODY);
+    await vi.waitFor(() => expect(countOf(h.node, isPost)).toBe(1));
+    const upstream = h.node.requests.find(isPost);
+    req.destroy();
+
+    await vi.waitFor(() => expect(upstream?.socket.destroyed).toBe(true));
   });
 });

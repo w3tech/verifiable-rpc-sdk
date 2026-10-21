@@ -2,10 +2,11 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // In-test node that attests and answers sealed requests with signed, sealed responses.
 
-import { ed25519 } from "@noble/curves/ed25519.js";
-import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex, concatBytes } from "@noble/hashes/utils.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
+import { attestationBody } from "./attestation";
+import { CHAIN_ID, NODE_ID, NODE_SEED } from "./fixtures";
 import { createRecipient } from "./recipient";
+import { type SignOptions, signResponse } from "./sign";
 
 export interface TestOuterRequest {
   method: string;
@@ -27,19 +28,21 @@ export interface TestUpstreamResponse {
   body?: Uint8Array | string;
 }
 
+export type TestUpstream = (
+  request: Request,
+) => TestUpstreamResponse | Promise<TestUpstreamResponse>;
+
 export interface TestNodeOptions {
-  seed: Uint8Array;
-  chainId: string;
-  /** Sent as `vRPC-NodeId`; `null` omits the header. Default `test-node-1`. */
+  /** Default `NODE_SEED`. */
+  seed?: Uint8Array;
+  /** Default `CHAIN_ID`. */
+  chainId?: string;
+  /** Sent as `vRPC-NodeId`; `null` omits the header. Default `NODE_ID`. */
   nodeId?: string | null;
-  upstream?: (request: Request) => TestUpstreamResponse | Promise<TestUpstreamResponse>;
+  upstream?: TestUpstream | undefined;
 }
 
-export interface TestSignOptions {
-  seed?: Uint8Array;
-  timestampMs?: number;
-  pubkeyHex?: string;
-}
+type TestSignOptions = Omit<SignOptions, "nodeId">;
 
 export interface ConfidentialContext {
   readonly request: TestOuterRequest;
@@ -62,7 +65,7 @@ export interface AttestationContext {
   normal(): Promise<TestOuterResponse>;
 }
 
-export type AttestationHandler = (
+type AttestationHandler = (
   context: AttestationContext,
 ) => TestOuterResponse | Promise<TestOuterResponse>;
 
@@ -77,50 +80,62 @@ export interface TestNode {
   setAttestation(handler?: AttestationHandler): void;
 }
 
+export const isGet = (request: { method: string }) => request.method === "GET";
+export const isPost = (request: { method: string }) => request.method === "POST";
+
+/** Requests of a test node or its server that `match`. */
+export const countOf = <R>(source: { requests: readonly R[] }, match: (request: R) => boolean) =>
+  source.requests.filter(match).length;
+
 const utf8 = new TextEncoder();
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
-function defaultUpstream(): TestUpstreamResponse {
-  return {
-    status: 200,
-    headers: { "content-type": "application/json" },
-    body: '{"jsonrpc":"2.0","id":1,"result":"0x10"}',
-  };
+export interface RpcCall {
+  jsonrpc: string;
+  id: number;
+  method: string;
+  params: unknown[];
 }
 
-function u64le(value: bigint): Uint8Array {
-  const out = new Uint8Array(8);
-  new DataView(out.buffer).setBigUint64(0, value, true);
-  return out;
+export function jsonResponse(value: unknown, status = 200): TestUpstreamResponse {
+  return { status, headers: { "content-type": "application/json" }, body: JSON.stringify(value) };
 }
 
-export function createTestNode(options: TestNodeOptions): TestNode {
-  const recipient = createRecipient(options.seed);
+/** The JSON-RPC answer to a call or a batch, with `result(call)` for each call. */
+export function rpcAnswer(
+  parsed: RpcCall | RpcCall[],
+  result: (call: RpcCall) => unknown,
+): unknown {
+  const answer = (call: RpcCall) => ({ jsonrpc: "2.0", id: call.id, result: result(call) });
+  return Array.isArray(parsed) ? parsed.map(answer) : answer(parsed);
+}
+
+/** An upstream answering every JSON-RPC call, alone or in a batch, with `result(call)`. */
+export function rpcUpstream(result: (call: RpcCall) => unknown): TestUpstream {
+  return async (request) =>
+    jsonResponse(rpcAnswer((await request.json()) as RpcCall | RpcCall[], result));
+}
+
+const defaultUpstream = rpcUpstream(() => "0x10");
+
+export function createTestNode(options: TestNodeOptions = {}): TestNode {
+  const seed = options.seed ?? NODE_SEED;
+  const chainId = options.chainId ?? CHAIN_ID;
+  const recipient = createRecipient(seed);
   const pubkeyHex = `0x${bytesToHex(recipient.ed25519PublicKey)}`;
-  const nodeId = options.nodeId === undefined ? "test-node-1" : options.nodeId;
+  const nodeId = options.nodeId === undefined ? NODE_ID : options.nodeId;
   const nodeIdHeader: Record<string, string> = nodeId === null ? {} : { "vRPC-NodeId": nodeId };
   const upstream = options.upstream ?? defaultUpstream;
-  const chainHash = sha256(utf8.encode(options.chainId));
   const requests: TestOuterRequest[] = [];
   let attestationCount = 0;
   let confidential: ConfidentialHandler = (context) => context.normal();
   let attestation: AttestationHandler = (context) => context.normal();
 
-  function attestationAnswer(nonceHex: string): TestOuterResponse {
-    const body = {
-      quote: {
-        quote: "00",
-        event_log: "00",
-        report_data: `${pubkeyHex.slice(2)}${nonceHex}`,
-        vm_config: "",
-      },
-      pubkey: pubkeyHex,
-      composeHash: "deadbeef",
-    };
+  function attestationResponse(nonceHex: string): TestOuterResponse {
     return {
       status: 200,
       headers: { "content-type": "application/json", ...nodeIdHeader },
-      body: utf8.encode(JSON.stringify(body)),
+      body: utf8.encode(attestationBody(nonceHex, { seed })),
     };
   }
 
@@ -129,20 +144,12 @@ export function createTestNode(options: TestNodeOptions): TestNode {
     responseBody: Uint8Array,
     signOptions: TestSignOptions = {},
   ): Record<string, string> {
-    const seed = signOptions.seed ?? options.seed;
-    const timestamp = BigInt(signOptions.timestampMs ?? Date.now());
-    const preImage = concatBytes(
-      chainHash,
-      sha256(requestBody),
-      sha256(responseBody),
-      u64le(timestamp),
-    );
-    return {
-      "vRPC-Signature": `0x${bytesToHex(ed25519.sign(preImage, seed))}`,
-      "vRPC-Timestamp": timestamp.toString(),
-      "vRPC-Pubkey": signOptions.pubkeyHex ?? `0x${bytesToHex(ed25519.getPublicKey(seed))}`,
-      ...nodeIdHeader,
-    };
+    return signResponse(chainId, requestBody, responseBody, {
+      seed: signOptions.seed ?? seed,
+      timestampMs: signOptions.timestampMs,
+      pubkeyHex: signOptions.pubkeyHex ?? (signOptions.seed === undefined ? pubkeyHex : undefined),
+      nodeId: nodeId ?? undefined,
+    });
   }
 
   function contextFor(request: TestOuterRequest, body: Uint8Array): ConfidentialContext {
@@ -180,7 +187,7 @@ export function createTestNode(options: TestNodeOptions): TestNode {
       return attestation({
         request,
         nonceHex,
-        normal: async () => attestationAnswer(nonceHex),
+        normal: async () => attestationResponse(nonceHex),
       });
     }
     if (

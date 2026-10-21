@@ -12,7 +12,7 @@ change.
 **before `JSON.parse`**, and feeds them — with the exact request bytes it
 POSTed — into `@w3tech.io/vrpc-core`'s `verifyResponse`. Only after verification
 passes is the body parsed and the result returned. Verification is
-**fail-closed** by default (`strict`).
+**fail-closed**.
 
 All verification logic is reused from `@w3tech.io/vrpc-core` — none is copied
 here, and there is no `ethers` import (manifest isolation). The error family is
@@ -158,10 +158,6 @@ errors and propagates (fail-closed).
 | `hardwareVerifier` | `HardwareVerifier`     | Phala cloud verifier (vrpc-core) | Internal/advanced. Overrides the mandatory hardware-signature verifier. Point it at a self-hosted endpoint, a future local-DCAP verifier, or a no-network test mock. Hardware verification is always-on and cannot be disabled; omitting this keeps the cloud default. |
 | `logger`         | `Logger`                 | no-op (silent)   | Internal/advanced. Opt-in debug logger forwarded to verification to narrate the verify flow at debug level. Use `createConsoleLogger()` from `@w3tech.io/vrpc-core`. Safe-wrapped (never throws-through) and redacts secrets — observability only, never part of the verify decision. |
 
-> v6.0 removed the inert `allowlist`/`tcb`/`pccsUrl` options. v7.0 reintroduces
-> them as consumer-pinned anchors once the verifier consumes them. `headers`
-> (above) stays — it covers both the RPC POST and the attestation fetch.
-
 `fetchFn` (already documented above) feeds **both** legs — the RPC POST and the
 attestation GET — which is also the offline test/example seam.
 
@@ -255,7 +251,7 @@ try {
 
 | Outcome                                   | What the transport throws |
 |-------------------------------------------|---------------------------|
-| Tampered / forged signature               | `BadSignature` (a `VerificationError`) — fail-closed in `strict`. |
+| Tampered / forged signature               | `BadSignature` (a `VerificationError`) — fail-closed. |
 | Stripped `vRPC-*` headers (downgrade)     | `MissingHeader` (a `VerificationError`) — fail-closed. |
 | Wrong chain id (signed for another chain) | `BadSignature`. |
 | Signed JSON-RPC `{ error }` body          | viem's own `RpcRequestError` — **NOT** a `VerificationError` (verification passed; `buildRequest` maps it by code). |
@@ -263,16 +259,12 @@ try {
 | Signed non-2xx with `{ error }` body      | still flows into verify; its signed error surfaces as an ordinary `RpcRequestError`. |
 
 `MissingHeader`, `MalformedHeader`, `BadSignature`, `StaleTimestamp` and
-`InvalidChainId` all extend `VerificationError`, which extends `Error`.
-For Ankr Confidential RPC mode the package also re-exports the `VerificationError`
-subclasses `AttestationFailed`, `MalformedAttestationResponse`,
-`ConfidentialSignerMismatch`, `ConfidentialDecryptFailed`,
-`MalformedConfidentialResponse`, `InvalidInnerRequest`; the `UnavailableError`
-base with `AttestationUnavailable`, `RequestRejected`, `UnexpectedResponse`,
-`TransportFailed`, `ConfidentialSealFailed`; and the types
-`UnavailableErrorKind` and `ConfidentialInfo`. They are the identical classes
-`@w3tech.io/vrpc-core` and `@w3tech.io/vrpc-ethers` export (cross-adapter
-parity).
+`InvalidChainId` all extend `VerificationError`, which extends `VrpcError`. The
+package re-exports everything in `@w3tech.io/vrpc-core/errors` — the
+`VerificationError` and `UnavailableError` families, `InvalidOption`,
+`InvalidInnerRequest`, `mayHaveExecuted` and their types — plus the type
+`ConfidentialInfo`. They are the identical classes `@w3tech.io/vrpc-core` and
+`@w3tech.io/vrpc-ethers` export.
 
 ### Fail-closed
 

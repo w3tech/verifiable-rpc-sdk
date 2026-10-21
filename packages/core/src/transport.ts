@@ -2,6 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Outer HTTP seam of the Ankr Confidential RPC client.
 
+import { raceAbort } from "./abort";
 import type { ResponseHeaders } from "./verify";
 
 // 192 MiB: above the 160 MiB gateway response cap, so it never fires first on a relayed answer.
@@ -13,6 +14,8 @@ export interface OuterRequest {
   headers: Record<string, string>;
   body?: Uint8Array;
   signal?: AbortSignal;
+  /** Answer size cap for this request; a transport that ignores it is checked after the read. */
+  maxBytes?: number;
 }
 
 export interface OuterResponse {
@@ -22,8 +25,8 @@ export interface OuterResponse {
 }
 
 /**
- * Sends one outer request: the body byte for byte, no redirect following, no retry, honouring the signal.
- * Resolves with the content-decoded response body.
+ * Sends one outer request with the body byte for byte, without following redirects or retrying,
+ * and resolves with the content-decoded body. Core enforces the signal, the size cap and error sanitising.
  */
 export type ConfidentialTransport = (request: OuterRequest) => Promise<OuterResponse>;
 
@@ -35,22 +38,25 @@ export class ResponseTooLarge extends Error {
   }
 }
 
-/** Reads a fetch `Response` body for a `ConfidentialTransport`, stopping at the response size cap. */
-export async function readCappedBody(response: Response): Promise<Uint8Array> {
+/** Reads a fetch `Response` body for a `ConfidentialTransport`, stopping at `maxBytes` (default: the response size cap). */
+export async function readCappedBody(
+  response: Response,
+  maxBytes = MAX_RESPONSE_BYTES,
+): Promise<Uint8Array> {
   const body = response.body as ReadableStream<Uint8Array> | null | undefined;
   // node-fetch hands over a Node Readable, whatwg-fetch and React Native no body at all.
   const stream = typeof body?.getReader === "function" ? body : undefined;
   // With an encoding, content-length is the encoded size; the runtime hands over decoded bytes.
   const encoding = (response.headers.get("content-encoding") ?? "identity").trim().toLowerCase();
   const declared = Number(response.headers.get("content-length"));
-  if ((encoding === "" || encoding === "identity") && declared > MAX_RESPONSE_BYTES) {
+  if ((encoding === "" || encoding === "identity") && declared > maxBytes) {
     await stream?.cancel();
     throw new ResponseTooLarge();
   }
   if (body === null) return new Uint8Array(0);
   if (stream === undefined) {
     const buffered = new Uint8Array(await response.arrayBuffer());
-    if (buffered.byteLength > MAX_RESPONSE_BYTES) throw new ResponseTooLarge();
+    if (buffered.byteLength > maxBytes) throw new ResponseTooLarge();
     return buffered;
   }
   const reader = stream.getReader();
@@ -60,7 +66,7 @@ export async function readCappedBody(response: Response): Promise<Uint8Array> {
     const { done, value } = await reader.read();
     if (done) break;
     total += value.byteLength;
-    if (total > MAX_RESPONSE_BYTES) {
+    if (total > maxBytes) {
       await reader.cancel();
       throw new ResponseTooLarge();
     }
@@ -95,28 +101,39 @@ export function fetchTransport(
 ): ConfidentialTransport {
   return async (request) => {
     const send = fetchFn ?? globalThis.fetch;
-    try {
-      const response = await send(request.url, {
-        method: request.method,
-        headers: request.headers,
-        redirect: "manual",
-        ...(request.body === undefined ? {} : { body: request.body }),
-        ...(request.signal === undefined ? {} : { signal: request.signal }),
-      });
-      if (response.type === "opaqueredirect") {
-        return { status: 0, headers: new Headers(), body: new Uint8Array(0) };
-      }
-      return {
-        status: response.status,
-        headers: response.headers,
-        body: await readCappedBody(response),
-      };
-    } catch (err) {
-      if (request.signal?.aborted) throw request.signal.reason;
-      if (err instanceof ResponseTooLarge) throw err;
-      throw sanitised(err);
+    const response = await send(request.url, {
+      method: request.method,
+      headers: request.headers,
+      redirect: "manual",
+      ...(request.body === undefined ? {} : { body: request.body }),
+      ...(request.signal === undefined ? {} : { signal: request.signal }),
+    });
+    if (response.type === "opaqueredirect") {
+      return { status: 0, headers: new Headers(), body: new Uint8Array(0) };
     }
+    return {
+      status: response.status,
+      headers: response.headers,
+      body: await readCappedBody(response, request.maxBytes),
+    };
   };
 }
 
-export const defaultTransport: ConfidentialTransport = fetchTransport();
+/** Sends one outer request through an injected transport, enforcing the signal, the size cap and sanitised errors. */
+export async function guardedSend(
+  transport: ConfidentialTransport,
+  request: OuterRequest & { maxBytes: number },
+  fail: (tooLarge: boolean, cause?: Error) => Error,
+): Promise<OuterResponse> {
+  const { signal, maxBytes } = request;
+  if (signal?.aborted) throw signal.reason;
+  let response: OuterResponse;
+  try {
+    response = await raceAbort(transport(request), signal);
+  } catch (err) {
+    if (signal?.aborted) throw signal.reason;
+    throw err instanceof ResponseTooLarge ? fail(true) : fail(false, sanitised(err));
+  }
+  if (response.body.byteLength > maxBytes) throw fail(true);
+  return response;
+}

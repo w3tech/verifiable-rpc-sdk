@@ -64,11 +64,21 @@ Development-only packages used to run the tests in a headless browser
 |---|---|---|---|---|---|---|---|---|
 | `@vitest/browser-playwright` | 4.1.10 | MIT | 5 (vitest team) | 2026-07-06 (newest 4.1.x; the 5.x line needs vitest 5) | 9,456,790 | `@vitest/browser` 4.1.10, `@vitest/mocker` 4.1.10, `tinyrainbow`; peer `vitest` exactly 4.1.10, `playwright` | npm signature + SLSA v1 | none |
 | `playwright` | 1.64.0 | Apache-2.0 | 5 (Microsoft) | 2026-10-07 | 113,562,399 | `playwright-core` 1.64.0 | npm signature + SLSA v1 | none |
+| `knip` | 6.42.1 | ISC | 1 | 2026-10-19 | 10,907,867 | 12 | npm signature | none |
+| `jscpd` | 5.4.1 | MIT | 1 | 2026-10-09 | 2,125,963 | 0 (+ optional platform binary) | SLSA v1 | none |
+| `dependency-cruiser` | 18.6.0 | MIT | 2 | 2026-10-11 | 3,310,180 | 18 | SLSA v1 | none |
+| `publint` | 0.3.25 | MIT | 1 | 2026-10-01 | 989,557 | 4 | SLSA v1 | none |
+| `@arethetypeswrong/cli` | 0.18.5 | MIT | 1 | 2026-07-09 | 564,068 | 7 | SLSA v1 | none |
+| `@microsoft/api-extractor` | 7.59.4 | MIT | 3 | 2026-10-06 | 2,625,508 | 13 | npm signature | `sprintf-js` GHSA-hp3w-g68c-fv3c (moderate, dev-only) |
+| `@vitest/coverage-v8` | 4.1.10 | MIT | 5 | 2026-07-06 | 24,912,227 | 10 | SLSA v1 | none |
 
 `@vitest/browser-playwright` is the official vitest browser provider; its version
 must equal the repository's `vitest` version. `playwright` has no install script;
 the test browsers are downloaded by an explicit CI step. Version 1.64.0 is used
 rather than the newer 1.64.1, which was one day old at review time.
+`jscpd` and `dependency-cruiser` are one release behind the newest, which was less
+than a day old at review time. `@vitest/coverage-v8` must equal the repository's
+`vitest` version, like `@vitest/browser-playwright`.
 
 ## Accepted residual risk
 

@@ -1,0 +1,38 @@
+{
+  "forbidden": [
+    { "name": "no-circular", "severity": "error", "from": {}, "to": { "circular": true } },
+    {
+      "name": "dstack-verify-no-core",
+      "severity": "error",
+      "from": { "path": "^packages/dstack-verify/" },
+      "to": { "path": "^packages/core/" }
+    },
+    {
+      "name": "node-session-no-trusted-verifier",
+      "severity": "error",
+      "from": { "path": "^packages/core/src/node-session\\.ts$" },
+      "to": { "path": "^packages/core/src/trusted-verifier\\.ts$" }
+    },
+    {
+      "name": "proxy-confidential-not-pipeline",
+      "severity": "error",
+      "from": { "path": "^packages/proxy/src/confidential\\.ts$" },
+      "to": { "path": "^packages/proxy/src/pipeline\\.ts$" }
+    },
+    {
+      "name": "core-by-package-name",
+      "severity": "error",
+      "from": { "path": "^packages/(ethers|viem|proxy)/" },
+      "to": { "path": "^packages/core/", "dependencyTypes": ["local"] }
+    },
+    { "name": "resolvable", "severity": "error", "from": {}, "to": { "couldNotResolve": true } }
+  ],
+  "options": {
+    "doNotFollow": { "path": "node_modules" },
+    "tsPreCompilationDeps": true,
+    "enhancedResolveOptions": {
+      "exportsFields": ["exports"],
+      "conditionNames": ["types", "import", "default"]
+    }
+  }
+}

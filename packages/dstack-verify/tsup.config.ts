@@ -7,7 +7,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: ["src/index.ts"],
   format: ["esm"],
-  target: "node20",
+  target: ["node22", "chrome116", "firefox124", "safari17.4"],
   dts: true,
   clean: true,
   sourcemap: true,

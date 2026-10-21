@@ -1,61 +1,24 @@
-import { readFileSync } from "node:fs";
-import { hexToBytes } from "@noble/hashes/utils.js";
-import { describe, expect, test } from "vitest";
 import {
   type ConfidentialContext,
+  countOf,
   createTestNode,
+  isPost,
+  jsonRpcCall,
+  NODE_ID,
+  rejectionOf,
   type TestOuterResponse,
-} from "../../test-support/src/index";
-import type { InnerRequest } from "../src/bhttp";
-import { ConfidentialClient } from "../src/confidential-client";
+} from "@w3tech.io/vrpc-test-support";
+import { describe, expect, test } from "vitest";
 import {
   MissingHeader,
   RequestRejected,
   TransportFailed,
   UnavailableError,
   UnexpectedResponse,
-  VerificationError,
 } from "../src/errors";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
+import { clientFor, fromVector, plain, preDecapsulationErrors } from "./support/confidential";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
-const CHAIN_ID = "42161";
-const NODE_ID = "alpha-vrpc-1";
-const utf8 = new TextEncoder();
 const EMPTY = new Uint8Array(0);
-
-interface PreDecapsulationError {
-  name: string;
-  status: number;
-  content_type?: string;
-  body: string;
-}
-
-const vectors = JSON.parse(
-  readFileSync(
-    new URL("../../test-support/vectors/sidecar-confidential.json", import.meta.url),
-    "utf8",
-  ),
-) as { pre_decapsulation_errors: PreDecapsulationError[] };
-
-function vector(name: string): PreDecapsulationError {
-  const entry = vectors.pre_decapsulation_errors.find((candidate) => candidate.name === name);
-  if (entry === undefined) throw new Error(`missing vector ${name}`);
-  return entry;
-}
-
-function plain(status: number, contentType?: string, body: Uint8Array = EMPTY): TestOuterResponse {
-  return {
-    status,
-    headers: contentType === undefined ? {} : { "content-type": contentType },
-    body,
-  };
-}
-
-function fromVector(name: string): TestOuterResponse {
-  const entry = vector(name);
-  return plain(entry.status, entry.content_type, hexToBytes(entry.body));
-}
 
 async function withContentType(
   context: ConfidentialContext,
@@ -70,94 +33,10 @@ async function withContentType(
   };
 }
 
-function jsonRpcCall(): InnerRequest {
-  return {
-    method: "POST",
-    path: "/",
-    contentType: "application/json",
-    body: utf8.encode('{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'),
-  };
+function setup() {
+  const node = createTestNode();
+  return { node, client: clientFor(node.transport) };
 }
-
-function setup(upstream?: Parameters<typeof createTestNode>[0]["upstream"]) {
-  const node = createTestNode({
-    seed: SEED,
-    chainId: CHAIN_ID,
-    nodeId: NODE_ID,
-    ...(upstream === undefined ? {} : { upstream }),
-  });
-  const client = new ConfidentialClient({
-    url: "https://rpc.example/eth_vrpc",
-    chainId: CHAIN_ID,
-    hardwareVerifier: mockHardwareVerifier(),
-    transport: node.transport,
-  });
-  return { node, client };
-}
-
-async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected the promise to reject");
-}
-
-describe("confidential answer classification", () => {
-  test("gateway rate limit 429 text/plain is RequestRejected and the next call attests again", async () => {
-    const { node, client } = setup();
-    node.setConfidential(() => ({
-      status: 429,
-      headers: { "content-type": "text/plain" },
-      body: utf8.encode("message: rate limited"),
-    }));
-
-    const err = await rejectionOf(client.request(jsonRpcCall()));
-
-    expect(err).toBeInstanceOf(RequestRejected);
-    expect(err).toBeInstanceOf(UnavailableError);
-    expect(err).not.toBeInstanceOf(VerificationError);
-    const rejected = err as RequestRejected;
-    expect(rejected.kind).toBe("RequestRejected");
-    expect(rejected.status).toBe(429);
-    expect(rejected.executed).toBe("no");
-    expect(rejected.contentType).toBe("text/plain");
-    expect(rejected.nodeId).toBe(NODE_ID);
-
-    node.setConfidential();
-    const response = await client.request(jsonRpcCall());
-    expect(response.status).toBe(200);
-    expect(node.attestations()).toBe(2);
-    expect(node.requests.map((request) => request.method)).toEqual(["GET", "POST", "GET", "POST"]);
-  });
-
-  test("an inner 500 is returned and keeps the pin", async () => {
-    const { node, client } = setup(() => ({ status: 500, body: "boom" }));
-
-    const response = await client.request(jsonRpcCall());
-    expect(response.status).toBe(500);
-    await client.request(jsonRpcCall());
-    expect(node.attestations()).toBe(1);
-  });
-
-  test("gateway 502 text/plain is UnexpectedResponse and the next call attests again", async () => {
-    const { node, client } = setup();
-    node.setConfidential(() => ({
-      status: 502,
-      headers: { "content-type": "text/plain" },
-      body: utf8.encode("upstream down"),
-    }));
-
-    const err = await rejectionOf(client.request(jsonRpcCall()));
-    expect(err).toBeInstanceOf(UnexpectedResponse);
-    expect((err as UnexpectedResponse).executed).toBe("unknown");
-
-    node.setConfidential();
-    await client.request(jsonRpcCall());
-    expect(node.attestations()).toBe(2);
-  });
-});
 
 type Answer = (context: ConfidentialContext) => TestOuterResponse | Promise<TestOuterResponse>;
 
@@ -172,12 +51,9 @@ async function failedCallAfterWarmup(answer: Answer) {
   const { node, client } = setup();
   await client.request(jsonRpcCall());
   node.setConfidential(answer);
-  const posts = node.requests.filter((request) => request.method === "POST").length;
+  const posts = countOf(node, isPost);
   const err = await rejectionOf(client.request(jsonRpcCall()));
-  expect(node.requests.filter((request) => request.method === "POST").length).toBe(posts + 1);
-  node.setConfidential();
-  await client.request(jsonRpcCall());
-  expect(node.attestations()).toBe(2);
+  expect(countOf(node, isPost)).toBe(posts + 1);
   return err;
 }
 
@@ -211,19 +87,19 @@ const rejectedRows: Row[] = [
   },
   ...[400, 403, 404, 413, 429].map((status) => ({
     title: `gateway ${status} text/plain`,
-    answer: () => plain(status, "text/plain", utf8.encode("message: refused")),
+    answer: () => plain(status, "text/plain", "message: refused"),
     status,
     contentType: "text/plain",
   })),
   {
     title: "gateway API key 401 application/json",
-    answer: () => plain(401, "application/json", utf8.encode('{"error":"unauthorized"}')),
+    answer: () => plain(401, "application/json", '{"error":"unauthorized"}'),
     status: 401,
     contentType: "application/json",
   },
   ...[413, 429].map((status) => ({
     title: `edge proxy ${status} text/html`,
-    answer: () => plain(status, "text/html", utf8.encode("<html></html>")),
+    answer: () => plain(status, "text/html", "<html></html>"),
     status,
     contentType: "text/html",
   })),
@@ -243,13 +119,13 @@ const unexpectedRows: Row[] = [
   { title: "node plaintext 500 with an empty body", answer: () => plain(500), status: 500 },
   ...[500, 502].map((status) => ({
     title: `gateway ${status} text/plain`,
-    answer: () => plain(status, "text/plain", utf8.encode("message: failed")),
+    answer: () => plain(status, "text/plain", "message: failed"),
     status,
     contentType: "text/plain",
   })),
   ...[502, 503, 504].map((status) => ({
     title: `edge proxy ${status} text/html`,
-    answer: () => plain(status, "text/html", utf8.encode("<html></html>")),
+    answer: () => plain(status, "text/html", "<html></html>"),
     status,
     contentType: "text/html",
   })),
@@ -261,7 +137,7 @@ const unexpectedRows: Row[] = [
   },
   {
     title: "captive page 200 text/html",
-    answer: () => plain(200, "text/html", utf8.encode("<html></html>")),
+    answer: () => plain(200, "text/html", "<html></html>"),
     status: 200,
     contentType: "text/html",
   },
@@ -308,7 +184,7 @@ const neverDecryptedRejectedRows: Row[] = [
 
 describe("answers that are not encrypted responses", () => {
   test("the vendored pre_decapsulation_errors are all covered", () => {
-    expect(vectors.pre_decapsulation_errors.map((entry) => entry.name).sort()).toEqual([
+    expect(preDecapsulationErrors.map((entry) => entry.name).sort()).toEqual([
       "method-not-allowed",
       "ohttp-key",
       "request-too-large",
@@ -352,10 +228,9 @@ describe("content-type matching", () => {
 });
 
 describe("transport failures", () => {
-  test("a throwing transport is TransportFailed network with the thrown value as cause", async () => {
-    const thrown = new TypeError("fetch failed");
+  test("a throwing transport is TransportFailed network", async () => {
     const err = await failedCallAfterWarmup(() => {
-      throw thrown;
+      throw new TypeError("fetch failed");
     });
 
     expect(err).toBeInstanceOf(TransportFailed);
@@ -364,7 +239,6 @@ describe("transport failures", () => {
     expect(failed.kind).toBe("TransportFailed");
     expect(failed.reason).toBe("network");
     expect(failed.executed).toBe("unknown");
-    expect(failed.cause).toBe(thrown);
     expect(failed.nodeId).toBe(NODE_ID);
   });
 

@@ -3,7 +3,7 @@
 // CloudVerifier — a HardwareVerifier implementation backed by Phala's hosted
 // attestation-verify endpoint.
 //
-// It POSTs the raw DCAP quote (`bundle.quote.quote`, bare hex) to a configurable
+// It POSTs the raw DCAP quote (`bundle.quote`, bare hex) to a configurable
 // Phala-compatible endpoint and asserts `result.quote.verified === true`. Because
 // the vRPC trust model treats the node as untrusted, `verified` alone is
 // decorative — a genuine quote for a DIFFERENT key/node would also report
@@ -20,8 +20,8 @@
 // the egress. See README. No new runtime dependency — raw globalThis.fetch only.
 
 import { AttestationError } from "./errors";
-import type { HardwareVerifier } from "./hardware-verifier";
-import type { AttestationBundle, VerifyPolicy } from "./types";
+import type { AttestationBundle, HardwareVerifier, VerifyPolicy } from "./types";
+import { normHex } from "./verify-steps";
 
 /** Default Phala-hosted DCAP-quote verify endpoint. */
 export const DEFAULT_PHALA_VERIFY_ENDPOINT =
@@ -52,17 +52,13 @@ interface CloudVerifyResponse {
   };
 }
 
-/** Bare lowercase hex for comparison (strip optional `0x`, lowercase). */
-function normHex(s: string): string {
-  return s.replace(/^0x/i, "").toLowerCase();
-}
-
 /**
  * Build a {@link HardwareVerifier} backed by a Phala-compatible cloud verify
- * endpoint. The returned verifier POSTs `{ hex: bundle.quote.quote }`, asserts
+ * endpoint. The returned verifier POSTs `{ hex: bundle.quote }`, asserts
  * the cloud verdict, and binds the cloud-extracted quote body to the policy's
  * expected pubkey/nonce + the bundle's composeHash (B+). All failures throw
- * `AttestationError("CHK-P1", ...)` (fail-closed). Never prints.
+ * `AttestationError("CHK-P1", ...)` (fail-closed); a transport error, timeout, HTTP 5xx, 429 or
+ * 408, or an answer body that cannot be read or parsed also sets `unavailable`. Never prints.
  */
 export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareVerifier {
   const endpoint = config.endpoint ?? DEFAULT_PHALA_VERIFY_ENDPOINT;
@@ -71,45 +67,43 @@ export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareV
 
   return {
     async verifyHardware(bundle: AttestationBundle, policy: VerifyPolicy): Promise<void> {
-      // 1. POST the raw DCAP quote with an AbortController timeout.
+      // 1. POST the raw DCAP quote and read the answer under one AbortController timeout.
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
-      let res: Response;
+      let parsed: CloudVerifyResponse;
       try {
-        res = await doFetch(endpoint, {
+        const res = await doFetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hex: bundle.quote.quote }),
+          body: JSON.stringify({ hex: bundle.quote }),
           signal: controller.signal,
         });
+        // 2. Non-2xx → fail closed.
+        if (!res.ok) {
+          const transient = res.status >= 500 || res.status === 429 || res.status === 408;
+          throw new AttestationError(
+            "CHK-P1",
+            `cloud verify endpoint returned HTTP ${res.status}`,
+            transient ? { unavailable: true } : undefined,
+          );
+        }
+        // 3. Parse; a body that cannot be read or parsed is an outage, not a verdict.
+        parsed = (await res.json()) as CloudVerifyResponse;
       } catch (cause) {
+        if (cause instanceof AttestationError) throw cause;
         const aborted =
           cause instanceof Error && (cause.name === "AbortError" || controller.signal.aborted);
-        throw new AttestationError(
-          "CHK-P1",
-          aborted
-            ? `cloud verify request timed out after ${timeoutMs}ms`
-            : "cloud verify request failed (transport error)",
-          { cause },
-        );
+        const detail = aborted
+          ? `cloud verify request timed out after ${timeoutMs}ms`
+          : cause instanceof SyntaxError
+            ? "malformed cloud verify response (invalid JSON)"
+            : "cloud verify request failed (transport error)";
+        throw new AttestationError("CHK-P1", detail, { cause, unavailable: true });
       } finally {
         clearTimeout(timer);
       }
 
-      // 2. Non-2xx → fail closed.
-      if (!res.ok) {
-        throw new AttestationError("CHK-P1", `cloud verify endpoint returned HTTP ${res.status}`);
-      }
-
-      // 3. Parse + shape-gate the response.
-      let parsed: CloudVerifyResponse;
-      try {
-        parsed = (await res.json()) as CloudVerifyResponse;
-      } catch (cause) {
-        throw new AttestationError("CHK-P1", "malformed cloud verify response (invalid JSON)", {
-          cause,
-        });
-      }
+      // Shape-gate the response.
       const quote = parsed.quote;
       if (quote === undefined || quote === null || quote.body === undefined) {
         throw new AttestationError("CHK-P1", "malformed cloud verify response (missing quote)");
@@ -136,7 +130,7 @@ export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareV
       //    0x01 prefix byte + composeHash(32B) + zero-pad. Positionally compare
       //    hex[2:66] — a loose substring match would accept composeHash at any
       //    offset (or spanning the pad), weakening the bind.
-      const composeHash = normHex(bundle.tcbInfo?.compose_hash ?? "");
+      const composeHash = normHex(bundle.composeHash);
       if (!/^[0-9a-f]{64}$/.test(composeHash)) {
         throw new AttestationError(
           "CHK-P1",
@@ -154,17 +148,15 @@ export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareV
         throw new AttestationError("CHK-P1", "composeHash not measured into mr_config_id");
       }
 
-      // Point 10: success-path narration AFTER the verdict + both B+ binds pass.
+      // Success-path narration AFTER the verdict + both B+ binds pass.
       // Emitted ONLY via policy.logger (never console.*) so the "Never prints"
       // contract holds — silent unless a logger was injected.
-      if (policy.logger) {
-        policy.logger.debug("hardware.verify", {
-          verifier: "CloudVerifier",
-          quoteVerified: true,
-          reportdataBind: true,
-          composeHashBind: true,
-        });
-      }
+      policy.logger?.debug("hardware.verify", {
+        verifier: "CloudVerifier",
+        quoteVerified: true,
+        reportdataBind: true,
+        composeHashBind: true,
+      });
     },
   };
 }

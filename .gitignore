@@ -22,6 +22,8 @@ bun.lockb.bak
 # Logs / artefacts
 *.log
 coverage/
+temp/
+.pack/
 
 # codegraph index (local, per-developer)
 .codegraph/

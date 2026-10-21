@@ -2,7 +2,7 @@
   "name": "@w3tech.io/dstack-verify",
   "version": "0.3.0",
   "type": "module",
-  "description": "Frozen contract for dstack/TDX attestation verification — currently a mock gate; real DCAP/RTMR verification is deferred to a future release.",
+  "description": "Verification of dstack / Intel TDX attestation evidence.",
   "license": "Apache-2.0",
   "author": "Web3 Technologies, Inc.",
   "homepage": "https://github.com/w3tech/verifiable-rpc-sdk#readme",
@@ -60,6 +60,7 @@
     "@noble/hashes": "2.4.0"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1"
+    "@types/node": "^22.16.0",
+    "@w3tech.io/vrpc-test-support": "workspace:*"
   }
 }

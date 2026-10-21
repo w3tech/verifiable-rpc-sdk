@@ -90,7 +90,7 @@ CLI flag wins over env var, env var wins over the default.
 | `--chain-id` (required) | `VRPC_PROXY_CHAIN_ID` | — | Chain id (opaque string, validated at startup) |
 | `--api-key` | `VRPC_PROXY_API_KEY` | — | Optional API key sent as `x-api-key` to both the upstream and the attestation endpoint; a client-supplied `x-api-key` header takes precedence. In Ankr Confidential RPC mode a client-supplied `x-api-key` is ignored and only this key (or the key in the `--upstream` path) is used |
 | `--listen` | `VRPC_PROXY_LISTEN` | `127.0.0.1:8969` | Listen `host:port` |
-| `--timeout` | `VRPC_PROXY_TIMEOUT` | `30000` | Upstream timeout, ms |
+| `--timeout` | `VRPC_PROXY_TIMEOUT` | `30000` | Timeout of each upstream request, attestation fetch and cloud (Phala) attestation verify call, ms |
 | `--replay-window` | `VRPC_PROXY_REPLAY_WINDOW` | core default (`60000`) | Replay window, ms |
 | `--attestation-cache-ttl` | `VRPC_PROXY_ATTESTATION_CACHE_TTL` | core default (`3600000`) | How long a verified attestation (per signing pubkey) is reused before re-attestation, ms. In Ankr Confidential RPC mode: how long the pinned node is kept |
 | `--log-level` | `VRPC_PROXY_LOG_LEVEL` | `error` | `silent` (nothing), `error` (fail-closed reasons only), or `debug` (per-request forward/verify trace) |
@@ -193,16 +193,16 @@ Errors use the same JSON shape plus `executed`, and carry no `traceId`:
 | ---------- | ----------- | ---------- | ---- |
 | `BodyTooLarge` | `413` | — | Inbound request body exceeds the configured cap |
 | `UnsupportedMediaType` | `415` | — | Request has `content-encoding`, or a body without `content-type` |
-| `InvalidInnerRequest` | `400` | — | Request-target or method cannot be sealed |
+| `InvalidInnerRequest` | `400` | `no` | Request-target or method cannot be sealed |
 | `AttestationUnavailable` | `503` / `429` / `504` | `no` | Attestation failed (`429`: gateway rate limit, `504`: timeout) |
 | `RequestRejected` | `413` / `429` / `502` | `no` | Gateway refused the sealed request (`413` and `429` pass through, any other refusal is `502`) |
-| `ConfidentialSealFailed` | `500` | `no` | The request could not be sealed |
 | `UnexpectedResponse` | `502` | `unknown` | Upstream answered with something other than a sealed response |
 | `UpstreamTimeout` | `504` | `unknown` | Upstream did not answer within the configured timeout |
 | `UpstreamConnect` / `UpstreamBodyTooLarge` / `DecodeFailed` | `502` | `unknown` | Connection failed, response over the cap, or undecodable body |
 | `TransportFailed` | `502` | `unknown` | Any other transport failure |
 | `BadSignature` / `StaleTimestamp` / `MissingHeader` / `MalformedHeader` / `ConfidentialSignerMismatch` / `ConfidentialDecryptFailed` / `MalformedConfidentialResponse` | `502` | `unknown` | The answer to the sealed request failed verification |
-| `Attestation` / `MalformedAttestationResponse` and other attestation kinds | `502` | — | The attestation failed verification; the sealed request was not sent |
+| `AttestationFailed` | `502` | `no` | The attestation failed verification; the sealed request was not sent |
+| `InternalError` | `502` | `no` / `unknown` | Unexpected failure in the client (`no` before the sealed request was sent) |
 | `Internal` | `502` | — | Unexpected internal failure |
 
 ## Example

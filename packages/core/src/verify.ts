@@ -21,11 +21,12 @@
 // parsing — those stay in the transport layer.
 
 import { verifyAsync } from "@noble/ed25519";
-import { bytesToHex } from "@noble/hashes/utils.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 import { BadSignature, MalformedHeader, MissingHeader, StaleTimestamp } from "./errors";
 import type { Logger } from "./logger";
-import { buildPreImage, sha256, validateChainId } from "./preimage";
+import { buildPreImage, validateChainId } from "./preimage";
 
 export const DEFAULT_REPLAY_WINDOW_MS = 60_000;
 
@@ -36,7 +37,9 @@ const NODE_ID_HEADER = "vRPC-NodeId";
 
 const SIGNATURE_HEX_RE = /^0x[0-9a-f]{128}$/;
 const PUBKEY_HEX_RE = /^0x[0-9a-f]{64}$/;
-const TIMESTAMP_RE = /^\d+$/;
+const TIMESTAMP_RE = /^\d{1,20}$/;
+export const NODE_ID_RE = /^[^,]+$/;
+const U64_MAX = (1n << 64n) - 1n;
 
 /**
  * Headers as they may arrive from any transport: a `Headers` object (fetch /
@@ -125,23 +128,6 @@ export function isSignedVrpcResponse(headers: ResponseHeaders): boolean {
 }
 
 /**
- * Convert `0x...` hex (already shape-validated) to a `Uint8Array`.
- * Caller is responsible for ensuring the input matches `0x[0-9a-f]{2n}`.
- */
-function hexToBytes(hex0x: string): Uint8Array {
-  const stripped = hex0x.slice(2);
-  const out = new Uint8Array(stripped.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = Number.parseInt(stripped.slice(i * 2, i * 2 + 2), 16);
-  }
-  return out;
-}
-
-function absBigint(n: bigint): bigint {
-  return n < 0n ? -n : n;
-}
-
-/**
  * Verify a (requestBytes, rawResponseBytes, responseHeaders) triple against the
  * canonical pre-image signed by the sidecar. Transport-agnostic: the caller
  * supplies already content-decoded bytes and the raw response headers.
@@ -187,23 +173,27 @@ export async function verifyResponse(
   if (!PUBKEY_HEX_RE.test(pubkeyHex)) {
     throw new MalformedHeader(PUBKEY_HEADER, pubkeyHex, "expected 0x + 64 lowercase hex chars");
   }
-  if (!TIMESTAMP_RE.test(tsRaw)) {
+  const timestampMs = TIMESTAMP_RE.test(tsRaw) ? BigInt(tsRaw) : null;
+  if (timestampMs === null || timestampMs > U64_MAX) {
     throw new MalformedHeader(TIMESTAMP_HEADER, tsRaw, "expected decimal u64 ms");
   }
-  const timestampMs = BigInt(tsRaw);
+  if (nodeId !== null && !NODE_ID_RE.test(nodeId)) {
+    throw new MalformedHeader(NODE_ID_HEADER, nodeId, "expected a single node id");
+  }
 
   // 6. Pre-image reconstruct.
   const preImage = buildPreImage(chainId, requestBytes, rawResponseBytes, timestampMs);
+  const preImageSha256 = sha256(preImage);
 
   if (opts.logger) {
     opts.logger.debug("preimage.computed", {
-      preImageSha256: bytesToHex(sha256(preImage)),
+      preImageSha256: bytesToHex(preImageSha256),
     });
   }
 
-  // 7. Hex -> bytes (cheap, no dep).
-  const sigBytes = hexToBytes(sigHex);
-  const pubkeyBytes = hexToBytes(pubkeyHex);
+  // 7. Hex -> bytes; both headers already matched their regex.
+  const sigBytes = hexToBytes(sigHex.slice(2));
+  const pubkeyBytes = hexToBytes(pubkeyHex.slice(2));
 
   // 8. Ed25519 verify — bad signature -> BadSignature.
   const ok = await verifyAsync(sigBytes, preImage, pubkeyBytes);
@@ -214,7 +204,7 @@ export async function verifyResponse(
     throw new BadSignature({
       signatureHex: sigHex,
       pubkeyHex,
-      preImageSha256: sha256(preImage),
+      preImageSha256,
     });
   }
 
@@ -224,7 +214,7 @@ export async function verifyResponse(
   const replayWindowMs = opts.replayWindowMs ?? DEFAULT_REPLAY_WINDOW_MS;
   const nowMs = opts.nowMs ?? BigInt(Date.now());
   const skewMs = timestampMs - nowMs;
-  const isWithinWindow = absBigint(skewMs) <= BigInt(replayWindowMs);
+  const isWithinWindow = (skewMs < 0n ? -skewMs : skewMs) <= BigInt(replayWindowMs);
 
   if (opts.logger) {
     opts.logger.debug("timestamp.checked", {
@@ -254,7 +244,7 @@ export async function verifyResponse(
       signatureHex: sigHex,
       pubkeyHex,
       timestampMs,
-      preImageSha256: sha256(preImage),
+      preImageSha256,
     },
   };
 }

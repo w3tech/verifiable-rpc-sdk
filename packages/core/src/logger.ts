@@ -19,13 +19,6 @@ export interface Logger {
   debug(event: string, data?: Record<string, unknown>): void;
 }
 
-/**
- * Default no-op logger: a frozen singleton, referenced by identity for the
- * silent-path guard (`logger !== defaultLogger`). The SDK uses this whenever no
- * logger is injected, so the default path stays silent and allocation-free.
- */
-export const defaultLogger: Logger = Object.freeze({ debug: () => {} });
-
 const OK = "✅";
 const FAIL = "❌";
 const WAIT = "⏳";

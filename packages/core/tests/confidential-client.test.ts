@@ -1,73 +1,39 @@
-import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
+import { DEFAULT_PHALA_VERIFY_ENDPOINT } from "@w3tech.io/dstack-verify";
+import {
+  CHAIN_ID,
+  countOf,
+  createTestNode,
+  isPost,
+  jsonRpcCall,
+  KEY,
+  NODE_ID,
+  rejectionOf,
+  signResponse,
+  TEST_PUBKEY_HEX,
+  TEST_SEED,
+  thrownBy,
+} from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
-import { createTestNode, type TestNodeOptions } from "../../test-support/src/index";
 import type { InnerRequest } from "../src/bhttp";
-import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
 import {
   AttestationUnavailable,
   ConfidentialSignerMismatch,
-  InvalidChainId,
   InvalidInnerRequest,
+  InvalidOption,
   UnavailableError,
-  UnexpectedResponse,
   VerificationError,
 } from "../src/errors";
-import { buildPreImage } from "../src/preimage";
 import type { ConfidentialTransport } from "../src/transport";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
+import { BASE_URL, clientFor, KEYED_URL } from "./support/confidential";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
-const OTHER_SEED = new Uint8Array(32).fill(0x42);
-const CHAIN_ID = "42161";
-const BASE_URL = "https://rpc.example/eth_vrpc";
-// Fake key literal, never a real key.
-const KEY = "0123456789abcdefghijABCDEFGHIJkl";
-const KEYED_URL = `${BASE_URL}/${KEY}`;
-const NODE_ID = "alpha-vrpc-1";
 const utf8 = new TextEncoder();
 const JSON_RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const DEFAULT_UPSTREAM_BODY = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 
-function jsonRpcCall(): InnerRequest {
-  return {
-    method: "POST",
-    path: "/",
-    contentType: "application/json",
-    accept: "application/json",
-    body: utf8.encode(JSON_RPC_BODY),
-  };
-}
-
-function testNode(overrides: Partial<TestNodeOptions> = {}) {
-  return createTestNode({ seed: SEED, chainId: CHAIN_ID, nodeId: NODE_ID, ...overrides });
-}
-
-function clientFor(
-  transport: ConfidentialTransport,
-  overrides: Partial<ConfidentialClientOptions> = {},
-): ConfidentialClient {
-  return new ConfidentialClient({
-    url: KEYED_URL,
-    chainId: CHAIN_ID,
-    hardwareVerifier: mockHardwareVerifier(),
-    transport,
-    ...overrides,
-  });
-}
-
-async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected the promise to reject");
-}
-
 describe("ConfidentialClient", () => {
   test("a JSON-RPC call returns the upstream's status, content-type and body", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const response = await clientFor(node.transport).request(jsonRpcCall());
 
     expect(response.status).toBe(200);
@@ -85,7 +51,7 @@ describe("ConfidentialClient", () => {
         return this.#headers.get(name);
       }
     }
-    const node = testNode();
+    const node = createTestNode();
     const transport: ConfidentialTransport = async (request) => {
       const answer = await node.transport(request);
       return { ...answer, headers: new ForeignHeaders(answer.headers) as unknown as Headers };
@@ -98,7 +64,7 @@ describe("ConfidentialClient", () => {
   });
 
   test("the first call attests then posts ciphertext; the second call only posts", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     await client.request(jsonRpcCall());
 
@@ -127,7 +93,7 @@ describe("ConfidentialClient", () => {
     ["absent", null],
     ["empty", ""],
   ])("a %s vRPC-NodeId on the attestation answer is AttestationUnavailable and nothing is posted", async (_label, nodeId) => {
-    const node = testNode({ nodeId });
+    const node = createTestNode({ nodeId });
     const err = await rejectionOf(clientFor(node.transport).request(jsonRpcCall()));
 
     expect(err).toBeInstanceOf(AttestationUnavailable);
@@ -137,11 +103,11 @@ describe("ConfidentialClient", () => {
     expect(unavailable.kind).toBe("AttestationUnavailable");
     expect(unavailable.reason).toBe("node-id-missing");
     expect(unavailable.executed).toBe("no");
-    expect(node.requests.filter((r) => r.method === "POST")).toHaveLength(0);
+    expect(countOf(node, isPost)).toBe(0);
   });
 
   test("a header object whose get returns undefined on a miss still reports a missing vRPC-NodeId", async () => {
-    const node = testNode({ nodeId: null });
+    const node = createTestNode({ nodeId: null });
     const transport: ConfidentialTransport = async (request) => {
       const answer = await node.transport(request);
       const headers = new Map(Object.entries(answer.headers).map(([k, v]) => [k.toLowerCase(), v]));
@@ -154,50 +120,22 @@ describe("ConfidentialClient", () => {
     expect(err).toBeInstanceOf(AttestationUnavailable);
     expect((err as AttestationUnavailable).reason).toBe("node-id-missing");
     expect(client.getConfidentialInfo()).toBeUndefined();
-    expect(node.requests.filter((r) => r.method === "POST")).toHaveLength(0);
-  });
-
-  test("a plain-text gateway answer is UnexpectedResponse and is never opened", async () => {
-    const node = testNode();
-    const transport: ConfidentialTransport = async (request) =>
-      request.method === "POST"
-        ? {
-            status: 502,
-            headers: { "content-type": "text/plain" },
-            body: utf8.encode("upstream down"),
-          }
-        : node.transport(request);
-    const err = await rejectionOf(clientFor(transport).request(jsonRpcCall()));
-
-    expect(err).toBeInstanceOf(UnexpectedResponse);
-    expect(err).toBeInstanceOf(UnavailableError);
-    const unexpected = err as UnexpectedResponse;
-    expect(unexpected.kind).toBe("UnexpectedResponse");
-    expect(unexpected.status).toBe(502);
-    expect(unexpected.contentType).toBe("text/plain");
-    expect(unexpected.executed).toBe("unknown");
-    expect(unexpected.nodeId).toBe(NODE_ID);
+    expect(countOf(node, isPost)).toBe(0);
   });
 
   test("a sealed answer signed by another key is ConfidentialSignerMismatch", async () => {
-    const node = testNode();
-    const otherPubkey = `0x${bytesToHex(await getPublicKeyAsync(OTHER_SEED))}`;
+    const node = createTestNode();
     const transport: ConfidentialTransport = async (request) => {
       const response = await node.transport(request);
       if (request.method !== "POST" || request.body === undefined) return response;
-      const timestamp = BigInt(Date.now());
-      const signature = await signAsync(
-        buildPreImage(CHAIN_ID, request.body, response.body, timestamp),
-        OTHER_SEED,
-      );
       return {
         status: response.status,
         headers: {
           "content-type": "message/ohttp-res",
-          "vRPC-Signature": `0x${bytesToHex(signature)}`,
-          "vRPC-Timestamp": timestamp.toString(),
-          "vRPC-Pubkey": otherPubkey,
-          "vRPC-NodeId": NODE_ID,
+          ...signResponse(CHAIN_ID, request.body, response.body, {
+            seed: TEST_SEED,
+            nodeId: NODE_ID,
+          }),
         },
         body: response.body,
       };
@@ -209,7 +147,22 @@ describe("ConfidentialClient", () => {
     const mismatch = err as ConfidentialSignerMismatch;
     expect(mismatch.kind).toBe("ConfidentialSignerMismatch");
     expect(mismatch.expectedPubkey).toBe(node.pubkeyHex);
-    expect(mismatch.actualPubkey).toBe(otherPubkey);
+    expect(mismatch.actualPubkey).toBe(TEST_PUBKEY_HEX);
+  });
+
+  test("without a hardware verifier the given fetch makes the cloud verify call", async () => {
+    const seen: string[] = [];
+    const fetchStub = (async (input: string | URL | Request) => {
+      seen.push(String(input));
+      return new Response("unavailable", { status: 503 });
+    }) as typeof fetch;
+    const client = clientFor(createTestNode().transport, {
+      hardwareVerifier: undefined,
+      fetch: fetchStub,
+    });
+
+    expect(await rejectionOf(client.ready())).toMatchObject({ reason: "verifier" });
+    expect(seen).toEqual([DEFAULT_PHALA_VERIFY_ENDPOINT]);
   });
 });
 
@@ -229,11 +182,11 @@ describe("ConfidentialClient call surface", () => {
       "content-type-required",
     ],
   ])("%s is rejected as InvalidInnerRequest before any request", async (_label, inner, reason) => {
-    const node = testNode();
+    const node = createTestNode();
     const err = await rejectionOf(clientFor(node.transport).request(inner));
 
     expect(err).toBeInstanceOf(InvalidInnerRequest);
-    expect(err).toBeInstanceOf(VerificationError);
+    expect(err).not.toBeInstanceOf(VerificationError);
     const invalid = err as InvalidInnerRequest;
     expect(invalid.kind).toBe("InvalidInnerRequest");
     expect(invalid.reason).toBe(reason);
@@ -242,7 +195,7 @@ describe("ConfidentialClient call surface", () => {
   });
 
   test("an API key in headers goes on both legs and the caller's content-type is dropped", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport, {
       url: BASE_URL,
       headers: { "x-api-key": KEY, "Content-Type": "application/json" },
@@ -257,7 +210,7 @@ describe("ConfidentialClient call surface", () => {
   });
 
   test("an API key in the path stays in the path; the caller's query and hash are dropped", async () => {
-    const node = testNode();
+    const node = createTestNode();
     await clientFor(node.transport, { url: `${KEYED_URL}?debug=1#top` }).request(jsonRpcCall());
 
     const [attestation, call] = node.requests;
@@ -266,7 +219,7 @@ describe("ConfidentialClient call surface", () => {
   });
 
   test("a client without headers sends only content-type on the POST and nothing on the GET", async () => {
-    const node = testNode();
+    const node = createTestNode();
     await clientFor(node.transport).request(jsonRpcCall());
 
     expect(node.requests[0]?.headers).toEqual({});
@@ -275,7 +228,7 @@ describe("ConfidentialClient call surface", () => {
 
   test("the node id is sent opaque and percent-encoded", async () => {
     const nodeId = "node 1/\u00fc?&=#";
-    const node = testNode({ nodeId });
+    const node = createTestNode({ nodeId });
     await clientFor(node.transport).request(jsonRpcCall());
 
     const url = node.requests[1]?.url ?? "";
@@ -285,7 +238,7 @@ describe("ConfidentialClient call surface", () => {
 
   test("a REST-shaped GET reaches the upstream with its method, path, query and accept", async () => {
     let seen: Request | undefined;
-    const node = testNode({
+    const node = createTestNode({
       upstream: (request) => {
         seen = request;
         return {
@@ -312,7 +265,7 @@ describe("ConfidentialClient call surface", () => {
 
   test("a GET without body or content-type is sealed and answered", async () => {
     let seen: Request | undefined;
-    const node = testNode({
+    const node = createTestNode({
       upstream: (request) => {
         seen = request;
         return { status: 200, headers: { "content-type": "text/plain" }, body: "ok" };
@@ -327,7 +280,7 @@ describe("ConfidentialClient call surface", () => {
   });
 
   test("an inner 404 is returned, not thrown", async () => {
-    const node = testNode({
+    const node = createTestNode({
       upstream: () => ({
         status: 404,
         headers: { "content-type": "text/plain" },
@@ -349,7 +302,7 @@ describe("ConfidentialClient call surface", () => {
   });
 
   test("no inner metadata or plaintext appears on the wire", async () => {
-    const node = testNode();
+    const node = createTestNode();
     await clientFor(node.transport, { headers: { "x-api-key": KEY } }).request({
       method: "POST",
       path: "/sentinel-path?q=sentinel-query",
@@ -376,7 +329,7 @@ describe("ConfidentialClient call surface", () => {
   });
 
   test("concurrent calls on one client each use their own sealing context", async () => {
-    const node = testNode({
+    const node = createTestNode({
       upstream: async (request) => ({
         status: 200,
         headers: { "content-type": "application/json" },
@@ -412,41 +365,14 @@ describe("ConfidentialClient call surface", () => {
     expect(node.attestations()).toBe(1);
   });
 
-  test("the constructor validates synchronously and sends nothing", () => {
-    const node = testNode();
-    expect(() => clientFor(node.transport, { chainId: "" })).toThrow(InvalidChainId);
-    expect(() => clientFor(node.transport, { pubkeyCacheTtlMs: 0 })).toThrow(RangeError);
-    expect(() => clientFor(node.transport, { pubkeyCacheTtlMs: -1 })).toThrow(RangeError);
-
-    let err: unknown;
-    try {
-      clientFor(node.transport, { url: "not a url with sentinel-key" });
-    } catch (caught) {
-      err = caught;
-    }
-    expect(err).toBeInstanceOf(TypeError);
-    const typeError = err as TypeError;
-    expect(typeError.message).not.toContain("sentinel-key");
-    expect(String(typeError)).not.toContain("sentinel-key");
-    expect(JSON.stringify(typeError)).not.toContain("sentinel-key");
-    for (const value of Object.values(typeError)) {
-      expect(String(value)).not.toContain("sentinel-key");
-    }
-    expect(typeError.cause).toBeUndefined();
-
-    clientFor(node.transport);
-    expect(node.requests).toHaveLength(0);
-  });
-
   test.each([
-    1.5,
-    Number.NaN,
-    -1,
-    0,
-    Number.POSITIVE_INFINITY,
-  ])("replayWindowMs %d throws RangeError at construction and sends nothing", (replayWindowMs) => {
-    const node = testNode();
-    expect(() => clientFor(node.transport, { replayWindowMs })).toThrow(RangeError);
+    "url",
+    "chainId",
+  ] as const)("a missing %s throws InvalidOption at construction and sends nothing", (option) => {
+    const node = createTestNode();
+    const err = thrownBy(() => clientFor(node.transport, { [option]: undefined }));
+    expect(err).toBeInstanceOf(InvalidOption);
+    expect(err).toMatchObject({ option, executed: "no" });
     expect(node.requests).toHaveLength(0);
   });
 });

@@ -2,19 +2,13 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode for VrpcProvider: FetchRequest transport, lazy client, answer mapping.
 
-import { ResponseTooLarge, readCappedBody } from "@w3tech.io/vrpc-core";
-import type {
-  ConfidentialClient,
-  ConfidentialClientOptions,
-  ConfidentialInfo,
-  ConfidentialTransport,
-} from "@w3tech.io/vrpc-core/confidential";
+import { fetchTransport, type LazyConfidentialClient } from "@w3tech.io/vrpc-core";
+import type { ConfidentialTransport, OuterRequest } from "@w3tech.io/vrpc-core/confidential";
 import {
   assert,
   type FetchGetUrlFunc,
   FetchRequest,
   FetchResponse,
-  isError,
   type JsonRpcPayload,
   type JsonRpcResult,
   makeError,
@@ -25,51 +19,54 @@ import {
 const stockGetUrl = new FetchRequest("http://localhost").getUrlFunc;
 
 // Replaces the ethers fetchers, which buffer the whole body (and gunzip it in Node) before returning.
-const cappedGetUrl: FetchGetUrlFunc = async (req, signal) => {
-  assert(signal == null || !signal.cancelled, "request cancelled before sending", "CANCELLED");
-  const protocol = req.url.split(":")[0]?.toLowerCase();
-  assert(
-    protocol === "http" || protocol === "https",
-    `unsupported protocol ${protocol}`,
-    "UNSUPPORTED_OPERATION",
-    { operation: "request" },
-  );
-  assert(
-    protocol === "https" || !req.credentials || req.allowInsecureAuthentication,
-    "insecure authorized connections unsupported",
-    "UNSUPPORTED_OPERATION",
-    { operation: "request" },
-  );
-  let reason: Error | undefined;
-  const controller = new AbortController();
-  const timer = setTimeout(() => {
-    reason = makeError("request timeout", "TIMEOUT");
-    controller.abort();
-  }, req.timeout);
-  signal?.addListener(() => {
-    reason = makeError("request cancelled", "CANCELLED");
-    controller.abort();
-  });
-  try {
-    const response = await fetch(req.url, {
-      method: req.method,
-      headers: new Headers(Array.from(req)),
-      redirect: "manual",
-      signal: controller.signal,
-      ...(req.body === null ? {} : { body: req.body }),
+const cappedGetUrl =
+  (send: ConfidentialTransport, maxBytes: number | undefined): FetchGetUrlFunc =>
+  async (req, signal) => {
+    assert(signal == null || !signal.cancelled, "request cancelled before sending", "CANCELLED");
+    const protocol = req.url.split(":")[0]?.toLowerCase();
+    assert(
+      protocol === "http" || protocol === "https",
+      `unsupported protocol ${protocol}`,
+      "UNSUPPORTED_OPERATION",
+      { operation: "request" },
+    );
+    assert(
+      protocol === "https" || !req.credentials || req.allowInsecureAuthentication,
+      "insecure authorized connections unsupported",
+      "UNSUPPORTED_OPERATION",
+      { operation: "request" },
+    );
+    let reason: Error | undefined;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      reason = makeError("request timeout", "TIMEOUT");
+      controller.abort();
+    }, req.timeout);
+    signal?.addListener(() => {
+      reason = makeError("request cancelled", "CANCELLED");
+      controller.abort();
     });
-    const headers: Record<string, string> = {};
-    response.headers.forEach((value, name) => {
-      headers[name.toLowerCase()] = value;
-    });
-    const body = await readCappedBody(response);
-    return { statusCode: response.status, statusMessage: response.statusText, headers, body };
-  } catch (err) {
-    throw reason ?? err;
-  } finally {
-    clearTimeout(timer);
-  }
-};
+    try {
+      const response = await send({
+        method: req.method as OuterRequest["method"],
+        url: req.url,
+        headers: Object.fromEntries(req),
+        signal: controller.signal,
+        ...(req.body === null ? {} : { body: req.body }),
+        ...(maxBytes === undefined ? {} : { maxBytes }),
+      });
+      return {
+        statusCode: response.status,
+        statusMessage: "",
+        headers: Object.fromEntries(new Headers(response.headers)),
+        body: response.body,
+      };
+    } catch (err) {
+      throw reason ?? err;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 
 // `send()` clones the request per attempt and the clone turns gzip back on, so it is set here.
 function noFollowIdentity(base: FetchGetUrlFunc): FetchGetUrlFunc {
@@ -85,25 +82,15 @@ function noFollowIdentity(base: FetchGetUrlFunc): FetchGetUrlFunc {
   };
 }
 
-// A getUrlFunc error message may quote the keyed URL; only ethers' own timeout and cancel keep theirs.
-function sanitised(err: unknown): Error {
-  if (err instanceof ResponseTooLarge) return err;
-  const out = new Error(
-    isError(err, "TIMEOUT") || isError(err, "CANCELLED") ? err.shortMessage : "The request failed.",
-  );
-  const code = errorCode(err) ?? errorCode((err as { cause?: unknown } | null)?.cause);
-  if (code !== undefined) Object.assign(out, { code });
-  return out;
-}
-
-function errorCode(err: unknown): string | undefined {
-  const code =
-    typeof err === "object" && err !== null ? (err as { code?: unknown }).code : undefined;
-  return typeof code === "string" && /^[A-Z][A-Z0-9_]*$/.test(code) ? code : undefined;
-}
-
-/** Sends each outer request once through a clone of the provider's `FetchRequest`. */
-export function fetchRequestTransport(connection: () => FetchRequest): ConfidentialTransport {
+/**
+ * Sends each outer request once through a clone of the provider's `FetchRequest`; with the stock
+ * `getUrlFunc` it goes out through `fetchFn`, the global fetch when omitted.
+ */
+export function fetchRequestTransport(
+  connection: () => FetchRequest,
+  fetchFn: typeof fetch | undefined,
+): ConfidentialTransport {
+  const send = fetchTransport(fetchFn);
   return async (outer) => {
     const req = connection();
     req.url = outer.url;
@@ -113,72 +100,26 @@ export function fetchRequestTransport(connection: () => FetchRequest): Confident
     req.retryFunc = async () => false;
     req.processFunc = null;
     const own = req.getUrlFunc;
-    const base = own === stockGetUrl ? cappedGetUrl : own;
+    const base = own === stockGetUrl ? cappedGetUrl(send, outer.maxBytes) : own;
     req.getUrlFunc = noFollowIdentity(base);
 
     const signal = outer.signal;
-    if (signal?.aborted) throw signal.reason;
     const pending = req.send();
     const cancel = () => req.cancel();
     signal?.addEventListener("abort", cancel, { once: true });
     try {
       const res = await pending;
       return { status: res.statusCode, headers: res.headers, body: res.body ?? new Uint8Array(0) };
-    } catch (err) {
-      if (signal?.aborted) throw signal.reason;
-      throw sanitised(err);
     } finally {
       signal?.removeEventListener("abort", cancel);
     }
   };
 }
 
-/** The core client's check, run in the constructor so a bad value throws before any call. */
-export function requirePositiveMs(name: string, value: number | undefined): void {
-  if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0)) {
-    throw new RangeError(`${name} must be a positive integer number of milliseconds`);
-  }
-}
-
-/** One lazily loaded client per provider; a failed load or construction is retried on next use. */
-export class ConfidentialHolder {
-  readonly #options: ConfidentialClientOptions;
-  #client: ConfidentialClient | undefined;
-  #pending: Promise<ConfidentialClient> | undefined;
-
-  constructor(options: ConfidentialClientOptions) {
-    this.#options = options;
-  }
-
-  client(): Promise<ConfidentialClient> {
-    if (this.#client !== undefined) return Promise.resolve(this.#client);
-    this.#pending ??= (async () => {
-      try {
-        const { ConfidentialClient } = await import("@w3tech.io/vrpc-core/confidential");
-        this.#client = new ConfidentialClient(this.#options);
-        return this.#client;
-      } catch (err) {
-        this.#pending = undefined;
-        throw err;
-      }
-    })();
-    return this.#pending;
-  }
-
-  async ready(options?: { signal?: AbortSignal }): Promise<ConfidentialInfo> {
-    return (await this.client()).ready(options);
-  }
-
-  info(): ConfidentialInfo | undefined {
-    return this.#client?.getConfidentialInfo();
-  }
-}
-
 export async function sendConfidential(
-  holder: ConfidentialHolder,
+  client: LazyConfidentialClient,
   payload: JsonRpcPayload | Array<JsonRpcPayload>,
 ): Promise<Array<JsonRpcResult>> {
-  const client = await holder.client();
   const res = await client.request({
     method: "POST",
     path: "/",

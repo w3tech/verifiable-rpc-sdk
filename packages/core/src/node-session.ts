@@ -2,40 +2,25 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Attest one node and hold the pinned result for the Ankr Confidential RPC client.
 
+import { ed25519 } from "@noble/curves/ed25519.js";
 import { hexToBytes } from "@noble/hashes/utils.js";
-import {
-  AttestationError,
-  type HardwareVerifier,
-  verifyDstackAttestation,
-} from "@w3tech.io/dstack-verify";
 
 import { raceAbort } from "./abort";
-import { fetchAttestationWithNodeId } from "./attestation";
-import { AttestationFailed, AttestationUnavailable, MalformedAttestationResponse } from "./errors";
-import { defaultLogger, type Logger } from "./logger";
-import { InvalidNodeKey, nodeKeyFromEd25519 } from "./node-key";
-import type { ConfidentialTransport } from "./transport";
-import { buildVerifyPolicy, mapAttestationToBundle } from "./trusted-verifier";
+import { type AttestNodeOptions, attestNode, type NodeAttestation } from "./attestation";
+import { AttestationFailed } from "./errors";
 
-export interface AttestedNode {
-  readonly nodeId: string;
-  readonly pubkeyHex: string;
-  readonly nodeKey: Uint8Array;
-  readonly composeHash: string;
-  readonly attestedAt: number;
-}
+export type AttestedNode = NodeAttestation<string> & { readonly nodeKey: Uint8Array };
 
-const ATTESTED_PUBKEY_RE = /^0x[0-9a-fA-F]{64}$/;
-
-function attestedNodeKey(pubkeyHex: string): Uint8Array {
+export function nodeKeyFromEd25519(ed25519PublicKey: Uint8Array): Uint8Array {
   try {
-    return nodeKeyFromEd25519(hexToBytes(pubkeyHex.slice(2)));
-  } catch (err) {
-    if (err instanceof InvalidNodeKey) {
-      throw new MalformedAttestationResponse("attested pubkey is not a usable encryption key");
+    const point = ed25519.Point.fromBytes(ed25519PublicKey);
+    if (!point.isSmallOrder() && point.isTorsionFree()) {
+      return ed25519.utils.toMontgomery(ed25519PublicKey);
     }
-    throw err;
+  } catch {
+    // a malformed point or a failed conversion is rejected below
   }
+  throw new AttestationFailed("malformed", "attested pubkey is not a usable encryption key");
 }
 
 export type Pin = AttestedNode & { readonly expiresAt: number };
@@ -50,23 +35,19 @@ export function errorKind(err: unknown): string {
   return typeof err;
 }
 
-interface AttestOptions {
-  transport: ConfidentialTransport;
-  attestationUrl: string;
-  headers: Record<string, string>;
-  hardwareVerifier: HardwareVerifier;
-  logger: Logger;
-  signal?: AbortSignal;
-}
+type AttestOptions = Omit<AttestNodeOptions, "expectPubkey" | "nodeId">;
 
-export async function attestNode(opts: AttestOptions): Promise<AttestedNode> {
+export async function attestPin(opts: AttestOptions): Promise<AttestedNode> {
   const { logger } = opts;
-  if (logger === defaultLogger) return attest(opts);
   const started = Date.now();
-  logger.debug("confidential.attest.start");
+  logger?.debug("confidential.attest.start");
   try {
-    const node = await attest(opts);
-    logger.debug("confidential.attest.ok", {
+    const attested = await attestNode(opts);
+    const node = {
+      ...attested,
+      nodeKey: nodeKeyFromEd25519(hexToBytes(attested.pubkeyHex.slice(2))),
+    };
+    logger?.debug("confidential.attest.ok", {
       nodeId: node.nodeId,
       pubkey: node.pubkeyHex,
       composeHash: node.composeHash,
@@ -74,7 +55,7 @@ export async function attestNode(opts: AttestOptions): Promise<AttestedNode> {
     });
     return node;
   } catch (err) {
-    logger.debug("confidential.attest.fail", {
+    logger?.debug("confidential.attest.fail", {
       kind: errorKind(err),
       durationMs: Date.now() - started,
     });
@@ -82,49 +63,13 @@ export async function attestNode(opts: AttestOptions): Promise<AttestedNode> {
   }
 }
 
-async function attest(opts: AttestOptions): Promise<AttestedNode> {
-  const nonce = crypto.getRandomValues(new Uint8Array(32));
-  const { attestation, nodeId } = await fetchAttestationWithNodeId(opts.transport, {
-    attestationUrl: opts.attestationUrl,
-    nonce,
-    headers: opts.headers,
-    ...(opts.signal === undefined ? {} : { signal: opts.signal }),
-  });
-  if (!ATTESTED_PUBKEY_RE.test(attestation.pubkey)) {
-    throw new MalformedAttestationResponse("pubkey must be 0x + 64 hex chars");
-  }
-  const pubkeyHex = attestation.pubkey.toLowerCase();
-  const nodeKey = attestedNodeKey(pubkeyHex);
-  try {
-    await verifyDstackAttestation(
-      mapAttestationToBundle(attestation, pubkeyHex, nonce),
-      buildVerifyPolicy(pubkeyHex, nonce, opts.hardwareVerifier, opts.logger),
-    );
-  } catch (err) {
-    if (err instanceof AttestationError) {
-      throw new AttestationFailed(err.chkId, err.detail, { cause: err });
-    }
-    throw err;
-  }
-  return {
-    nodeId,
-    pubkeyHex,
-    nodeKey,
-    composeHash: attestation.composeHash,
-    attestedAt: Date.now(),
-  };
-}
-
-// Above the gateway's attestation timeout plus the hardware verifier's.
-const ATTESTATION_TIMEOUT_MS = 60_000;
-
 export class PinSlot {
-  readonly #attest: (signal?: AbortSignal) => Promise<AttestedNode>;
+  readonly #attest: () => Promise<AttestedNode>;
   readonly #ttlMs: number;
   #pin: Pin | undefined;
   #flight: Promise<Pin> | undefined;
 
-  constructor(attest: (signal?: AbortSignal) => Promise<AttestedNode>, ttlMs: number) {
+  constructor(attest: () => Promise<AttestedNode>, ttlMs: number) {
     this.#attest = attest;
     this.#ttlMs = ttlMs;
   }
@@ -138,26 +83,18 @@ export class PinSlot {
     const pin = this.current();
     if (pin !== undefined) return Promise.resolve(pin);
     if (this.#flight === undefined) {
-      const deadline = new AbortController();
-      const timer = setTimeout(
-        () => deadline.abort(new AttestationUnavailable("timeout")),
-        ATTESTATION_TIMEOUT_MS,
+      const flight: Promise<Pin> = this.#attest().then(
+        (node) => {
+          const next: Pin = Object.freeze({ ...node, expiresAt: node.attestedAt + this.#ttlMs });
+          this.#pin = next;
+          this.#flight = undefined;
+          return next;
+        },
+        (err: unknown) => {
+          this.#flight = undefined;
+          throw err;
+        },
       );
-      // The verifier takes no signal, so the deadline also settles the flight itself.
-      const flight: Promise<Pin> = raceAbort(this.#attest(deadline.signal), deadline.signal)
-        .then(
-          (node) => {
-            const next: Pin = Object.freeze({ ...node, expiresAt: node.attestedAt + this.#ttlMs });
-            this.#pin = next;
-            this.#flight = undefined;
-            return next;
-          },
-          (err: unknown) => {
-            this.#flight = undefined;
-            throw err;
-          },
-        )
-        .finally(() => clearTimeout(timer));
       // Nobody may be waiting when the flight settles.
       flight.catch(() => {});
       this.#flight = flight;

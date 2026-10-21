@@ -2,26 +2,19 @@ import { readFileSync } from "node:fs";
 import { extract } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, concatBytes, hexToBytes } from "@noble/hashes/utils.js";
+import { createRecipient, x25519SecretFromSeed } from "@w3tech.io/vrpc-test-support";
+import vectors from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
 import { describe, expect, test } from "vitest";
-import { createRecipient, x25519SecretFromSeed } from "../../test-support/src/index";
-import vectors from "../../test-support/vectors/sidecar-confidential.json";
 import { decodeInnerResponse, encodeInnerRequest } from "../src/bhttp";
-import { InvalidInnerRequest } from "../src/errors";
-import { nodeKeyFromEd25519 } from "../src/node-key";
-import {
-  createSuite,
-  OhttpError,
-  openResponse,
-  type ResponseOpener,
-  sealRequest,
-} from "../src/ohttp";
+import { ConfidentialDecryptFailed, InvalidInnerRequest } from "../src/errors";
+import { nodeKeyFromEd25519 } from "../src/node-session";
+import { createSuite, openResponse, type ResponseOpener, sealRequest } from "../src/ohttp";
 
 // w3tech/verifiable-rpc-sidecar tests/vectors/confidential.json at main merge
 // 8a9a4f482326fcdae5fe9b342d45399e5f996f7d, sha256 342cb863ddcf741f78a984ebbb28c2672f9c1dc9cc69084e1fba5b8e625b2075.
 const VECTORS_SHA256 = "342cb863ddcf741f78a984ebbb28c2672f9c1dc9cc69084e1fba5b8e625b2075";
 const VECTORS_FILE = new URL(
-  "../../test-support/vectors/sidecar-confidential.json",
-  import.meta.url,
+  import.meta.resolve("@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json"),
 );
 const HDR = "00002000010002";
 const utf8 = new TextEncoder();
@@ -157,9 +150,7 @@ describe("sidecar known-answer vectors", () => {
       tampered[32] = (tampered[32] ?? 0) ^ 0x01;
       const [result] = await Promise.allSettled([openResponse(await opener(vector), tampered)]);
       expect(result?.status).toBe("rejected");
-      const error = (result as PromiseRejectedResult).reason;
-      expect(error).toBeInstanceOf(OhttpError);
-      expect((error as OhttpError).reason).toBe("open-failed");
+      expect((result as PromiseRejectedResult).reason).toBeInstanceOf(ConfidentialDecryptFailed);
     });
   });
 });

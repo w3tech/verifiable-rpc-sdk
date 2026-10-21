@@ -2,17 +2,17 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // viem transport in Ankr Confidential RPC mode against the real sidecar.
 
-import { BaseError, createPublicClient } from "viem";
-import { arbitrum } from "viem/chains";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
 import {
   INTEROP_SKIP_MESSAGE,
   type Interop,
   integrationEnabled,
   spawnInterop,
-} from "../../../test-support/src/interop";
+} from "@w3tech.io/vrpc-test-support/interop";
+import { BaseError, createPublicClient } from "viem";
+import { arbitrum } from "viem/chains";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BadSignature, vrpcHttp } from "../../src/index";
-import { mockHardwareVerifier } from "../support/mock-hardware-verifier";
 
 if (!integrationEnabled) {
   console.log(INTEROP_SKIP_MESSAGE);
@@ -26,7 +26,7 @@ d("integration: viem in Ankr Confidential RPC mode against the sidecar", () => {
   let env: Interop | undefined;
 
   beforeAll(async () => {
-    env = await spawnInterop({ chainId: String(arbitrum.id) });
+    env = await spawnInterop();
   }, 60_000);
 
   afterAll(async () => {
@@ -88,10 +88,7 @@ d("integration: viem in Ankr Confidential RPC mode against the sidecar", () => {
     relay.set({ mode: "flip" });
     try {
       const before = sealedPosts();
-      const err = await client.getBlockNumber().then(
-        () => undefined,
-        (e: unknown) => e,
-      );
+      const err = await rejectionOf(client.getBlockNumber());
       expect(sealedPosts()).toBe(before + 1);
       expect(err).toBeInstanceOf(BaseError);
       const found = (err as BaseError).walk(

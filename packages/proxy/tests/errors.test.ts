@@ -1,50 +1,50 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Status, kind and executed for every confidential failure, and the JSON error body. Pure.
+// Status, kind, message and executed for every proxy failure in both modes, and the JSON error body. Pure.
 
 import {
   AttestationFailed,
   AttestationUnavailable,
   BadSignature,
   ConfidentialDecryptFailed,
-  ConfidentialSealFailed,
   ConfidentialSignerMismatch,
+  InternalError,
   InvalidInnerRequest,
   type InvalidInnerRequestReason,
   InvalidNonce,
-  MalformedAttestationResponse,
   MalformedConfidentialResponse,
   MalformedHeader,
   MissingHeader,
   RequestRejected,
   StaleTimestamp,
   TransportFailed,
-  UnavailableError,
   UnexpectedResponse,
+  VrpcError,
 } from "@w3tech.io/vrpc-core";
 import { describe, expect, test } from "vitest";
 
-import { describeConfidentialError } from "../src/confidential";
 import {
   BodyTooLargeError,
-  DecodeFailedError,
-  errorResponseBody,
+  describeError,
+  UnsignedUpstreamError,
   UnsupportedMediaTypeError,
-  UpstreamBodyTooLargeError,
-  UpstreamConnectError,
-  UpstreamTimeoutError,
+  upstreamError,
 } from "../src/errors";
+
+const coded = (code?: string) =>
+  Object.assign(new Error("The request failed."), code === undefined ? {} : { code });
 
 function expectRow(
   err: unknown,
   status: number,
   kind: string,
   executed?: "no" | "unknown",
-): ReturnType<typeof describeConfidentialError> {
-  const result = describeConfidentialError(err);
+): ReturnType<typeof describeError> {
+  const result = describeError(err);
   expect(result.status).toBe(status);
   expect(result.kind).toBe(kind);
-  expect("executed" in result).toBe(err instanceof UnavailableError || executed !== undefined);
+  expect("executed" in result).toBe(err instanceof VrpcError);
+  if (err instanceof VrpcError) expect(result.executed).toBe(err.executed);
   if (executed !== undefined) expect(result.executed).toBe(executed);
   return result;
 }
@@ -64,8 +64,10 @@ describe("proxy-side rejections", () => {
     "header",
     "content-type-required",
     "encode-failed",
-  ])("InvalidInnerRequest %s is 400", (reason) => {
-    const result = expectRow(new InvalidInnerRequest(reason), 400, "InvalidInnerRequest");
+  ])("InvalidInnerRequest %s is 400 executed no", (reason) => {
+    const err = new InvalidInnerRequest(reason);
+    err.executed = "no";
+    const result = expectRow(err, 400, "InvalidInnerRequest", "no");
     expect(result.message).toBe(`Inner request rejected: ${reason}`);
   });
 });
@@ -76,7 +78,7 @@ describe("AttestationUnavailable", () => {
     ["timeout", new AttestationUnavailable("timeout"), 504],
     [
       "transport with an upstream timeout",
-      new AttestationUnavailable("transport", { cause: new UpstreamTimeoutError("t") }),
+      new AttestationUnavailable("transport", { cause: coded("UND_ERR_HEADERS_TIMEOUT") }),
       504,
     ],
     ["status 401", new AttestationUnavailable("status", { status: 401 }), 503],
@@ -88,10 +90,11 @@ describe("AttestationUnavailable", () => {
     ["node-id-missing", new AttestationUnavailable("node-id-missing"), 503],
     [
       "transport with a connect failure",
-      new AttestationUnavailable("transport", { cause: new UpstreamConnectError("c") }),
+      new AttestationUnavailable("transport", { cause: coded("ECONNREFUSED") }),
       503,
     ],
   ])("%s", (_name, err, status) => {
+    err.executed = "no";
     expectRow(err, status, "AttestationUnavailable", "no");
   });
 });
@@ -117,47 +120,64 @@ describe("UnexpectedResponse", () => {
 });
 
 describe("TransportFailed", () => {
-  test.each<[Error, number, string]>([
-    [new UpstreamTimeoutError("timed out"), 504, "UpstreamTimeout"],
-    [new UpstreamConnectError("refused"), 502, "UpstreamConnect"],
-    [new UpstreamBodyTooLargeError(5), 502, "UpstreamBodyTooLarge"],
-    [new DecodeFailedError("bad gzip"), 502, "DecodeFailed"],
-  ])("cause %s renders as the cause, executed unknown", (cause, status, kind) => {
-    const result = expectRow(
-      new TransportFailed("network", "n", { cause }),
-      status,
-      kind,
-      "unknown",
-    );
-    expect(result.message).toBe(cause.message);
+  const timeout = "Upstream did not respond within the configured timeout";
+  const failed = "Upstream request failed";
+  test.each<[string, unknown, number, string, string]>([
+    ["UND_ERR_CONNECT_TIMEOUT", coded("UND_ERR_CONNECT_TIMEOUT"), 504, "UpstreamTimeout", timeout],
+    ["UND_ERR_HEADERS_TIMEOUT", coded("UND_ERR_HEADERS_TIMEOUT"), 504, "UpstreamTimeout", timeout],
+    ["UND_ERR_BODY_TIMEOUT", coded("UND_ERR_BODY_TIMEOUT"), 504, "UpstreamTimeout", timeout],
+    ["ECONNREFUSED", coded("ECONNREFUSED"), 502, "UpstreamConnect", failed],
+    ["no code", coded(), 502, "UpstreamConnect", failed],
+    ["a non-Error value", "socket hang up", 502, "UpstreamConnect", failed],
+    [
+      "UPSTREAM_BODY_TOO_LARGE",
+      coded("UPSTREAM_BODY_TOO_LARGE"),
+      502,
+      "UpstreamBodyTooLarge",
+      "Upstream response body exceeds the size limit",
+    ],
+    [
+      "DECODE_FAILED",
+      coded("DECODE_FAILED"),
+      502,
+      "DecodeFailed",
+      "Upstream response could not be decoded",
+    ],
+  ])("upstream failure %s renders the same in both modes", (_name, cause, status, kind, message) => {
+    const open = expectRow(upstreamError(cause), status, kind);
+    const network = new TransportFailed("network", "n", { cause });
+    const confidential = expectRow(network, status, kind, "unknown");
+    for (const result of [open, confidential]) {
+      expect(result.message).toBe(message);
+      expect(result.code).toBe((cause as { code?: string }).code);
+    }
   });
 
-  test.each<[string, TransportFailed]>([
-    ["too-large", new TransportFailed("too-large", "n")],
-    ["foreign cause", new TransportFailed("network", "n", { cause: new Error("x") })],
-  ])("%s is 502 TransportFailed executed unknown", (_name, err) => {
-    expectRow(err, 502, "TransportFailed", "unknown");
+  test("too-large is 502 TransportFailed executed unknown", () => {
+    expectRow(new TransportFailed("too-large", "n"), 502, "TransportFailed", "unknown");
   });
 });
 
-test("seal failure is 500 executed no", () => {
-  expectRow(
-    new ConfidentialSealFailed({ cause: new Error("x") }),
-    500,
-    "ConfidentialSealFailed",
-    "no",
-  );
+test.each([
+  "no",
+  "unknown",
+] as const)("InternalError is 502 executed %s without its cause", (executed) => {
+  const err = new InternalError({ cause: new Error("secret-detail") });
+  err.executed = executed;
+  const result = expectRow(err, 502, "InternalError", executed);
+  expect(result.message).not.toContain("secret-detail");
 });
 
 describe("verification failures", () => {
   const sig = `0x${"ab".repeat(64)}`;
   const key = `0x${"cd".repeat(32)}`;
-  test.each<[string, Error]>([
-    ["Attestation", new AttestationFailed("CHK-1", "detail")],
-    ["MalformedAttestationResponse", new MalformedAttestationResponse("r")],
+  test.each<[string, VrpcError]>([
+    ["AttestationFailed", new AttestationFailed("check", "detail", { chkId: "CHK-1" })],
+    ["AttestationFailed", new AttestationFailed("malformed", "r")],
     ["InvalidNonce", new InvalidNonce("r")],
-  ])("%s is 502 with its own kind and no executed", (kind, err) => {
-    const result = expectRow(err, 502, kind);
+  ])("%s before sending is 502 with its own kind, executed no", (kind, err) => {
+    err.executed = "no";
+    const result = expectRow(err, 502, kind, "no");
     expect(result.message).toBe(err.message);
   });
 
@@ -193,19 +213,7 @@ describe("anything else", () => {
   });
 });
 
-describe("errorResponseBody", () => {
-  test("carries executed after the message when given", () => {
-    const body = errorResponseBody("RequestRejected", "m", undefined, "no");
-    expect(body).toBe('{"error":{"kind":"RequestRejected","message":"m","executed":"no"}}');
-  });
-
-  test("has neither executed nor traceId by default", () => {
-    expect(JSON.parse(errorResponseBody("K", "m"))).toEqual({ error: { kind: "K", message: "m" } });
-  });
-
-  test("keeps the traceId", () => {
-    expect(JSON.parse(errorResponseBody("K", "m", "t"))).toEqual({
-      error: { kind: "K", message: "m", traceId: "t" },
-    });
-  });
+test("a traceId on the error is kept", () => {
+  const err = Object.assign(new UnsignedUpstreamError(200), { traceId: "t" });
+  expect(describeError(err).traceId).toBe("t");
 });

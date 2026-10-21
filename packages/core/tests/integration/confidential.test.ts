@@ -2,13 +2,14 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC client against the real sidecar and the dstack simulator.
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { CHAIN_ID, mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
 import {
   INTEROP_SKIP_MESSAGE,
   type Interop,
   integrationEnabled,
   spawnInterop,
-} from "../../../test-support/src/interop";
+} from "@w3tech.io/vrpc-test-support/interop";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   BadSignature,
   ConfidentialClient,
@@ -17,7 +18,6 @@ import {
   UnavailableError,
   VerificationError,
 } from "../../src/confidential";
-import { mockHardwareVerifier } from "../support/mock-hardware-verifier";
 
 if (!integrationEnabled) {
   console.log(INTEROP_SKIP_MESSAGE);
@@ -25,7 +25,6 @@ if (!integrationEnabled) {
 
 const d = integrationEnabled ? describe : describe.skip;
 
-const CHAIN_ID = "42161";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -62,7 +61,7 @@ d("integration: Ankr Confidential RPC against the sidecar", () => {
   let env: Interop | undefined;
 
   beforeAll(async () => {
-    env = await spawnInterop({ chainId: CHAIN_ID });
+    env = await spawnInterop();
   }, 60_000);
 
   afterAll(async () => {
@@ -235,7 +234,7 @@ d("integration: Ankr Confidential RPC against the sidecar", () => {
 
     try {
       relay.set({ mode: "flip" });
-      const err = await c.request(blockNumber()).catch((e: unknown) => e);
+      const err = await rejectionOf(c.request(blockNumber()));
       expect(err).toBeInstanceOf(VerificationError);
       expect(err).toMatchObject({ kind: "BadSignature" });
 
@@ -256,9 +255,9 @@ d("integration: Ankr Confidential RPC against the sidecar", () => {
 
     try {
       relay.set({ mode: "replay" });
-      const err = await c
-        .request(jsonRequest({ jsonrpc: "2.0", id: nextId++, method: "eth_chainId", params: [] }))
-        .catch((e: unknown) => e);
+      const err = await rejectionOf(
+        c.request(jsonRequest({ jsonrpc: "2.0", id: nextId++, method: "eth_chainId", params: [] })),
+      );
       expect(err).toBeInstanceOf(BadSignature);
       expect(err).toMatchObject({ kind: "BadSignature" });
     } finally {
@@ -274,7 +273,7 @@ d("integration: Ankr Confidential RPC against the sidecar", () => {
 
     try {
       env.relay.set({ confidentialTarget: extra.url });
-      const err = await c.request(blockNumber()).catch((e: unknown) => e);
+      const err = await rejectionOf(c.request(blockNumber()));
       expect(err).toBeInstanceOf(RequestRejected);
       expect(err).toBeInstanceOf(UnavailableError);
       expect(err).toMatchObject({ status: 400, executed: "no" });

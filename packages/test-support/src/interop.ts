@@ -6,7 +6,6 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import {
   createServer as createHttpServer,
-  type Server as HttpServer,
   request as httpRequest,
   type IncomingHttpHeaders,
   type IncomingMessage,
@@ -15,6 +14,9 @@ import {
 import { type AddressInfo, createServer as createNetServer, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CHAIN_ID } from "./fixtures";
+import { type RpcCall, rpcAnswer } from "./node";
+import { closeServer, listen } from "./server";
 
 export const integrationEnabled: boolean =
   !!process.env.DSTACK_SIMULATOR_BIN &&
@@ -24,7 +26,7 @@ export const integrationEnabled: boolean =
 export const INTEROP_SKIP_MESSAGE =
   "[integration] skipping — set DSTACK_SIMULATOR_BIN, DSTACK_SIMULATOR_FIXTURES_DIR, SIDECAR_BIN to run";
 
-export interface UpstreamRecord {
+interface UpstreamRecord {
   method: string;
   url: string;
   contentType: string | null;
@@ -33,15 +35,15 @@ export interface UpstreamRecord {
   jsonArrayLength: number | null;
 }
 
-export interface EchoUpstream {
+interface EchoUpstream {
   url: string;
   requests(): UpstreamRecord[];
   kill(): Promise<void>;
 }
 
-export type RelayMode = "pass" | "flip" | "replay";
+type RelayMode = "pass" | "flip" | "replay";
 
-export interface RelayRecord {
+interface RelayRecord {
   method: string;
   url: string;
   headers: Record<string, string>;
@@ -49,7 +51,7 @@ export interface RelayRecord {
   status: number;
 }
 
-export interface Relay {
+interface Relay {
   url: string;
   set(options: { mode?: RelayMode; confidentialTarget?: string | null }): void;
   requests(): RelayRecord[];
@@ -57,16 +59,10 @@ export interface Relay {
   kill(): Promise<void>;
 }
 
-export interface InteropSidecar {
+interface InteropSidecar {
   url: string;
   pubkeyHex: string;
   kill(): Promise<void>;
-}
-
-export interface InteropOptions {
-  chainId?: string;
-  nodeId?: string;
-  sidecarArgs?: string[];
 }
 
 export interface Interop {
@@ -105,21 +101,16 @@ const RPC_RESULTS: Record<string, string> = {
   eth_getTransactionCount: "0x3",
 };
 
-export async function spawnInterop(options: InteropOptions = {}): Promise<Interop> {
-  const chainId = options.chainId ?? "42161";
-  const nodeId = options.nodeId ?? "interop-node-1";
+export async function spawnInterop(): Promise<Interop> {
+  const chainId = CHAIN_ID;
+  const nodeId = "interop-node-1";
   const started: { kill(): Promise<void> }[] = [];
   try {
     const simulator = await spawnSimulator();
     started.push(simulator);
     const upstream = await spawnEchoUpstream();
     started.push(upstream);
-    const sidecar = await spawnSidecar(
-      simulator.socketPath,
-      upstream.url,
-      chainId,
-      options.sidecarArgs ?? [],
-    );
+    const sidecar = await spawnSidecar(simulator.socketPath, upstream.url, chainId, []);
     started.push(sidecar);
     const relay = await spawnRelay(sidecar.url, nodeId);
     started.push(relay);
@@ -254,7 +245,10 @@ async function spawnEchoUpstream(): Promise<EchoUpstream> {
       if (!isJson) {
         json(400, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
       } else {
-        json(200, Array.isArray(parsed) ? parsed.map(rpcAnswer) : rpcAnswer(parsed));
+        json(
+          200,
+          rpcAnswer(parsed as RpcCall, (call) => RPC_RESULTS[call.method] ?? "0x0"),
+        );
       }
       return;
     }
@@ -274,12 +268,6 @@ async function spawnEchoUpstream(): Promise<EchoUpstream> {
   });
   const url = await listen(server);
   return { url, requests: () => [...records], kill: () => closeServer(server) };
-}
-
-function rpcAnswer(call: unknown): unknown {
-  const fields = typeof call === "object" && call !== null ? (call as Record<string, unknown>) : {};
-  const method = typeof fields.method === "string" ? fields.method : "";
-  return { jsonrpc: "2.0", id: fields.id ?? null, result: RPC_RESULTS[method] ?? "0x0" };
 }
 
 async function spawnRelay(sidecarUrl: string, nodeId: string): Promise<Relay> {
@@ -422,18 +410,6 @@ function readBody(stream: IncomingMessage): Promise<Buffer> {
     stream.on("data", (chunk: Buffer) => chunks.push(chunk));
     stream.on("end", () => resolve(Buffer.concat(chunks)));
     stream.on("error", reject);
-  });
-}
-
-async function listen(server: HttpServer): Promise<string> {
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-}
-
-function closeServer(server: HttpServer): Promise<void> {
-  return new Promise((resolve) => {
-    server.close(() => resolve());
-    server.closeAllConnections();
   });
 }
 

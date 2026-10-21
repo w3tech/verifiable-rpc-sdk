@@ -21,7 +21,7 @@ const ENC_LENGTH = 32;
 const utf8 = new TextEncoder();
 const EMPTY = new Uint8Array(0);
 
-export interface OpenedRequest {
+interface OpenedRequest {
   hdr: Uint8Array;
   bhttp: Uint8Array;
   request: Request;
@@ -33,7 +33,7 @@ export interface OpenedRequest {
   }): Promise<Uint8Array>;
 }
 
-export interface Recipient {
+interface Recipient {
   ed25519PublicKey: Uint8Array;
   openRequest(body: Uint8Array): Promise<OpenedRequest>;
 }

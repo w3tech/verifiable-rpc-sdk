@@ -15,7 +15,8 @@ import { DhkemX25519HkdfSha256 as JsX25519 } from "@hpke/dhkem-x25519";
 import { extract } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, concatBytes, hexToBytes } from "@noble/hashes/utils.js";
-import { InvalidNodeKey } from "./node-key";
+
+import { ConfidentialDecryptFailed, MalformedConfidentialResponse } from "./errors";
 
 export type KemChoice = "native" | "js";
 
@@ -27,20 +28,6 @@ const REQUEST_LABEL = utf8.encode("message/bhttp request");
 const RESPONSE_LABEL = utf8.encode("message/bhttp response");
 const KEY_LABEL = utf8.encode("key");
 const NONCE_LABEL = utf8.encode("nonce");
-
-export type OhttpErrorReason = "seal-failed" | "response-too-short" | "open-failed";
-
-export class OhttpError extends Error {
-  readonly kind = "OhttpError" as const;
-
-  constructor(
-    readonly reason: OhttpErrorReason,
-    options?: { cause?: unknown },
-  ) {
-    super(`Confidential message processing failed: ${reason}`, options);
-    this.name = "OhttpError";
-  }
-}
 
 export interface ResponseOpener {
   readonly suite: CipherSuite;
@@ -87,19 +74,7 @@ export async function nativeX25519Works(): Promise<boolean> {
   }
 }
 
-// WebCrypto X25519 prints an ExperimentalWarning on first use on Node 20.19.0-20.19.2,
-// 22.0-22.12 and 23.0-23.4; all of Node 20 stays on the JS KEM.
-export function nativeX25519Stable(nodeVersion: string): boolean {
-  const [major = 0, minor = 0] = nodeVersion.split(".").map((part) => Number.parseInt(part, 10));
-  if (major === 22) return minor >= 13;
-  if (major === 23) return minor >= 5;
-  return major >= 24;
-}
-
 export async function selectKem(): Promise<KemChoice> {
-  const node = (globalThis as { process?: { versions?: { node?: unknown } } }).process?.versions
-    ?.node;
-  if (typeof node === "string" && !nativeX25519Stable(node)) return "js";
   return (await nativeX25519Works()) ? "native" : "js";
 }
 
@@ -128,29 +103,11 @@ export async function seal(
     ...u16(suite.aead.id),
   ]);
   const info = concatBytes(REQUEST_LABEL, new Uint8Array([0]), header);
-
-  let recipientPublicKey: CryptoKey;
-  try {
-    recipientPublicKey = await suite.kem.deserializePublicKey(nodeKey);
-  } catch (cause) {
-    throw new InvalidNodeKey("malformed", { cause });
-  }
-
-  let context: SenderContext;
-  try {
-    const params: SenderContextParams = { recipientPublicKey, info };
-    if (ekm !== undefined) params.ekm = ekm;
-    context = await suite.createSenderContext(params);
-  } catch (cause) {
-    throw new InvalidNodeKey("encap-failed", { cause });
-  }
-
-  let ct: Uint8Array;
-  try {
-    ct = new Uint8Array(await context.seal(bhttpRequest, EMPTY));
-  } catch (cause) {
-    throw new OhttpError("seal-failed", { cause });
-  }
+  const recipientPublicKey = await suite.kem.deserializePublicKey(nodeKey);
+  const params: SenderContextParams = { recipientPublicKey, info };
+  if (ekm !== undefined) params.ekm = ekm;
+  const context = await suite.createSenderContext(params);
+  const ct = new Uint8Array(await context.seal(bhttpRequest, EMPTY));
   const enc = new Uint8Array(context.enc);
   return { body: concatBytes(header, enc, ct), opener: { suite, context, enc } };
 }
@@ -167,7 +124,9 @@ export async function openResponse(opener: ResponseOpener, body: Uint8Array): Pr
   const nk = suite.aead.keySize;
   const nn = suite.aead.nonceSize;
   const nonceLength = Math.max(nk, nn);
-  if (body.length < nonceLength + suite.aead.tagSize) throw new OhttpError("response-too-short");
+  if (body.length < nonceLength + suite.aead.tagSize) {
+    throw new MalformedConfidentialResponse("too-short");
+  }
   try {
     const secret = new Uint8Array(await context.export(RESPONSE_LABEL, nonceLength));
     // noble's argument order is (hash, ikm, salt), not the RFC's Extract(salt, ikm).
@@ -178,7 +137,7 @@ export async function openResponse(opener: ResponseOpener, body: Uint8Array): Pr
       .createEncryptionContext(key)
       .open(nonce, body.subarray(nonceLength), EMPTY);
     return new Uint8Array(plaintext);
-  } catch (cause) {
-    throw new OhttpError("open-failed", { cause });
+  } catch {
+    throw new ConfidentialDecryptFailed();
   }
 }

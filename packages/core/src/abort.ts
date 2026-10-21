@@ -4,31 +4,34 @@
 
 type Fail = (reason: unknown) => void;
 
-const waiters = new WeakMap<AbortSignal, Set<Fail>>();
-const handlers = new WeakMap<AbortSignal, () => void>();
-
-function register(signal: AbortSignal): Set<Fail> {
-  const existing = waiters.get(signal);
-  if (existing !== undefined) return existing;
-  const fresh = new Set<Fail>();
-  const onAbort = () => {
-    waiters.delete(signal);
-    handlers.delete(signal);
-    for (const fail of fresh) fail(signal.reason);
-  };
-  waiters.set(signal, fresh);
-  handlers.set(signal, onAbort);
-  signal.addEventListener("abort", onAbort, { once: true });
-  return fresh;
+interface Waiters {
+  readonly fails: Set<Fail>;
+  readonly onAbort: () => void;
 }
 
-function release(signal: AbortSignal, entry: Set<Fail>, fail: Fail): void {
-  entry.delete(fail);
-  if (entry.size > 0 || waiters.get(signal) !== entry) return;
-  waiters.delete(signal);
-  const onAbort = handlers.get(signal);
-  handlers.delete(signal);
-  if (onAbort !== undefined) signal.removeEventListener("abort", onAbort);
+const registry = new WeakMap<AbortSignal, Waiters>();
+
+/** Calls `fail(signal.reason)` when `signal` aborts; returns the release. */
+function subscribe(signal: AbortSignal, fail: Fail): () => void {
+  let entry = registry.get(signal);
+  if (entry === undefined) {
+    const fails = new Set<Fail>();
+    const onAbort = () => {
+      registry.delete(signal);
+      for (const waiter of fails) waiter(signal.reason);
+    };
+    entry = { fails, onAbort };
+    registry.set(signal, entry);
+    signal.addEventListener("abort", onAbort, { once: true });
+  }
+  const own = entry;
+  own.fails.add(fail);
+  return () => {
+    own.fails.delete(fail);
+    if (own.fails.size > 0 || registry.get(signal) !== own) return;
+    registry.delete(signal);
+    signal.removeEventListener("abort", own.onAbort);
+  };
 }
 
 /** Settles like `promise`, or rejects with `signal.reason` first; never cancels `promise`. */
@@ -39,15 +42,14 @@ export function raceAbort<T>(promise: Promise<T>, signal: AbortSignal | undefine
     return Promise.reject(signal.reason);
   }
   return new Promise<T>((resolve, reject) => {
-    const entry = register(signal);
-    entry.add(reject);
+    const release = subscribe(signal, reject);
     promise.then(
       (value) => {
-        release(signal, entry, reject);
+        release();
         resolve(value);
       },
       (err: unknown) => {
-        release(signal, entry, reject);
+        release();
         reject(err);
       },
     );

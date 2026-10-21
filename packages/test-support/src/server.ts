@@ -2,10 +2,16 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Loopback HTTP server fronting an in-test node, with a request log and per-test answers.
 
-import { createServer, type IncomingHttpHeaders, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 import { gzipSync } from "node:zlib";
-import type { TestNode, TestOuterResponse } from "./node";
+import {
+  createTestNode,
+  isPost,
+  type TestNode,
+  type TestOuterResponse,
+  type TestUpstream,
+} from "./node";
 
 export interface ServedRequest {
   method: string;
@@ -14,20 +20,23 @@ export interface ServedRequest {
   path: string;
   /** Lowercase names; repeated values joined with ", ". */
   headers: Record<string, string>;
+  rawHeaders: string[];
   body: Uint8Array;
   gzipped: boolean;
+  socket: Socket;
 }
 
 export interface ServedAnswer {
   status: number;
-  headers?: Record<string, string>;
+  /** An array value is sent as repeated header lines. */
+  headers?: Record<string, string | string[]>;
   body?: Uint8Array | string;
   /** Declares the full length, writes this many body bytes, then destroys the socket. */
   cutAfter?: number;
 }
 
 /** Returns the answer, or `undefined` to send the node's own answer. */
-export type ServedHandler = (
+type ServedHandler = (
   request: ServedRequest,
   forward: () => Promise<TestOuterResponse>,
 ) => ServedAnswer | undefined | Promise<ServedAnswer | undefined>;
@@ -39,18 +48,34 @@ export interface TestNodeServerOptions {
 
 export interface TestNodeServer {
   readonly url: string;
+  readonly node: TestNode;
   readonly requests: ServedRequest[];
   /** Sets the handler for later requests; no argument restores plain forwarding. */
   answer(handler?: ServedHandler): void;
   close(): Promise<void>;
 }
 
-function flatten(headers: IncomingHttpHeaders): Record<string, string> {
+function flatten(req: IncomingMessage): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [name, value] of Object.entries(headers)) {
-    if (value !== undefined) out[name] = Array.isArray(value) ? value.join(", ") : value;
+  for (const [name, values] of Object.entries(req.headersDistinct)) {
+    if (values !== undefined) out[name] = values.join(", ");
   }
   return out;
+}
+
+export function listen(server: Server): Promise<string> {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+    });
+  });
+}
+
+export function closeServer(server: Server): Promise<void> {
+  server.closeAllConnections();
+  return new Promise((resolve) => server.close(() => resolve()));
 }
 
 function acceptsGzip(value: string | undefined): boolean {
@@ -65,7 +90,6 @@ export async function serveTestNode(
   options: TestNodeServerOptions = {},
 ): Promise<TestNodeServer> {
   const requests: ServedRequest[] = [];
-  const sockets = new Set<Socket>();
   let handler: ServedHandler | undefined;
   let origin = "";
 
@@ -104,9 +128,11 @@ export async function serveTestNode(
         method: req.method ?? "",
         url,
         path: url.split("?", 1)[0] ?? url,
-        headers: flatten(req.headers),
+        headers: flatten(req),
+        rawHeaders: [...req.rawHeaders],
         body: new Uint8Array(Buffer.concat(chunks)),
         gzipped: false,
+        socket: req.socket,
       };
       requests.push(entry);
       const forward = () =>
@@ -119,28 +145,53 @@ export async function serveTestNode(
       const current = handler;
       Promise.resolve()
         .then(() => current?.(entry, forward))
-        .then(async (answer) => answer ?? (await forward()))
-        .then((answer) => write(entry, answer, res))
+        .then(async (answer) => {
+          // A request whose client left during the handler never reaches the node.
+          if (req.socket.destroyed) return;
+          write(entry, answer ?? (await forward()), res);
+        })
         .catch(() => res.destroy());
     });
   });
-  server.on("connection", (socket) => {
-    sockets.add(socket);
-    socket.on("close", () => sockets.delete(socket));
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  origin = await listen(server);
 
   return {
     url: origin,
+    node,
     requests,
     answer(next) {
       handler = next;
     },
-    async close() {
-      for (const socket of sockets) socket.destroy();
-      server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    },
+    close: () => closeServer(server),
   };
+}
+
+/** Serves a default test node in front of `upstream`. */
+export function serveUpstream(
+  upstream: TestUpstream,
+  options?: TestNodeServerOptions,
+): Promise<TestNodeServer> {
+  return serveTestNode(createTestNode({ upstream }), options);
+}
+
+/** Leaves every later sealed POST unanswered; returns the bodies received. */
+export function holdPosts(server: TestNodeServer): Uint8Array[] {
+  const sent: Uint8Array[] = [];
+  server.answer((request) => {
+    if (!isPost(request)) return undefined;
+    sent.push(request.body);
+    return new Promise<undefined>(() => {});
+  });
+  return sent;
+}
+
+/** A 429 with retry-after, a redirect to `/elsewhere` on the same server, or a plain-text failure. */
+export function failureAnswer(server: TestNodeServer, status: number): ServedAnswer {
+  if (status === 429) {
+    return { status, headers: { "content-type": "text/plain", "retry-after": "1" }, body: "slow" };
+  }
+  if (status >= 300 && status < 400) {
+    return { status, headers: { location: `${server.url}/elsewhere` } };
+  }
+  return { status, headers: { "content-type": "text/plain" }, body: "gateway failure" };
 }

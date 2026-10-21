@@ -9,32 +9,5 @@ export type {
   ConfidentialResponse,
 } from "./confidential-client";
 export { ConfidentialClient } from "./confidential-client";
-export type {
-  AttestationUnavailableReason,
-  InvalidInnerRequestReason,
-  MalformedConfidentialResponseReason,
-  TransportFailedReason,
-  UnavailableErrorKind,
-  VerificationErrorKind,
-} from "./errors";
-export {
-  AttestationFailed,
-  AttestationUnavailable,
-  BadSignature,
-  ConfidentialDecryptFailed,
-  ConfidentialSealFailed,
-  ConfidentialSignerMismatch,
-  InvalidChainId,
-  InvalidInnerRequest,
-  MalformedAttestationResponse,
-  MalformedConfidentialResponse,
-  MalformedHeader,
-  MissingHeader,
-  RequestRejected,
-  StaleTimestamp,
-  TransportFailed,
-  UnavailableError,
-  UnexpectedResponse,
-  VerificationError,
-} from "./errors";
+export * from "./errors";
 export type { ConfidentialTransport, OuterRequest, OuterResponse } from "./transport";

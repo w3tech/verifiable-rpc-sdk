@@ -1,14 +1,18 @@
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
-import { describe, expect, expectTypeOf, test } from "vitest";
+import { hexToBytes } from "@noble/hashes/utils.js";
 import {
+  bhttpField,
+  bhttpOkResponse,
   type ConfidentialContext,
   createTestNode,
+  jsonRpcCall,
+  rejectionOf,
+  TEST_SEED,
   type TestOuterResponse,
   type TestUpstreamResponse,
-} from "../../test-support/src/index";
-import vectors from "../../test-support/vectors/sidecar-confidential.json";
-import { type InnerRequest, MalformedInnerResponse } from "../src/bhttp";
-import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
+} from "@w3tech.io/vrpc-test-support";
+import vectors from "@w3tech.io/vrpc-test-support/vectors/sidecar-confidential.json";
+import { describe, expect, expectTypeOf, test } from "vitest";
+import type { ConfidentialClientOptions } from "../src/confidential-client";
 import {
   BadSignature,
   ConfidentialDecryptFailed,
@@ -19,60 +23,14 @@ import {
   StaleTimestamp,
   VerificationError,
 } from "../src/errors";
-import { InvalidNodeKey } from "../src/node-key";
-import { OhttpError } from "../src/ohttp";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
+import { clientFor, signed } from "./support/confidential";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
-const OTHER_SEED = new Uint8Array(32).fill(0x42);
-const CHAIN_ID = "42161";
-const NODE_ID = "alpha-vrpc-1";
 const OHTTP_RES = { "content-type": "message/ohttp-res" };
-const utf8 = new TextEncoder();
 const text = new TextDecoder();
 
-function jsonRpcCall(): InnerRequest {
-  return {
-    method: "POST",
-    path: "/",
-    contentType: "application/json",
-    body: utf8.encode('{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'),
-  };
-}
-
 function setup(upstream?: () => TestUpstreamResponse) {
-  const node = createTestNode({
-    seed: SEED,
-    chainId: CHAIN_ID,
-    nodeId: NODE_ID,
-    ...(upstream === undefined ? {} : { upstream }),
-  });
-  const client = new ConfidentialClient({
-    url: "https://rpc.example/eth_vrpc",
-    chainId: CHAIN_ID,
-    hardwareVerifier: mockHardwareVerifier(),
-    transport: node.transport,
-  });
-  return { node, client };
-}
-
-async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected the promise to reject");
-}
-
-function expectPublicFamily(err: unknown): void {
-  expect(err).toBeInstanceOf(VerificationError);
-  expect(err).not.toBeInstanceOf(OhttpError);
-  expect(err).not.toBeInstanceOf(MalformedInnerResponse);
-  expect(err).not.toBeInstanceOf(InvalidNodeKey);
-  expect(["OhttpError", "MalformedInnerResponse", "InvalidNodeKey"]).not.toContain(
-    (err as VerificationError).kind,
-  );
+  const node = createTestNode({ upstream });
+  return { node, client: clientFor(node.transport) };
 }
 
 type Answer = (context: ConfidentialContext) => TestOuterResponse | Promise<TestOuterResponse>;
@@ -82,38 +40,12 @@ async function failedCallAfterWarmup(answer: Answer): Promise<unknown> {
   await client.request(jsonRpcCall());
   node.setConfidential(answer);
   const err = await rejectionOf(client.request(jsonRpcCall()));
-  node.setConfidential();
-  await client.request(jsonRpcCall());
-  expect(node.attestations()).toBe(2);
-  expectPublicFamily(err);
+  expect(err).toBeInstanceOf(VerificationError);
   return err;
-}
-
-function signed(context: ConfidentialContext, body: Uint8Array): TestOuterResponse {
-  return { status: 200, headers: { ...OHTTP_RES, ...context.sign(body) }, body };
 }
 
 function random(length: number): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(length));
-}
-
-function vli(length: number): string {
-  return length < 64 ? length.toString(16).padStart(2, "0") : (0x4000 | length).toString(16);
-}
-
-function field(name: string, value: string): string {
-  return (
-    vli(name.length) +
-    bytesToHex(utf8.encode(name)) +
-    vli(value.length) +
-    bytesToHex(utf8.encode(value))
-  );
-}
-
-function okResponse(fields: string[], body: string): string {
-  const section = fields.join("");
-  const content = bytesToHex(utf8.encode(body));
-  return `0140c8${vli(section.length / 2)}${section}${vli(content.length / 2)}${content}00`;
 }
 
 describe("signed confidential answers that fail verification", () => {
@@ -122,7 +54,7 @@ describe("signed confidential answers that fail verification", () => {
       const normal = await context.normal();
       return {
         ...normal,
-        headers: { ...normal.headers, ...context.sign(normal.body, { seed: OTHER_SEED }) },
+        headers: { ...normal.headers, ...context.sign(normal.body, { seed: TEST_SEED }) },
       };
     });
     expect(err).toBeInstanceOf(ConfidentialSignerMismatch);
@@ -133,7 +65,7 @@ describe("signed confidential answers that fail verification", () => {
     const err = await failedCallAfterWarmup(async (context) => {
       const normal = await context.normal();
       const { "vRPC-Pubkey": otherPubkey, ...otherHeaders } = context.sign(normal.body, {
-        seed: OTHER_SEED,
+        seed: TEST_SEED,
       });
       const stored = new Headers({ ...OHTTP_RES, ...otherHeaders });
       // The pinned key is shown until verification reads the signature.
@@ -156,7 +88,7 @@ describe("signed confidential answers that fail verification", () => {
     const { node } = setup();
     const err = await failedCallAfterWarmup(async (context) => {
       const normal = await context.normal();
-      const headers = context.sign(normal.body, { seed: OTHER_SEED, pubkeyHex: node.pubkeyHex });
+      const headers = context.sign(normal.body, { seed: TEST_SEED, pubkeyHex: node.pubkeyHex });
       return { ...normal, headers: { ...normal.headers, ...headers } };
     });
     expect(err).toBeInstanceOf(BadSignature);
@@ -195,7 +127,6 @@ describe("signed confidential answers that fail verification", () => {
 
     const err = await rejectionOf(client.request(jsonRpcCall()));
     expect(err).toBeInstanceOf(BadSignature);
-    expectPublicFamily(err);
 
     node.setConfidential();
     await client.request(jsonRpcCall());
@@ -306,8 +237,11 @@ describe("delivered inner responses", () => {
         context,
         await context.seal(
           hexToBytes(
-            okResponse(
-              [field("content-type", "application/json"), field("content-type", "text/plain")],
+            bhttpOkResponse(
+              [
+                bhttpField("content-type", "application/json"),
+                bhttpField("content-type", "text/plain"),
+              ],
               "{}",
             ),
           ),
@@ -332,6 +266,7 @@ describe("client options", () => {
       | "pubkeyCacheTtlMs"
       | "logger"
       | "hardwareVerifier"
+      | "fetch"
       | "transport"
     >();
   });

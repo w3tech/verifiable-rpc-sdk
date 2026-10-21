@@ -2,16 +2,16 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // ethers provider in Ankr Confidential RPC mode against the real sidecar.
 
-import { isError, toUtf8String } from "ethers";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
 import {
   INTEROP_SKIP_MESSAGE,
   type Interop,
   integrationEnabled,
   spawnInterop,
-} from "../../../test-support/src/interop";
+} from "@w3tech.io/vrpc-test-support/interop";
+import { isError, toUtf8String } from "ethers";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BadSignature, type VrpcOptions, VrpcProvider } from "../../src/index";
-import { mockHardwareVerifier } from "../support/mock-hardware-verifier";
 
 if (!integrationEnabled) {
   console.log(INTEROP_SKIP_MESSAGE);
@@ -31,7 +31,7 @@ d("integration: ethers in Ankr Confidential RPC mode against the sidecar", () =>
   const providers: VrpcProvider[] = [];
 
   beforeAll(async () => {
-    env = await spawnInterop({ chainId: String(CHAIN_ID) });
+    env = await spawnInterop();
   }, 60_000);
 
   afterAll(async () => {
@@ -122,10 +122,7 @@ d("integration: ethers in Ankr Confidential RPC mode against the sidecar", () =>
     await p.send("eth_chainId", []);
     relay.set({ mode: "flip" });
     try {
-      const err = await p.getBlockNumber().then(
-        () => undefined,
-        (e: unknown) => e,
-      );
+      const err = await rejectionOf(p.getBlockNumber());
       expect(err).toBeInstanceOf(BadSignature);
       expect((err as BadSignature).kind).toBe("BadSignature");
     } finally {

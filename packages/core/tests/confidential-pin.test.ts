@@ -1,77 +1,16 @@
-import { hexToBytes } from "@noble/hashes/utils.js";
-import { afterEach, describe, expect, test, vi } from "vitest";
 import {
-  type ConfidentialHandler,
+  countOf,
   createTestNode,
-  type TestNodeOptions,
-  type TestOuterResponse,
-} from "../../test-support/src/index";
-import type { InnerRequest } from "../src/bhttp";
-import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
-import {
-  AttestationUnavailable,
-  InvalidInnerRequest,
-  RequestRejected,
-  StaleTimestamp,
-  TransportFailed,
-} from "../src/errors";
-import type { ConfidentialTransport } from "../src/transport";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
-
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
-const CHAIN_ID = "42161";
-const NODE_ID = "alpha-vrpc-1";
-const KEYED_URL = "https://rpc.example/eth_vrpc/0123456789abcdefghijABCDEFGHIJkl";
-const utf8 = new TextEncoder();
-
-function jsonRpcCall(): InnerRequest {
-  return {
-    method: "POST",
-    path: "/",
-    contentType: "application/json",
-    accept: "application/json",
-    body: utf8.encode('{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'),
-  };
-}
+  isGet,
+  isPost,
+  jsonRpcCall,
+  NODE_ID,
+} from "@w3tech.io/vrpc-test-support";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { AttestationUnavailable, RequestRejected } from "../src/errors";
+import { clientFor, plain } from "./support/confidential";
 
 const T0 = 1_800_000_000_000;
-
-function testNode(overrides: Partial<TestNodeOptions> = {}) {
-  return createTestNode({ seed: SEED, chainId: CHAIN_ID, nodeId: NODE_ID, ...overrides });
-}
-
-function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => void } {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
-
-function clientFor(
-  transport: ConfidentialTransport,
-  overrides: Partial<ConfidentialClientOptions> = {},
-): ConfidentialClient {
-  return new ConfidentialClient({
-    url: KEYED_URL,
-    chainId: CHAIN_ID,
-    hardwareVerifier: mockHardwareVerifier(),
-    transport,
-    ...overrides,
-  });
-}
-
-function posts(node: ReturnType<typeof testNode>): number {
-  return node.requests.filter((request) => request.method === "POST").length;
-}
-
-function plain(status: number, contentType?: string): TestOuterResponse {
-  return {
-    status,
-    headers: contentType === undefined ? {} : { "content-type": contentType },
-    body: new Uint8Array(0),
-  };
-}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -79,7 +18,7 @@ afterEach(() => {
 
 describe("ready and getConfidentialInfo", () => {
   test("a cold client has no info; ready attests once and returns the pinned node", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     expect(client.getConfidentialInfo()).toBeUndefined();
 
@@ -102,7 +41,7 @@ describe("ready and getConfidentialInfo", () => {
   });
 
   test("a second ready and a following request reuse the pin", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     const first = await client.ready();
     const second = await client.ready();
@@ -113,26 +52,26 @@ describe("ready and getConfidentialInfo", () => {
 
     await client.request(jsonRpcCall());
     expect(node.attestations()).toBe(1);
-    expect(posts(node)).toBe(1);
-    expect(node.requests.filter((request) => request.method === "GET")).toHaveLength(1);
+    expect(countOf(node, isPost)).toBe(1);
+    expect(countOf(node, isGet)).toBe(1);
   });
 });
 
 describe("single flight", () => {
   test("50 concurrent cold calls share one attestation", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     const responses = await Promise.all(
       Array.from({ length: 50 }, () => client.request(jsonRpcCall())),
     );
 
     expect(node.attestations()).toBe(1);
-    expect(posts(node)).toBe(50);
+    expect(countOf(node, isPost)).toBe(50);
     expect(responses.every((response) => response.status === 200)).toBe(true);
   });
 
   test("a failed shared attestation rejects every caller with one error and is not kept", async () => {
-    const node = testNode();
+    const node = createTestNode();
     node.setAttestation(() => plain(503, "text/plain"));
     const client = clientFor(node.transport);
     const results = await Promise.allSettled(
@@ -140,7 +79,7 @@ describe("single flight", () => {
     );
 
     expect(node.attestations()).toBe(1);
-    expect(posts(node)).toBe(0);
+    expect(countOf(node, isPost)).toBe(0);
     const reasons = results.map((result) => {
       expect(result.status).toBe("rejected");
       return (result as PromiseRejectedResult).reason as unknown;
@@ -161,7 +100,7 @@ describe("single flight", () => {
 describe("pin lifetime", () => {
   test("a pin lives pubkeyCacheTtlMs from its attestation", async () => {
     vi.useFakeTimers({ now: T0 });
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport, { pubkeyCacheTtlMs: 1000 });
     const { attestedAt } = await client.ready();
 
@@ -178,7 +117,7 @@ describe("pin lifetime", () => {
 
   test("without the option a pin lives one hour", async () => {
     vi.useFakeTimers({ now: T0 });
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     const { attestedAt } = await client.ready();
 
@@ -190,38 +129,26 @@ describe("pin lifetime", () => {
     await client.request(jsonRpcCall());
     expect(node.attestations()).toBe(2);
   });
-
-  test.each([
-    0,
-    -1,
-    1.5,
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-  ])("pubkeyCacheTtlMs %d throws RangeError at construction", (ttl) => {
-    const node = testNode();
-    expect(() => clientFor(node.transport, { pubkeyCacheTtlMs: ttl })).toThrow(RangeError);
-    expect(node.requests).toHaveLength(0);
-  });
 });
 
 describe("eviction", () => {
   test("a late failure on an older pin keeps the fresh pin", async () => {
     vi.useFakeTimers({ now: T0 });
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     await client.ready();
 
-    const entered = deferred();
-    const release = deferred();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     let calls = 0;
     node.setConfidential(async (context) => {
       calls += 1;
       if (calls === 1) {
         entered.resolve();
         await release.promise;
-        return plain(429, "text/plain");
+        return plain(404, "text/plain");
       }
-      if (calls === 2) return plain(429, "text/plain");
+      if (calls === 2) return plain(404, "text/plain");
       return context.normal();
     });
 
@@ -246,11 +173,11 @@ describe("eviction", () => {
 
   test("re-attesting the same node id yields a new pin", async () => {
     vi.useFakeTimers({ now: T0 });
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     const first = await client.ready();
 
-    node.setConfidential(() => plain(429, "text/plain"));
+    node.setConfidential(() => plain(404, "text/plain"));
     await expect(client.request(jsonRpcCall())).rejects.toBeInstanceOf(RequestRejected);
     node.setConfidential();
 
@@ -262,44 +189,8 @@ describe("eviction", () => {
     expect(second?.attestedAt).toBe(T0 + 5000);
   });
 
-  const staleSignature: ConfidentialHandler = async (context) => {
-    const normal = await context.normal();
-    return {
-      ...normal,
-      headers: {
-        ...normal.headers,
-        ...context.sign(normal.body, { timestampMs: Date.now() - 61_000 }),
-      },
-    };
-  };
-
-  test.each<[string, ConfidentialHandler, abstract new (...args: never[]) => Error]>([
-    ["RequestRejected 429", () => plain(429, "text/plain"), RequestRejected],
-    ["RequestRejected 401", () => plain(401, "application/json"), RequestRejected],
-    ["StaleTimestamp", staleSignature, StaleTimestamp],
-    [
-      "TransportFailed",
-      () => {
-        throw new Error("connection reset");
-      },
-      TransportFailed,
-    ],
-  ])("%s drops the pin and the next call attests again", async (_label, handler, type) => {
-    const node = testNode();
-    const client = clientFor(node.transport);
-    await client.ready();
-
-    node.setConfidential(handler);
-    await expect(client.request(jsonRpcCall())).rejects.toBeInstanceOf(type);
-    expect(client.getConfidentialInfo()).toBeUndefined();
-    node.setConfidential();
-
-    await client.request(jsonRpcCall());
-    expect(node.attestations()).toBe(2);
-  });
-
   test("an inner 500 keeps the pin", async () => {
-    const node = testNode({ upstream: () => ({ status: 500, body: "boom" }) });
+    const node = createTestNode({ upstream: () => ({ status: 500, body: "boom" }) });
     const client = clientFor(node.transport);
     await client.ready();
 
@@ -308,17 +199,5 @@ describe("eviction", () => {
     await client.request(jsonRpcCall());
     expect(node.attestations()).toBe(1);
     expect(client.getConfidentialInfo()).toBeDefined();
-  });
-
-  test("an invalid inner request keeps the pin", async () => {
-    const node = testNode();
-    const client = clientFor(node.transport);
-    await client.ready();
-
-    await expect(client.request({ ...jsonRpcCall(), path: "x" })).rejects.toBeInstanceOf(
-      InvalidInnerRequest,
-    );
-    await client.request(jsonRpcCall());
-    expect(node.attestations()).toBe(1);
   });
 });

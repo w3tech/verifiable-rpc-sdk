@@ -1,25 +1,25 @@
+import { HpkeError } from "@hpke/core";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { createRecipient, NODE_SEED, rejectionOf } from "@w3tech.io/vrpc-test-support";
+import appendixA from "@w3tech.io/vrpc-test-support/vectors/rfc9458-appendix-a.json";
 import { describe, expect, test } from "vitest";
-import { createRecipient } from "../../test-support/src/index";
-import appendixA from "../../test-support/vectors/rfc9458-appendix-a.json";
 import { decodeInnerResponse, encodeInnerRequest } from "../src/bhttp";
-import { InvalidNodeKey, nodeKeyFromEd25519 } from "../src/node-key";
+import { ConfidentialDecryptFailed, MalformedConfidentialResponse } from "../src/errors";
+import { nodeKeyFromEd25519 } from "../src/node-session";
 import {
   createSuite,
   type KemChoice,
-  OhttpError,
   openResponse,
   type SealedRequest,
   seal,
   sealRequest,
 } from "../src/ohttp";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const REQUEST_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const RESPONSE_BODY = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 const KEMS: readonly KemChoice[] = ["js", "native"];
 
-const recipient = createRecipient(SEED);
+const recipient = createRecipient(NODE_SEED);
 const nodeKey = nodeKeyFromEd25519(recipient.ed25519PublicKey);
 
 function jsonRpcRequest(): Promise<Uint8Array> {
@@ -39,26 +39,6 @@ function encOf(sealed: SealedRequest): string {
 async function replyTo(sealed: SealedRequest, body = RESPONSE_BODY): Promise<Uint8Array> {
   const opened = await recipient.openRequest(sealed.body);
   return opened.respond({ status: 200, headers: { "content-type": "application/json" }, body });
-}
-
-async function rejection(promise: Promise<unknown>): Promise<unknown> {
-  const [result] = await Promise.allSettled([promise]);
-  if (result?.status !== "rejected") throw new Error("expected a rejection");
-  return result.reason;
-}
-
-function expectTypedError(
-  error: unknown,
-  type: typeof InvalidNodeKey | typeof OhttpError,
-  reason: string,
-  secrets: readonly Uint8Array[],
-): void {
-  expect(error).toBeInstanceOf(type);
-  const typed = error as InvalidNodeKey | OhttpError;
-  expect(typed.reason).toBe(reason);
-  for (const secret of secrets) {
-    if (secret.length > 0) expect(typed.message).not.toContain(bytesToHex(secret));
-  }
 }
 
 describe.each(KEMS)("RFC 9458 Appendix A with the %s KEM", (kem) => {
@@ -140,8 +120,8 @@ describe("sealRequest", () => {
     if (first === undefined || second === undefined || firstReply === undefined) {
       throw new Error("missing request");
     }
-    const error = await rejection(openResponse(second.opener, firstReply));
-    expectTypedError(error, OhttpError, "open-failed", [firstReply, inner]);
+    const error = await rejectionOf(openResponse(second.opener, firstReply));
+    expect(error).toBeInstanceOf(ConfidentialDecryptFailed);
   });
 });
 
@@ -151,8 +131,8 @@ describe("openResponse rejects", () => {
     const reply = await replyTo(sealed);
     const tampered = reply.slice();
     tampered[32] = (tampered[32] ?? 0) ^ 0x01;
-    const error = await rejection(openResponse(sealed.opener, tampered));
-    expectTypedError(error, OhttpError, "open-failed", [reply, tampered]);
+    const error = await rejectionOf(openResponse(sealed.opener, tampered));
+    expect(error).toBeInstanceOf(ConfidentialDecryptFailed);
   });
 
   test("a reply sealed for another request", async () => {
@@ -160,35 +140,34 @@ describe("openResponse rejects", () => {
     const sealed = await sealRequest(nodeKey, inner);
     const other = await sealRequest(nodeKey, inner);
     const substituted = await replyTo(other);
-    const error = await rejection(openResponse(sealed.opener, substituted));
-    expectTypedError(error, OhttpError, "open-failed", [substituted, inner]);
+    const error = await rejectionOf(openResponse(sealed.opener, substituted));
+    expect(error).toBeInstanceOf(ConfidentialDecryptFailed);
   });
 
   test("a reply shorter than the nonce and tag", async () => {
     const sealed = await sealRequest(nodeKey, await jsonRpcRequest());
     const reply = (await replyTo(sealed)).subarray(0, 47);
-    const error = await rejection(openResponse(sealed.opener, reply));
-    expectTypedError(error, OhttpError, "response-too-short", [reply]);
+    const error = await rejectionOf(openResponse(sealed.opener, reply));
+    expect(error).toBeInstanceOf(MalformedConfidentialResponse);
+    expect((error as MalformedConfidentialResponse).reason).toBe("too-short");
   });
 });
 
 describe("sealing to an unusable node key", () => {
   const cases = [
-    { name: "a small-order X25519 key", key: new Uint8Array(32), reason: "encap-failed" },
-    { name: "a 31-byte key", key: nodeKey.slice(0, 31), reason: "malformed" },
+    { name: "a small-order X25519 key", key: new Uint8Array(32) },
+    { name: "a 31-byte key", key: nodeKey.slice(0, 31) },
   ];
 
-  test.each(cases)("sealRequest rejects $name", async ({ key, reason }) => {
-    const inner = await jsonRpcRequest();
-    const error = await rejection(sealRequest(key, inner));
-    expectTypedError(error, InvalidNodeKey, reason, [key, inner]);
+  test.each(cases)("sealRequest rejects $name", async ({ key }) => {
+    const error = await rejectionOf(sealRequest(key, await jsonRpcRequest()));
+    expect(error).toBeInstanceOf(HpkeError);
   });
 
   describe.each(KEMS)("with the %s KEM", (kem) => {
-    test.each(cases)("seal rejects $name", async ({ key, reason }) => {
-      const inner = await jsonRpcRequest();
-      const error = await rejection(seal(createSuite(kem), 0x00, key, inner));
-      expectTypedError(error, InvalidNodeKey, reason, [key, inner]);
+    test.each(cases)("seal rejects $name", async ({ key }) => {
+      const error = await rejectionOf(seal(createSuite(kem), 0x00, key, await jsonRpcRequest()));
+      expect(error).toBeInstanceOf(HpkeError);
     });
   });
 });

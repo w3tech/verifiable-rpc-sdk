@@ -2,23 +2,23 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode end to end against the in-test node behind a loopback server.
 
-import { ConfidentialClient } from "@w3tech.io/vrpc-core/confidential";
-import { request } from "undici";
-import { afterEach, describe, expect, test, vi } from "vitest";
-
-import { ConfigError, createProxyServer, type ProxyTestOverrides } from "../src/index";
-
+import { ConfidentialClient, InvalidOption } from "@w3tech.io/vrpc-core/confidential";
 import {
-  type RunningProxy,
-  startConfidentialProxy,
-  startTestNodeServer,
-  type TestNodeServer,
-  type WireRequest,
-} from "./support/test-node-server";
-import { TEST_CHAIN_ID, TEST_SEED, testConfig } from "./support/test-overrides";
+  countOf,
+  createTestNode,
+  isGet,
+  isPost,
+  NODE_ID,
+  thrownBy,
+} from "@w3tech.io/vrpc-test-support";
+import { serveTestNode, type TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
+import { Agent } from "undici";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { createProxyServer, type ProxyTestOverrides } from "../src/server";
+import { postRpc, RPC_BODY, type RunningProxy, startConfidentialProxy } from "./support/proxy";
+import { TEST_CHAIN_ID, testConfig } from "./support/test-overrides";
 
 const API_KEY = "test-api-key-1";
-const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const RPC_ANSWER = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 
 interface SeenInner {
@@ -40,24 +40,24 @@ afterEach(async () => {
 });
 
 async function startNode(seen: SeenInner[] = []): Promise<TestNodeServer> {
-  nodeServer = await startTestNodeServer({
-    seed: TEST_SEED,
-    chainId: TEST_CHAIN_ID,
-    nodeId: "proxy-node-1",
-    upstream: async (inner) => {
-      seen.push({
-        method: inner.method,
-        pathname: new URL(inner.url).pathname,
-        contentType: inner.headers.get("content-type"),
-        body: Buffer.from(await inner.arrayBuffer()),
-      });
-      return {
-        status: 200,
-        headers: { "content-type": "application/json" },
-        body: RPC_ANSWER,
-      };
-    },
-  });
+  nodeServer = await serveTestNode(
+    createTestNode({
+      chainId: TEST_CHAIN_ID,
+      upstream: async (inner) => {
+        seen.push({
+          method: inner.method,
+          pathname: new URL(inner.url).pathname,
+          contentType: inner.headers.get("content-type"),
+          body: Buffer.from(await inner.arrayBuffer()),
+        });
+        return {
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: RPC_ANSWER,
+        };
+      },
+    }),
+  );
   return nodeServer;
 }
 
@@ -73,36 +73,18 @@ async function startProxy(
   return proxy;
 }
 
-async function postRpc(url: string): Promise<{
-  status: number;
-  headers: Record<string, string | string[] | undefined>;
-  body: Buffer;
-}> {
-  const res = await request(`${url}/`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: RPC_BODY,
-  });
-  const chunks: Buffer[] = [];
-  for await (const chunk of res.body) chunks.push(chunk as Buffer);
-  return { status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) };
-}
-
-const posts = (wire: WireRequest[]) => wire.filter((r) => r.method === "POST");
-const gets = (wire: WireRequest[]) => wire.filter((r) => r.method === "GET");
-
 describe("confidential mode", () => {
   test("attestsOnceAtStartupBeforeAnyClientRequest", async () => {
     const node = await startNode();
     await startProxy(node);
     await vi.waitFor(() => expect(node.node.attestations()).toBe(1));
 
-    expect(node.wire).toHaveLength(1);
-    const [get] = node.wire;
+    expect(node.requests).toHaveLength(1);
+    const [get] = node.requests;
     expect(get?.method).toBe("GET");
     expect(get?.path).toBe("/test_vrpc/attestation");
-    expect(get?.query).toMatch(/^nonce=[0-9a-f]{64}$/);
-    expect(posts(node.wire)).toHaveLength(0);
+    expect(get?.url).toMatch(/^[^?]*\?nonce=[0-9a-f]{64}$/);
+    expect(countOf(node, isPost)).toBe(0);
   });
 
   test("relaysTheInnerAnswerOfAJsonRpcCall", async () => {
@@ -119,15 +101,16 @@ describe("confidential mode", () => {
     expect(res.headers["content-length"]).toBe(String(res.body.length));
     expect(Object.keys(res.headers).filter((name) => name.startsWith("vrpc-"))).toEqual([]);
 
-    expect(node.wire).toHaveLength(2);
-    const [post] = posts(node.wire);
+    expect(node.requests).toHaveLength(2);
+    const [post] = node.requests.filter(isPost);
     expect(post?.path).toBe("/test_vrpc/confidential");
-    expect(post?.query).toBe("node_id=proxy-node-1");
+    expect(post?.url).toBe(`${post?.path}?node_id=${NODE_ID}`);
     expect(post?.headers["content-type"]).toBe("message/ohttp-req");
     expect(post?.headers["accept-encoding"]).toBe("identity");
     expect(post?.headers["x-api-key"]).toBe(API_KEY);
-    expect(post?.body.toString("hex").startsWith("00002000010002")).toBe(true);
-    expect(post?.body.includes(Buffer.from("eth_blockNumber"))).toBe(false);
+    const body = Buffer.from(post?.body ?? []);
+    expect(body.toString("hex").startsWith("00002000010002")).toBe(true);
+    expect(body.includes(Buffer.from("eth_blockNumber"))).toBe(false);
 
     expect(seen).toHaveLength(1);
     expect(seen[0]?.method).toBe("POST");
@@ -146,10 +129,10 @@ describe("confidential mode", () => {
       expect((await postRpc(url)).status).toBe(200);
     }
 
-    const sealed = posts(node.wire);
+    const sealed = node.requests.filter(isPost);
     expect(sealed).toHaveLength(11);
-    expect(sealed.every((r) => r.query === "node_id=proxy-node-1")).toBe(true);
-    expect(gets(node.wire)).toHaveLength(1);
+    expect(sealed.every((r) => r.url === `${r.path}?node_id=${NODE_ID}`)).toBe(true);
+    expect(countOf(node, isGet)).toBe(1);
     expect(node.node.attestations()).toBe(1);
   });
 });
@@ -174,22 +157,19 @@ describe("confidential mode startup", () => {
     expect(failed.headers["content-type"]).toBe("application/json");
     expect(JSON.parse(failed.body.toString()).error.kind).toBe("AttestationUnavailable");
     expect(node.node.attestations()).toBe(2);
-    expect(posts(node.wire)).toHaveLength(0);
+    expect(countOf(node, isPost)).toBe(0);
 
     node.node.setAttestation();
     const ok = await postRpc(running.url);
     expect(ok.status).toBe(200);
     expect(ok.body.toString()).toBe(RPC_ANSWER);
     expect(node.node.attestations()).toBe(3);
-    expect(posts(node.wire)).toHaveLength(1);
+    expect(countOf(node, isPost)).toBe(1);
   });
 
   test("requestDuringStartupAttestationJoinsIt", async () => {
     const node = await startNode();
-    let release: () => void = () => {};
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     node.node.setAttestation(async (context) => {
       await gate;
       return context.normal();
@@ -204,27 +184,27 @@ describe("confidential mode startup", () => {
 
     const res = await pending;
     expect(res.status).toBe(200);
-    expect(gets(node.wire)).toHaveLength(1);
-    expect(posts(node.wire)).toHaveLength(1);
+    expect(countOf(node, isGet)).toBe(1);
+    expect(countOf(node, isPost)).toBe(1);
   });
 
-  test("invalidClientOptionsAreAConfigErrorBeforeListen", () => {
+  test.each([
+    true,
+    false,
+  ])("confidential %s: invalid options throw InvalidOption before listen and close the Agent", (confidential) => {
+    const close = vi.spyOn(Agent.prototype, "close");
     const upstream = "http://127.0.0.1:1/test_vrpc";
     const badKey = "bad\nkey";
     const build = (overrides: Parameters<typeof testConfig>[1]) => () =>
-      createProxyServer(testConfig(upstream, { confidential: true, ...overrides }));
+      createProxyServer(testConfig(upstream, { confidential, ...overrides }));
 
     const badHeader = build({ attestationHeaders: { "x-api-key": badKey } });
-    expect(badHeader).toThrow(ConfigError);
-    let message = "";
-    try {
-      badHeader();
-    } catch (err) {
-      message = (err as Error).message;
-    }
+    expect(badHeader).toThrow(InvalidOption);
+    const { message } = thrownBy(badHeader) as Error;
     expect(message).not.toBe("");
     expect(message).not.toContain("bad");
-    expect(build({ replayWindowMs: 1.5 })).toThrow(ConfigError);
-    expect(build({ pubkeyCacheTtlMs: Number.POSITIVE_INFINITY })).toThrow(ConfigError);
+    expect(build({ replayWindowMs: 1.5 })).toThrow(InvalidOption);
+    expect(build({ pubkeyCacheTtlMs: Number.POSITIVE_INFINITY })).toThrow(InvalidOption);
+    expect(new Set(close.mock.contexts).size).toBe(4);
   });
 });

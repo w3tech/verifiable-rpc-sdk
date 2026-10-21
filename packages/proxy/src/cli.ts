@@ -5,12 +5,10 @@
 // (which fail-fast constructs the verifier), bind, print the startup banner.
 // Any config or chain-id error exits 1 BEFORE the listen socket binds.
 
-import type http from "node:http";
-
 import {
   DEFAULT_PUBKEY_CACHE_TTL_MS,
   DEFAULT_REPLAY_WINDOW_MS,
-  VerificationError,
+  InvalidOption,
 } from "@w3tech.io/vrpc-core";
 
 import { type ProxyConfig, parseConfig } from "./config";
@@ -44,40 +42,30 @@ function startupBanner(config: ProxyConfig): string {
   ].join("\n");
 }
 
-function loadConfig(): ProxyConfig {
-  // pnpm passes the `--` separator through to the script verbatim
-  // (`pnpm run proxy -- --upstream ...`); drop it before flag parsing.
-  const argv = process.argv.slice(2);
-  if (argv[0] === "--") {
-    argv.shift();
-  }
+/** `run()`, except that a config or option error exits 1 with its message. */
+function orExit<T>(run: () => T): T {
   try {
-    return parseConfig(argv, process.env);
+    return run();
   } catch (err) {
-    if (err instanceof ProxyError || err instanceof VerificationError) {
+    if (err instanceof ProxyError || err instanceof InvalidOption) {
       fail(err.message);
     }
     throw err;
   }
 }
 
-function buildServer(config: ProxyConfig): http.Server {
-  try {
-    return createProxyServer(config);
-  } catch (err) {
-    if (err instanceof ProxyError || err instanceof VerificationError) {
-      fail(err.message);
-    }
-    throw err;
-  }
+// pnpm passes the `--` separator through to the script verbatim
+// (`pnpm run proxy -- --upstream ...`); drop it before flag parsing.
+const argv = process.argv.slice(2);
+if (argv[0] === "--") {
+  argv.shift();
 }
-
-const config = loadConfig();
+const config = orExit(() => parseConfig(argv, process.env));
 for (const warning of config.warnings ?? []) {
   process.stderr.write(`warning: ${warning}\n`);
 }
 
-const server = buildServer(config);
+const server = orExit(() => createProxyServer(config));
 
 // Bind failures (EADDRINUSE, EADDRNOTAVAIL, ...) exit cleanly like config
 // errors instead of surfacing as an uncaught exception with a stack trace.

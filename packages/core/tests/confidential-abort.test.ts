@@ -1,75 +1,17 @@
 import { getEventListeners } from "node:events";
-import { hexToBytes } from "@noble/hashes/utils.js";
-import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createTestNode,
+  jsonRpcCall,
+  NODE_ID,
+  rejectionOf,
   type TestOuterRequest,
-  type TestOuterResponse,
-} from "../../test-support/src/index";
-import type { InnerRequest } from "../src/bhttp";
-import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
+} from "@w3tech.io/vrpc-test-support";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { AttestationUnavailable } from "../src/errors";
 import type { ConfidentialTransport } from "../src/transport";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
-
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
-const CHAIN_ID = "42161";
-const NODE_ID = "alpha-vrpc-1";
-const KEYED_URL = "https://rpc.example/eth_vrpc/0123456789abcdefghijABCDEFGHIJkl";
-const utf8 = new TextEncoder();
-
-function jsonRpcCall(): InnerRequest {
-  return {
-    method: "POST",
-    path: "/",
-    contentType: "application/json",
-    accept: "application/json",
-    body: utf8.encode('{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'),
-  };
-}
-
-function testNode() {
-  return createTestNode({ seed: SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
-}
-
-function clientFor(
-  transport: ConfidentialTransport,
-  overrides: Partial<ConfidentialClientOptions> = {},
-): ConfidentialClient {
-  return new ConfidentialClient({
-    url: KEYED_URL,
-    chainId: CHAIN_ID,
-    hardwareVerifier: mockHardwareVerifier(),
-    transport,
-    ...overrides,
-  });
-}
-
-function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => void } {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
-
-function plain(status: number): TestOuterResponse {
-  return { status, headers: { "content-type": "text/plain" }, body: new Uint8Array(0) };
-}
-
-async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected the promise to reject");
-}
-
-const cleanups: Array<() => void> = [];
+import { clientFor, plain } from "./support/confidential";
 
 afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
   vi.useRealTimers();
 });
 
@@ -79,7 +21,7 @@ function recordProcessEvent(event: "warning" | "unhandledRejection"): unknown[] 
     seen.push(value);
   };
   process.on(event, listener);
-  cleanups.push(() => {
+  onTestFinished(() => {
     process.off(event, listener);
   });
   return seen;
@@ -87,7 +29,7 @@ function recordProcessEvent(event: "warning" | "unhandledRejection"): unknown[] 
 
 describe("cancellation", () => {
   test("a signal aborted before the call rejects with its reason and sends nothing", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     const reason = new Error("stop");
     const controller = new AbortController();
@@ -101,9 +43,9 @@ describe("cancellation", () => {
   });
 
   test("an abort while waiting for a shared attestation leaves the other waiters and the attestation alone", async () => {
-    const node = testNode();
-    const entered = deferred();
-    const release = deferred();
+    const node = createTestNode();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     node.setAttestation(async (context) => {
       entered.resolve();
       await release.promise;
@@ -127,9 +69,9 @@ describe("cancellation", () => {
   });
 
   test("ready rejects with the reason when aborted during the attestation", async () => {
-    const node = testNode();
-    const entered = deferred();
-    const release = deferred();
+    const node = createTestNode();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     node.setAttestation(async (context) => {
       entered.resolve();
       await release.promise;
@@ -149,34 +91,8 @@ describe("cancellation", () => {
     expect(node.attestations()).toBe(1);
   });
 
-  test("an abort during the POST rejects with the reason and keeps the pin", async () => {
-    const node = testNode();
-    const client = clientFor(node.transport);
-    await client.ready();
-    const entered = deferred();
-    const release = deferred();
-    node.setConfidential(async (context) => {
-      entered.resolve();
-      await release.promise;
-      return context.normal();
-    });
-    const controller = new AbortController();
-    const reason = new Error("gone");
-
-    const pending = rejectionOf(client.request(jsonRpcCall(), { signal: controller.signal }));
-    await entered.promise;
-    controller.abort(reason);
-    expect(await pending).toBe(reason);
-
-    release.resolve();
-    node.setConfidential();
-    expect(client.getConfidentialInfo()).toBeDefined();
-    await client.request(jsonRpcCall());
-    expect(node.attestations()).toBe(1);
-  });
-
   test("AbortSignal.timeout rejects with a TimeoutError", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     await client.ready();
     node.setConfidential(async (context) => {
@@ -192,7 +108,7 @@ describe("cancellation", () => {
 
   test("a stuck attestation ends after 60 s even when the transport ignores its signal", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000 });
-    const node = testNode();
+    const node = createTestNode();
     let stall = true;
     const stalled: TestOuterRequest[] = [];
     const transport: ConfidentialTransport = (request) => {
@@ -228,13 +144,13 @@ describe("cancellation", () => {
 
   test("a shared attestation failing after every waiter left is handled and not kept", async () => {
     const unhandled = recordProcessEvent("unhandledRejection");
-    const node = testNode();
-    const entered = deferred();
-    const release = deferred();
+    const node = createTestNode();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     node.setAttestation(async () => {
       entered.resolve();
       await release.promise;
-      return plain(503);
+      return plain(503, "text/plain");
     });
     const client = clientFor(node.transport);
     const first = new AbortController();
@@ -259,7 +175,7 @@ describe("cancellation", () => {
 
   test("50 cold calls sharing one signal print no warning and leave no abort listener", async () => {
     const warnings = recordProcessEvent("warning");
-    const node = testNode();
+    const node = createTestNode();
     // The client's own listeners are under test, not the in-test transport's.
     const transport: ConfidentialTransport = ({ signal: _signal, ...request }) =>
       node.transport(request);

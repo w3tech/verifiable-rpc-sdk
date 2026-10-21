@@ -1,17 +1,16 @@
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
+import { createRecipient, NODE_SEED } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
-import { createRecipient } from "../../test-support/src/index";
 import { decodeInnerResponse, encodeInnerRequest } from "../src/bhttp";
-import { nodeKeyFromEd25519 } from "../src/node-key";
+import { nodeKeyFromEd25519 } from "../src/node-session";
 import { openResponse, sealRequest } from "../src/ohttp";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
 const REQUEST_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const RESPONSE_BODY = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 
 describe("confidential request round trip", () => {
   test("a sealed JSON-RPC POST opens at the recipient and its sealed reply decodes", async () => {
-    const recipient = createRecipient(SEED);
+    const recipient = createRecipient(NODE_SEED);
     const nodeKey = nodeKeyFromEd25519(recipient.ed25519PublicKey);
     const inner = await encodeInnerRequest({
       method: "POST",

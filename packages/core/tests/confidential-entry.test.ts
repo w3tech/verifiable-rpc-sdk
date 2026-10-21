@@ -1,4 +1,3 @@
-import { hexToBytes } from "@noble/hashes/utils.js";
 import type {
   AttestationUnavailableReason as MainAttestationUnavailableReason,
   InvalidInnerRequestReason as MainInvalidInnerRequestReason,
@@ -28,12 +27,9 @@ import type {
   TransportFailedReason,
 } from "@w3tech.io/vrpc-core/errors";
 import * as errors from "@w3tech.io/vrpc-core/errors";
+import { CHAIN_ID, createTestNode, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { createTestNode } from "../../test-support/src/index";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
-const CHAIN_ID = "42161";
 const utf8 = new TextEncoder();
 
 function errorClasses(): [string, unknown][] {
@@ -49,7 +45,7 @@ function extendsUnavailableError(value: unknown): boolean {
 
 describe("@w3tech.io/vrpc-core/confidential", () => {
   test("a JSON-RPC call through the entry succeeds", async () => {
-    const node = createTestNode({ seed: SEED, chainId: CHAIN_ID, nodeId: "alpha-vrpc-1" });
+    const node = createTestNode();
     const client = new conf.ConfidentialClient({
       url: "https://rpc.example/eth_vrpc/0123456789abcdefghijABCDEFGHIJkl",
       chainId: CHAIN_ID,
@@ -77,6 +73,7 @@ describe("@w3tech.io/vrpc-core/confidential", () => {
 
   test("every error the client throws is the same value in the entry", () => {
     const names = [
+      "VrpcError",
       "VerificationError",
       "UnavailableError",
       "BadSignature",
@@ -84,12 +81,11 @@ describe("@w3tech.io/vrpc-core/confidential", () => {
       "MissingHeader",
       "MalformedHeader",
       "AttestationFailed",
-      "MalformedAttestationResponse",
-      "InvalidChainId",
       "ConfidentialSignerMismatch",
       "ConfidentialDecryptFailed",
       "MalformedConfidentialResponse",
       "InvalidInnerRequest",
+      "InvalidOption",
       ...errorClasses()
         .filter(([, value]) => extendsUnavailableError(value))
         .map(([name]) => name),
@@ -97,7 +93,7 @@ describe("@w3tech.io/vrpc-core/confidential", () => {
     expect(names).toEqual(
       expect.arrayContaining([
         "AttestationUnavailable",
-        "ConfidentialSealFailed",
+        "InternalError",
         "RequestRejected",
         "TransportFailed",
         "UnexpectedResponse",
@@ -127,7 +123,7 @@ describe("@w3tech.io/vrpc-core/confidential", () => {
       | "RequestRejected"
       | "UnexpectedResponse"
       | "TransportFailed"
-      | "ConfidentialSealFailed"
+      | "InternalError"
     >();
     expectTypeOf<EntryAttestationUnavailableReason>().toEqualTypeOf<AttestationUnavailableReason>();
     expectTypeOf<EntryInvalidInnerRequestReason>().toEqualTypeOf<InvalidInnerRequestReason>();

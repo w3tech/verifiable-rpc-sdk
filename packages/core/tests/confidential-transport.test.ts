@@ -1,15 +1,21 @@
 import { getEventListeners } from "node:events";
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from "node:http";
-import type { AddressInfo, Socket } from "node:net";
+import type { Socket } from "node:net";
+import { Readable } from "node:stream";
 import { gzipSync } from "node:zlib";
-import { hexToBytes } from "@noble/hashes/utils.js";
-import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  CHAIN_ID,
   createTestNode,
+  jsonRpcCall,
+  KEY,
+  mockHardwareVerifier,
+  NODE_ID,
+  rejectionOf,
   type TestNode,
   type TestOuterResponse,
-} from "../../test-support/src/index";
-import type { InnerRequest } from "../src/bhttp";
+} from "@w3tech.io/vrpc-test-support";
+import { closeServer, listen } from "@w3tech.io/vrpc-test-support/server";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { ConfidentialClient } from "../src/confidential-client";
 import {
   AttestationUnavailable,
@@ -17,22 +23,23 @@ import {
   TransportFailed,
   UnexpectedResponse,
 } from "../src/errors";
-import { type ConfidentialTransport, defaultTransport } from "../src/transport";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
+import {
+  type ConfidentialTransport,
+  fetchTransport,
+  MAX_RESPONSE_BYTES,
+  ResponseTooLarge,
+  readCappedBody,
+} from "../src/transport";
 
-const SEED = hexToBytes("421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee");
-const CHAIN_ID = "42161";
-const NODE_ID = "alpha-vrpc-1";
-const KEY = "0123456789abcdefghijABCDEFGHIJkl";
 const UPSTREAM_BODY = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 const OVER_CAP = 201326593;
 const MIB = 1024 * 1024;
-const utf8 = new TextEncoder();
 const text = new TextDecoder();
 
 type Mode =
   | "plain"
   | "gzip"
+  | "gzip-garbage"
   | "redirect"
   | "cut"
   | "short-chunked"
@@ -55,33 +62,6 @@ interface Harness {
   partialWritten: Promise<void>;
 }
 
-function jsonRpcCall(): InnerRequest {
-  return {
-    method: "POST",
-    path: "/",
-    contentType: "application/json",
-    accept: "application/json",
-    body: utf8.encode('{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'),
-  };
-}
-
-function deferred(): { promise: Promise<void>; resolve: () => void } {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
-
-async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (err) {
-    return err;
-  }
-  throw new Error("expected the promise to reject");
-}
-
 function flatten(headers: IncomingHttpHeaders): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [name, value] of Object.entries(headers)) {
@@ -90,10 +70,7 @@ function flatten(headers: IncomingHttpHeaders): Record<string, string> {
   return out;
 }
 
-const cleanups: Array<() => Promise<void> | void> = [];
-
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0)) await cleanup();
+afterEach(() => {
   vi.unstubAllGlobals();
 });
 
@@ -135,6 +112,10 @@ function answerWith(mode: Mode, isPost: boolean, answer: TestOuterResponse, res:
       res.writeHead(302, { location: "/elsewhere", "content-length": "0" });
       res.end();
       return undefined;
+    case "gzip-garbage":
+      res.writeHead(status, { ...full, "content-encoding": "gzip" });
+      res.end(body);
+      return undefined;
     case "cut":
       res.writeHead(status, full);
       res.write(body.subarray(0, body.byteLength >> 1), () => res.socket?.destroy());
@@ -162,9 +143,9 @@ function answerWith(mode: Mode, isPost: boolean, answer: TestOuterResponse, res:
 }
 
 async function harness(): Promise<Harness> {
-  const node = createTestNode({ seed: SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
+  const node = createTestNode();
   const log: Seen[] = [];
-  const partial = deferred();
+  const partial = Promise.withResolvers<void>();
   const sockets = new Set<Socket>();
   let mode: Mode = "plain";
   let origin = "";
@@ -199,12 +180,10 @@ async function harness(): Promise<Harness> {
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  cleanups.push(async () => {
+  origin = await listen(server);
+  onTestFinished(async () => {
     for (const socket of sockets) socket.destroy();
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await closeServer(server);
   });
   return {
     origin,
@@ -227,6 +206,14 @@ function clientAt(h: Harness): ConfidentialClient {
 
 function posts(h: Harness): Seen[] {
   return h.log.filter((entry) => entry.method === "POST");
+}
+
+function expectFixedCause(err: unknown): void {
+  const cause = (err as TransportFailed).cause as Error;
+  expect(cause.message).toBe("The request failed.");
+  for (const item of [err as Error, cause]) {
+    expect(`${item.message} ${String(item)} ${item.stack}`).not.toContain(KEY);
+  }
 }
 
 describe("default transport over HTTP", () => {
@@ -265,7 +252,7 @@ describe("default transport over HTTP", () => {
     expect(h.log.some((entry) => entry.path.startsWith("/elsewhere"))).toBe(false);
   });
 
-  test("a body cut short of its Content-Length is a network failure and drops the pin", async () => {
+  test("a body cut short of its Content-Length is a network failure and keeps the pin", async () => {
     const h = await harness();
     const client = clientAt(h);
     h.setMode("cut");
@@ -273,11 +260,21 @@ describe("default transport over HTTP", () => {
 
     expect(err).toBeInstanceOf(TransportFailed);
     expect((err as TransportFailed).reason).toBe("network");
-    expect((err as TransportFailed).cause).toBeDefined();
+    expectFixedCause(err);
 
     h.setMode("plain");
     expect((await client.request(jsonRpcCall())).status).toBe(200);
-    expect(h.node.attestations()).toBe(2);
+    expect(h.node.attestations()).toBe(1);
+  });
+
+  test("a gzip-labelled answer whose body is not gzip is a network failure", async () => {
+    const h = await harness();
+    h.setMode("gzip-garbage");
+    const err = await rejectionOf(clientAt(h).request(jsonRpcCall()));
+
+    expect(err).toBeInstanceOf(TransportFailed);
+    expect((err as TransportFailed).reason).toBe("network");
+    expectFixedCause(err);
   });
 
   test("a chunked body that ends cleanly but short fails the signature", async () => {
@@ -313,7 +310,7 @@ describe("default transport over HTTP", () => {
     const err = await rejectionOf(clientAt(h).request(jsonRpcCall()));
 
     expect(err).toBeInstanceOf(AttestationUnavailable);
-    expect((err as AttestationUnavailable).reason).toBe("transport");
+    expect((err as AttestationUnavailable).reason).toBe("too-large");
     expect(posts(h)).toHaveLength(0);
   });
 
@@ -340,15 +337,15 @@ describe("default transport over HTTP", () => {
     const controller = new AbortController();
     const calls = 50;
     let entered = 0;
-    const allEntered = deferred();
-    const gate = deferred();
+    const allEntered = Promise.withResolvers<void>();
+    const gate = Promise.withResolvers<void>();
     const transport: ConfidentialTransport = async (request) => {
       if (request.method === "POST") {
         entered += 1;
         if (entered === calls) allEntered.resolve();
         await gate.promise;
       }
-      return defaultTransport(request);
+      return fetchTransport()(request);
     };
     const client = new ConfidentialClient({
       url: `${h.origin}/eth_vrpc/${KEY}`,
@@ -384,7 +381,7 @@ function opaqueRedirect(): Response {
 describe("default transport fetch contract", () => {
   test("an opaqueredirect result becomes status 0 with no headers and no body", async () => {
     vi.stubGlobal("fetch", async () => opaqueRedirect());
-    const out = await defaultTransport({
+    const out = await fetchTransport()({
       method: "POST",
       url: "http://127.0.0.1:9/x",
       headers: {},
@@ -397,7 +394,7 @@ describe("default transport fetch contract", () => {
   });
 
   test("an opaque redirect on the confidential request is an unexpected response", async () => {
-    const node = createTestNode({ seed: SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
+    const node = createTestNode();
     vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
       if (init.method === "POST") return opaqueRedirect();
       const answer = await node.transport({
@@ -427,8 +424,8 @@ describe("default transport fetch contract", () => {
     const headers = { "x-api-key": "k", "content-type": "message/ohttp-req" };
     const body = new Uint8Array([1, 2, 3]);
     const signal = new AbortController().signal;
-    await defaultTransport({ method: "POST", url: "http://127.0.0.1:9/c", headers, body, signal });
-    await defaultTransport({ method: "GET", url: "http://127.0.0.1:9/a", headers: {} });
+    await fetchTransport()({ method: "POST", url: "http://127.0.0.1:9/c", headers, body, signal });
+    await fetchTransport()({ method: "GET", url: "http://127.0.0.1:9/a", headers: {} });
 
     const [post, get] = seen;
     expect(post?.url).toBe("http://127.0.0.1:9/c");
@@ -444,5 +441,49 @@ describe("default transport fetch contract", () => {
     expect(get?.init.method).toBe("GET");
     expect(get?.init).not.toHaveProperty("body");
     expect(get?.init).not.toHaveProperty("signal");
+  });
+});
+
+describe("readCappedBody without a web stream", () => {
+  type Shape = "an absent" | "a Node Readable";
+  const SHAPES: Shape[] = ["an absent", "a Node Readable"];
+  const OVER = MAX_RESPONSE_BYTES + 1;
+
+  // node-fetch answers with a Node Readable body, whatwg-fetch and React Native with none.
+  function streamless(
+    shape: Shape,
+    headers: Record<string, string>,
+    size: number,
+    seen: { buffered: number },
+  ) {
+    return {
+      body: shape === "a Node Readable" ? Readable.from([]) : undefined,
+      headers: new Headers(headers),
+      arrayBuffer: async () => {
+        seen.buffered += 1;
+        return new Uint8Array(size).buffer;
+      },
+    } as unknown as Response;
+  }
+
+  test.each(SHAPES)("%s body is read in full", async (shape) => {
+    const seen = { buffered: 0 };
+
+    expect(await readCappedBody(streamless(shape, {}, 16, seen))).toEqual(new Uint8Array(16));
+    expect(seen.buffered).toBe(1);
+  });
+
+  test.each(
+    SHAPES.flatMap((shape) => [
+      [shape, "declared", { "content-length": `${OVER}` }, 0] as const,
+      [shape, "read", {}, OVER] as const,
+    ]),
+  )("%s body past the cap (%s) is too large", async (shape, past, headers, size) => {
+    const seen = { buffered: 0 };
+
+    await expect(readCappedBody(streamless(shape, headers, size, seen))).rejects.toBeInstanceOf(
+      ResponseTooLarge,
+    );
+    expect(seen.buffered).toBe(past === "read" ? 1 : 0);
   });
 });

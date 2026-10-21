@@ -1,15 +1,23 @@
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer } from "node:http";
 import { x25519 } from "@noble/curves/ed25519.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { AttestationError } from "@w3tech.io/dstack-verify";
-import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  CHAIN_ID,
+  collectingLogger,
   createTestNode,
+  errorTexts,
+  mockHardwareVerifier,
+  NODE_ID,
+  NODE_SEED,
+  rejectionOf,
   type TestNode,
-  type TestOuterResponse,
+  thrownBy,
   x25519SecretFromSeed,
-} from "../../test-support/src/index";
+} from "@w3tech.io/vrpc-test-support";
+import { expectNoSecrets } from "@w3tech.io/vrpc-test-support/adapter";
+import { closeServer, listen } from "@w3tech.io/vrpc-test-support/server";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
 import {
@@ -19,7 +27,7 @@ import {
   ConfidentialDecryptFailed,
   ConfidentialSignerMismatch,
   InvalidInnerRequest,
-  MalformedAttestationResponse,
+  InvalidOption,
   MalformedConfidentialResponse,
   RequestRejected,
   StaleTimestamp,
@@ -28,14 +36,9 @@ import {
 } from "../src/errors";
 import type { Logger } from "../src/logger";
 import type { ConfidentialTransport } from "../src/transport";
-import { type CollectingLogger, collectingLogger } from "./support/collecting-logger";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
+import { plain } from "./support/confidential";
 
-const SEED_HEX = "421151a459faeade3d247115f94aedae42318124095afabe4d1451a559faedee";
 const OTHER_SEED_HEX = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
-const SEED = hexToBytes(SEED_HEX);
-const CHAIN_ID = "42161";
-const NODE_ID = "alpha-vrpc-1";
 const BASE_URL = "https://rpc.example/eth_vrpc";
 const API_KEY = "Sentinelkey0123456789abcdefghijk";
 const INNER_PATH = "/sentinel-path?q=sentinel-query";
@@ -59,6 +62,8 @@ const EVENTS = [
   "confidential.request",
   "confidential.response",
   "confidential.evict",
+  "attestation.fetch",
+  "attestation.received",
 ];
 const CONSOLE_METHODS = ["log", "info", "warn", "error", "debug"] as const;
 const utf8 = new TextEncoder();
@@ -74,8 +79,13 @@ interface Scenario {
   arrange?(node: TestNode): void;
 }
 
-interface Capture {
-  sentinels: Set<string>;
+// What the wire carried: the encapsulated keys among the sentinels, and every body.
+interface Seen {
+  sentinels: string[];
+  bodies: Uint8Array[];
+}
+
+interface Capture extends Seen {
   errors: unknown[];
 }
 
@@ -87,10 +97,6 @@ function call(path = INNER_PATH): InnerRequest {
     accept: "application/json",
     body: utf8.encode(INNER_BODY),
   };
-}
-
-function plain(status: number, contentType: string, body: string): TestOuterResponse {
-  return { status, headers: { "content-type": contentType }, body: utf8.encode(body) };
 }
 
 function random(length: number): Uint8Array {
@@ -187,7 +193,7 @@ const SCENARIOS: Scenario[] = [
   },
   {
     name: "attestation not JSON",
-    expected: MalformedAttestationResponse,
+    expected: AttestationFailed,
     arrange: (node) =>
       node.setAttestation(() => ({
         status: 200,
@@ -198,9 +204,9 @@ const SCENARIOS: Scenario[] = [
   { name: "attestation failed", expected: AttestationFailed, hardwareFail: true },
 ];
 
-function baseSentinels(): Set<string> {
-  const secret = x25519SecretFromSeed(SEED);
-  return new Set([
+function baseSentinels(): string[] {
+  const secret = x25519SecretFromSeed(NODE_SEED);
+  return [
     API_KEY,
     "Sentinelkey",
     "sentinel-path",
@@ -208,22 +214,14 @@ function baseSentinels(): Set<string> {
     "sentinel-plaintext",
     "sentinel-reply",
     "sentinel-body",
-    SEED_HEX,
+    bytesToHex(NODE_SEED),
     bytesToHex(secret),
     bytesToHex(x25519.getPublicKey(secret)),
-  ]);
-}
-
-function addWindows(sentinels: Set<string>, body: Uint8Array): void {
-  const hex = bytesToHex(body);
-  for (let i = 0; i + 32 <= hex.length; i += 32) sentinels.add(hex.slice(i, i + 32));
+  ];
 }
 
 function testNode(): TestNode {
   return createTestNode({
-    seed: SEED,
-    chainId: CHAIN_ID,
-    nodeId: NODE_ID,
     upstream: () => ({
       status: 200,
       headers: { "content-type": "application/json" },
@@ -233,19 +231,15 @@ function testNode(): TestNode {
 }
 
 // The client's signal handling is under test, not the in-test transport's listeners.
-function capturing(
-  node: TestNode,
-  sentinels: Set<string>,
-  failPost = false,
-): ConfidentialTransport {
+function capturing(node: TestNode, seen: Seen, failPost = false): ConfidentialTransport {
   return async ({ signal: _signal, ...request }) => {
     if (request.body !== undefined) {
-      sentinels.add(bytesToHex(request.body.subarray(7, 39)));
-      addWindows(sentinels, request.body);
+      seen.sentinels.push(bytesToHex(request.body.subarray(7, 39)));
+      seen.bodies.push(request.body.slice());
     }
     if (failPost && request.method === "POST") throw new TypeError("fetch failed");
     const response = await node.transport(request);
-    addWindows(sentinels, response.body);
+    seen.bodies.push(response.body.slice());
     return response;
   };
 }
@@ -269,12 +263,12 @@ function clientFor(
 }
 
 async function runSuite(logger: Logger | undefined): Promise<Capture> {
-  const capture: Capture = { sentinels: baseSentinels(), errors: [] };
+  const capture: Capture = { sentinels: baseSentinels(), bodies: [], errors: [] };
   for (const keyIn of ["path", "header"] as const) {
     for (const scenario of SCENARIOS) {
       const node = testNode();
       scenario.arrange?.(node);
-      const transport = capturing(node, capture.sentinels, scenario.failPost);
+      const transport = capturing(node, capture, scenario.failPost);
       const client = clientFor(keyIn, transport, logger, scenario.hardwareFail);
       let outcome: unknown;
       try {
@@ -294,33 +288,6 @@ async function runSuite(logger: Logger | undefined): Promise<Capture> {
   return capture;
 }
 
-function replacer(_key: string, value: unknown): unknown {
-  return typeof value === "bigint" ? value.toString() : value;
-}
-
-function errorTexts(err: unknown): string[] {
-  const out: string[] = [];
-  const seen = new Set<unknown>();
-  let current = err;
-  while (current !== undefined && current !== null && !seen.has(current)) {
-    seen.add(current);
-    if (current instanceof Error) out.push(current.message, String(current), current.stack ?? "");
-    else out.push(String(current));
-    out.push(JSON.stringify(current, replacer) ?? "");
-    current = (current as { cause?: unknown }).cause;
-  }
-  return out;
-}
-
-function leaks(haystack: string, sentinels: Set<string>): string[] {
-  const lower = haystack.toLowerCase();
-  return [...sentinels].filter((sentinel) => lower.includes(sentinel.toLowerCase()));
-}
-
-function logText(logger: CollectingLogger): string {
-  return logger.calls.map((entry) => JSON.stringify(entry, replacer)).join("\n");
-}
-
 function watchOutput(): { consoleCalls(): number; warnings: unknown[] } {
   const spies = CONSOLE_METHODS.map((method) =>
     vi.spyOn(console, method).mockImplementation(() => {}),
@@ -330,7 +297,7 @@ function watchOutput(): { consoleCalls(): number; warnings: unknown[] } {
     warnings.push(warning);
   };
   process.on("warning", listener);
-  cleanups.push(() => {
+  onTestFinished(() => {
     process.off("warning", listener);
   });
   return {
@@ -339,10 +306,7 @@ function watchOutput(): { consoleCalls(): number; warnings: unknown[] } {
   };
 }
 
-const cleanups: Array<() => void> = [];
-
 afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
   vi.restoreAllMocks();
 });
 
@@ -379,18 +343,17 @@ describe("logging", () => {
   test("no sentinel appears in any log event, error message, stack, JSON form or cause", async () => {
     const logger = collectingLogger();
     const capture = await runSuite(logger);
-    const errors = capture.errors.flatMap(errorTexts).join("\n");
 
     expect(capture.errors).toHaveLength((SCENARIOS.length - 1) * 2);
-    expect(leaks(logText(logger), capture.sentinels)).toEqual([]);
-    expect(leaks(errors, capture.sentinels)).toEqual([]);
+    expectNoSecrets(logger.calls, capture.sentinels, capture.bodies);
+    expectNoSecrets(capture.errors, capture.sentinels, capture.bodies);
   });
 
   test("50 concurrent calls sharing one signal log no sentinel", async () => {
     const logger = collectingLogger();
-    const sentinels = baseSentinels();
+    const seen: Seen = { sentinels: baseSentinels(), bodies: [] };
     const node = testNode();
-    const client = clientFor("path", capturing(node, sentinels), logger);
+    const client = clientFor("path", capturing(node, seen), logger);
     const controller = new AbortController();
 
     const responses = await Promise.all(
@@ -399,13 +362,13 @@ describe("logging", () => {
 
     expect(responses).toHaveLength(50);
     expect(logger.calls.filter(([event]) => event === "confidential.response")).toHaveLength(50);
-    expect(leaks(logText(logger), sentinels)).toEqual([]);
+    expectNoSecrets(logger.calls, seen.sentinels, seen.bodies);
   });
 
   test("50 concurrent calls sharing one signal print nothing without a logger", async () => {
     const output = watchOutput();
     const node = testNode();
-    const client = clientFor("header", capturing(node, new Set()), undefined);
+    const client = clientFor("header", capturing(node, { sentinels: [], bodies: [] }), undefined);
     const controller = new AbortController();
 
     await Promise.all(
@@ -418,25 +381,12 @@ describe("logging", () => {
   });
 });
 
-async function listen(server: Server): Promise<string> {
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      server.off("error", reject);
-      resolve();
-    });
-  });
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-}
-
 // Stays bound and drops every connection, so no other process can take the port.
 async function droppingEveryConnection(): Promise<string> {
   const server = createServer();
   server.on("connection", (socket) => socket.destroy());
   const origin = await listen(server);
-  cleanups.push(() => {
-    server.close();
-  });
+  onTestFinished(() => closeServer(server));
   return origin;
 }
 
@@ -460,10 +410,7 @@ async function droppingOrigin(node: TestNode): Promise<string> {
     });
   });
   origin = await listen(server);
-  cleanups.push(() => {
-    server.closeAllConnections();
-    server.close();
-  });
+  onTestFinished(() => closeServer(server));
   return origin;
 }
 
@@ -483,18 +430,13 @@ describe("real network failures through the default transport", () => {
         hardwareVerifier: mockHardwareVerifier(),
         logger,
       });
-      let err: unknown;
-      try {
-        await client.request(call());
-      } catch (caught) {
-        err = caught;
-      }
+      const err = await rejectionOf(client.request(call()));
 
       expect(err, keyIn).toBeInstanceOf(expected);
       expect(((err as Error).cause as Error).message, keyIn).toBe("The request failed.");
-      expect(leaks(errorTexts(err).join("\n"), baseSentinels()), keyIn).toEqual([]);
+      expectNoSecrets([err], baseSentinels(), []);
     }
-    expect(leaks(logText(logger), baseSentinels())).toEqual([]);
+    expectNoSecrets(logger.calls, baseSentinels(), []);
   });
 
   test.each([
@@ -518,48 +460,38 @@ describe("real network failures through the default transport", () => {
       chainId: CHAIN_ID,
       hardwareVerifier: mockHardwareVerifier(),
     });
-    let err: unknown;
-    try {
-      await client.request(call());
-    } catch (caught) {
-      err = caught;
-    }
+    const err = await rejectionOf(client.request(call()));
 
     expect(err).toBeInstanceOf(expected);
     expect((err as Error).cause).toMatchObject({
       message: "The request failed.",
       code: "ECONNRESET",
     });
-    expect(leaks(errorTexts(err).join("\n"), baseSentinels())).toEqual([]);
+    expectNoSecrets([err], baseSentinels(), []);
   });
 });
 
 describe("invalid caller headers", () => {
   test("a header value that fetch rejects fails at construction without echoing it", async () => {
     const bad = `${API_KEY}\nX`;
-    let fetchError: unknown;
-    try {
-      await fetch("http://127.0.0.1:9/", { headers: { "x-api-key": bad } });
-    } catch (err) {
-      fetchError = err;
-    }
-    expect(leaks(errorTexts(fetchError).join("\n"), baseSentinels())).toContain(API_KEY);
+    const fetchError = await rejectionOf(
+      fetch("http://127.0.0.1:9/", { headers: { "x-api-key": bad } }),
+    );
+    expect(errorTexts(fetchError).join("\n")).toContain(API_KEY);
 
     const fetchSpy = vi.spyOn(globalThis, "fetch");
-    let err: unknown;
-    try {
-      new ConfidentialClient({
-        url: BASE_URL,
-        headers: { "x-api-key": bad },
-        chainId: CHAIN_ID,
-        hardwareVerifier: mockHardwareVerifier(),
-      });
-    } catch (caught) {
-      err = caught;
-    }
-    expect(err).toBeInstanceOf(TypeError);
-    expect((err as TypeError).cause).toBeUndefined();
-    expect(leaks(errorTexts(err).join("\n"), baseSentinels())).toEqual([]);
+    const err = thrownBy(
+      () =>
+        new ConfidentialClient({
+          url: BASE_URL,
+          headers: { "x-api-key": bad },
+          chainId: CHAIN_ID,
+          hardwareVerifier: mockHardwareVerifier(),
+        }),
+    );
+    expect(err).toBeInstanceOf(InvalidOption);
+    expect((err as InvalidOption).cause).toBeUndefined();
+    expectNoSecrets([err], baseSentinels(), []);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
