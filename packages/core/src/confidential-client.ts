@@ -33,7 +33,7 @@ import {
   type SealedRequest,
   sealRequest,
 } from "./ohttp";
-import { validateChainId } from "./preimage";
+import { checkOptions } from "./options";
 import {
   type ConfidentialTransport,
   defaultTransport,
@@ -41,9 +41,7 @@ import {
   type OuterResponse,
   ResponseTooLarge,
 } from "./transport";
-import { DEFAULT_PUBKEY_CACHE_TTL_MS } from "./trusted-verifier";
 import { getHeader, verifyResponse } from "./verify";
-import { deriveVrpcUrls, type VrpcUrls } from "./vrpc-url";
 
 export interface ConfidentialClientOptions {
   /** The vRPC endpoint, with the API key in the path or passed in `headers`. */
@@ -51,10 +49,10 @@ export interface ConfidentialClientOptions {
   chainId: string;
   /** Sent on every outer request; a `content-type` entry is ignored. */
   headers?: Record<string, string>;
-  /** Positive, finite integer milliseconds; anything else throws a `RangeError`. */
+  /** Positive, finite integer milliseconds; anything else throws `InvalidOption`. */
   replayWindowMs?: number;
   /**
-   * Positive, finite integer milliseconds; anything else, `Infinity` included, throws a `RangeError`.
+   * Positive, finite integer milliseconds; anything else, `Infinity` included, throws `InvalidOption`.
    * Use a large value for a long-lived pin.
    */
   pubkeyCacheTtlMs?: number;
@@ -123,13 +121,6 @@ function infoOf(pin: Pin): ConfidentialInfo {
   };
 }
 
-function requirePositiveMs(name: string, value: number): number {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new RangeError(`${name} must be a positive integer number of milliseconds`);
-  }
-  return value;
-}
-
 function mediaType(value: string | null): string {
   return (value?.split(";", 1)[0] ?? "").trim().toLowerCase();
 }
@@ -145,30 +136,17 @@ export class ConfidentialClient {
   readonly #slot: PinSlot;
 
   constructor(options: ConfidentialClientOptions) {
-    this.#chainId = validateChainId(options.chainId);
-    const ttlMs = requirePositiveMs(
-      "pubkeyCacheTtlMs",
-      options.pubkeyCacheTtlMs ?? DEFAULT_PUBKEY_CACHE_TTL_MS,
-    );
-    let urls: VrpcUrls;
-    try {
-      urls = deriveVrpcUrls(options.url);
-    } catch {
-      // The platform error echoes the URL, which may carry the API key.
-      throw new TypeError("Invalid vRPC URL");
-    }
-    this.#replayWindowMs =
-      options.replayWindowMs === undefined
-        ? undefined
-        : requirePositiveMs("replayWindowMs", options.replayWindowMs);
-    this.#confidentialUrl = urls.confidentialUrl;
     this.#headers = withoutContentType(options.headers ?? {});
-    try {
-      new Headers(this.#headers);
-    } catch {
-      // The platform error quotes the header value, which may be the API key.
-      throw new TypeError("Invalid header in ConfidentialClient options");
-    }
+    const { urls, chainId, replayWindowMs, pubkeyCacheTtlMs } = checkOptions({
+      url: options.url,
+      chainId: options.chainId,
+      headers: this.#headers,
+      replayWindowMs: options.replayWindowMs,
+      pubkeyCacheTtlMs: options.pubkeyCacheTtlMs,
+    });
+    this.#chainId = chainId;
+    this.#replayWindowMs = replayWindowMs;
+    this.#confidentialUrl = urls.confidentialUrl;
     const transport = options.transport ?? defaultTransport;
     this.#transport = transport;
     const hardwareVerifier = options.hardwareVerifier ?? createCloudVerifier();
@@ -185,7 +163,7 @@ export class ConfidentialClient {
           logger,
           ...(signal === undefined ? {} : { signal }),
         }),
-      ttlMs,
+      pubkeyCacheTtlMs,
     );
   }
 

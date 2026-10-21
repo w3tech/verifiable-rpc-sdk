@@ -161,6 +161,17 @@ export class InvalidInnerRequest extends VrpcError {
 export type InvalidInnerRequestReason = "method" | "path" | "header" | "content-type-required" | "encode-failed";
 
 // @public
+export class InvalidOption extends VrpcError {
+    constructor(option: OptionName, reason: string);
+    // (undocumented)
+    readonly kind: "InvalidOption";
+    // (undocumented)
+    readonly option: OptionName;
+    // (undocumented)
+    readonly reason: string;
+}
+
+// @public
 export class MalformedAttestationResponse extends VerificationError {
     constructor(reason: string);
     // (undocumented)
@@ -202,6 +213,9 @@ export class MissingHeader extends VerificationError {
     // (undocumented)
     readonly kind: "MissingHeader";
 }
+
+// @public (undocumented)
+export type OptionName = "url" | "chainId" | "headers" | "replayWindowMs" | "pubkeyCacheTtlMs" | "confidential";
 
 // @public (undocumented)
 export interface OuterRequest {

@@ -17,9 +17,9 @@ import {
   VerificationError,
 } from "../src/errors";
 import type { Logger } from "../src/logger";
+import { DEFAULT_PUBKEY_CACHE_TTL_MS } from "../src/options";
 import {
   buildVerifyPolicy,
-  DEFAULT_PUBKEY_CACHE_TTL_MS,
   TrustedVerifier,
   type TrustedVerifierOptions,
 } from "../src/trusted-verifier";

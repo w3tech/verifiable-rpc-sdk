@@ -12,6 +12,7 @@ import {
   InvalidChainId,
   InvalidInnerRequest,
   InvalidNonce,
+  InvalidOption,
   MalformedAttestationResponse,
   MalformedConfidentialResponse,
   MalformedHeader,
@@ -56,9 +57,23 @@ describe("errors", () => {
       expect(err.executed).toBe("unknown");
       expect("cause" in err).toBe(false);
     }
-    const rejected = new RequestRejected(429, "n");
-    expect(rejected).toBeInstanceOf(VrpcError);
-    expect(rejected.executed).toBe("no");
+    for (const err of [new RequestRejected(429, "n"), new InvalidOption("url", "r")]) {
+      expect(err).toBeInstanceOf(VrpcError);
+      expect(err.executed).toBe("no");
+    }
+  });
+
+  test("invalidOptionNamesTheOptionAndReasonOnly", () => {
+    const err = new InvalidOption("chainId", "must not be empty");
+    expect(err).not.toBeInstanceOf(VerificationError);
+    expect(err).not.toBeInstanceOf(UnavailableError);
+    expect([err.kind, err.name, err.option, err.reason, err.message]).toEqual([
+      "InvalidOption",
+      "InvalidOption",
+      "chainId",
+      "must not be empty",
+      "Invalid chainId: must not be empty",
+    ]);
   });
 
   test("subclassesAreInstanceOfVerificationErrorAndError", () => {

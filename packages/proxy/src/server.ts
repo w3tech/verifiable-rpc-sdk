@@ -28,7 +28,6 @@ import {
   describeConfidentialError,
 } from "./confidential";
 import type { ProxyConfig } from "./config";
-import { ConfigError } from "./errors";
 import { createProxyLogger, type ProxyLogger } from "./logger";
 import { createRequestHandler } from "./pipeline";
 
@@ -103,19 +102,6 @@ export function createProxyServer(
   return server;
 }
 
-const CLIENT_OPTION_TYPE_ERRORS = new Set([
-  "Invalid vRPC URL",
-  "Invalid header in ConfidentialClient options",
-]);
-
-function isClientOptionError(err: unknown): err is Error {
-  if (err instanceof TypeError) return CLIENT_OPTION_TYPE_ERRORS.has(err.message);
-  return (
-    err instanceof RangeError &&
-    err.message.endsWith(" must be a positive integer number of milliseconds")
-  );
-}
-
 function createConfidentialServer(
   config: ProxyConfig,
   overrides: ProxyTestOverrides,
@@ -140,8 +126,6 @@ function createConfidentialServer(
     client = new ConfidentialClient(options);
   } catch (err) {
     void dispatcher.close();
-    // Core's option checks throw platform errors; their messages never carry the URL or key.
-    if (isClientOptionError(err)) throw new ConfigError(err.message);
     throw err;
   }
 

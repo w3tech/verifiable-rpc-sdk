@@ -267,6 +267,27 @@ export class InvalidInnerRequest extends VrpcError {
   }
 }
 
+export type OptionName =
+  | "url"
+  | "chainId"
+  | "headers"
+  | "replayWindowMs"
+  | "pubkeyCacheTtlMs"
+  | "confidential";
+
+/** An option failed its check, so nothing was sent; the message never carries the value. */
+export class InvalidOption extends VrpcError {
+  readonly kind = "InvalidOption" as const;
+
+  constructor(
+    public readonly option: OptionName,
+    public readonly reason: string,
+  ) {
+    super(`Invalid ${option}: ${reason}`);
+    this.executed = "no";
+  }
+}
+
 /** A confidential response carried a valid signature but could not be decrypted. */
 export class ConfidentialDecryptFailed extends VerificationError {
   readonly kind = "ConfidentialDecryptFailed" as const;

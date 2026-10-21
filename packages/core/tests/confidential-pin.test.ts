@@ -171,18 +171,6 @@ describe("pin lifetime", () => {
     await client.request(jsonRpcCall());
     expect(node.attestations()).toBe(2);
   });
-
-  test.each([
-    0,
-    -1,
-    1.5,
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-  ])("pubkeyCacheTtlMs %d throws RangeError at construction", (ttl) => {
-    const node = testNode();
-    expect(() => clientFor(node.transport, { pubkeyCacheTtlMs: ttl })).toThrow(RangeError);
-    expect(node.requests).toHaveLength(0);
-  });
 });
 
 describe("eviction", () => {

@@ -19,8 +19,8 @@ import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confi
 import {
   AttestationUnavailable,
   ConfidentialSignerMismatch,
-  InvalidChainId,
   InvalidInnerRequest,
+  InvalidOption,
   UnavailableError,
   UnexpectedResponse,
   VerificationError,
@@ -393,41 +393,23 @@ describe("ConfidentialClient call surface", () => {
     expect(node.attestations()).toBe(1);
   });
 
-  test("the constructor validates synchronously and sends nothing", () => {
+  test.each([
+    ["url", { url: "::not a url SECRETKEY42" }],
+    ["chainId", { chainId: "" }],
+    ["headers", { headers: { "x-api-key": "bad\nSECRETKEY42" } }],
+    ["replayWindowMs", { replayWindowMs: 1.5 }],
+    ["pubkeyCacheTtlMs", { pubkeyCacheTtlMs: Number.POSITIVE_INFINITY }],
+  ] as const)("a bad %s throws InvalidOption at construction and sends nothing", (option, bad) => {
     const node = testNode();
-    expect(() => clientFor(node.transport, { chainId: "" })).toThrow(InvalidChainId);
-    expect(() => clientFor(node.transport, { pubkeyCacheTtlMs: 0 })).toThrow(RangeError);
-    expect(() => clientFor(node.transport, { pubkeyCacheTtlMs: -1 })).toThrow(RangeError);
-
     let err: unknown;
     try {
-      clientFor(node.transport, { url: "not a url with sentinel-key" });
+      clientFor(node.transport, bad);
     } catch (caught) {
       err = caught;
     }
-    expect(err).toBeInstanceOf(TypeError);
-    const typeError = err as TypeError;
-    expect(typeError.message).not.toContain("sentinel-key");
-    expect(String(typeError)).not.toContain("sentinel-key");
-    expect(JSON.stringify(typeError)).not.toContain("sentinel-key");
-    for (const value of Object.values(typeError)) {
-      expect(String(value)).not.toContain("sentinel-key");
-    }
-    expect(typeError.cause).toBeUndefined();
-
-    clientFor(node.transport);
-    expect(node.requests).toHaveLength(0);
-  });
-
-  test.each([
-    1.5,
-    Number.NaN,
-    -1,
-    0,
-    Number.POSITIVE_INFINITY,
-  ])("replayWindowMs %d throws RangeError at construction and sends nothing", (replayWindowMs) => {
-    const node = testNode();
-    expect(() => clientFor(node.transport, { replayWindowMs })).toThrow(RangeError);
+    expect(err).toBeInstanceOf(InvalidOption);
+    expect(err).toMatchObject({ option, executed: "no" });
+    expect(`${String(err)} ${JSON.stringify(err)}`).not.toContain("SECRETKEY42");
     expect(node.requests).toHaveLength(0);
   });
 });

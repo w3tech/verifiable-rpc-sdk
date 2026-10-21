@@ -31,11 +31,9 @@ import { type Attestation, fetchAttestation, verifyAttestationCorrelation } from
 import { AttestationFailed } from "./errors";
 import { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
+import { DEFAULT_PUBKEY_CACHE_TTL_MS } from "./options";
 import { validateChainId } from "./preimage";
 import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
-
-/** Default pubkey-cache TTL: 1 hour in ms. */
-export const DEFAULT_PUBKEY_CACHE_TTL_MS = 3_600_000;
 
 /** Default max distinct verified pubkeys held in the cache before LRU eviction. */
 export const DEFAULT_PUBKEY_CACHE_MAX = 1024;

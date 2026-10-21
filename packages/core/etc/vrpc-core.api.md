@@ -98,6 +98,22 @@ export function buildPreImage(chainId: string, requestBody: Uint8Array, response
 // @public
 export function byteLen(value: string | Uint8Array): string;
 
+// @public (undocumented)
+export interface CheckedOptions<T extends OptionsInput = OptionsInput> {
+    chainId: T["chainId"] extends string | number | bigint ? string : string | undefined;
+    // (undocumented)
+    confidential: boolean;
+    // (undocumented)
+    pubkeyCacheTtlMs: number;
+    // (undocumented)
+    replayWindowMs: number | undefined;
+    // (undocumented)
+    urls: T["url"] extends string ? VrpcUrls : VrpcUrls | undefined;
+}
+
+// @public
+export function checkOptions<T extends OptionsInput>(input: T): CheckedOptions<T>;
+
 export { CloudVerifierConfig }
 
 // @public
@@ -213,6 +229,17 @@ export class InvalidNonce extends VerificationError {
 }
 
 // @public
+export class InvalidOption extends VrpcError {
+    constructor(option: OptionName, reason: string);
+    // (undocumented)
+    readonly kind: "InvalidOption";
+    // (undocumented)
+    readonly option: OptionName;
+    // (undocumented)
+    readonly reason: string;
+}
+
+// @public
 export function isSignedVrpcResponse(headers: ResponseHeaders): boolean;
 
 // @public
@@ -261,6 +288,25 @@ export class MissingHeader extends VerificationError {
     readonly headerName: string;
     // (undocumented)
     readonly kind: "MissingHeader";
+}
+
+// @public (undocumented)
+export type OptionName = "url" | "chainId" | "headers" | "replayWindowMs" | "pubkeyCacheTtlMs" | "confidential";
+
+// @public (undocumented)
+export interface OptionsInput {
+    // (undocumented)
+    chainId?: string | number | bigint | undefined;
+    // (undocumented)
+    confidential?: boolean | undefined;
+    // (undocumented)
+    headers?: Record<string, string> | undefined;
+    // (undocumented)
+    pubkeyCacheTtlMs?: number | undefined;
+    // (undocumented)
+    replayWindowMs?: number | undefined;
+    // (undocumented)
+    url?: string | undefined;
 }
 
 // @public

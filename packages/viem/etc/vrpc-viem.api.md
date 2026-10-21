@@ -16,6 +16,7 @@ import { InternalError } from '@w3tech.io/vrpc-core';
 import { InvalidChainId } from '@w3tech.io/vrpc-core';
 import { InvalidInnerRequest } from '@w3tech.io/vrpc-core';
 import { InvalidInnerRequestReason } from '@w3tech.io/vrpc-core';
+import { InvalidOption } from '@w3tech.io/vrpc-core';
 import { Logger } from '@w3tech.io/vrpc-core';
 import { MalformedAttestationResponse } from '@w3tech.io/vrpc-core';
 import { MalformedConfidentialResponse } from '@w3tech.io/vrpc-core';
@@ -54,6 +55,8 @@ export { InvalidChainId }
 export { InvalidInnerRequest }
 
 export { InvalidInnerRequestReason }
+
+export { InvalidOption }
 
 export { MalformedAttestationResponse }
 

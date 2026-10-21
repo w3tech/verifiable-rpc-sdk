@@ -2,12 +2,12 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode end to end against the in-test node behind a loopback server.
 
-import { ConfidentialClient } from "@w3tech.io/vrpc-core/confidential";
+import { ConfidentialClient, InvalidOption } from "@w3tech.io/vrpc-core/confidential";
 import { TEST_SEED } from "@w3tech.io/vrpc-test-support";
 import { request } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { ConfigError, createProxyServer, type ProxyTestOverrides } from "../src/index";
+import { createProxyServer, type ProxyTestOverrides } from "../src/index";
 
 import {
   type RunningProxy,
@@ -209,14 +209,14 @@ describe("confidential mode startup", () => {
     expect(posts(node.wire)).toHaveLength(1);
   });
 
-  test("invalidClientOptionsAreAConfigErrorBeforeListen", () => {
+  test("invalidClientOptionsAreAnInvalidOptionBeforeListen", () => {
     const upstream = "http://127.0.0.1:1/test_vrpc";
     const badKey = "bad\nkey";
     const build = (overrides: Parameters<typeof testConfig>[1]) => () =>
       createProxyServer(testConfig(upstream, { confidential: true, ...overrides }));
 
     const badHeader = build({ attestationHeaders: { "x-api-key": badKey } });
-    expect(badHeader).toThrow(ConfigError);
+    expect(badHeader).toThrow(InvalidOption);
     let message = "";
     try {
       badHeader();
@@ -225,7 +225,7 @@ describe("confidential mode startup", () => {
     }
     expect(message).not.toBe("");
     expect(message).not.toContain("bad");
-    expect(build({ replayWindowMs: 1.5 })).toThrow(ConfigError);
-    expect(build({ pubkeyCacheTtlMs: Number.POSITIVE_INFINITY })).toThrow(ConfigError);
+    expect(build({ replayWindowMs: 1.5 })).toThrow(InvalidOption);
+    expect(build({ pubkeyCacheTtlMs: Number.POSITIVE_INFINITY })).toThrow(InvalidOption);
   });
 });

@@ -26,6 +26,7 @@ export type {
   BadSignatureContext,
   InvalidInnerRequestReason,
   MalformedConfidentialResponseReason,
+  OptionName,
   StaleTimestampContext,
   TransportFailedReason,
   UnavailableErrorKind,
@@ -43,6 +44,7 @@ export {
   InvalidChainId,
   InvalidInnerRequest,
   InvalidNonce,
+  InvalidOption,
   MalformedAttestationResponse,
   MalformedConfidentialResponse,
   MalformedHeader,
@@ -58,14 +60,12 @@ export {
 export { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
 export type { Logger } from "./logger";
 export { createConsoleLogger, defaultLogger, safeLogger } from "./logger";
+export type { CheckedOptions, OptionsInput } from "./options";
+export { checkOptions, DEFAULT_PUBKEY_CACHE_TTL_MS } from "./options";
 export { buildPreImage, validateChainId } from "./preimage";
 export { fetchTransport, ResponseTooLarge, readCappedBody } from "./transport";
 export type { TrustedVerifierOptions } from "./trusted-verifier";
-export {
-  DEFAULT_PUBKEY_CACHE_MAX,
-  DEFAULT_PUBKEY_CACHE_TTL_MS,
-  TrustedVerifier,
-} from "./trusted-verifier";
+export { DEFAULT_PUBKEY_CACHE_MAX, TrustedVerifier } from "./trusted-verifier";
 export { parseChainId } from "./utils";
 export type { ResponseHeaders, VerifiedPair, VerifyResponseOptions } from "./verify";
 export { DEFAULT_REPLAY_WINDOW_MS, isSignedVrpcResponse, verifyResponse } from "./verify";

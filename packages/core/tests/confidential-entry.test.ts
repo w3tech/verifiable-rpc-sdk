@@ -93,6 +93,7 @@ describe("@w3tech.io/vrpc-core/confidential", () => {
       "ConfidentialDecryptFailed",
       "MalformedConfidentialResponse",
       "InvalidInnerRequest",
+      "InvalidOption",
       ...errorClasses()
         .filter(([, value]) => extendsUnavailableError(value))
         .map(([name]) => name),

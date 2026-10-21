@@ -25,6 +25,7 @@ import {
   ConfidentialDecryptFailed,
   ConfidentialSignerMismatch,
   InvalidInnerRequest,
+  InvalidOption,
   MalformedAttestationResponse,
   MalformedConfidentialResponse,
   RequestRejected,
@@ -557,8 +558,8 @@ describe("invalid caller headers", () => {
     } catch (caught) {
       err = caught;
     }
-    expect(err).toBeInstanceOf(TypeError);
-    expect((err as TypeError).cause).toBeUndefined();
+    expect(err).toBeInstanceOf(InvalidOption);
+    expect((err as InvalidOption).cause).toBeUndefined();
     expect(leaks(errorTexts(err).join("\n"), baseSentinels())).toEqual([]);
     expect(fetchSpy).not.toHaveBeenCalled();
   });

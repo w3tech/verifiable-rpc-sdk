@@ -134,6 +134,17 @@ export class InvalidNonce extends VerificationError {
 }
 
 // @public
+export class InvalidOption extends VrpcError {
+    constructor(option: OptionName, reason: string);
+    // (undocumented)
+    readonly kind: "InvalidOption";
+    // (undocumented)
+    readonly option: OptionName;
+    // (undocumented)
+    readonly reason: string;
+}
+
+// @public
 export class MalformedAttestationResponse extends VerificationError {
     constructor(reason: string);
     // (undocumented)
@@ -175,6 +186,9 @@ export class MissingHeader extends VerificationError {
     // (undocumented)
     readonly kind: "MissingHeader";
 }
+
+// @public (undocumented)
+export type OptionName = "url" | "chainId" | "headers" | "replayWindowMs" | "pubkeyCacheTtlMs" | "confidential";
 
 // @public
 export class RequestRejected extends UnavailableError {
