@@ -179,6 +179,9 @@ export class MalformedHeader extends VerificationError {
 }
 
 // @public
+export function mayHaveExecuted(err: unknown): boolean;
+
+// @public
 export class MissingHeader extends VerificationError {
     constructor(headerName: string);
     // (undocumented)

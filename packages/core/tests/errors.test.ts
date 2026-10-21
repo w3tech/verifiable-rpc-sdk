@@ -17,6 +17,7 @@ import {
   MalformedConfidentialResponse,
   MalformedHeader,
   MissingHeader,
+  mayHaveExecuted,
   RequestRejected,
   StaleTimestamp,
   TransportFailed,
@@ -399,5 +400,31 @@ describe("errors", () => {
       expect("cause" in malformed).toBe(false);
     }
     expect(decrypt.message).not.toMatch(/[0-9a-f]{9,}/i);
+  });
+});
+
+describe("mayHaveExecuted", () => {
+  const invalidOption = new InvalidOption("chainId", "must not be empty");
+  const transportFailed = new TransportFailed("network", "node-1");
+  const outer = new InternalError({ cause: invalidOption });
+  const cyclic: { cause?: unknown } = {};
+  cyclic.cause = cyclic;
+
+  test.each([
+    ["InvalidOption", invalidOption, false],
+    ["RequestRejected", new RequestRejected(429, "node-1"), false],
+    ["TransportFailed", transportFailed, true],
+    ["a wrapped InvalidOption", { cause: { cause: invalidOption } }, false],
+    ["a wrapped TransportFailed", new Error("x", { cause: transportFailed }), true],
+    ["an unknown VrpcError around a no", outer, true],
+    ["a plain Error", new Error(), true],
+    ["undefined", undefined, true],
+    ["null", null, true],
+    ["a string", "text", true],
+    ["a number", 42, true],
+    ["an abort reason", new DOMException("x", "AbortError"), true],
+    ["a cyclic cause chain", cyclic, true],
+  ])("%s gives %s", (_, err, expected) => {
+    expect(mayHaveExecuted(err)).toBe(expected);
   });
 });

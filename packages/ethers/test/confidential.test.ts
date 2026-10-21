@@ -5,7 +5,7 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { UnexpectedResponse } from "@w3tech.io/vrpc-core";
-import { type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
+import { mayHaveExecuted, type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
 import {
   attestationStub,
   CHAIN_ID,
@@ -407,6 +407,20 @@ describe("errors", () => {
     expect(errors[0]).toBe(errors[1]);
     expect(errors[0]).toBeInstanceOf(UnexpectedResponse);
     expect((errors[0] as UnexpectedResponse).status).toBe(502);
+  });
+
+  test("mayHaveExecuted is false after a failed attestation and true after a gateway 502", async () => {
+    const { server } = await harness();
+    const provider = confidentialProvider(keyedRequest(server));
+    server.answer((request) => (request.method === "POST" ? undefined : { status: 503 }));
+    expect(mayHaveExecuted(await rejectionOf(provider.getBlockNumber()))).toBe(false);
+
+    server.answer((request) =>
+      request.method === "POST"
+        ? { status: 502, headers: { "content-type": "text/plain" } }
+        : undefined,
+    );
+    expect(mayHaveExecuted(await rejectionOf(provider.getBlockNumber()))).toBe(true);
   });
 });
 

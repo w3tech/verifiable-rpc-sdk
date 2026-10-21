@@ -31,6 +31,7 @@ export {
   MalformedConfidentialResponse,
   MalformedHeader,
   MissingHeader,
+  mayHaveExecuted,
   RequestRejected,
   StaleTimestamp,
   TransportFailed,

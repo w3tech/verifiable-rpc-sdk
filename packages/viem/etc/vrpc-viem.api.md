@@ -22,6 +22,7 @@ import { MalformedAttestationResponse } from '@w3tech.io/vrpc-core';
 import { MalformedConfidentialResponse } from '@w3tech.io/vrpc-core';
 import { MalformedConfidentialResponseReason } from '@w3tech.io/vrpc-core';
 import { MalformedHeader } from '@w3tech.io/vrpc-core';
+import { mayHaveExecuted } from '@w3tech.io/vrpc-core';
 import { MissingHeader } from '@w3tech.io/vrpc-core';
 import { RequestRejected } from '@w3tech.io/vrpc-core';
 import { StaleTimestamp } from '@w3tech.io/vrpc-core';
@@ -65,6 +66,8 @@ export { MalformedConfidentialResponse }
 export { MalformedConfidentialResponseReason }
 
 export { MalformedHeader }
+
+export { mayHaveExecuted }
 
 export { MissingHeader }
 

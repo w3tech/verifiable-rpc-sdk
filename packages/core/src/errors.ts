@@ -408,3 +408,16 @@ export class InternalError extends UnavailableError {
     super("Internal error in the Ankr Confidential RPC client", options);
   }
 }
+
+/**
+ * `false` only when the first `VrpcError` on `err` or its `.cause` chain says the call did not run.
+ * Follows `.cause` because viem wraps the error a transport throws; anything else may have run.
+ */
+export function mayHaveExecuted(err: unknown): boolean {
+  let e = err;
+  for (let depth = 0; depth < 16 && typeof e === "object" && e !== null; depth++) {
+    if (e instanceof VrpcError) return e.executed !== "no";
+    e = (e as { cause?: unknown }).cause;
+  }
+  return true;
+}

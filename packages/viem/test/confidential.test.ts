@@ -3,7 +3,7 @@
 // the transport value and attestation sharing.
 
 import { getEventListeners } from "node:events";
-import { RequestRejected } from "@w3tech.io/vrpc-core";
+import { RequestRejected, VrpcError } from "@w3tech.io/vrpc-core";
 import {
   attestationAnswer,
   CHAIN_ID,
@@ -18,7 +18,7 @@ import {
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { serveTestNode, type TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
-import { InvalidOption, vrpcHttp } from "@w3tech.io/vrpc-viem";
+import { InvalidOption, mayHaveExecuted, vrpcHttp } from "@w3tech.io/vrpc-viem";
 import {
   BaseError,
   createPublicClient,
@@ -392,6 +392,23 @@ describe("errors", () => {
     expect(walked).toBeInstanceOf(RequestRejected);
     expect(walked?.status).toBe(429);
     expect(walked?.executed).toBe("no");
+  });
+
+  test("mayHaveExecuted sees through the viem error: false after a failed attestation, true after a gateway 502", async () => {
+    const { server } = await harness();
+    const client = createPublicClient({ chain: arbitrum, transport: confidential(server) });
+    server.answer((r) => (r.method === "POST" ? undefined : { status: 503 }));
+    const failed = await rejectionOf(client.getBlockNumber());
+    expect(failed).toBeInstanceOf(BaseError);
+    expect(failed).not.toBeInstanceOf(VrpcError);
+    expect(mayHaveExecuted(failed)).toBe(false);
+
+    server.answer((r) =>
+      r.method === "POST" ? { status: 502, headers: { "content-type": "text/plain" } } : undefined,
+    );
+    const sent = await rejectionOf(client.getBlockNumber({ cacheTime: 0 }));
+    expect(sent).not.toBeInstanceOf(VrpcError);
+    expect(mayHaveExecuted(sent)).toBe(true);
   });
 });
 
