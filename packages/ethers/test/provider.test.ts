@@ -277,11 +277,17 @@ describe("VrpcProvider._send wiring", () => {
     }
   });
 
-  test("non-EVM string chainId is accepted at construction (no network pin)", () => {
-    // No network assertions and no requests fired — ethers cannot represent a
-    // non-EVM network; the verifier would bind the exact string on first use.
-    // "-239" is TON's global id (non-decimal → no staticNetwork pin).
+  test("a non-EVM integer chainId is accepted at construction", () => {
+    // "-239" is TON's global id: BigInt parses it, so ethers holds it as a static network
+    // and the verifier binds the exact string.
     expect(() => new VrpcProvider("http://test.invalid", "-239", WIDE_OPTIONS)).not.toThrow();
+  });
+
+  test("a chainId ethers cannot hold as a network is InvalidOption at construction", () => {
+    // ethers would retry network detection every second, forever.
+    expect(() => new VrpcProvider("http://test.invalid", "eip155:42161", WIDE_OPTIONS)).toThrow(
+      expect.objectContaining({ name: "InvalidOption", option: "chainId" }),
+    );
   });
 });
 
@@ -399,6 +405,12 @@ describe("response classes", () => {
     expect(posts).toHaveLength(1);
     expect(posts[0]).toContain("eth_getBalance");
     expect(attested).toHaveLength(attestations);
+  });
+
+  test("a signed 2xx that is not JSON is ethers' own bodyJson error", async () => {
+    const provider = provide(signingRequest("not json", { nodeId: NODE_ID }));
+    const err = await provider.getBalance(ADDR).catch((e: unknown) => e);
+    expect(isError(err, "UNSUPPORTED_OPERATION")).toBe(true);
   });
 });
 

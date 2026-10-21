@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Ankr Confidential RPC mode for vrpcHttp: map an inner answer the way viem's http transport would.
+// Map an answer the way viem's http transport would: the inner answer in Ankr Confidential RPC
+// mode, and the JSON-RPC rules open mode shares with it.
 
 import type { ConfidentialResponse } from "@w3tech.io/vrpc-core";
 import { HttpRequestError, RpcRequestError } from "viem";
@@ -19,9 +20,32 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isRpcError(value: unknown): value is { error: { code: number; message: string } } {
+export function isRpcError(value: unknown): value is { error: { code: number; message: string } } {
   if (!isObject(value) || !isObject(value.error)) return false;
   return typeof value.error.code === "number" && typeof value.error.message === "string";
+}
+
+/** The `result` of a 2xx JSON-RPC answer; as in viem's http transport, only a truthy `error` fails. */
+// biome-ignore lint/suspicious/noExplicitAny: viem request returns untyped.
+export function resultOf(
+  json: unknown,
+  url: string,
+  status?: number,
+  body?: Record<string, unknown>,
+): any {
+  if (!isObject(json) || (json.error && !isObject(json.error))) {
+    throw new HttpRequestError({
+      url,
+      details: "The response body is not a JSON-RPC response.",
+      ...(status === undefined ? {} : { status }),
+      ...(body === undefined ? {} : { body }),
+    });
+  }
+  if (json.error) {
+    const error = json.error as { code: number; message: string };
+    throw new RpcRequestError({ body: body ?? {}, error, url });
+  }
+  return json.result;
 }
 
 /** The inner answer as viem's http transport surfaces it; `url` is an origin, and no error carries params or body text. */
@@ -41,17 +65,5 @@ export function mapInnerResponse(response: ConfidentialResponse, url: string): a
   if (parsed === undefined) {
     throw new HttpRequestError({ status, url, details: "The response body is not valid JSON." });
   }
-  // An `error` member that is not an object would crash the viem error constructor.
-  if (!isObject(parsed) || ("error" in parsed && !isObject(parsed.error))) {
-    throw new HttpRequestError({
-      status,
-      url,
-      details: "The response body is not a JSON-RPC response.",
-    });
-  }
-  if ("error" in parsed) {
-    const error = parsed.error as { code: number; message: string };
-    throw new RpcRequestError({ body: {}, error, url });
-  }
-  return parsed.result;
+  return resultOf(parsed, url, status);
 }

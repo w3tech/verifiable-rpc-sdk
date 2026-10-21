@@ -171,7 +171,8 @@ describe("createOpenSession answers", () => {
     ["unsigned 2xx", { unsigned: true }, "MissingHeader"],
     ["signed for another chain", { chain: "1" }, "BadSignature"],
     ["signed 2xx with a BOM", { body: bom }, `ok:${RESULT}`],
-    ["signed 2xx with invalid UTF-8", { body: new Uint8Array([0xff]) }, "TypeError"],
+    ["signed 2xx with invalid UTF-8", { body: new Uint8Array([0xff]) }, "httpError"],
+    ["signed 2xx without JSON", { body: "not json" }, "httpError"],
   ])("%s", async (_, read, expected) => {
     const { s } = session(CHAIN_ID);
     expect(await outcome(s.send(READ, node(read).post))).toBe(expected);

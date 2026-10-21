@@ -12,7 +12,7 @@ import {
 import type { ConfidentialInfo } from "@w3tech.io/vrpc-core/confidential";
 import { createTransport, HttpRequestError, RpcRequestError, type Transport } from "viem";
 
-import { mapInnerResponse } from "./confidential";
+import { isRpcError, mapInnerResponse, resultOf } from "./confidential";
 import type { VrpcHttpOptions } from "./options";
 
 /**
@@ -54,15 +54,6 @@ export function vrpcHttp(
   if (confidential) return confidentialHttp(urls.rpcUrl, opts);
   const fetchFn = opts.fetchFn ?? fetch;
   const { rpcUrl, attestationUrl } = urls;
-  // A signed JSON-RPC error is the PRESENCE of the `error` key; same class viem's http transport throws.
-  const rpcError = (body: Record<string, unknown>, json: unknown) =>
-    typeof json === "object" && json !== null && "error" in json
-      ? new RpcRequestError({
-          body,
-          error: json.error as { code: number; message: string },
-          url: rpcUrl,
-        })
-      : undefined;
   const session = createOpenSession<{ status: number; headers: Headers; body: Uint8Array }>({
     attestationUrl,
     headers: opts.headers,
@@ -71,14 +62,20 @@ export function vrpcHttp(
     pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
     hardwareVerifier: opts.hardwareVerifier,
     logger: opts.logger,
+    // As viem's http transport: RpcRequestError only for a well-formed JSON-RPC error.
     httpError: (response, payload, json) =>
-      rpcError(payload as Record<string, unknown>, json) ??
-      new HttpRequestError({
-        body: payload as Record<string, unknown>,
-        status: response.status,
-        headers: response.headers,
-        url: rpcUrl,
-      }),
+      isRpcError(json)
+        ? new RpcRequestError({
+            body: payload as Record<string, unknown>,
+            error: json.error,
+            url: rpcUrl,
+          })
+        : new HttpRequestError({
+            body: payload as Record<string, unknown>,
+            status: response.status,
+            headers: response.headers,
+            url: rpcUrl,
+          }),
   });
 
   return ({ chain, timeout: injectedTimeout }) => {
@@ -107,11 +104,7 @@ export function vrpcHttp(
         async request({ method, params }) {
           if (clientChainId !== undefined) session.pin(clientChainId);
           const payload = { jsonrpc: "2.0", id: 1, method, params };
-          const json = await session.send(payload, post);
-          const error = rpcError(payload, json);
-          if (error) throw error;
-          // biome-ignore lint/suspicious/noExplicitAny: viem request returns untyped.
-          return (json as { result?: any } | null)?.result;
+          return resultOf(await session.send(payload, post), rpcUrl, undefined, payload);
         },
       },
       { url: rpcUrl },

@@ -233,10 +233,16 @@ describe("errors", () => {
       status: 200,
     },
     {
-      name: "an inner 200 whose error member is null",
-      upstream: raw(200, "application/json", '{"jsonrpc":"2.0","id":1,"error":null}'),
+      name: "an inner 200 whose error member is a string",
+      upstream: raw(200, "application/json", '{"jsonrpc":"2.0","id":1,"error":"sentinel-reply"}'),
       type: HttpRequestError,
       status: 200,
+    },
+    {
+      name: "an inner 500 whose error member is null",
+      upstream: raw(500, "application/json", '{"jsonrpc":"2.0","id":1,"error":null}'),
+      type: HttpRequestError,
+      status: 500,
     },
     {
       name: "an inner 200 with a JSON array",
@@ -271,6 +277,15 @@ describe("errors", () => {
     if (row.code !== undefined) expect((found as RpcRequestError).code).toBe(row.code);
     if (row.status !== undefined) expect((found as HttpRequestError).status).toBe(row.status);
     expectClean(err);
+  });
+
+  test("an inner 200 whose error member is null returns the result", async () => {
+    const { server } = await serveRpcNode(
+      raw(200, "application/json", '{"jsonrpc":"2.0","id":1,"result":"0x1","error":null}'),
+    );
+    const { config } = confidential(server)({ chain: arbitrum });
+
+    expect(await config.request(request)).toBe("0x1");
   });
 
   test("a core error passes through unchanged", async () => {

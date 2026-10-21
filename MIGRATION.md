@@ -145,7 +145,9 @@ because it:
 
 > ethers note: passing the chain id also pins the network (`staticNetwork`), so
 > the provider issues **zero** `eth_chainId` round-trips. This only skips the
-> round-trip; it does **not** weaken the signature binding. Omitting it routes
+> round-trip; it does **not** weaken the signature binding. The id must be an
+> integer `BigInt()` parses (`"-239"` and `"0x89"` are fine); another string
+> throws `InvalidOption` at construction. Omitting it routes
 > the lazy `eth_chainId` bootstrap through `_detectNetwork` / `_send`'s shared
 > resolver instead, where the signed `eth_chainId` response is verified
 > self-consistently before its result is used.
@@ -342,7 +344,13 @@ ethers:
 
 - A signed non-2xx response is verified before `SERVER_ERROR`; a forged signed
   4xx/5xx is `BadSignature` (was `SERVER_ERROR` with the unverified body).
-- Invalid UTF-8 in a signed 2xx body is `TypeError` (was `INVALID_ARGUMENT`).
+- A signed 2xx body that is not UTF-8 JSON is ethers' own `UNSUPPORTED_OPERATION`
+  error from `bodyJson`, as with `JsonRpcProvider` (invalid UTF-8 was
+  `INVALID_ARGUMENT`).
+- A chain id `BigInt()` cannot parse, such as a CAIP-2 style `"eip155:42161"`,
+  throws `InvalidOption("chainId")` at construction (was accepted, and ethers then
+  retried network detection every second, forever). Any integer id, `"-239"` and
+  `"0x89"` included, is pinned as a static network.
 
 viem:
 
@@ -356,7 +364,12 @@ viem:
   `HttpRequestError` (was `undefined`, the body's `result`, or
   `MalformedHeader`). `HttpRequestError.body` of an unsigned non-2xx is the full
   JSON-RPC payload (was `{ method, params }`).
-- Invalid UTF-8 in a signed 2xx body is `TypeError` (was decoded to U+FFFD).
+- A signed 2xx body that is not UTF-8 JSON, or not a JSON object, is
+  `HttpRequestError` (invalid UTF-8 was decoded to U+FFFD).
+- As with viem's `http` transport, an `error` member fails a 2xx only when it is
+  truthy: `"error": null` returns the `result`. A non-2xx is `RpcRequestError`
+  only when `error` has a numeric `code` and a string `message`, else
+  `HttpRequestError`.
 
 @w3tech.io/vrpc-proxy:
 

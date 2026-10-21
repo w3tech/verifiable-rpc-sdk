@@ -31,6 +31,14 @@ interface Posted {
   fetch: FetchResponse;
 }
 
+function integerOf(chainId: string): bigint | undefined {
+  try {
+    return BigInt(chainId);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * `JsonRpcProvider` that Ed25519-verifies every response over its raw bytes and
  * lazily attests the signing pubkey via TDX (per pubkey, TTL-cached). Drop-in:
@@ -85,24 +93,19 @@ export class VrpcProvider extends JsonRpcProvider {
       superUrl = clone;
     }
 
-    const decimal = chainId !== undefined && /^\d+$/.test(chainId);
-    // A non-decimal id leaves ethers without a network: it would retry detection forever.
-    if (confidential === true && !decimal) {
-      throw new InvalidOption(
-        "chainId",
-        "Ankr Confidential RPC mode with ethers needs a decimal chain id",
-      );
+    const network = chainId === undefined ? undefined : integerOf(chainId);
+    // An id ethers cannot hold as a network would make it retry detection every second, forever.
+    if (chainId !== undefined && network === undefined) {
+      throw new InvalidOption("chainId", "ethers needs an integer chain id");
     }
 
     // staticNetwork (pin only) skips ethers' startup eth_chainId probe without
     // weakening the binding; ethersOpts spread first so a user value can't win.
-    // Only an all-decimal id can be pinned as an ethers network: CAIP-2 style
-    // ids are non-EVM, ethers cannot represent such a network, so those pass no
-    // network arg (ethers probes lazily) — the verifier still binds the exact string.
+    // The verifier still binds the exact chain id string.
     super(
       superUrl,
-      decimal ? BigInt(chainId) : undefined,
-      decimal ? { ...ethersOpts, staticNetwork: true } : ethersOpts,
+      network,
+      network === undefined ? ethersOpts : { ...ethersOpts, staticNetwork: true },
     );
 
     if (confidential === true && chainId !== undefined) {
@@ -132,10 +135,12 @@ export class VrpcProvider extends JsonRpcProvider {
       pubkeyCacheTtlMs,
       hardwareVerifier,
       logger,
-      // assertOk throws for every non-2xx answer; a signed one reaches it only after verify.
+      // assertOk throws for every non-2xx answer, bodyJson for a 2xx that is not UTF-8 JSON;
+      // a signed answer reaches them only after verify.
       httpError: ({ fetch }: Posted) => {
         try {
           fetch.assertOk();
+          void fetch.bodyJson;
         } catch (err) {
           return err;
         }
@@ -171,7 +176,6 @@ export class VrpcProvider extends JsonRpcProvider {
     return Array.isArray(results) ? results : [results];
   }
 
-  // A pinned CAIP-2 style id has no ethers Network representation and fails loud.
   override async _detectNetwork(): Promise<Network> {
     const chainId =
       "confidential" in this.#mode

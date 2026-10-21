@@ -56,7 +56,7 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
   logger?: Logger;
   /**
    * Turns on Ankr Confidential RPC mode (`confidential: true`): every call is sealed to an attested
-   * node. Requires a decimal chain id. CCIP-Read is turned off, since it would send call data in
+   * node. Requires a chain id. CCIP-Read is turned off, since it would send call data in
    * plaintext to a URL the contract names. A `getUrlFunc` set on the `FetchRequest` must not
    * follow redirects or retry.
    */

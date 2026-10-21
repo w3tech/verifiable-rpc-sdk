@@ -257,6 +257,7 @@ try {
 | Signed JSON-RPC `{ error }` body          | viem's own `RpcRequestError` — **NOT** a `VerificationError` (verification passed; `buildRequest` maps it by code). |
 | Unsigned non-2xx (gateway 502 / timeout)  | viem's `HttpRequestError` **before** verify — reads as a network error, not a verify attack. |
 | Signed non-2xx with `{ error }` body      | still flows into verify; its signed error surfaces as an ordinary `RpcRequestError`. |
+| Signed 2xx that is not a JSON-RPC object  | `HttpRequestError` (not JSON, not an object, or a non-object `error`). As with `http`, only a truthy `error` fails: `"error": null` returns the `result`. |
 
 `MissingHeader`, `MalformedHeader`, `BadSignature`, `StaleTimestamp` and
 `InvalidChainId` all extend `VerificationError`, which extends `VrpcError`. The

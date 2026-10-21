@@ -15,13 +15,16 @@ export type OpenSessionOptions<R extends OuterResponse> = Omit<
 > & {
   /** Pins the chain; without it the chain id comes from a verified `eth_chainId` answer. */
   chainId?: string | undefined;
-  /** The library's own error for a non-2xx answer; `json` is its parsed body, set only for a verified answer. */
+  /**
+   * The library's own error for a non-2xx answer or a verified body that is not UTF-8 JSON;
+   * `json` is the parsed body of a verified non-2xx answer.
+   */
   httpError(response: R, payload: unknown, json?: unknown): unknown;
 };
 
 /** One open-mode connection: sends exactly the bytes it verifies and returns only verified answers. */
 export interface OpenSession<R extends OuterResponse> {
-  /** Posts `payload` as JSON, verifies the answer and returns its parsed body; a non-2xx answer throws `httpError`. */
+  /** Posts `payload` as JSON, verifies the answer and returns its parsed body; a non-2xx or unparsable answer throws `httpError`. */
   send(payload: unknown, post: (body: Uint8Array) => Promise<R>): Promise<unknown>;
   /** The pinned chain id, bootstrapped through `post` when nothing is pinned yet. */
   chainId(post: (body: Uint8Array) => Promise<R>): Promise<string>;
@@ -82,14 +85,14 @@ export function createOpenSession<R extends OuterResponse>(
         throw httpError(response, payload);
       }
       await verifier.verify(body, response.body, response.headers);
-      if (ok(response)) return JSON.parse(strictUtf8.decode(response.body));
       let json: unknown;
       try {
         json = JSON.parse(strictUtf8.decode(response.body));
       } catch {
-        // An unparsable error body leaves `json` undefined.
+        throw httpError(response, payload);
       }
-      throw httpError(response, payload, json);
+      if (!ok(response)) throw httpError(response, payload, json);
+      return json;
     },
     async chainId(post) {
       await current(post);

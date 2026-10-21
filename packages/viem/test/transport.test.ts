@@ -308,9 +308,24 @@ describe("vrpcHttp transport wiring", () => {
 describe("response classes", () => {
   const VALUE = jsonResult(SINGLE_RESULT_BALANCE_HEX);
   const ERROR = JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32000, message: "x" } });
+  const NULL_ERROR = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    result: SINGLE_RESULT_BALANCE_HEX,
+    error: null,
+  });
   test.each<[string, string, SeamOptions, unknown]>([
     ["signed 2xx → value", VALUE, {}, SINGLE_RESULT_BALANCE_HEX],
-    ["signed 2xx null body → undefined", "null", {}, undefined],
+    ["signed 2xx with a null error member → value", NULL_ERROR, {}, SINGLE_RESULT_BALANCE_HEX],
+    ["signed 2xx null body → HttpRequestError", "null", {}, HttpRequestError],
+    ["signed 2xx with a non-JSON body → HttpRequestError", "not json", {}, HttpRequestError],
+    ["signed 2xx with an error member → RpcRequestError", ERROR, {}, RpcRequestError],
+    [
+      "signed 500 with a null error member → HttpRequestError",
+      '{"jsonrpc":"2.0","id":1,"error":null}',
+      { status: 500 },
+      HttpRequestError,
+    ],
     ["signed 500 with an error member → RpcRequestError", ERROR, { status: 500 }, RpcRequestError],
     [
       "signed 502 without an error member → HttpRequestError",
@@ -349,7 +364,10 @@ describe("response classes", () => {
     if (typeof expected !== "function") return expect(await result).toBe(expected);
     await expect(result).rejects.toBeInstanceOf(expected);
     if (expected === HttpRequestError) {
-      await expect(result).rejects.toMatchObject({ status: 502, body: { jsonrpc: "2.0", id: 1 } });
+      await expect(result).rejects.toMatchObject({ body: { jsonrpc: "2.0", id: 1 } });
+      if (seam.status !== undefined) {
+        await expect(result).rejects.toMatchObject({ status: seam.status });
+      }
     }
     if (seam.unsigned) expect(attests).toEqual([]);
   });

@@ -105,16 +105,18 @@ new VrpcProvider(url: string | FetchRequest, chainId?: number | bigint | string,
   The chain-id string is hashed into the 104-byte pre-image; version gate: SDK
   `>=0.3.0` requires sidecar `>=0.5.0` (older sidecars sign the legacy
   pre-image and verification fails closed).
-  - **Explicit (recommended)** — `new VrpcProvider(url, chainId)`. For an
-    all-decimal id the constructor pins it as a static network
+  - **Explicit (recommended)** — `new VrpcProvider(url, chainId)`. The
+    constructor pins the id as a static network
     (`staticNetwork: true`) so the provider issues **zero** `eth_chainId`
     round-trips; this only skips the round-trip and does not weaken the
     signature binding. It also pins to **your expected chain**, catching a
     wrong-node / wrong-URL misconfig where auto-derive (which trusts the node's
     self-reported chain) would happily verify *genuine* data from the *wrong*
-    chain. A non-decimal (CAIP-2 style) id cannot be represented as an ethers
-    network, so no network arg is pinned — the verifier still binds the exact
-    string. To pass options without pinning a chain id, use
+    chain. The id must be an integer `BigInt()` parses (`"42161"`, `"0x89"`,
+    `"-239"`); any other string, such as a CAIP-2 style `"eip155:42161"`, throws
+    `InvalidOption` at construction, because ethers cannot hold it as a network.
+    The verifier still binds the exact string. To pass options without pinning a
+    chain id, use
     `new VrpcProvider(url, undefined, { ... })`.
   - **Omitted (auto-derive)** — `new VrpcProvider(url)`. On first use the
     provider derives the chain id from a **signed `eth_chainId` response**,
@@ -219,7 +221,7 @@ the [core Ankr Confidential RPC mode section](../core/README.md#ankr-confidentia
 
 `new VrpcProvider(url, chainId, { confidential: true })` sends every JSON-RPC
 call encrypted to an attested node.
-The chain id is required and must be decimal. `await provider.confidentialReady()`
+The chain id is required. `await provider.confidentialReady()`
 attests up front; `provider.getConfidentialInfo()` returns the pinned node. Auth
 headers, credentials and the timeout come from the `FetchRequest` you pass as the
 URL and apply to both requests. Without a `getUrlFunc` of your own, both requests

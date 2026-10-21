@@ -356,6 +356,8 @@ describe("configuration errors", () => {
         expect.objectContaining({ name: "InvalidOption", option: "chainId" }),
       );
     }
+    // TON's global id: an integer ethers holds as a network.
+    make("-239", { confidential: true })().destroy();
     expect(make(42161, { confidential: "true" })).toThrow(
       expect.objectContaining({ name: "InvalidOption", option: "confidential" }),
     );
