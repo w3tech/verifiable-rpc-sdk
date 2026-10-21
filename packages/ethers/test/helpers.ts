@@ -47,6 +47,8 @@ export interface SigningRequestOptions {
    * matches — drives `BadSignature`.
    */
   tamper?: boolean;
+  /** HTTP status of the answer. Defaults to 200. */
+  status?: number;
 }
 
 /**
@@ -82,7 +84,7 @@ export function signingRequest(
           nodeId: opts.nodeId,
         });
     const body = opts.tamper ? flipFirstDigit(responseBytes) : responseBytes;
-    return { statusCode: 200, statusMessage: "OK", headers, body };
+    return { statusCode: opts.status ?? 200, statusMessage: "", headers, body };
   };
   return req;
 }
