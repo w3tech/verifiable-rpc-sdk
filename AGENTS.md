@@ -162,6 +162,7 @@ variables set.
 | Explain vRPC / the trust model to a user      | `.claude/skills/explain-vrpc/SKILL.md` |
 | Change how a node is attested                 | `packages/core/src/attestation.ts` (`attestNode`) |
 | Change what core enforces on an injected transport | `packages/core/src/transport.ts` (`guardedSend`) |
+| Change open-mode bootstrap, verify or status handling | `packages/core/src/open-session.ts` (`createOpenSession`) |
 
 ## Conventions
 
