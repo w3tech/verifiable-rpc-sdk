@@ -65,16 +65,9 @@ export function createConfidentialTransport(
       res.body.destroy();
       throw new UpstreamConnectError("Upstream sent an invalid header");
     }
-    const raw = await bufferStream(
-      res.body,
-      config.maxBodyBytes,
-      () => new UpstreamBodyTooLargeError(config.maxBodyBytes),
-    );
-    const body = await decodeBody(
-      raw,
-      headers.get("content-encoding") ?? undefined,
-      config.maxBodyBytes,
-    );
+    const cap = Math.min(config.maxBodyBytes, outer.maxBytes ?? Infinity);
+    const raw = await bufferStream(res.body, cap, () => new UpstreamBodyTooLargeError(cap));
+    const body = await decodeBody(raw, headers.get("content-encoding") ?? undefined, cap);
     return { status: res.statusCode, headers, body };
   };
 }

@@ -4,15 +4,20 @@
 
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import { gzipSync } from "node:zlib";
 import { getPublicKeyAsync } from "@noble/ed25519";
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 import { ConfidentialClient } from "@w3tech.io/vrpc-core/confidential";
 import type { TestOuterResponse, TestUpstreamResponse } from "@w3tech.io/vrpc-test-support";
-import { TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
+import { rejectionOf, TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
+import { getGlobalDispatcher } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { createConfidentialTransport } from "../src/confidential";
 import type { ProxyConfig } from "../src/config";
 
 import {
+  closeServer,
+  listen,
   type RawResponse,
   type RunningProxy,
   rawRequest,
@@ -21,7 +26,7 @@ import {
   type TestNodeServer,
   type WireRequest,
 } from "./support/test-node-server";
-import { TEST_CHAIN_ID } from "./support/test-overrides";
+import { TEST_CHAIN_ID, testConfig } from "./support/test-overrides";
 
 const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const RPC_ANSWER = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
@@ -410,6 +415,24 @@ describe("sealed request failures", () => {
       { gets: 0, posts: 1 },
     );
     expect(redirected).toBe(0);
+  });
+});
+
+describe("outer read cap", () => {
+  test.each([
+    ["identity", Buffer.alloc(128), "UPSTREAM_BODY_TOO_LARGE"],
+    ["gzip", gzipSync(Buffer.alloc(4096)), "DECODE_FAILED"],
+  ])("an answer past the request's own maxBytes is cut at it (%s)", async (encoding, body, code) => {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { "content-encoding": encoding }).end(body);
+    });
+    const url = await listen(server);
+    cleanups.push(() => closeServer(server));
+    const transport = createConfidentialTransport(testConfig(url), getGlobalDispatcher());
+
+    const err = await rejectionOf(transport({ method: "GET", url, headers: {}, maxBytes: 64 }));
+
+    expect(err).toMatchObject({ code });
   });
 });
 
