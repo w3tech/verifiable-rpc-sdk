@@ -153,9 +153,9 @@ await verifyDstackAttestation(bundle, {
 
 ### `CHK-*` checklist
 
-`CHK` is a frozen const record enumerating the full chain-of-trust checklist
-`CHK-A1..G3` (verbatim meaning + disposition: `implement` / `mock` /
-`pinned` / `out`). It is a queryable audit dictionary.
+`ChkId` is the union of the chain-of-trust checklist ids `CHK-A1..G3`; each id's
+doc comment gives its meaning. This package throws `CHK-A1`, `CHK-A2` and
+`CHK-P1`; a custom `HardwareVerifier` may throw any id.
 
 ### Helper signatures
 
@@ -174,7 +174,7 @@ pnpm --filter '@w3tech.io/dstack-verify' test
 ```
 
 - `tests/contract.test.ts` — exports, `AttestationError` is a standalone `Error`
-  (not a core `VerificationError`), completeness of `CHK-A1..G3`.
+  (not a core `VerificationError`).
 - `tests/verify.test.ts` — end-to-end verify flow incl. the fail-closed gate
   (throws `CHK-P1` without a `hardwareVerifier`, resolves with a configured one;
   CHK-A1/A2 binding + compose-hash checks).

@@ -31,106 +31,49 @@ export class AttestationError extends Error {
 export type AttestationErrorKind = "Attestation";
 
 // @public
-export const CHK: Readonly<{
-    readonly "CHK-A1": {
-        readonly meaning: "reportData contains expected challenge/public key";
-        readonly disposition: "implement";
-    };
-    readonly "CHK-A2": {
-        readonly meaning: "compose-hash matches calculated hash";
-        readonly disposition: "implement";
-    };
-    readonly "CHK-A3": {
-        readonly meaning: "All Docker images use SHA256 digests (not tags)";
-        readonly disposition: "implement";
-    };
-    readonly "CHK-A4": {
-        readonly meaning: "RTMR3 event log replays to quoted RTMR3";
-        readonly disposition: "implement";
-    };
-    readonly "CHK-A5": {
-        readonly meaning: "Image digests link to audited source code (Sigstore/reproducible)";
-        readonly disposition: "mock";
-    };
-    readonly "CHK-A6": {
-        readonly meaning: "compose-hash whitelisted in DstackApp contract";
-        readonly disposition: "pinned";
-    };
-    readonly "CHK-P1": {
-        readonly meaning: "TDX quote signature valid (Intel root certs / hosted verifier verdict)";
-        readonly disposition: "implement";
-    };
-    readonly "CHK-P2": {
-        readonly meaning: "tee_tcb_svn matches latest patches";
-        readonly disposition: "implement";
-    };
-    readonly "CHK-P3": {
-        readonly meaning: "MRTD and RTMR0-2 match calculated OS measurements";
-        readonly disposition: "implement";
-    };
-    readonly "CHK-P4": {
-        readonly meaning: "VM config (CPU/mem/GPU) matches deployment";
-        readonly disposition: "implement";
-    };
-    readonly "CHK-P5": {
-        readonly meaning: "OS image hash whitelisted in DstackKms contract";
-        readonly disposition: "pinned";
-    };
-    readonly "CHK-P6": {
-        readonly meaning: "(Optional) OS rebuilt reproducibly";
-        readonly disposition: "out";
-    };
-    readonly "CHK-P7": {
-        readonly meaning: "KMS ID from key-provider event known and trusted";
-        readonly disposition: "implement";
-    };
-    readonly "CHK-P8": {
-        readonly meaning: "KMS's own attestation quote valid";
-        readonly disposition: "mock";
-    };
-    readonly "CHK-P9": {
-        readonly meaning: "KMS aggregated MR whitelisted in DstackKms contract";
-        readonly disposition: "pinned";
-    };
-    readonly "CHK-N1": {
-        readonly meaning: "TLS cert fingerprint matches served cert";
-        readonly disposition: "out";
-    };
-    readonly "CHK-N2": {
-        readonly meaning: "/evidences/ files cryptographically bind to quote";
-        readonly disposition: "out";
-    };
-    readonly "CHK-N3": {
-        readonly meaning: "CAA DNS records restrict cert issuance";
-        readonly disposition: "out";
-    };
-    readonly "CHK-G1": {
-        readonly meaning: "Smart-contract addresses verified and trusted";
-        readonly disposition: "pinned";
-    };
-    readonly "CHK-G2": {
-        readonly meaning: "Contract permissions match security policy";
-        readonly disposition: "pinned";
-    };
-    readonly "CHK-G3": {
-        readonly meaning: "Contract ownership/upgrade mechanisms understood";
-        readonly disposition: "pinned";
-    };
-}>;
-
-// @public
-export type ChkDisposition = "implement" | "mock" | "pinned" | "out";
-
-// @public
-export interface ChkEntry {
-    // (undocumented)
-    disposition: ChkDisposition;
-    // (undocumented)
-    meaning: string;
-}
-
-// @public
-export type ChkId = "CHK-A1" | "CHK-A2" | "CHK-A3" | "CHK-A4" | "CHK-A5" | "CHK-A6" | "CHK-P1" | "CHK-P2" | "CHK-P3" | "CHK-P4" | "CHK-P5" | "CHK-P6" | "CHK-P7" | "CHK-P8" | "CHK-P9" | "CHK-N1" | "CHK-N2" | "CHK-N3" | "CHK-G1" | "CHK-G2" | "CHK-G3";
+export type ChkId =
+/** reportData contains expected challenge/public key */
+"CHK-A1"
+/** compose-hash matches calculated hash */
+| "CHK-A2"
+/** All Docker images use SHA256 digests (not tags) */
+| "CHK-A3"
+/** RTMR3 event log replays to quoted RTMR3 */
+| "CHK-A4"
+/** Image digests link to audited source code (Sigstore/reproducible) */
+| "CHK-A5"
+/** compose-hash whitelisted in DstackApp contract */
+| "CHK-A6"
+/** TDX quote signature valid (Intel root certs / hosted verifier verdict) */
+| "CHK-P1"
+/** tee_tcb_svn matches latest patches */
+| "CHK-P2"
+/** MRTD and RTMR0-2 match calculated OS measurements */
+| "CHK-P3"
+/** VM config (CPU/mem/GPU) matches deployment */
+| "CHK-P4"
+/** OS image hash whitelisted in DstackKms contract */
+| "CHK-P5"
+/** (Optional) OS rebuilt reproducibly */
+| "CHK-P6"
+/** KMS ID from key-provider event known and trusted */
+| "CHK-P7"
+/** KMS's own attestation quote valid */
+| "CHK-P8"
+/** KMS aggregated MR whitelisted in DstackKms contract */
+| "CHK-P9"
+/** TLS cert fingerprint matches served cert */
+| "CHK-N1"
+/** /evidences/ files cryptographically bind to quote */
+| "CHK-N2"
+/** CAA DNS records restrict cert issuance */
+| "CHK-N3"
+/** Smart-contract addresses verified and trusted */
+| "CHK-G1"
+/** Contract permissions match security policy */
+| "CHK-G2"
+/** Contract ownership/upgrade mechanisms understood */
+| "CHK-G3";
 
 // @public
 export interface CloudVerifierConfig {
