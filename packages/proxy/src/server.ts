@@ -36,6 +36,19 @@ export type ProxyTestOverrides = Pick<
   "fetch" | "hardwareVerifier" | "logger"
 >;
 
+type Handler = (req: http.IncomingMessage, res: http.ServerResponse, signal: AbortSignal) => void;
+
+// One abort signal per request: a client that leaves cancels the upstream request in both modes.
+function createServer(handler: Handler): http.Server {
+  return http.createServer((req, res) => {
+    const disconnected = new AbortController();
+    res.once("close", () => {
+      if (!res.writableFinished) disconnected.abort();
+    });
+    handler(req, res, disconnected.signal);
+  });
+}
+
 // Core calls fetch with a string URL only; the cast bridges undici's and the DOM's fetch types.
 function agentFetch(dispatcher: Agent): typeof fetch {
   return ((url: string, init?: RequestInit) =>
@@ -84,7 +97,7 @@ export function createProxyServer(
 
   const verifier = new TrustedVerifier(options);
 
-  const server = http.createServer(
+  const server = createServer(
     createRequestHandler({ config, verifier, logger: proxyLogger, dispatcher }),
   );
   server.on("close", () => {
@@ -120,9 +133,7 @@ function createConfidentialServer(
     throw err;
   }
 
-  const server = http.createServer(
-    createConfidentialHandler({ config, client, logger: proxyLogger }),
-  );
+  const server = createServer(createConfidentialHandler({ config, client, logger: proxyLogger }));
   // Attest after the port is open; a failure is logged and the next request attests again.
   server.once("listening", () => {
     const started = performance.now();

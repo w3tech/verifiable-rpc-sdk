@@ -14,6 +14,12 @@
       "to": { "path": "^packages/core/src/trusted-verifier\\.ts$" }
     },
     {
+      "name": "proxy-confidential-not-pipeline",
+      "severity": "error",
+      "from": { "path": "^packages/proxy/src/confidential\\.ts$" },
+      "to": { "path": "^packages/proxy/src/pipeline\\.ts$" }
+    },
+    {
       "name": "core-by-package-name",
       "severity": "error",
       "from": { "path": "^packages/(ethers|viem|proxy)/" },

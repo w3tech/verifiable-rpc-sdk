@@ -7,8 +7,8 @@
 // (raw wire bytes — global fetch would auto-decompress); all verification legs
 // are injected via testOverrides(), so no test touches the network.
 
-import { createServer, request as httpRequest, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer, request as httpRequest } from "node:http";
+import type { AddressInfo, Socket } from "node:net";
 import * as zlib from "node:zlib";
 import { verifyAsync } from "@noble/ed25519";
 import { buildPreImage } from "@w3tech.io/vrpc-core";
@@ -26,6 +26,7 @@ import {
   type MockSidecarOptions,
   startMockSidecar,
 } from "./support/mock-sidecar";
+import { closeServer, listen } from "./support/test-node-server";
 import { TEST_CHAIN_ID, testConfig, testOverrides } from "./support/test-overrides";
 
 interface RawResponse {
@@ -46,20 +47,6 @@ async function post(
     chunks.push(chunk as Buffer);
   }
   return { status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) };
-}
-
-function listen(server: Server): Promise<string> {
-  return new Promise((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address() as AddressInfo;
-      resolve(`http://127.0.0.1:${address.port}`);
-    });
-  });
-}
-
-function closeServer(server: Server): Promise<void> {
-  server.closeAllConnections();
-  return new Promise((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
 }
 
 /** Reserve a loopback port and release it — a guaranteed-unbound upstream. */
@@ -347,6 +334,23 @@ describe("proxy pipeline", () => {
     const res = await post(url, RPC_REQUEST);
 
     await expectErrorKind(res, 502, "UpstreamConnect");
+  });
+
+  test("aClientDisconnectAbortsTheUpstreamRequest", async () => {
+    const sockets: Socket[] = [];
+    const upstream = createServer((req) => sockets.push(req.socket));
+    const upstreamUrl = await listen(upstream);
+    cleanups.push(() => closeServer(upstream));
+    const config = testConfig(upstreamUrl, { upstreamTimeoutMs: 60_000 });
+    const server = createProxyServer(config, testOverrides());
+    const url = await listen(server);
+    cleanups.push(() => closeServer(server));
+    const req = httpRequest(url, { method: "POST" });
+    req.on("error", () => {});
+    req.end(RPC_REQUEST);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    req.destroy();
+    await vi.waitFor(() => expect(sockets[0]?.destroyed).toBe(true));
   });
 
   test("decompressionBombFailsClosedWithDecodeFailed", async () => {

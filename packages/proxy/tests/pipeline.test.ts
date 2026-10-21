@@ -4,12 +4,15 @@
 // taxonomy map and the upstream target-URL merge (path join, query merge,
 // dot-segment traversal containment). No network, no server.
 
+import { Readable } from "node:stream";
+
 import { MalformedHeader } from "@w3tech.io/vrpc-core";
 import { describe, expect, test } from "vitest";
 
 import { UpstreamConnectError, UpstreamTimeoutError } from "../src/errors";
 import { flattenForVerify } from "../src/headers";
 import { buildTargetUrl, mapUndiciError } from "../src/pipeline";
+import { bufferStream } from "../src/upstream";
 
 function undiciError(code: string, message = code): Error & { code: string } {
   return Object.assign(new Error(message), { code });
@@ -44,6 +47,19 @@ describe("mapUndiciError", () => {
     const err = mapUndiciError("socket hang up");
     expect(err).toBeInstanceOf(UpstreamConnectError);
     expect(err.httpStatus).toBe(502);
+  });
+});
+
+describe("bufferStream", () => {
+  const overflow = () => new Error("over the cap");
+  test.each([
+    [8, "returns the body whole"],
+    [9, "throws the overflow error"],
+  ])("%i bytes under an 8-byte cap %s", async (size) => {
+    const chunks = Readable.from([Buffer.alloc(5), Buffer.alloc(size - 5)]);
+    const buffered = bufferStream(chunks, 8, overflow);
+    if (size === 8) expect(await buffered).toHaveLength(8);
+    else await expect(buffered).rejects.toThrow("over the cap");
   });
 });
 

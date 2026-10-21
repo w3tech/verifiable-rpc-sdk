@@ -17,7 +17,7 @@ import type {
   ConfidentialTransport,
   InnerRequest,
 } from "@w3tech.io/vrpc-core/confidential";
-import { type Dispatcher, request } from "undici";
+import type { Dispatcher } from "undici";
 
 import type { ProxyConfig } from "./config";
 import { decodeBody } from "./decode";
@@ -28,11 +28,9 @@ import {
   isUndiciTimeout,
   ProxyError,
   UnsupportedMediaTypeError,
-  UpstreamBodyTooLargeError,
-  UpstreamConnectError,
 } from "./errors";
 import type { ProxyLogger } from "./logger";
-import { bufferStream } from "./pipeline";
+import { bufferStream, sendUpstream } from "./upstream";
 
 /** Per-process context shared by every confidential request. */
 export interface ConfidentialHandlerContext {
@@ -47,28 +45,16 @@ export function createConfidentialTransport(
   dispatcher: Dispatcher,
 ): ConfidentialTransport {
   return async (outer) => {
-    const res = await request(outer.url, {
+    const cap = Math.min(config.maxBodyBytes, outer.maxBytes ?? Infinity);
+    const res = await sendUpstream(dispatcher, cap, {
+      url: outer.url,
       method: outer.method,
       headers: { ...outer.headers, "accept-encoding": "identity" },
-      body: outer.body ?? null,
-      dispatcher,
-      ...(outer.signal === undefined ? {} : { signal: outer.signal }),
+      body: outer.body,
+      signal: outer.signal,
     });
-    // Every value is appended so core sees repeated fields and classifies them itself.
-    const headers = new Headers();
-    try {
-      for (const [name, value] of Object.entries(res.headers)) {
-        if (value === undefined) continue;
-        for (const v of Array.isArray(value) ? value : [value]) headers.append(name, v);
-      }
-    } catch {
-      res.body.destroy();
-      throw new UpstreamConnectError("Upstream sent an invalid header");
-    }
-    const cap = Math.min(config.maxBodyBytes, outer.maxBytes ?? Infinity);
-    const raw = await bufferStream(res.body, cap, () => new UpstreamBodyTooLargeError(cap));
-    const body = await decodeBody(raw, headers.get("content-encoding") ?? undefined, cap);
-    return { status: res.statusCode, headers, body };
+    const body = await decodeBody(res.body, res.headers.get("content-encoding") ?? undefined, cap);
+    return { status: res.status, headers: res.headers, body };
   };
 }
 
@@ -157,15 +143,17 @@ function renderError(res: http.ServerResponse, err: unknown, log: ProxyLogger): 
 }
 
 /** Request listener for Ankr Confidential RPC mode; nothing reaches the upstream unsealed. */
-export function createConfidentialHandler(ctx: ConfidentialHandlerContext): http.RequestListener {
+export function createConfidentialHandler(
+  ctx: ConfidentialHandlerContext,
+): (req: http.IncomingMessage, res: http.ServerResponse, signal: AbortSignal) => void {
   const { config, client, logger: log } = ctx;
 
-  async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  async function handle(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    signal: AbortSignal,
+  ): Promise<void> {
     const started = performance.now();
-    const disconnected = new AbortController();
-    res.once("close", () => {
-      if (!res.writableFinished) disconnected.abort();
-    });
     const bytes = await bufferStream(
       req,
       config.maxBodyBytes,
@@ -187,7 +175,7 @@ export function createConfidentialHandler(ctx: ConfidentialHandlerContext): http
       ...(accept === undefined ? {} : { accept }),
       ...(bytes.length === 0 ? {} : { body: bytes }),
     };
-    const out = await client.request(inner, { signal: disconnected.signal });
+    const out = await client.request(inner, { signal });
     res.writeHead(out.status, relayHeaders(inner.method, out));
     res.end(out.body);
     log.debug("proxy.relay", {
@@ -199,8 +187,8 @@ export function createConfidentialHandler(ctx: ConfidentialHandlerContext): http
     });
   }
 
-  return (req, res) => {
-    handle(req, res).catch((err: unknown) => {
+  return (req, res, signal) => {
+    handle(req, res, signal).catch((err: unknown) => {
       if (res.destroyed || (err as { code?: string } | null | undefined)?.code === "ECONNRESET") {
         log.debug("proxy.clientAborted");
         res.destroy();

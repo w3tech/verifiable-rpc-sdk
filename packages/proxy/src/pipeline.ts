@@ -15,7 +15,7 @@ import {
   type TrustedVerifier,
   VerificationError,
 } from "@w3tech.io/vrpc-core";
-import { type Dispatcher, request } from "undici";
+import type { Dispatcher } from "undici";
 
 import type { ProxyConfig } from "./config";
 import { decodeBody } from "./decode";
@@ -26,12 +26,12 @@ import {
   isUndiciTimeout,
   ProxyError,
   UnsignedUpstreamError,
-  UpstreamBodyTooLargeError,
   UpstreamConnectError,
   UpstreamTimeoutError,
 } from "./errors";
 import { buildForwardHeaders, buildRelayHeaders, flattenForVerify } from "./headers";
 import type { ProxyLogger } from "./logger";
+import { bufferStream, sendUpstream, type UpstreamResponse } from "./upstream";
 
 /** Per-process context shared by every request. */
 export interface RequestContext {
@@ -43,28 +43,6 @@ export interface RequestContext {
    * an Agent that bounds connect, headers and body by `config.upstreamTimeoutMs`.
    */
   dispatcher: Dispatcher;
-}
-
-/**
- * Buffer a readable stream into a single Buffer, enforcing `maxBytes`.
- * Exceeding the cap throws the error produced by `overflow()`.
- */
-export async function bufferStream(
-  stream: AsyncIterable<Buffer | Uint8Array>,
-  maxBytes: number,
-  overflow: () => ProxyError,
-): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of stream) {
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    total += buf.length;
-    if (total > maxBytes) {
-      throw overflow();
-    }
-    chunks.push(buf);
-  }
-  return Buffer.concat(chunks);
 }
 
 /**
@@ -194,11 +172,17 @@ function renderError(res: http.ServerResponse, err: unknown, log: ProxyLogger): 
  *    plaintext) and verify fail-closed.
  * 6. Relay the ORIGINAL upstream bytes and headers verbatim.
  */
-export function createRequestHandler(ctx: RequestContext): http.RequestListener {
+export function createRequestHandler(
+  ctx: RequestContext,
+): (req: http.IncomingMessage, res: http.ServerResponse, signal: AbortSignal) => void {
   const log = ctx.logger;
   const { config, verifier } = ctx;
 
-  async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  async function handle(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    signal: AbortSignal,
+  ): Promise<void> {
     // 1. Buffer the inbound request body — raw bytes, never transformed.
     const requestBytes = await bufferStream(
       req,
@@ -219,74 +203,55 @@ export function createRequestHandler(ctx: RequestContext): http.RequestListener 
       bodyBytes: requestBytes.length,
     });
 
-    let upstreamRes: Dispatcher.ResponseData;
+    let upstreamRes: UpstreamResponse;
     try {
-      upstreamRes = await request(targetUrl, {
-        method: (req.method ?? "GET") as Dispatcher.HttpMethod,
+      upstreamRes = await sendUpstream(ctx.dispatcher, config.maxBodyBytes, {
+        url: targetUrl,
+        method: req.method ?? "GET",
         headers: forwardHeaders,
-        body: requestBytes.length > 0 ? requestBytes : null,
-        dispatcher: ctx.dispatcher,
+        body: requestBytes,
+        signal,
       });
     } catch (err) {
-      throw mapUndiciError(err);
+      throw err instanceof ProxyError ? err : mapUndiciError(err);
     }
 
     // From here the upstream has answered — any failure below carries its
     // trace id (when present) for correlation with upstream logs.
-    let flatHeaders: Record<string, string>;
+    const flatHeaders = flattenForVerify(upstreamRes.rawHeaders);
     try {
-      flatHeaders = flattenForVerify(upstreamRes.headers);
-    } catch (err) {
-      // Repeated vRPC-* header → fail closed; release the unread upstream body.
-      upstreamRes.body.destroy();
-      throw err;
-    }
-    try {
-      // 3. Buffer the upstream response body under the same cap.
-      let responseBytes: Buffer;
-      try {
-        responseBytes = await bufferStream(
-          upstreamRes.body,
-          config.maxBodyBytes,
-          () => new UpstreamBodyTooLargeError(config.maxBodyBytes),
-        );
-      } catch (err) {
-        if (err instanceof ProxyError) throw err;
-        throw mapUndiciError(err);
-      }
-
       // 4. No vRPC headers → fail closed whether the upstream answered 200 or 5xx.
       if (!isSignedVrpcResponse(flatHeaders)) {
-        throw new UnsignedUpstreamError(upstreamRes.statusCode);
+        throw new UnsignedUpstreamError(upstreamRes.status);
       }
 
       // 5. Decode the throwaway copy and verify — the SAME requestBytes Buffer
       //    from step 1; the signature covers the content-decoded response body.
       const decodedCopy = await decodeBody(
-        responseBytes,
+        upstreamRes.body,
         flatHeaders["content-encoding"],
         config.maxBodyBytes,
       );
       await verifier.verify(requestBytes, decodedCopy, flatHeaders);
       log.debug("proxy.verified", {
-        status: upstreamRes.statusCode,
+        status: upstreamRes.status,
         headers: pickVrpcHeaders(flatHeaders),
         bodyBytes: byteLen(decodedCopy),
       });
 
       // 6. Relay the original upstream bytes and headers verbatim.
       res.writeHead(
-        upstreamRes.statusCode,
-        buildRelayHeaders(upstreamRes.headers, responseBytes.length),
+        upstreamRes.status,
+        buildRelayHeaders(upstreamRes.rawHeaders, upstreamRes.body.length),
       );
-      res.end(responseBytes);
+      res.end(upstreamRes.body);
     } catch (err) {
       throw attachUpstreamTraceId(err, flatHeaders);
     }
   }
 
-  return (req, res) => {
-    handle(req, res).catch((err: unknown) => {
+  return (req, res, signal) => {
+    handle(req, res, signal).catch((err: unknown) => {
       // A client that disconnected mid-request is baseline noise, not a proxy
       // error: debug-log and drop the socket instead of rendering a 502.
       if (res.destroyed || (err as { code?: string } | null | undefined)?.code === "ECONNRESET") {
