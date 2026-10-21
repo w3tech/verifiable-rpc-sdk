@@ -136,7 +136,7 @@ variables set.
 
 | File                          | Responsibility                                                                                                                                                                            |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/core/src/index.ts`  | Public barrel re-exporting `TrustedVerifier`, `verifyResponse`/`isSignedVrpcResponse`, `fetchAttestation`/`verifyAttestationCorrelation`, the `VerificationError` family, `buildPreImage`, `parseChainId`, and `deriveVrpcUrls`. |
+| `packages/core/src/index.ts`  | Public barrel re-exporting `TrustedVerifier`, `verifyResponse`/`isSignedVrpcResponse`, `fetchAttestation`, the `VerificationError` family, `buildPreImage`, `parseChainId`, and `deriveVrpcUrls`. |
 | `packages/dstack-verify/src/verify-steps.ts`| `computeComposeHash` (`sha256(utf8(app_compose))` bare-hex, used by CHK-A2) + `parseReportData` (CHK-A1). Lives here — compose-hash is a dstack/TDX concept. |
 | `packages/proxy/src/pipeline.ts` | Buffering verifying-proxy pipeline: forward request verbatim, decode a throwaway response copy, `TrustedVerifier.verify` fail-closed, relay original bytes. CLI entry: `packages/proxy/src/cli.ts` (`vrpc-proxy` bin). |
 | `tsconfig.base.json`          | Strict TS config (target ESNext, moduleResolution bundler, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`). Root `tsconfig.json` only `extends` it with `files: []`; each package's `tsconfig.json` extends it too.        |
@@ -160,6 +160,7 @@ variables set.
 | Change strict-mode TS flags                   | `tsconfig.base.json`             |
 | Add or reuse a test helper shared by packages | `packages/test-support/src` (`@w3tech.io/vrpc-test-support`: private workspace package, imported by package name as a devDependency) |
 | Explain vRPC / the trust model to a user      | `.claude/skills/explain-vrpc/SKILL.md` |
+| Change how a node is attested                 | `packages/core/src/attestation.ts` (`attestNode`) |
 
 ## Conventions
 
@@ -175,8 +176,10 @@ variables set.
   (`executed` says whether the call may have run; `mayHaveExecuted(err)` reads
   it through `.cause`). Checks fail as `VerificationError` subclasses for
   `MissingHeader`, `MalformedHeader`, `BadSignature`, `StaleTimestamp`,
-  `InvalidNonce`, `InvalidChainId`, `MalformedAttestationResponse`. A bad
-  option, including a configured chain id, is `InvalidOption`.
+  `InvalidNonce`, `InvalidChainId`, `AttestationFailed`. Attestation evidence
+  that could not be fetched or checked is `AttestationUnavailable` (an
+  `UnavailableError`). A bad option, including a configured chain id, is
+  `InvalidOption`.
 - **No throw-from-async-constructor** — synchronous fail-fast for config errors
   (e.g. `new TrustedVerifier(opts)` / `validateChainId`); runtime verification
   errors from call sites only.
