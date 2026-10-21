@@ -39,7 +39,8 @@ pnpm add @w3tech.io/vrpc-core
 Inside this monorepo the packages resolve via `workspace:*`.
 
 Runtime requires a global `fetch`, `crypto.getRandomValues`, `TextEncoder`,
-and `BigUint64` `DataView` support (Node 20.19 or later, Bun, modern browsers).
+and `BigUint64` `DataView` support (Node 22.13 or later on 22, Node 24 or later,
+Bun, modern browsers).
 
 ---
 
@@ -271,7 +272,8 @@ and `InvalidOption` are caller input errors raised before anything is sent.
 
 ### Runtimes and versions
 
-- Node 20.19 or later.
+- Node 22.13 or later on 22, or Node 24 or later; `@w3tech.io/vrpc-proxy` needs
+  Node 24 or later.
 - Browsers work as a runtime, but the public endpoint does not expose the
   `vRPC-*` headers to other origins: a page on another origin gets
   `AttestationUnavailable` (reason `node-id-missing`).

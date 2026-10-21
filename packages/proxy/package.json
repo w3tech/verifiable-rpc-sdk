@@ -65,7 +65,7 @@
     "typecheck": "tsc --noEmit"
   },
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=24"
   },
   "dependencies": {
     "@w3tech.io/vrpc-core": "workspace:*",

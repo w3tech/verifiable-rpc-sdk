@@ -84,7 +84,7 @@
     "typecheck": "tsc --noEmit"
   },
   "engines": {
-    "node": ">=20.19.0"
+    "node": "^22.13.0 || >=24"
   },
   "dependencies": {
     "@w3tech.io/dstack-verify": "workspace:*",
