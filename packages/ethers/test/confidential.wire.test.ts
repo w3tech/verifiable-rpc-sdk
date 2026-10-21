@@ -2,22 +2,17 @@
 // gateway answers and whatever hooks the caller's FetchRequest carries, no redirect followed,
 // identity encoding, no plaintext JSON-RPC, and transport errors without the key or body bytes.
 
-import {
-  AttestationUnavailable,
-  DEFAULT_PHALA_VERIFY_ENDPOINT,
-  RequestRejected,
-  TransportFailed,
-  UnexpectedResponse,
-} from "@w3tech.io/vrpc-core";
+import { DEFAULT_PHALA_VERIFY_ENDPOINT, TransportFailed } from "@w3tech.io/vrpc-core";
 import { type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
 import { KEY, mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
-import { expectNoSecrets, expectSealedTrafficOnly } from "@w3tech.io/vrpc-test-support/adapter";
+import {
+  describeOneRequestPerCall,
+  expectNoSecrets,
+  expectSealedTrafficOnly,
+} from "@w3tech.io/vrpc-test-support/adapter";
 import {
   countOf,
-  failureAnswer,
   holdPosts,
-  isElsewhere,
-  isGet,
   isPost,
   serveUpstream,
   type TestNodeServer,
@@ -103,51 +98,22 @@ function build(flavour: Flavour, origin: string, options: VrpcOptions = {}): Bui
   return { provider, fetches };
 }
 
-describe.each(FLAVOURS)("one request per call: %s", (flavour) => {
-  test.each([
-    429, 301, 302, 303, 307, 308, 500, 502, 503, 504,
-  ])("the sealed POST answered %i is sent once and no redirect is followed", async (status) => {
-    const server = await serve();
-    const { provider, fetches } = build(flavour, server.url);
-    await provider.confidentialReady();
-    server.requests.splice(0);
-    fetches.n = 0;
-    server.answer((request) => (isPost(request) ? failureAnswer(server, status) : undefined));
-
-    const err = await rejectionOf(provider.getBlockNumber());
-
-    expect(countOf(server, isPost)).toBe(1);
-    expect(countOf(server, isElsewhere)).toBe(0);
-    expect(server.requests).toHaveLength(1);
-    if (flavour !== "string URL") expect(fetches.n).toBe(server.requests.length);
-    if (status === 429) {
-      expect(err).toBeInstanceOf(RequestRejected);
-      expect((err as RequestRejected).status).toBe(429);
-      expect((err as RequestRejected).executed).toBe("no");
-    } else {
-      expect(err).toBeInstanceOf(UnexpectedResponse);
-      expect((err as UnexpectedResponse).status).toBe(status);
-    }
-  });
-
-  test.each([
-    429, 302, 307, 502,
-  ])("the cold attestation answered %i is sent once and nothing is sealed", async (status) => {
-    const server = await serve();
-    const { provider, fetches } = build(flavour, server.url);
-    server.answer((request) => (isGet(request) ? failureAnswer(server, status) : undefined));
-
-    const err = await rejectionOf(provider.getBlockNumber());
-
-    expect(countOf(server, isGet)).toBe(1);
-    expect(countOf(server, isPost)).toBe(0);
-    expect(countOf(server, isElsewhere)).toBe(0);
-    if (flavour !== "string URL") expect(fetches.n).toBe(server.requests.length);
-    expect(err).toBeInstanceOf(AttestationUnavailable);
-    expect((err as AttestationUnavailable).reason).toBe("status");
-    expect((err as AttestationUnavailable).status).toBe(status);
-  });
-});
+for (const flavour of FLAVOURS) {
+  describeOneRequestPerCall(
+    `one request per call: ${flavour}`,
+    async () => {
+      const server = await serve();
+      const { provider, fetches } = build(flavour, server.url);
+      return {
+        server,
+        call: () => provider.getBlockNumber(),
+        ready: () => provider.confidentialReady(),
+        fetched: flavour === "string URL" ? undefined : () => fetches.n,
+      };
+    },
+    (err) => err,
+  );
+}
 
 describe("base fetcher", () => {
   test("without its own getUrlFunc the request uses a non-following fetch", async () => {

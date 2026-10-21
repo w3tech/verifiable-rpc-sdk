@@ -3,11 +3,10 @@
 // and errors without the key, the params, the inner body or body bytes.
 
 import {
-  AttestationUnavailable,
   DEFAULT_PHALA_VERIFY_ENDPOINT,
   RequestRejected,
-  TransportFailed,
   UnexpectedResponse,
+  VrpcError,
 } from "@w3tech.io/vrpc-core";
 import {
   KEY,
@@ -15,13 +14,14 @@ import {
   rejectionOf,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
-import { expectNoSecrets, expectSealedTrafficOnly } from "@w3tech.io/vrpc-test-support/adapter";
+import {
+  describeOneRequestPerCall,
+  expectNoSecrets,
+  expectSealedTrafficOnly,
+} from "@w3tech.io/vrpc-test-support/adapter";
 import {
   countOf,
-  failureAnswer,
   holdPosts,
-  isElsewhere,
-  isGet,
   isPost,
   serveUpstream,
   type TestNodeServer,
@@ -105,50 +105,15 @@ function walkFind<T>(err: unknown, type: abstract new (...args: never[]) => T): 
 }
 
 // The client mode is the default transport, covered by the core suite.
-describe("one request per call through fallback", () => {
-  test.each([
-    429, 301, 302, 303, 307, 308, 500, 502, 503, 504,
-  ])("the sealed POST answered %i is sent once and no redirect is followed", async (status) => {
+describeOneRequestPerCall(
+  "one request per call through fallback",
+  async () => {
     const server = await serve();
     const { client, ready } = build("fallback", `${server.url}/eth_vrpc`);
-    await ready();
-    server.requests.splice(0);
-    server.answer((request) => (isPost(request) ? failureAnswer(server, status) : undefined));
-
-    const err = await rejectionOf(client.getBlockNumber({ cacheTime: 0 }));
-
-    expect(countOf(server, isPost)).toBe(1);
-    expect(countOf(server, isElsewhere)).toBe(0);
-    expect(server.requests).toHaveLength(1);
-    if (status === 429) {
-      const rejected = walkFind(err, RequestRejected);
-      expect(rejected).toBeInstanceOf(RequestRejected);
-      expect(rejected?.status).toBe(429);
-      expect(rejected?.executed).toBe("no");
-    } else {
-      const unexpected = walkFind(err, UnexpectedResponse);
-      expect(unexpected).toBeInstanceOf(UnexpectedResponse);
-      expect(unexpected?.status).toBe(status);
-    }
-  });
-
-  test.each([
-    429, 302, 307, 502,
-  ])("the cold attestation answered %i is sent once and nothing is sealed", async (status) => {
-    const server = await serve();
-    const { client } = build("fallback", `${server.url}/eth_vrpc`);
-    server.answer((request) => (isGet(request) ? failureAnswer(server, status) : undefined));
-
-    const err = await rejectionOf(client.getBlockNumber({ cacheTime: 0 }));
-
-    expect(countOf(server, isGet)).toBe(1);
-    expect(countOf(server, isPost)).toBe(0);
-    expect(countOf(server, isElsewhere)).toBe(0);
-    const unavailable = walkFind(err, AttestationUnavailable);
-    expect(unavailable).toBeInstanceOf(AttestationUnavailable);
-    expect(unavailable?.reason).toBe("status");
-  });
-});
+    return { server, ready, call: () => client.getBlockNumber({ cacheTime: 0 }) };
+  },
+  (err) => walkFind(err, VrpcError),
+);
 
 describe("wire invariant", () => {
   test("only attestation GETs and sealed POSTs leave, with no JSON-RPC in clear", async () => {

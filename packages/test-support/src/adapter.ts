@@ -7,7 +7,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
-import type { ServedRequest } from "./server";
+import { rejectionOf } from "./rejection";
+import { failureAnswer, type ServedRequest, type TestNodeServer } from "./server";
 
 const ERROR_CLASSES = [
   "AttestationFailed",
@@ -214,4 +215,55 @@ export function expectNoSecrets(
       for (const needle of needles) expect(form).not.toContain(needle);
     }
   }
+}
+
+interface OneRequestCase {
+  server: TestNodeServer;
+  call(): Promise<unknown>;
+  ready(): Promise<unknown>;
+  /** Requests the caller's own fetcher saw, when it has one. */
+  fetched?: (() => number) | undefined;
+}
+
+/** One outer request per call whatever the gateway answers; `vrpcError` finds the core error in the adapter's. */
+export function describeOneRequestPerCall(
+  title: string,
+  setup: () => Promise<OneRequestCase>,
+  vrpcError: (err: unknown) => unknown,
+): void {
+  async function failedOnce(leg: "POST" | "GET", status: number): Promise<unknown> {
+    const run = await setup();
+    if (leg === "POST") await run.ready();
+    run.server.requests.splice(0);
+    const before = run.fetched?.() ?? 0;
+    run.server.answer((request) =>
+      request.method === leg ? failureAnswer(run.server, status) : undefined,
+    );
+    const err = vrpcError(await rejectionOf(run.call()));
+    expect(run.server.requests.map((request) => request.method)).toEqual([leg]);
+    if (run.fetched) expect(run.fetched() - before).toBe(1);
+    return err;
+  }
+
+  describe(title, () => {
+    test.each([
+      429, 301, 302, 303, 307, 308, 500, 502, 503, 504,
+    ])("the sealed POST answered %i is sent once and no redirect is followed", async (status) => {
+      expect(await failedOnce("POST", status)).toMatchObject(
+        status === 429
+          ? { kind: "RequestRejected", status, executed: "no" }
+          : { kind: "UnexpectedResponse", status },
+      );
+    });
+
+    test.each([
+      429, 302, 307, 502,
+    ])("the cold attestation answered %i is sent once and nothing is sealed", async (status) => {
+      expect(await failedOnce("GET", status)).toMatchObject({
+        kind: "AttestationUnavailable",
+        reason: "status",
+        status,
+      });
+    });
+  });
 }
