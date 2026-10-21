@@ -37,12 +37,14 @@ const NODE_ID = "node-abc";
 /** Construct a VrpcProvider whose RPC leg is the signing mock + injected attestation fetch. */
 function vrpcProviderWith(mock: AttestationStub, signOpts: { nodeId?: string }): VrpcProvider {
   return new VrpcProvider(
-    signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), signOpts),
+    signingRequest((id) => jsonResult(id, SINGLE_RESULT_BALANCE_HEX), signOpts),
     CHAIN_ID_NUMBER,
     {
       fetch: mock.fetch,
       replayWindowMs: WIDE_WINDOW,
       hardwareVerifier: mockHardwareVerifier(),
+      // Each call reaches the verifier, not ethers' own result cache.
+      cacheTimeout: -1,
     },
   );
 }

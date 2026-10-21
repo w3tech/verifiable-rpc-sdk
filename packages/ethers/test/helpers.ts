@@ -57,20 +57,25 @@ export interface SigningRequestOptions {
  * the test predicting ethers' internal payload bytes (key order, id counter,
  * resolved blockTag). This suite asserts adapter WIRING, not pre-image bytes.
  *
+ * A function `responseBody` gets the request id, so repeated calls answer their own id.
  * `tamper` flips a response byte AFTER signing → `BadSignature`. `unsigned`
  * strips the `vRPC-*` triple → `MissingHeader`. `signingChainId` forges a valid
  * signature bound to a different chain → `BadSignature` when verified against
  * the provider's chainId.
  */
 export function signingRequest(
-  responseBody: string,
+  responseBody: string | ((id: number) => string),
   opts: SigningRequestOptions = {},
 ): FetchRequest {
   const req = new FetchRequest("http://test.invalid");
-  const responseBytes = new TextEncoder().encode(responseBody);
   req.getUrlFunc = async (sentReq) => {
     // The exact bytes ethers serialized and POSTed (JSON.stringify(payload)).
     const requestBytes = sentReq.body ?? new Uint8Array();
+    const responseBytes = new TextEncoder().encode(
+      typeof responseBody === "string"
+        ? responseBody
+        : responseBody((JSON.parse(new TextDecoder().decode(requestBytes)) as { id: number }).id),
+    );
     const headers = opts.unsigned
       ? { "content-type": "application/json" }
       : signedJsonHeaders(opts.signingChainId ?? CHAIN_ID, requestBytes, responseBytes, {
