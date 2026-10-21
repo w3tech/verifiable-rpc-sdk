@@ -42,8 +42,8 @@ pnpm --filter @w3tech.io/vrpc-core test:browser
 ```
 
 When you add, remove or change an export, run `pnpm run api:update` and commit
-the updated `packages/*/etc/*.api.md` files. CI runs `pnpm run check:api`,
-which fails when these files do not match the code.
+the updated API report of each package (`*.api.md`). CI runs
+`pnpm run check:api`, which fails when a report does not match the code.
 
 If `pnpm run format:check` fails: run `pnpm run format`, commit the diff as a
 SEPARATE commit, do not amend the offending commit.
