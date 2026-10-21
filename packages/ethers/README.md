@@ -179,8 +179,7 @@ errors and propagates (fail-closed).
 > (`req.setHeader("x-api-key", …)`) — those cover BOTH the RPC POST and the
 > attestation fetch. (v6.0 removed the inert `allowlist`/`tcb`/`pccsUrl` options —
 > they were trust-anchor knobs the verifier does not yet consume — and the
-> redundant `headers` option; v7.0 reintroduces the trust-anchor options for
-> local-DCAP verification.)
+> redundant `headers` option.)
 
 ```ts
 // Auth the idiomatic ethers way: set it on the FetchRequest. The SDK reuses

@@ -2,7 +2,7 @@
 //
 // Proves the viem adapter ALWAYS routes the NORMAL verify through the vrpc-core
 // `TrustedVerifier` end-to-end against the mock verifier
-// (allowInsecureMock is hard-set true by buildVerifyPolicy):
+// (the mock hardware verifier wired by buildVerifyPolicy):
 //   1. an unknown signing pubkey triggers the attestation GET exactly once, the
 //      mock resolves, the read returns the decoded value, and a second read
 //      within TTL skips the fetch (cache proof).

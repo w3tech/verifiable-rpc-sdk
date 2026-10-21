@@ -2,8 +2,8 @@
 //
 // Verification is ALWAYS on: every VrpcProvider runs the TrustedVerifier (plain
 // Ed25519 verify + lazy TDX attestation). This suite proves the attestation leg
-// end-to-end against the mock verifier (allowInsecureMock hard-set true
-// by buildVerifyPolicy in vrpc-core):
+// end-to-end against the mock hardware verifier wired by
+// buildVerifyPolicy in vrpc-core:
 //   - an unknown signing pubkey → the attestation GET is hit ONCE, the mock
 //     verifier resolves, the call returns the decoded value, and a second call
 //     within TTL skips the fetch (cache proof).

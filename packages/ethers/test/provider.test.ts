@@ -26,7 +26,7 @@ import { flipFirstDigit, type SigningRequestOptions, signingRequest } from "./he
 // the request-aware getUrlFunc mock (per-instance), and the `/attestation` GET
 // leg is served by this injected `fetch`. The mock's pubkey is derived from the
 // SAME TEST_SEED the RPC responses are signed with, so pubkey correlation passes
-// and the v5.0 mock verifier (allowInsecureMock) resolves — the read reaches its
+// and the mock hardware verifier resolves — the read reaches its
 // assertion. Each VrpcProvider below threads `fetch: ATT.fetch`; signed RPC
 // responses carry a `vRPC-NodeId` so the seam routes the attestation fetch with
 // `node_id` (the no-node_id path is exercised in provider.attestation.test.ts).

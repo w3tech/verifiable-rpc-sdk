@@ -1,6 +1,6 @@
 # @w3tech.io/dstack-verify
 
-Frozen contract for dstack / Intel TDX attestation verification.
+Verification of dstack / Intel TDX attestation evidence.
 
 > ## Attestation verification: mandatory hardware verifier
 >
@@ -46,13 +46,10 @@ Fail-closed gate:
 
 ### Types
 
-- `AttestationBundle` — full field set: `quote` (`QuoteEnvelope`),
-  `tcbInfo` (`TcbInfo` + `EventLogEntry[]`), `pubkey`, `nonce`, mandatory
-  `signature_chain` (currently unused, frozen for the cross-repo ticket),
-  optional `appId`/`instanceId`.
-- `VerifyPolicy` — pinned trust anchors (`PinnedAllowlist`), reportData→pubkey
-  binding (`ReportDataBinding`), DCAP TCB acceptance (`TcbPolicy`), optional
-  `pccsUrl`, and the mandatory `hardwareVerifier` (hardware root of trust). An optional
+- `AttestationBundle` — four strings: `quote` (DCAP quote), `reportData`
+  (pubkey ‖ nonce), `composeHash` and `appCompose` (self-reported; `""` = absent).
+- `VerifyPolicy` — reportData→pubkey binding (`ReportDataBinding`) and the
+  required `hardwareVerifier` (hardware root of trust). An optional
   opt-in `logger` reaches `verifyDstackAttestation` here — core threads the
   verifier's injected logger in via the policy (see vrpc-core's
   "Debug logging (opt-in)"); absent → silent.
@@ -124,8 +121,6 @@ import { createCloudVerifier, verifyDstackAttestation } from "@w3tech.io/dstack-
 
 await verifyDstackAttestation(bundle, {
   binding: { expectedPubkey, expectedNonce },
-  allowlist,
-  tcb,
   hardwareVerifier: createCloudVerifier(), // hardware root of trust
 });
 ```
@@ -161,8 +156,7 @@ await verifyDstackAttestation(bundle, {
 
 `CHK` is a frozen const record enumerating the full chain-of-trust checklist
 `CHK-A1..G3` (verbatim meaning + disposition: `implement` / `mock` /
-`pinned` / `out`). It is a queryable audit dictionary — a future release fills in the bodies
-without changing this set.
+`pinned` / `out`). It is a queryable audit dictionary.
 
 ### Helper signatures
 
@@ -173,16 +167,6 @@ CHK-A2 checks):
   `sha256(utf8(appCompose))`, bare lowercase hex, no canonicalization).
 - `parseReportData(reportDataHex): ReportDataBinding` — CHK-A1 (splits 64-byte
   report_data into pubkey ‖ nonce; throws `AttestationError` on malformed input).
-
-Internal throwing stubs (**NOT** exported from the package barrel; importable
-only from `./verify-steps`; each currently throws
-`Error("... not implemented yet")` until the real DCAP layers land):
-
-- `replayRtmr(events): string` — CHK-A4/P3 (RTMR replay, SHA-384 chain).
-- `extractKeyProvider(events): KeyProvider` — CHK-P7 (key-provider identity).
-
-The contract test (`tests/contract.test.ts`) explicitly asserts `replayRtmr` and
-`extractKeyProvider` are absent from the public barrel.
 
 ## Tests
 
@@ -197,8 +181,3 @@ pnpm --filter '@w3tech.io/dstack-verify' test
   CHK-A1/A2 binding + compose-hash checks).
 - `tests/cloud-verifier.test.ts` — cloud verifier client behavior.
 - `tests/compose-hash.test.ts` — compose-hash computation.
-- `tests/helpers.test.ts` — asserts the remaining throwing stubs (`replayRtmr`,
-  `extractKeyProvider`) throw "not implemented", and that the implemented
-  `parseReportData` throws `AttestationError(CHK-A1)` on malformed input
-  (`computeComposeHash` / `parseReportData` happy paths are covered in
-  `compose-hash.test.ts` / `verify.test.ts`).

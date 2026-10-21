@@ -41,10 +41,6 @@ export interface TrustedVerifierOptions {
   pubkeyCacheTtlMs?: number | undefined;
   /** Max distinct verified pubkeys cached before LRU eviction; default 1024. */
   pubkeyCacheMax?: number | undefined;
-  // NOTE: the policy inputs `allowlist`/`tcb`/`pccsUrl` were removed — the
-  // mock verifier ignores them, so exposing them on the published surface is
-  // misleading. A future release re-introduces them (consumer-pinned anchors) when
-  // the real verifier needs them; re-adding optional fields is non-breaking.
   /**
    * Hardware-signature verifier wired into the policy and run (mandatorily) by
    * `verifyDstackAttestation`. Defaults to the Phala {@link createCloudVerifier}

@@ -158,8 +158,7 @@ errors and propagates (fail-closed).
 | `hardwareVerifier` | `HardwareVerifier`     | Phala cloud verifier (vrpc-core) | Internal/advanced. Overrides the mandatory hardware-signature verifier. Point it at a self-hosted endpoint, a future local-DCAP verifier, or a no-network test mock. Hardware verification is always-on and cannot be disabled; omitting this keeps the cloud default. |
 | `logger`         | `Logger`                 | no-op (silent)   | Internal/advanced. Opt-in debug logger forwarded to verification to narrate the verify flow at debug level. Use `createConsoleLogger()` from `@w3tech.io/vrpc-core`. Safe-wrapped (never throws-through) and redacts secrets — observability only, never part of the verify decision. |
 
-> v6.0 removed the inert `allowlist`/`tcb`/`pccsUrl` options. v7.0 reintroduces
-> them as consumer-pinned anchors once the verifier consumes them. `headers`
+> v6.0 removed the inert `allowlist`/`tcb`/`pccsUrl` options. `headers`
 > (above) stays — it covers both the RPC POST and the attestation fetch.
 
 `fetchFn` (already documented above) feeds **both** legs — the RPC POST and the

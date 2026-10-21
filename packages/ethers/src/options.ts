@@ -62,8 +62,6 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
   confidential?: boolean;
 }
 
-// NOTE (v6.0): `allowlist`/`tcb`/`pccsUrl` were removed — the mock verifier
-// ignores them, so exposing inert security knobs is misleading; v7.0 reintroduces
-// them. `headers` was removed too: set auth on the `FetchRequest` you pass as the
+// NOTE (v6.0): `headers` was removed: set auth on the `FetchRequest` you pass as the
 // URL (`req.setHeader("x-api-key", …)`), which already covers BOTH the RPC POST
 // and the internal attestation fetch.

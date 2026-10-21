@@ -71,7 +71,3 @@ export interface VrpcHttpOptions {
    */
   logger?: Logger;
 }
-
-// NOTE (v6.0): `allowlist`/`tcb`/`pccsUrl` were removed — the mock verifier
-// ignores them, so exposing inert security knobs is misleading; v7.0 reintroduces
-// them when the real verifier needs consumer-pinned anchors.
