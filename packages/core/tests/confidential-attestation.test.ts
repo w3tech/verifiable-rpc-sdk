@@ -145,6 +145,7 @@ describe("ConfidentialClient attestation: gateway answers", () => {
 describe("ConfidentialClient attestation: a transport that ignores the size cap", () => {
   test.each([
     [200, { reason: "too-large" }],
+    [503, { reason: "status", status: 503 }],
   ])("a %i answer over 1 MiB is AttestationUnavailable", async (status, fields) => {
     const node = testNode();
     node.setAttestation(() => answer(status, new Uint8Array(1_048_577)));

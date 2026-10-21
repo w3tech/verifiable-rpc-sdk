@@ -122,12 +122,12 @@ async function getAttestation(
     if (cause instanceof ResponseTooLarge) throw new AttestationUnavailable("too-large");
     throw new AttestationUnavailable("transport", { cause });
   }
+  if (response.status < 200 || response.status > 299) {
+    throw new AttestationUnavailable("status", { status: response.status });
+  }
   // Backstop for a transport that ignores maxBytes.
   if (response.body.byteLength > MAX_ATTESTATION_BYTES) {
     throw new AttestationUnavailable("too-large");
-  }
-  if (response.status < 200 || response.status > 299) {
-    throw new AttestationUnavailable("status", { status: response.status });
   }
   const nodeId = getHeader(response.headers, "vRPC-NodeId");
   if (opts.requireNodeId && (nodeId === null || nodeId === "")) {
