@@ -7,6 +7,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
+import type { ServedRequest } from "./server";
 
 const ERROR_CLASSES = [
   "AttestationFailed",
@@ -147,4 +148,34 @@ export function describeBuiltAdapter(adapter: string): void {
       expect(dts).toContain("ConfidentialInfo");
     });
   });
+}
+
+/** Only attestation GETs and sealed POSTs left, with no JSON-RPC or sentinel in clear. */
+export function expectSealedTrafficOnly(
+  requests: readonly ServedRequest[],
+  sentinels: readonly string[],
+): void {
+  const hex = (text: string) => Buffer.from(text, "utf8").toString("hex");
+  for (const request of requests) {
+    const query = new URLSearchParams(request.url.split("?")[1] ?? "");
+    if (request.method === "GET") {
+      expect(request.path.endsWith("/attestation")).toBe(true);
+      expect(query.has("nonce")).toBe(true);
+    } else {
+      expect(request.method).toBe("POST");
+      expect(request.path.endsWith("/confidential")).toBe(true);
+      expect(query.has("node_id")).toBe(true);
+      expect(request.headers["content-type"]).toBe("message/ohttp-req");
+    }
+    const bodyText = Buffer.from(request.body).toString("utf8");
+    const bodyHex = Buffer.from(request.body).toString("hex");
+    // The route prefix is the caller's own URL; everything after it is checked.
+    const afterRoute = request.url.replace(/^\/eth_vrpc\//, "/");
+    for (const needle of ["eth_", "jsonrpc", ...sentinels]) {
+      expect(afterRoute).not.toContain(needle);
+      expect(bodyText).not.toContain(needle);
+      expect(bodyHex).not.toContain(needle);
+      expect(bodyHex).not.toContain(hex(needle));
+    }
+  }
 }
