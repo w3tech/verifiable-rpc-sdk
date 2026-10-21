@@ -44,8 +44,9 @@ interface Posted {
  * `new VrpcProvider(url, undefined, { pubkeyCacheTtlMs })`.
  */
 export class VrpcProvider extends JsonRpcProvider {
-  readonly #session: OpenSession<Posted>;
-  readonly #confidential: LazyConfidentialClient | undefined;
+  readonly #mode:
+    | { readonly session: OpenSession<Posted> }
+    | { readonly confidential: LazyConfidentialClient; readonly chainId: string };
 
   constructor(
     url: string | FetchRequest,
@@ -64,14 +65,17 @@ export class VrpcProvider extends JsonRpcProvider {
 
     // A FetchRequest's headers (e.g. `x-api-key`) also authenticate the attestation leg, as in viem.
     const attestationHeaders = typeof url === "string" ? undefined : url.headers;
-    const { urls, chainId } = checkOptions({
-      url: typeof url === "string" ? url : url.url,
-      chainId: chainIdArg ?? undefined,
-      headers: attestationHeaders,
-      replayWindowMs,
-      pubkeyCacheTtlMs,
-      confidential,
-    });
+    const { urls, chainId } = checkOptions(
+      {
+        url: typeof url === "string" ? url : url.url,
+        chainId: chainIdArg ?? undefined,
+        headers: attestationHeaders,
+        replayWindowMs,
+        pubkeyCacheTtlMs,
+        confidential,
+      },
+      confidential === true ? ["chainId"] : [],
+    );
     const attestationUrl = urls.attestationUrl;
     // A FetchRequest is cloned so the consumer's auth and headers ride along.
     let superUrl: string | FetchRequest = urls.rpcUrl;
@@ -81,17 +85,13 @@ export class VrpcProvider extends JsonRpcProvider {
       superUrl = clone;
     }
 
-    if (confidential === true) {
-      if (chainId === undefined) {
-        throw new InvalidOption("chainId", "Ankr Confidential RPC mode needs a pinned chain id");
-      }
-      // A non-decimal id leaves ethers without a network: it would retry detection forever.
-      if (!/^\d+$/.test(chainId)) {
-        throw new InvalidOption(
-          "chainId",
-          "Ankr Confidential RPC mode with ethers needs a decimal chain id",
-        );
-      }
+    const decimal = chainId !== undefined && /^\d+$/.test(chainId);
+    // A non-decimal id leaves ethers without a network: it would retry detection forever.
+    if (confidential === true && !decimal) {
+      throw new InvalidOption(
+        "chainId",
+        "Ankr Confidential RPC mode with ethers needs a decimal chain id",
+      );
     }
 
     // staticNetwork (pin only) skips ethers' startup eth_chainId probe without
@@ -99,13 +99,31 @@ export class VrpcProvider extends JsonRpcProvider {
     // Only an all-decimal id can be pinned as an ethers network: CAIP-2 style
     // ids are non-EVM, ethers cannot represent such a network, so those pass no
     // network arg (ethers probes lazily) — the verifier still binds the exact string.
-    const networkChainId = chainId !== undefined && /^\d+$/.test(chainId) ? BigInt(chainId) : null;
-    const superOptions =
-      networkChainId != null ? { ...ethersOpts, staticNetwork: true } : ethersOpts;
-    super(superUrl, networkChainId ?? undefined, superOptions);
+    super(
+      superUrl,
+      decimal ? BigInt(chainId) : undefined,
+      decimal ? { ...ethersOpts, staticNetwork: true } : ethersOpts,
+    );
 
-    // In Ankr Confidential RPC mode the session only answers _detectNetwork from the pin.
-    this.#session = createOpenSession({
+    if (confidential === true && chainId !== undefined) {
+      // CCIP-Read would send the call data in plaintext to a URL the contract names.
+      this.disableCcipRead = true;
+      this.#mode = {
+        confidential: new LazyConfidentialClient({
+          url: urls.rpcUrl,
+          chainId,
+          replayWindowMs,
+          pubkeyCacheTtlMs,
+          logger,
+          hardwareVerifier,
+          fetch: attestationFetch,
+          transport: fetchRequestTransport(() => this._getConnection()),
+        }),
+        chainId,
+      };
+      return;
+    }
+    const session = createOpenSession({
       chainId,
       attestationUrl,
       headers: attestationHeaders,
@@ -124,20 +142,7 @@ export class VrpcProvider extends JsonRpcProvider {
         return new Error(`HTTP ${fetch.statusCode}`);
       },
     });
-    if (confidential === true && chainId !== undefined) {
-      // CCIP-Read would send the call data in plaintext to a URL the contract names.
-      this.disableCcipRead = true;
-      this.#confidential = new LazyConfidentialClient({
-        url: urls.rpcUrl,
-        chainId,
-        replayWindowMs,
-        pubkeyCacheTtlMs,
-        logger,
-        hardwareVerifier,
-        fetch: attestationFetch,
-        transport: fetchRequestTransport(() => this._getConnection()),
-      });
-    }
+    this.#mode = { session };
   }
 
   /**
@@ -145,22 +150,22 @@ export class VrpcProvider extends JsonRpcProvider {
    * when the mode is off. Later calls reuse the pin until it expires.
    */
   async confidentialReady(options?: { signal?: AbortSignal }): Promise<ConfidentialInfo> {
-    if (this.#confidential === undefined) {
+    if (!("confidential" in this.#mode)) {
       throw new TypeError("Ankr Confidential RPC mode is not enabled on this provider");
     }
-    return this.#confidential.ready(options);
+    return this.#mode.confidential.ready(options);
   }
 
   /** The node pinned in Ankr Confidential RPC mode; `undefined` before attestation or in open mode. */
   getConfidentialInfo(): ConfidentialInfo | undefined {
-    return this.#confidential?.getConfidentialInfo();
+    return "confidential" in this.#mode ? this.#mode.confidential.getConfidentialInfo() : undefined;
   }
 
   override async _send(
     payload: JsonRpcPayload | Array<JsonRpcPayload>,
   ): Promise<Array<JsonRpcResult>> {
-    if (this.#confidential !== undefined) return sendConfidential(this.#confidential, payload);
-    const results = (await this.#session.send(payload, (body) => this.#post(body))) as
+    if ("confidential" in this.#mode) return sendConfidential(this.#mode.confidential, payload);
+    const results = (await this.#mode.session.send(payload, (body) => this.#post(body))) as
       | JsonRpcResult
       | Array<JsonRpcResult>;
     return Array.isArray(results) ? results : [results];
@@ -168,7 +173,11 @@ export class VrpcProvider extends JsonRpcProvider {
 
   // A pinned CAIP-2 style id has no ethers Network representation and fails loud.
   override async _detectNetwork(): Promise<Network> {
-    return Network.from(BigInt(await this.#session.chainId((body) => this.#post(body))));
+    const chainId =
+      "confidential" in this.#mode
+        ? this.#mode.chainId
+        : await this.#mode.session.chainId((body) => this.#post(body));
+    return Network.from(BigInt(chainId));
   }
 
   async #post(body: Uint8Array): Promise<Posted> {
