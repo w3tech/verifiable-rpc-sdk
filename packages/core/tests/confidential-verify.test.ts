@@ -298,6 +298,7 @@ describe("client options", () => {
       | "pubkeyCacheTtlMs"
       | "logger"
       | "hardwareVerifier"
+      | "fetch"
       | "transport"
     >();
   });

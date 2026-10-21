@@ -57,9 +57,12 @@ const distDir = join(coreDir, "dist");
 
 // Matches `from "x"`, `import "x"` and `import("x")`.
 const SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g;
+// Matches `from "x"` and `import "x"` only.
+const STATIC_SPECIFIER = /(?:\bfrom\s*|\bimport\s+)["']([^"']+)["']/g;
+const DYNAMIC_LOCAL = /\bimport\s*\(\s*["']\.\/([^"']+)["']/g;
 
 const BHTTP_REQUEST_LABEL = "message/bhttp request";
-const CLASS_DECLARATION = (name: string) => new RegExp(`class ${name}\\b|${name} = class`);
+const CLASS_DECLARATION = (name: string) => new RegExp(`\\bclass ${name}\\b|\\b${name} = class`);
 
 function importSpecifiers(dir: string): string[] {
   const specifiers = new Set<string>();
@@ -71,12 +74,12 @@ function importSpecifiers(dir: string): string[] {
   return [...specifiers];
 }
 
-function closure(dir: string, entry: string): string[] {
+function closure(dir: string, entry: string, pattern = SPECIFIER): string[] {
   const seen = new Set<string>();
   const visit = (file: string) => {
     if (seen.has(file)) return;
     seen.add(file);
-    for (const match of readFileSync(join(dir, file), "utf8").matchAll(SPECIFIER)) {
+    for (const match of readFileSync(join(dir, file), "utf8").matchAll(pattern)) {
       const specifier = match[1];
       if (specifier?.startsWith("./")) visit(specifier.slice(2));
     }
@@ -210,7 +213,7 @@ describe("bundling", () => {
     );
   });
 
-  test("the confidential code is reachable only from the confidential entry", async () => {
+  test("the confidential code is reachable statically only from the confidential entry", async () => {
     const entriesDir = mkdtempSync(join(tmpdir(), "vrpc-core-entries-"));
     try {
       await build({
@@ -228,22 +231,23 @@ describe("bundling", () => {
         skipNodeModulesBundle: true,
       });
       const read = (file: string) => readFileSync(join(entriesDir, file), "utf8");
+      const hasBhttp = (entry: string) =>
+        closure(entriesDir, entry).some((file) => read(file).includes(BHTTP_REQUEST_LABEL));
       for (const entry of ["index.js", "errors.js"]) {
-        for (const file of closure(entriesDir, entry)) {
+        for (const file of closure(entriesDir, entry, STATIC_SPECIFIER)) {
           expect(read(file), `${file} from ${entry}`).not.toContain(BHTTP_REQUEST_LABEL);
         }
       }
-      expect(
-        closure(entriesDir, "confidential.js").some((file) =>
-          read(file).includes(BHTTP_REQUEST_LABEL),
-        ),
-      ).toBe(true);
+      const lazy = [...read("index.js").matchAll(DYNAMIC_LOCAL)].map((match) => match[1] ?? "");
+      expect(lazy.some(hasBhttp), "index.js loads the confidential client on demand").toBe(true);
+      expect(hasBhttp("confidential.js")).toBe(true);
       for (const specifier of importSpecifiers(entriesDir)) {
         expect(namesBundledPackage(specifier), specifier).toBe(false);
       }
       const outputs = readdirSync(entriesDir).filter((name) => name.endsWith(".js"));
       for (const name of [
         "VrpcError",
+        "ConfidentialClient",
         "VerificationError",
         "UnavailableError",
         "InternalError",

@@ -21,6 +21,12 @@ export type {
   GetQuoteResponse,
 } from "./attestation";
 export { fetchAttestation, verifyAttestationCorrelation } from "./attestation";
+export type { InnerRequest, InnerResponse } from "./bhttp";
+export type {
+  ConfidentialClientOptions,
+  ConfidentialInfo,
+  ConfidentialResponse,
+} from "./confidential-client";
 export type {
   AttestationUnavailableReason,
   BadSignatureContext,
@@ -57,6 +63,7 @@ export {
   VerificationError,
   VrpcError,
 } from "./errors";
+export { LazyConfidentialClient } from "./lazy-confidential";
 export { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
 export type { Logger } from "./logger";
 export { createConsoleLogger, defaultLogger, safeLogger } from "./logger";

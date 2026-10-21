@@ -530,22 +530,23 @@ describe("configuration errors", () => {
     expect(consoleCalls()).toBe(0);
   });
 
-  test("an invalid replay window or key cache TTL throws RangeError from vrpcHttp", async () => {
+  test("an invalid replay window or key cache TTL throws InvalidOption from vrpcHttp", async () => {
     const { server } = await harness();
     const consoleCalls = spyConsole();
 
-    for (const name of ["replayWindowMs", "pubkeyCacheTtlMs"]) {
+    for (const option of ["replayWindowMs", "pubkeyCacheTtlMs"]) {
       for (const value of [0, -1, 1.5, Number.POSITIVE_INFINITY]) {
-        expect(() =>
-          vrpcHttp(`${server.url}/eth_vrpc`, { confidential: true, [name]: value }),
-        ).toThrow(RangeError);
+        const call = () =>
+          vrpcHttp(`${server.url}/eth_vrpc`, { confidential: true, [option]: value });
+        expect(call).toThrow(InvalidOption);
+        expect(call).toThrow(expect.objectContaining({ option }));
       }
     }
     expect(server.requests).toEqual([]);
     expect(consoleCalls()).toBe(0);
   });
 
-  test("an unparsable URL throws Invalid vRPC URL without echoing it", () => {
+  test("an unparsable URL throws InvalidOption without echoing it", () => {
     const consoleCalls = spyConsole();
     let caught: unknown;
     try {
@@ -554,8 +555,8 @@ describe("configuration errors", () => {
       caught = err;
     }
 
-    expect(caught).toBeInstanceOf(TypeError);
-    expect((caught as Error).message).toBe("Invalid vRPC URL");
+    expect(caught).toBeInstanceOf(InvalidOption);
+    expect(caught).toMatchObject({ option: "url", executed: "no" });
     for (const text of [(caught as Error).message, String(caught), unserialisable(caught)]) {
       expect(text).not.toContain("sentinel-key");
     }

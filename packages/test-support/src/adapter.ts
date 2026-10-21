@@ -83,13 +83,12 @@ export function describeAdapterErrors(
 
 const ENTRY = "@w3tech.io/vrpc-core/confidential";
 const quoted = ENTRY.replace(/[./]/g, "\\$&");
-const DYNAMIC = new RegExp(`\\bimport\\s*\\(\\s*["']${quoted}["']`);
 const STATIC = new RegExp(`(?:\\bfrom\\s*|\\bimport\\s+)["']${quoted}["']`);
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
 // The built adapter in a plain node process, where no test alias maps a package to its source:
-// one class identity with the built core, and the confidential entry loaded only on demand.
+// one class identity with the built core, and the confidential entry never loaded statically.
 export function describeBuiltAdapter(adapter: string): void {
   const distDir = join(repoRoot, "packages", adapter.replace("@w3tech.io/vrpc-", ""), "dist");
   const built =
@@ -102,15 +101,10 @@ export function describeBuiltAdapter(adapter: string): void {
   });
 
   describe.skipIf(!built)("built package", () => {
-    test("the confidential entry is imported dynamically only", () => {
-      const files = readdirSync(distDir).filter((name) => name.endsWith(".js"));
-      for (const file of files) {
-        const text = readFileSync(join(distDir, file), "utf8");
-        if (!text.includes(ENTRY)) continue;
-        expect(STATIC.test(text), file).toBe(false);
-        expect(DYNAMIC.test(text), file).toBe(true);
+    test("the confidential entry is never imported statically", () => {
+      for (const file of readdirSync(distDir).filter((name) => name.endsWith(".js"))) {
+        expect(STATIC.test(readFileSync(join(distDir, file), "utf8")), file).toBe(false);
       }
-      expect(DYNAMIC.test(readFileSync(join(distDir, "index.js"), "utf8"))).toBe(true);
     });
 
     test("a plain node process sees one class identity across the adapter and core", () => {

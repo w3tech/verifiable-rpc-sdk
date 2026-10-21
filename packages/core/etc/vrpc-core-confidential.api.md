@@ -66,17 +66,18 @@ export class ConfidentialClient {
 export interface ConfidentialClientOptions {
     // (undocumented)
     chainId: string;
+    fetch?: typeof fetch | undefined;
     // (undocumented)
-    hardwareVerifier?: HardwareVerifier;
-    headers?: Record<string, string>;
+    hardwareVerifier?: HardwareVerifier | undefined;
+    headers?: Record<string, string> | undefined;
     // Warning: (ae-forgotten-export) The symbol "Logger" needs to be exported by the entry point confidential.d.ts
     //
     // (undocumented)
-    logger?: Logger;
-    pubkeyCacheTtlMs?: number;
-    replayWindowMs?: number;
+    logger?: Logger | undefined;
+    pubkeyCacheTtlMs?: number | undefined;
+    replayWindowMs?: number | undefined;
     // (undocumented)
-    transport?: ConfidentialTransport;
+    transport?: ConfidentialTransport | undefined;
     url: string;
 }
 

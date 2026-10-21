@@ -9,27 +9,20 @@
 // `buildRequest` maps it by code.
 
 import {
-  createCloudVerifier,
+  type ConfidentialInfo,
+  checkOptions,
   deriveVrpcUrls,
   fetchTransport,
   InvalidOption,
   isSignedVrpcResponse,
+  LazyConfidentialClient,
   parseChainId,
   TrustedVerifier,
   type TrustedVerifierOptions,
 } from "@w3tech.io/vrpc-core";
-import type {
-  ConfidentialClientOptions,
-  ConfidentialInfo,
-} from "@w3tech.io/vrpc-core/confidential";
 import { createTransport, HttpRequestError, RpcRequestError, type Transport } from "viem";
 
-import {
-  ConfidentialHolder,
-  linkSignal,
-  mapInnerResponse,
-  requirePositiveMs,
-} from "./confidential";
+import { linkSignal, mapInnerResponse } from "./confidential";
 import type { VrpcHttpOptions } from "./options";
 
 // Drop `undefined`-valued keys: `exactOptionalPropertyTypes` forbids passing an
@@ -253,17 +246,14 @@ function confidentialHttp(
   url: string,
   opts: VrpcHttpOptions,
 ): Transport<"vrpc-http", ConfidentialValue> {
-  let rpcUrl: string;
-  try {
-    rpcUrl = deriveVrpcUrls(url).rpcUrl;
-  } catch {
-    // The platform error echoes the URL, which may carry the API key.
-    throw new TypeError("Invalid vRPC URL");
-  }
-  requirePositiveMs("replayWindowMs", opts.replayWindowMs);
-  requirePositiveMs("pubkeyCacheTtlMs", opts.pubkeyCacheTtlMs);
+  const { rpcUrl } = checkOptions({
+    url,
+    headers: opts.headers,
+    replayWindowMs: opts.replayWindowMs,
+    pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
+  }).urls;
   const origin = new URL(rpcUrl).origin;
-  let holder: ConfidentialHolder | undefined;
+  let client: LazyConfidentialClient | undefined;
   let boundChainId: string | undefined;
 
   return ({ chain, timeout: injectedTimeout }) => {
@@ -272,23 +262,18 @@ function confidentialHttp(
     }
     const chainId = String(chain.id);
     boundChainId = bindChainId(boundChainId, chainId);
-    holder ??= new ConfidentialHolder({
+    client ??= new LazyConfidentialClient({
       url: rpcUrl,
       chainId,
       transport: fetchTransport(opts.fetchFn),
-      ...pruneUndefined<Omit<ConfidentialClientOptions, "url" | "chainId" | "transport">>({
-        headers: opts.headers,
-        replayWindowMs: opts.replayWindowMs,
-        pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
-        logger: opts.logger,
-        hardwareVerifier:
-          opts.hardwareVerifier ??
-          (opts.fetchFn === undefined
-            ? undefined
-            : createCloudVerifier({ fetch: opts.fetchFn as typeof fetch })),
-      }),
+      headers: opts.headers,
+      replayWindowMs: opts.replayWindowMs,
+      pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
+      logger: opts.logger,
+      hardwareVerifier: opts.hardwareVerifier,
+      fetch: opts.fetchFn as typeof fetch | undefined,
     });
-    const confidential = holder;
+    const confidential = client;
     const timeout = opts.timeout ?? injectedTimeout ?? 10_000;
 
     return createTransport(
@@ -301,8 +286,7 @@ function confidentialHttp(
         async request({ method, params }, options) {
           const { signal, done } = linkSignal(options?.signal, timeout);
           try {
-            const client = await confidential.client();
-            const res = await client.request(
+            const res = await confidential.request(
               {
                 method: "POST",
                 path: "/",
@@ -320,7 +304,7 @@ function confidentialHttp(
       {
         url: rpcUrl,
         ready: (options?: { signal?: AbortSignal }) => confidential.ready(options),
-        getConfidentialInfo: () => confidential.info(),
+        getConfidentialInfo: () => confidential.getConfidentialInfo(),
       },
     );
   };

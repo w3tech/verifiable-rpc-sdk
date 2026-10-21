@@ -1,4 +1,5 @@
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { DEFAULT_PHALA_VERIFY_ENDPOINT } from "@w3tech.io/dstack-verify";
 import {
   CHAIN_ID,
   createTestNode,
@@ -190,6 +191,21 @@ describe("ConfidentialClient", () => {
     expect(mismatch.executed).toBe("unknown");
     expect(mismatch.expectedPubkey).toBe(node.pubkeyHex);
     expect(mismatch.actualPubkey).toBe(TEST_PUBKEY_HEX);
+  });
+
+  test("without a hardware verifier the given fetch makes the cloud verify call", async () => {
+    const seen: string[] = [];
+    const fetchStub = (async (input: string | URL | Request) => {
+      seen.push(String(input));
+      return new Response("unavailable", { status: 503 });
+    }) as typeof fetch;
+    const client = clientFor(testNode().transport, {
+      hardwareVerifier: undefined,
+      fetch: fetchStub,
+    });
+
+    expect(await rejectionOf(client.ready())).toBeInstanceOf(VerificationError);
+    expect(seen).toEqual([DEFAULT_PHALA_VERIFY_ENDPOINT]);
   });
 });
 

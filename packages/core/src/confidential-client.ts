@@ -48,17 +48,19 @@ export interface ConfidentialClientOptions {
   url: string;
   chainId: string;
   /** Sent on every outer request; a `content-type` entry is ignored. */
-  headers?: Record<string, string>;
+  headers?: Record<string, string> | undefined;
   /** Positive, finite integer milliseconds; anything else throws `InvalidOption`. */
-  replayWindowMs?: number;
+  replayWindowMs?: number | undefined;
   /**
    * Positive, finite integer milliseconds; anything else, `Infinity` included, throws `InvalidOption`.
    * Use a large value for a long-lived pin.
    */
-  pubkeyCacheTtlMs?: number;
-  logger?: Logger;
-  hardwareVerifier?: HardwareVerifier;
-  transport?: ConfidentialTransport;
+  pubkeyCacheTtlMs?: number | undefined;
+  logger?: Logger | undefined;
+  hardwareVerifier?: HardwareVerifier | undefined;
+  /** Used by the default hardware verifier's call; ignored with a custom `hardwareVerifier`. */
+  fetch?: typeof fetch | undefined;
+  transport?: ConfidentialTransport | undefined;
 }
 
 /** The node the client is pinned to. */
@@ -149,7 +151,9 @@ export class ConfidentialClient {
     this.#confidentialUrl = urls.confidentialUrl;
     const transport = options.transport ?? defaultTransport;
     this.#transport = transport;
-    const hardwareVerifier = options.hardwareVerifier ?? createCloudVerifier();
+    const hardwareVerifier =
+      options.hardwareVerifier ??
+      createCloudVerifier(options.fetch === undefined ? {} : { fetch: options.fetch });
     const logger = options.logger ? safeLogger(options.logger) : defaultLogger;
     this.#logger = logger;
     const headers = this.#headers;

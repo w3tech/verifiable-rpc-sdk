@@ -116,12 +116,43 @@ export function checkOptions<T extends OptionsInput>(input: T): CheckedOptions<T
 
 export { CloudVerifierConfig }
 
+// @public (undocumented)
+export interface ConfidentialClientOptions {
+    // (undocumented)
+    chainId: string;
+    fetch?: typeof fetch | undefined;
+    // (undocumented)
+    hardwareVerifier?: HardwareVerifier | undefined;
+    headers?: Record<string, string> | undefined;
+    // (undocumented)
+    logger?: Logger | undefined;
+    pubkeyCacheTtlMs?: number | undefined;
+    replayWindowMs?: number | undefined;
+    // Warning: (ae-forgotten-export) The symbol "ConfidentialTransport" needs to be exported by the entry point index.d.ts
+    //
+    // (undocumented)
+    transport?: ConfidentialTransport | undefined;
+    url: string;
+}
+
 // @public
 export class ConfidentialDecryptFailed extends VerificationError {
     constructor();
     // (undocumented)
     readonly kind: "ConfidentialDecryptFailed";
 }
+
+// @public
+export interface ConfidentialInfo {
+    attestedAt: number;
+    composeHash: string;
+    // (undocumented)
+    nodeId: string;
+    pubkey: string;
+}
+
+// @public (undocumented)
+export type ConfidentialResponse = InnerResponse;
 
 // @public
 export class ConfidentialSignerMismatch extends VerificationError {
@@ -168,8 +199,6 @@ export interface FetchAttestationOptions {
     nonce: Uint8Array;
 }
 
-// Warning: (ae-forgotten-export) The symbol "ConfidentialTransport" needs to be exported by the entry point index.d.ts
-//
 // @public
 export function fetchTransport(fetchFn?: (url: string, init: RequestInit) => Promise<Response>): ConfidentialTransport;
 
@@ -186,6 +215,29 @@ export interface GetQuoteResponse {
 }
 
 export { HardwareVerifier }
+
+// @public (undocumented)
+export interface InnerRequest {
+    // (undocumented)
+    accept?: string;
+    // (undocumented)
+    body?: Uint8Array;
+    // (undocumented)
+    contentType?: string;
+    // (undocumented)
+    method: string;
+    path: string;
+}
+
+// @public (undocumented)
+export interface InnerResponse {
+    // (undocumented)
+    body: Uint8Array;
+    // (undocumented)
+    contentType?: string;
+    // (undocumented)
+    status: number;
+}
 
 // @public
 export class InternalError extends UnavailableError {
@@ -241,6 +293,21 @@ export class InvalidOption extends VrpcError {
 
 // @public
 export function isSignedVrpcResponse(headers: ResponseHeaders): boolean;
+
+// @public
+export class LazyConfidentialClient {
+    constructor(options: ConfidentialClientOptions);
+    // (undocumented)
+    getConfidentialInfo(): ConfidentialInfo | undefined;
+    // (undocumented)
+    ready(options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfidentialInfo>;
+    // (undocumented)
+    request(inner: InnerRequest, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfidentialResponse>;
+}
 
 // @public
 export interface Logger {
