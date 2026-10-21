@@ -2,7 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // viem transport in Ankr Confidential RPC mode against the real sidecar.
 
-import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import { mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
 import {
   INTEROP_SKIP_MESSAGE,
   type Interop,
@@ -88,10 +88,7 @@ d("integration: viem in Ankr Confidential RPC mode against the sidecar", () => {
     relay.set({ mode: "flip" });
     try {
       const before = sealedPosts();
-      const err = await client.getBlockNumber().then(
-        () => undefined,
-        (e: unknown) => e,
-      );
+      const err = await rejectionOf(client.getBlockNumber());
       expect(sealedPosts()).toBe(before + 1);
       expect(err).toBeInstanceOf(BaseError);
       const found = (err as BaseError).walk(

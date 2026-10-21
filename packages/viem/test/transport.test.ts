@@ -19,6 +19,7 @@ import {
   CHAIN_ID,
   jsonResult,
   mockHardwareVerifier,
+  rejectionOf,
   SINGLE_RESULT_BALANCE_HEX,
   type SignedAnswerOptions,
   signedAnswer,
@@ -252,12 +253,7 @@ describe("vrpcHttp transport wiring", () => {
         }),
       ),
     );
-    const err = await transport.config.request(GET_BALANCE).then(
-      () => {
-        throw new Error("expected rejection");
-      },
-      (e) => e,
-    );
+    const err = await rejectionOf(transport.config.request(GET_BALANCE));
     expect(err).not.toBeInstanceOf(VerificationError);
   });
 

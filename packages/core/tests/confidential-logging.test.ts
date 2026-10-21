@@ -11,7 +11,9 @@ import {
   mockHardwareVerifier,
   NODE_ID,
   NODE_SEED,
+  rejectionOf,
   type TestNode,
+  thrownBy,
   x25519SecretFromSeed,
 } from "@w3tech.io/vrpc-test-support";
 import { expectNoSecrets } from "@w3tech.io/vrpc-test-support/adapter";
@@ -444,12 +446,7 @@ describe("real network failures through the default transport", () => {
         hardwareVerifier: mockHardwareVerifier(),
         logger,
       });
-      let err: unknown;
-      try {
-        await client.request(call());
-      } catch (caught) {
-        err = caught;
-      }
+      const err = await rejectionOf(client.request(call()));
 
       expect(err, keyIn).toBeInstanceOf(expected);
       expect(((err as Error).cause as Error).message, keyIn).toBe("The request failed.");
@@ -479,12 +476,7 @@ describe("real network failures through the default transport", () => {
       chainId: CHAIN_ID,
       hardwareVerifier: mockHardwareVerifier(),
     });
-    let err: unknown;
-    try {
-      await client.request(call());
-    } catch (caught) {
-      err = caught;
-    }
+    const err = await rejectionOf(client.request(call()));
 
     expect(err).toBeInstanceOf(expected);
     expect((err as Error).cause).toMatchObject({
@@ -498,26 +490,21 @@ describe("real network failures through the default transport", () => {
 describe("invalid caller headers", () => {
   test("a header value that fetch rejects fails at construction without echoing it", async () => {
     const bad = `${API_KEY}\nX`;
-    let fetchError: unknown;
-    try {
-      await fetch("http://127.0.0.1:9/", { headers: { "x-api-key": bad } });
-    } catch (err) {
-      fetchError = err;
-    }
+    const fetchError = await rejectionOf(
+      fetch("http://127.0.0.1:9/", { headers: { "x-api-key": bad } }),
+    );
     expect(errorTexts(fetchError).join("\n")).toContain(API_KEY);
 
     const fetchSpy = vi.spyOn(globalThis, "fetch");
-    let err: unknown;
-    try {
-      new ConfidentialClient({
-        url: BASE_URL,
-        headers: { "x-api-key": bad },
-        chainId: CHAIN_ID,
-        hardwareVerifier: mockHardwareVerifier(),
-      });
-    } catch (caught) {
-      err = caught;
-    }
+    const err = thrownBy(
+      () =>
+        new ConfidentialClient({
+          url: BASE_URL,
+          headers: { "x-api-key": bad },
+          chainId: CHAIN_ID,
+          hardwareVerifier: mockHardwareVerifier(),
+        }),
+    );
     expect(err).toBeInstanceOf(InvalidOption);
     expect((err as InvalidOption).cause).toBeUndefined();
     expectNoSecrets([err], baseSentinels(), []);

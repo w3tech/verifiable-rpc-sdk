@@ -2,6 +2,7 @@ import {
   attestationStub,
   CHAIN_ID,
   mockHardwareVerifier,
+  rejectionOf,
   signedJsonHeaders,
   thrownBy,
 } from "@w3tech.io/vrpc-test-support";
@@ -113,7 +114,7 @@ describe("createOpenSession bootstrap", () => {
     ],
   ])("an unverified %s bootstrap body is InvalidChainId that never echoes it", async (_, body) => {
     const { s } = session();
-    const err = await s.send(READ, node({}, { body }).post).catch((e: unknown) => e);
+    const err = await rejectionOf(s.send(READ, node({}, { body }).post));
     expect(err).toMatchObject({ kind: "InvalidChainId" });
     expect(`${String(err)}${(err as { chainId: string }).chainId}`.length).toBeLessThan(200);
   });

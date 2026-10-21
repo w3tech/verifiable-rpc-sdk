@@ -312,10 +312,12 @@ describe("header objects whose get returns undefined on a miss", () => {
     const nowMs = BigInt(Date.now());
     const t = await signTriple(REQUEST, RESPONSE, nowMs);
     delete t.headers["vRPC-Signature"];
-    const err = await verifyResponse(t.requestBytes, t.responseBytes, mapHeaders(t.headers), {
-      chainId: CHAIN_ID,
-      nowMs,
-    }).catch((e: unknown) => e);
+    const err = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, mapHeaders(t.headers), {
+        chainId: CHAIN_ID,
+        nowMs,
+      }),
+    );
     expect(err).toBeInstanceOf(MissingHeader);
     expect((err as MissingHeader).headerName).toBe("vRPC-Signature");
   });

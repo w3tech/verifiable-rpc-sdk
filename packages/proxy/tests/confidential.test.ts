@@ -3,7 +3,14 @@
 // Ankr Confidential RPC mode end to end against the in-test node behind a loopback server.
 
 import { ConfidentialClient, InvalidOption } from "@w3tech.io/vrpc-core/confidential";
-import { countOf, createTestNode, isGet, isPost, NODE_ID } from "@w3tech.io/vrpc-test-support";
+import {
+  countOf,
+  createTestNode,
+  isGet,
+  isPost,
+  NODE_ID,
+  thrownBy,
+} from "@w3tech.io/vrpc-test-support";
 import { serveTestNode, type TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
 import { Agent } from "undici";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -193,12 +200,7 @@ describe("confidential mode startup", () => {
 
     const badHeader = build({ attestationHeaders: { "x-api-key": badKey } });
     expect(badHeader).toThrow(InvalidOption);
-    let message = "";
-    try {
-      badHeader();
-    } catch (err) {
-      message = (err as Error).message;
-    }
+    const { message } = thrownBy(badHeader) as Error;
     expect(message).not.toBe("");
     expect(message).not.toContain("bad");
     expect(build({ replayWindowMs: 1.5 })).toThrow(InvalidOption);

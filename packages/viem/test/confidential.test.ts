@@ -80,7 +80,7 @@ describe("a single call", () => {
     const { server } = await serveRpcNode(rpcError(-32000, "boom"));
     const { config } = confidential(server)({ chain: arbitrum });
 
-    const err = await config.request({ method: "eth_blockNumber" }).catch((e: unknown) => e);
+    const err = await rejectionOf(config.request({ method: "eth_blockNumber" }));
     expect(err).toBeInstanceOf(RpcRequestError);
     expect((err as RpcRequestError).code).toBe(-32000);
   });

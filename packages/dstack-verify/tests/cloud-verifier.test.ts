@@ -9,7 +9,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import { mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 
 import { AttestationError, createCloudVerifier, DEFAULT_PHALA_VERIFY_ENDPOINT } from "../src/index";
@@ -70,14 +70,10 @@ function okResponse(body: unknown): Response {
 }
 
 async function expectChkP1(promise: Promise<void>, unavailable?: true): Promise<void> {
-  try {
-    await promise;
-    throw new Error("expected throw");
-  } catch (e) {
-    expect(e).toBeInstanceOf(AttestationError);
-    expect((e as AttestationError).chkId).toBe("CHK-P1");
-    expect((e as AttestationError).unavailable).toBe(unavailable);
-  }
+  const err = await rejectionOf(promise);
+  expect(err).toBeInstanceOf(AttestationError);
+  expect((err as AttestationError).chkId).toBe("CHK-P1");
+  expect((err as AttestationError).unavailable).toBe(unavailable);
 }
 
 describe("createCloudVerifier — happy path (real fixture)", () => {

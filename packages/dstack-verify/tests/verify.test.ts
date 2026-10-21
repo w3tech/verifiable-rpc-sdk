@@ -4,7 +4,12 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { collectingLogger, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import {
+  collectingLogger,
+  mockHardwareVerifier,
+  rejectionOf,
+  thrownBy,
+} from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 import { AttestationError, parseReportData, verifyDstackAttestation } from "../src/index";
 import type { AttestationBundle, HardwareVerifier, Logger, VerifyPolicy } from "../src/types";
@@ -61,13 +66,9 @@ describe("parseReportData (CHK-A1 split)", () => {
     `${fixture.report_data.slice(0, 127)}z`, // non-hex char
     "",
   ])("throws CHK-A1 on malformed length/charset %#", (bad) => {
-    try {
-      parseReportData(bad);
-      throw new Error("expected throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(AttestationError);
-      expect((e as AttestationError).chkId).toBe("CHK-A1");
-    }
+    const err = thrownBy(() => parseReportData(bad));
+    expect(err).toBeInstanceOf(AttestationError);
+    expect((err as AttestationError).chkId).toBe("CHK-A1");
   });
 });
 
@@ -88,57 +89,49 @@ describe("verifyDstackAttestation CHK-A1 binding", () => {
 
   test("tamper: wrong pubkey throws CHK-A1", async () => {
     const wrongPubkey = `0x${"cc".repeat(32)}`;
-    try {
-      await verifyDstackAttestation(
+    const err = await rejectionOf(
+      verifyDstackAttestation(
         validBundle,
         makePolicy({ ...validBinding, expectedPubkey: wrongPubkey }),
-      );
-      throw new Error("expected throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(AttestationError);
-      expect((e as AttestationError).chkId).toBe("CHK-A1");
-    }
+      ),
+    );
+    expect(err).toBeInstanceOf(AttestationError);
+    expect((err as AttestationError).chkId).toBe("CHK-A1");
   });
 
   test("tamper: wrong nonce throws CHK-A1", async () => {
     const wrongNonce = "dd".repeat(32);
-    try {
-      await verifyDstackAttestation(
+    const err = await rejectionOf(
+      verifyDstackAttestation(
         validBundle,
         makePolicy({ ...validBinding, expectedNonce: wrongNonce }),
-      );
-      throw new Error("expected throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(AttestationError);
-      expect((e as AttestationError).chkId).toBe("CHK-A1");
-    }
+      ),
+    );
+    expect(err).toBeInstanceOf(AttestationError);
+    expect((err as AttestationError).chkId).toBe("CHK-A1");
   });
 
   test("tamper: wrong-length report_data throws CHK-A1", async () => {
     const shortRd = fixture.report_data.slice(0, 126);
-    try {
-      await verifyDstackAttestation(makeBundle(shortRd), makePolicy({ ...validBinding }));
-      throw new Error("expected throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(AttestationError);
-      expect((e as AttestationError).chkId).toBe("CHK-A1");
-    }
+    const err = await rejectionOf(
+      verifyDstackAttestation(makeBundle(shortRd), makePolicy({ ...validBinding })),
+    );
+    expect(err).toBeInstanceOf(AttestationError);
+    expect((err as AttestationError).chkId).toBe("CHK-A1");
   });
 
   test("malformed expectedPubkey (missing 0x / wrong len) throws CHK-A1", async () => {
-    try {
-      await verifyDstackAttestation(
+    const err = await rejectionOf(
+      verifyDstackAttestation(
         validBundle,
         makePolicy({
           ...validBinding,
           expectedPubkey: fixture.pubkey.slice(2),
         }),
-      );
-      throw new Error("expected throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(AttestationError);
-      expect((e as AttestationError).chkId).toBe("CHK-A1");
-    }
+      ),
+    );
+    expect(err).toBeInstanceOf(AttestationError);
+    expect((err as AttestationError).chkId).toBe("CHK-A1");
   });
 });
 
@@ -151,15 +144,13 @@ describe("verifyDstackAttestation hardware verifier (post-A2) — MANDATORY", ()
 
   test("propagates the verifier's failure (fail-closed)", async () => {
     const boom = new AttestationError("CHK-P1", "hardware verify failed");
-    try {
-      await verifyDstackAttestation(
+    const err = await rejectionOf(
+      verifyDstackAttestation(
         validBundle,
         makePolicy({ ...validBinding, hardwareVerifier: mockHardwareVerifier({ fail: boom }) }),
-      );
-      throw new Error("expected throw");
-    } catch (e) {
-      expect(e).toBe(boom);
-    }
+      ),
+    );
+    expect(err).toBe(boom);
   });
 
   test("invokes the verifier with the bundle under test", async () => {
@@ -226,13 +217,9 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
       appCompose,
       composeHash: "00".repeat(32), // not the hash of appCompose
     });
-    try {
-      await verifyDstackAttestation(bundle, makePolicy({ ...validBinding }));
-      throw new Error("expected throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(AttestationError);
-      expect((e as AttestationError).chkId).toBe("CHK-A2");
-    }
+    const err = await rejectionOf(verifyDstackAttestation(bundle, makePolicy({ ...validBinding })));
+    expect(err).toBeInstanceOf(AttestationError);
+    expect((err as AttestationError).chkId).toBe("CHK-A2");
   });
 
   test("mismatch: tampered app_compose (hash no longer matches) throws CHK-A2", async () => {
@@ -240,13 +227,9 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
       appCompose: `${appCompose} `, // one trailing space → different sha256
       composeHash: selfConsistentHash,
     });
-    try {
-      await verifyDstackAttestation(bundle, makePolicy({ ...validBinding }));
-      throw new Error("expected throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(AttestationError);
-      expect((e as AttestationError).chkId).toBe("CHK-A2");
-    }
+    const err = await rejectionOf(verifyDstackAttestation(bundle, makePolicy({ ...validBinding })));
+    expect(err).toBeInstanceOf(AttestationError);
+    expect((err as AttestationError).chkId).toBe("CHK-A2");
   });
 
   test("dormant-skip: empty app_compose → A2 skips, resolves", async () => {
@@ -279,19 +262,17 @@ describe("verifyDstackAttestation CHK-A2 compose-hash self-consistency", () => {
       appCompose,
       composeHash: "00".repeat(32),
     });
-    try {
-      await verifyDstackAttestation(
+    const err = await rejectionOf(
+      verifyDstackAttestation(
         bundle,
         makePolicy({
           expectedPubkey: fixture.pubkey,
           expectedNonce: "dd".repeat(32),
         }),
-      );
-      throw new Error("expected throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(AttestationError);
-      expect((e as AttestationError).chkId).toBe("CHK-A1");
-    }
+      ),
+    );
+    expect(err).toBeInstanceOf(AttestationError);
+    expect((err as AttestationError).chkId).toBe("CHK-A1");
   });
 });
 

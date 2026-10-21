@@ -9,6 +9,7 @@ import {
   flipFirstDigit,
   jsonResult,
   mockHardwareVerifier,
+  rejectionOf,
   SINGLE_RESULT_BALANCE_HEX,
   type SignedAnswerOptions,
   signedAnswer,
@@ -124,12 +125,7 @@ describe("VrpcProvider._send wiring", () => {
     );
     // The signature is valid (verified first); ethers then surfaces the RPC
     // error. It must NOT be downgraded into / confused with a VerificationError.
-    const err = await provider.getBalance(ADDR).then(
-      () => {
-        throw new Error("expected rejection");
-      },
-      (e) => e,
-    );
+    const err = await rejectionOf(provider.getBalance(ADDR));
     expect(err).not.toBeInstanceOf(VerificationError);
   });
 

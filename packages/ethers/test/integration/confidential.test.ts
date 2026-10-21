@@ -2,7 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // ethers provider in Ankr Confidential RPC mode against the real sidecar.
 
-import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import { mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
 import {
   INTEROP_SKIP_MESSAGE,
   type Interop,
@@ -122,10 +122,7 @@ d("integration: ethers in Ankr Confidential RPC mode against the sidecar", () =>
     await p.send("eth_chainId", []);
     relay.set({ mode: "flip" });
     try {
-      const err = await p.getBlockNumber().then(
-        () => undefined,
-        (e: unknown) => e,
-      );
+      const err = await rejectionOf(p.getBlockNumber());
       expect(err).toBeInstanceOf(BadSignature);
       expect((err as BadSignature).kind).toBe("BadSignature");
     } finally {
