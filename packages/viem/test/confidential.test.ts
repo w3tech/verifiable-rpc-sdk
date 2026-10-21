@@ -22,6 +22,7 @@ import {
   WIDE_WINDOW,
 } from "@w3tech.io/vrpc-test-support";
 import { expectNoSecrets, serveRpcNode } from "@w3tech.io/vrpc-test-support/adapter";
+import { holdPosts } from "@w3tech.io/vrpc-test-support/server";
 import { InvalidOption, mayHaveExecuted, vrpcHttp } from "@w3tech.io/vrpc-viem";
 import {
   BaseError,
@@ -331,7 +332,7 @@ describe("headers", () => {
 describe("signals", () => {
   test("a timeout rejects the call with a TimeoutError cause", async () => {
     const { server } = await serveRpcNode();
-    server.answer((r) => (r.method === "POST" ? new Promise(() => {}) : undefined));
+    holdPosts(server);
     const client = createPublicClient({
       chain: arbitrum,
       transport: confidential(server, { timeout: 200 }),
@@ -343,7 +344,7 @@ describe("signals", () => {
 
   test("a caller abort after the request was sent rejects the call with the caller's reason", async () => {
     const { server } = await serveRpcNode();
-    server.answer((r) => (r.method === "POST" ? new Promise(() => {}) : undefined));
+    holdPosts(server);
     const client = createPublicClient({ chain: arbitrum, transport: confidential(server) });
     const controller = new AbortController();
     const reason = new Error("caller abort");

@@ -1,5 +1,4 @@
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer } from "node:http";
 import { x25519 } from "@noble/curves/ed25519.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { AttestationError } from "@w3tech.io/dstack-verify";
@@ -17,6 +16,7 @@ import {
   x25519SecretFromSeed,
 } from "@w3tech.io/vrpc-test-support";
 import { expectNoSecrets } from "@w3tech.io/vrpc-test-support/adapter";
+import { closeServer, listen } from "@w3tech.io/vrpc-test-support/server";
 import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
@@ -381,25 +381,12 @@ describe("logging", () => {
   });
 });
 
-async function listen(server: Server): Promise<string> {
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      server.off("error", reject);
-      resolve();
-    });
-  });
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-}
-
 // Stays bound and drops every connection, so no other process can take the port.
 async function droppingEveryConnection(): Promise<string> {
   const server = createServer();
   server.on("connection", (socket) => socket.destroy());
   const origin = await listen(server);
-  onTestFinished(() => {
-    server.close();
-  });
+  onTestFinished(() => closeServer(server));
   return origin;
 }
 
@@ -423,10 +410,7 @@ async function droppingOrigin(node: TestNode): Promise<string> {
     });
   });
   origin = await listen(server);
-  onTestFinished(() => {
-    server.closeAllConnections();
-    server.close();
-  });
+  onTestFinished(() => closeServer(server));
   return origin;
 }
 

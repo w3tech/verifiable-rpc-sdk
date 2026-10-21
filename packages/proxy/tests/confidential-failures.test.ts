@@ -3,7 +3,6 @@
 // Ankr Confidential RPC mode: every upstream failure is one typed error after one upstream attempt.
 
 import http from "node:http";
-import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
 import { getPublicKeyAsync } from "@noble/ed25519";
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
@@ -428,15 +427,8 @@ describe("sealed request failures", () => {
       redirected += 1;
       res.end();
     });
-    await new Promise<void>((resolve) => target.listen(0, "127.0.0.1", resolve));
-    onTestFinished(
-      () =>
-        new Promise<void>((resolve) => {
-          target.closeAllConnections();
-          target.close(() => resolve());
-        }),
-    );
-    const location = `http://127.0.0.1:${(target.address() as AddressInfo).port}/elsewhere`;
+    const location = `${await listen(target)}/elsewhere`;
+    onTestFinished(() => closeServer(target));
     const h = await startHarness({ startup: "ok", config: { upstreamTimeoutMs: TIMEOUT_MS } });
     h.node.node.setConfidential(() => ({
       status: 302,

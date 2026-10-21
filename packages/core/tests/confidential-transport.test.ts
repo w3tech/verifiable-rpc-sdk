@@ -1,6 +1,6 @@
 import { getEventListeners } from "node:events";
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from "node:http";
-import type { AddressInfo, Socket } from "node:net";
+import type { Socket } from "node:net";
 import { Readable } from "node:stream";
 import { gzipSync } from "node:zlib";
 import {
@@ -14,6 +14,7 @@ import {
   type TestNode,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
+import { closeServer, listen } from "@w3tech.io/vrpc-test-support/server";
 import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { ConfidentialClient } from "../src/confidential-client";
 import {
@@ -179,12 +180,10 @@ async function harness(): Promise<Harness> {
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  origin = await listen(server);
   onTestFinished(async () => {
     for (const socket of sockets) socket.destroy();
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await closeServer(server);
   });
   return {
     origin,

@@ -3,7 +3,6 @@
 // eager attestation and concurrency.
 
 import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
 import { UnexpectedResponse } from "@w3tech.io/vrpc-core";
 import { type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
 import {
@@ -23,7 +22,7 @@ import {
   type TestUpstream,
 } from "@w3tech.io/vrpc-test-support";
 import { expectNoSecrets, serveRpcNode } from "@w3tech.io/vrpc-test-support/adapter";
-import type { TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
+import { closeServer, listen, type TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
 import { AbiCoder, EnsResolver, FetchRequest, isError, toUtf8String } from "ethers";
 import { describe, expect, onTestFinished, test, vi } from "vitest";
 
@@ -433,10 +432,9 @@ describe("CCIP-Read", () => {
       res.writeHead(200, { "content-type": "application/json" });
       res.end('{"data":"0x"}');
     });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    onTestFinished(() => new Promise<void>((resolve) => server.close(() => resolve())));
-    const { port } = server.address() as AddressInfo;
-    return { url: `http://127.0.0.1:${port}`, hits };
+    const url = await listen(server);
+    onTestFinished(() => closeServer(server));
+    return { url, hits };
   }
 
   // Every eth_call reverts with OffchainLookup naming the gateway, as an off-chain resolver does.
