@@ -155,7 +155,7 @@ export interface AttestNodeOptions {
 
 export interface NodeAttestation<NodeId extends string | undefined = string | undefined> {
   nodeId: NodeId;
-  pubkey: string;
+  pubkeyHex: string;
   composeHash: string;
   attestedAt: number;
 }
@@ -175,15 +175,12 @@ export function attestNode(
 ): Promise<NodeAttestation<string>>;
 export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestation> {
   const { logger, expectPubkey } = opts;
-  const verbose = logger !== defaultLogger;
   const nonce = crypto.getRandomValues(new Uint8Array(32));
-  if (verbose) {
-    // The URL may carry the API key; nodeId and nonce identify the fetch.
-    logger.debug("attestation.fetch", {
-      ...(opts.nodeId === undefined ? {} : { nodeId: opts.nodeId }),
-      nonce: bytesToHex(nonce),
-    });
-  }
+  // The URL may carry the API key; nodeId and nonce identify the fetch.
+  logger.debug("attestation.fetch", {
+    ...(opts.nodeId === undefined ? {} : { nodeId: opts.nodeId }),
+    nonce: bytesToHex(nonce),
+  });
   const { attestation, nodeId } = await getAttestation(opts.transport, {
     attestationUrl: opts.attestationUrl,
     nonce,
@@ -195,24 +192,22 @@ export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestati
   if (!ATTESTED_PUBKEY_RE.test(attestation.pubkey)) {
     throw new AttestationFailed("malformed", "pubkey must be 0x + 64 hex chars");
   }
-  const pubkey = attestation.pubkey.toLowerCase();
+  const pubkeyHex = attestation.pubkey.toLowerCase();
   if (expectPubkey !== undefined) {
-    if (verbose) {
-      logger.debug("attestation.correlation", {
-        expectedPubkey: expectPubkey,
-        actualPubkey: pubkey,
-        match: pubkey === expectPubkey,
-      });
-    }
-    if (pubkey !== expectPubkey) {
-      throw new AttestationFailed("pubkey-mismatch", `expected ${expectPubkey}, got ${pubkey}`);
+    logger.debug("attestation.correlation", {
+      expectedPubkey: expectPubkey,
+      actualPubkey: pubkeyHex,
+      match: pubkeyHex === expectPubkey,
+    });
+    if (pubkeyHex !== expectPubkey) {
+      throw new AttestationFailed("pubkey-mismatch", `expected ${expectPubkey}, got ${pubkeyHex}`);
     }
   }
-  if (verbose) {
+  if (logger !== defaultLogger) {
     logger.debug("attestation.received", {
       reportData: attestation.quote.report_data,
       composeHash: attestation.composeHash,
-      pubkeyHex: pubkey,
+      pubkeyHex,
       quote: truncateHex(attestation.quote.quote),
       eventLog: byteLen(attestation.quote.event_log),
       appCompose: byteLen(new TextEncoder().encode(attestation.app_compose)),
@@ -220,14 +215,12 @@ export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestati
   }
   try {
     await verifyDstackAttestation(
-      mapAttestationToBundle(attestation, pubkey, nonce),
-      buildVerifyPolicy(pubkey, nonce, opts.hardwareVerifier, logger),
+      mapAttestationToBundle(attestation, pubkeyHex, nonce),
+      buildVerifyPolicy(pubkeyHex, nonce, opts.hardwareVerifier, logger),
     );
   } catch (err) {
-    if (err instanceof AttestationError && err.unavailable) {
-      throw new AttestationUnavailable("verifier", { cause: err });
-    }
     if (err instanceof AttestationError) {
+      if (err.unavailable) throw new AttestationUnavailable("verifier", { cause: err });
       throw new AttestationFailed("check", err.detail, { chkId: err.chkId, cause: err });
     }
     throw new AttestationFailed("check", "hardware verifier failed", {
@@ -235,7 +228,7 @@ export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestati
       cause: err,
     });
   }
-  return { nodeId, pubkey, composeHash: attestation.composeHash, attestedAt: Date.now() };
+  return { nodeId, pubkeyHex, composeHash: attestation.composeHash, attestedAt: Date.now() };
 }
 
 /** `app_compose` is self-reported by the node: CHK-A2 self-consistency only, never a trust anchor. */

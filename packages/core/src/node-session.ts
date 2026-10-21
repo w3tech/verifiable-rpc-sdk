@@ -8,7 +8,6 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 import { raceAbort } from "./abort";
 import { ATTESTATION_TIMEOUT_MS, type AttestNodeOptions, attestNode } from "./attestation";
 import { AttestationFailed, AttestationUnavailable } from "./errors";
-import { defaultLogger } from "./logger";
 
 export interface AttestedNode {
   readonly nodeId: string;
@@ -46,7 +45,6 @@ type AttestOptions = Omit<AttestNodeOptions, "expectPubkey" | "nodeId">;
 
 export async function attestPin(opts: AttestOptions): Promise<AttestedNode> {
   const { logger } = opts;
-  if (logger === defaultLogger) return attest(opts);
   const started = Date.now();
   logger.debug("confidential.attest.start");
   try {
@@ -69,13 +67,7 @@ export async function attestPin(opts: AttestOptions): Promise<AttestedNode> {
 
 async function attest(opts: AttestOptions): Promise<AttestedNode> {
   const node = await attestNode(opts);
-  return {
-    nodeId: node.nodeId,
-    pubkeyHex: node.pubkey,
-    nodeKey: nodeKeyFromEd25519(hexToBytes(node.pubkey.slice(2))),
-    composeHash: node.composeHash,
-    attestedAt: node.attestedAt,
-  };
+  return { ...node, nodeKey: nodeKeyFromEd25519(hexToBytes(node.pubkeyHex.slice(2))) };
 }
 
 export class PinSlot {

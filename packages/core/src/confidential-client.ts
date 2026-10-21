@@ -200,9 +200,7 @@ export class ConfidentialClient {
       if (!sent) e.executed = "no";
       else if (pin !== undefined && evictsPin(e)) {
         this.#slot.evict(pin);
-        if (this.#logger !== defaultLogger) {
-          this.#logger.debug("confidential.evict", { nodeId: pin.nodeId, kind: errorKind(e) });
-        }
+        this.#logger.debug("confidential.evict", { nodeId: pin.nodeId, kind: errorKind(e) });
       }
       throw e;
     }
@@ -213,9 +211,8 @@ export class ConfidentialClient {
     sealed: SealedRequest,
     signal: AbortSignal | undefined,
   ): Promise<ConfidentialResponse> {
-    const logger = this.#logger === defaultLogger ? undefined : this.#logger;
-    const started = logger === undefined ? 0 : Date.now();
-    logger?.debug("confidential.request", {
+    const started = Date.now();
+    this.#logger.debug("confidential.request", {
       nodeId: pin.nodeId,
       requestBytes: sealed.body.byteLength,
     });
@@ -237,7 +234,7 @@ export class ConfidentialClient {
       throw new TransportFailed("network", pin.nodeId, { cause });
     }
     const contentType = mediaType(getHeader(response.headers, "content-type"));
-    logger?.debug("confidential.response", {
+    this.#logger.debug("confidential.response", {
       nodeId: pin.nodeId,
       status: response.status,
       contentType,
@@ -265,7 +262,7 @@ export class ConfidentialClient {
     const verified = await verifyResponse(sealed.body, response.body, response.headers, {
       chainId: this.#chainId,
       ...(this.#replayWindowMs === undefined ? {} : { replayWindowMs: this.#replayWindowMs }),
-      ...(logger === undefined ? {} : { logger }),
+      ...(this.#logger === defaultLogger ? {} : { logger: this.#logger }),
     });
     if (verified.verification.pubkeyHex !== pin.pubkeyHex) {
       throw new ConfidentialSignerMismatch(pin.pubkeyHex, verified.verification.pubkeyHex);

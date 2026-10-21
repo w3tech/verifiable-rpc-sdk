@@ -118,13 +118,11 @@ export class TrustedVerifier {
 
     const pubkeyHex = pair.verification.pubkeyHex;
     const fresh = this.cache.has(pubkeyHex);
-    if (this.logger !== defaultLogger) {
-      this.logger.debug("cache.lookup", {
-        pubkeyHex,
-        hit: fresh,
-        ...(fresh ? { note: "cached → skip attestation" } : {}),
-      });
-    }
+    this.logger.debug("cache.lookup", {
+      pubkeyHex,
+      hit: fresh,
+      ...(fresh ? { note: "cached → skip attestation" } : {}),
+    });
     if (fresh) {
       return pair;
     }
@@ -164,8 +162,6 @@ export class TrustedVerifier {
       clearTimeout(timer);
     }
     this.cache.set(pubkeyHex, true);
-    if (this.logger !== defaultLogger) {
-      this.logger.debug("cache.store", { pubkeyHex, ttlMs: this.ttlMs });
-    }
+    this.logger.debug("cache.store", { pubkeyHex, ttlMs: this.ttlMs });
   }
 }
