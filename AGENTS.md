@@ -152,6 +152,7 @@ variables set.
 | Task                                          | Start here                       |
 | --------------------------------------------- | -------------------------------- |
 | Add a field to the public surface             | `packages/core/src/index.ts`     |
+| Add or change an option check                 | `packages/core/src/options.ts` (`checkOptions`) |
 | Adjust lint or format rules                   | `biome.json` (Biome 2.x schema)  |
 | Adjust CI pipeline                            | `.github/workflows/ci.yml`       |
 | Build/publish the proxy container image       | `Dockerfile`, `.github/workflows/docker-test-build.yml` (push) + `publish.yml` `docker` job (tag) |
@@ -170,9 +171,12 @@ variables set.
   `VerifiedPair`. Consumers handle batching, retries.
 - **Byte-exact 104-byte pre-image** — pinned by a unit test mirroring
   `pre_image_layout_is_byte_exact` from the sidecar; any drift is a hard bug.
-- **Typed errors at every boundary** — `VerificationError` subclasses for
+- **Typed errors at every boundary** — every SDK error is a `VrpcError`
+  (`executed` says whether the call may have run; `mayHaveExecuted(err)` reads
+  it through `.cause`). Checks fail as `VerificationError` subclasses for
   `MissingHeader`, `MalformedHeader`, `BadSignature`, `StaleTimestamp`,
-  `InvalidNonce`, `InvalidChainId`, `MalformedAttestationResponse`.
+  `InvalidNonce`, `InvalidChainId`, `MalformedAttestationResponse`. A bad
+  option, including a configured chain id, is `InvalidOption`.
 - **No throw-from-async-constructor** — synchronous fail-fast for config errors
   (e.g. `new TrustedVerifier(opts)` / `validateChainId`); runtime verification
   errors from call sites only.
