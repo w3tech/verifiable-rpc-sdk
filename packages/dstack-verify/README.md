@@ -20,10 +20,9 @@ Verification of dstack / Intel TDX attestation evidence.
 
 ## What this is
 
-This package freezes the full, **complete** public surface of the
-dstack/TDX attestation verifier. A future release (real DCAP verification) fills in the
-function/helper bodies **without changing a single exported type or signature** —
-the entire A/B split lives inside this package.
+This package is the dstack/TDX attestation verifier used by `@w3tech.io/vrpc-core`:
+the report-data binding, the compose-hash self-consistency check, and the
+hardware quote check through an injected `HardwareVerifier`.
 
 ## Contract
 
@@ -94,8 +93,8 @@ event-log replay remain deferred to a future release.
   is unconditional and fail-closed.
 
 - **CHK-A2 — compose-hash self-consistency (BEST-EFFORT, dormant by default).**
-  When `tcbInfo.app_compose` is non-empty **and** `tcbInfo.compose_hash` is
-  present + non-empty, asserts `sha256(utf8(app_compose)) == compose_hash` (raw
+  When `bundle.appCompose` and `bundle.composeHash` are both non-empty (`""`
+  means absent), asserts `sha256(utf8(appCompose)) == composeHash` (raw
   bytes, **no canonicalization**); mismatch throws `AttestationError("CHK-A2")`
   (it runs before the step-4 hardware verifier). When
   either side is empty/absent (nodes that don't yet serve `app_compose`, or the

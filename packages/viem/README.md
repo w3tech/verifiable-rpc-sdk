@@ -262,16 +262,12 @@ try {
 | Signed non-2xx with `{ error }` body      | still flows into verify; its signed error surfaces as an ordinary `RpcRequestError`. |
 
 `MissingHeader`, `MalformedHeader`, `BadSignature`, `StaleTimestamp` and
-`InvalidChainId` all extend `VerificationError`, which extends `Error`.
-For Ankr Confidential RPC mode the package also re-exports the `VerificationError`
-subclasses `AttestationFailed`, `MalformedAttestationResponse`,
-`ConfidentialSignerMismatch`, `ConfidentialDecryptFailed`,
-`MalformedConfidentialResponse`, `InvalidInnerRequest`; the `UnavailableError`
-base with `AttestationUnavailable`, `RequestRejected`, `UnexpectedResponse`,
-`TransportFailed`, `ConfidentialSealFailed`; and the types
-`UnavailableErrorKind` and `ConfidentialInfo`. They are the identical classes
-`@w3tech.io/vrpc-core` and `@w3tech.io/vrpc-ethers` export (cross-adapter
-parity).
+`InvalidChainId` all extend `VerificationError`, which extends `VrpcError`. The
+package re-exports everything in `@w3tech.io/vrpc-core/errors` — the
+`VerificationError` and `UnavailableError` families, `InvalidOption`,
+`InvalidInnerRequest`, `mayHaveExecuted` and their types — plus the type
+`ConfidentialInfo`. They are the identical classes `@w3tech.io/vrpc-core` and
+`@w3tech.io/vrpc-ethers` export.
 
 ### Fail-closed
 

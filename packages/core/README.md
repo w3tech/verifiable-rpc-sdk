@@ -56,8 +56,8 @@ response is:
   replayed old response is rejected as `StaleTimestamp`, and
 - **Correctly bound** — against the **chain id you pinned** (a wrong/substituted
   chain binds a different pre-image → `BadSignature`) and the **signing key** in
-  the response header. `verifyAttestationCorrelation`
-  additionally correlates that key against the serving node's attestation pubkey.
+  the response header. `TrustedVerifier` additionally correlates that key against
+  the serving node's attestation pubkey.
 
 **The boundary (honest gap):** the low-level `verifyResponse` seam is
 signature-only — **signed + untampered + fresh + bound against a pinned key**. The
@@ -173,8 +173,10 @@ method, path, query and body.
 
 - The first call attests the node (or `ready()` does) and pins it. Every later
   call is sealed to the pinned node.
-- Any failure drops the pin, and the next call attests again and may pin a
-  different node. An abort keeps the pin.
+- A failure after the request was sent drops the pin, and the next call attests
+  again and may pin a different node. The pin is kept on an abort, on any
+  failure before sending, on `TransportFailed`, `StaleTimestamp`, and on
+  `RequestRejected` 413 or 429.
 - Nothing retries, fails over or follows a redirect. Retrying is the caller's
   choice.
 - Any inner status is returned, not thrown. This includes the node's own
@@ -230,13 +232,14 @@ A call that got no verifiable answer throws an `UnavailableError`; its
 
 | Class | `kind` | `executed` | Thrown when |
 | ----- | ------ | ---------- | ----------- |
-| `AttestationUnavailable` | `"AttestationUnavailable"` | `"no"` | The node could not be attested, so the call was not sent. `.reason`: `status` (`.status`), `transport`, `node-id-missing`, `timeout` |
+| `AttestationUnavailable` | `"AttestationUnavailable"` | `"no"` | The node could not be attested, so the call was not sent. `.reason`: `status` (`.status`), `transport`, `too-large`, `node-id-missing`, `timeout`, `verifier` |
 | `RequestRejected` | `"RequestRejected"` | `"no"` | A 4xx that is not an encrypted answer: the gateway or node refused this attempt. `.status/.nodeId/.contentType` |
-| `ConfidentialSealFailed` | `"ConfidentialSealFailed"` | `"no"` | The local crypto runtime failed while sealing the request; nothing was sent. `.cause` |
 | `UnexpectedResponse` | `"UnexpectedResponse"` | `"unknown"` | The endpoint answered with something other than an encrypted answer (not a 4xx). `.status/.nodeId/.contentType` |
 | `TransportFailed` | `"TransportFailed"` | `"unknown"` | The request failed in transport, or the answer passed 192 MiB. `.reason`: `network`, `too-large`; `.nodeId` |
+| `InternalError` | `"InternalError"` | `"no"` before sending, else `"unknown"` | An unexpected failure in the client or an injected seam. `.cause` |
 
-Ankr Confidential RPC mode adds these `VerificationError` subclasses:
+Ankr Confidential RPC mode adds these errors (`InvalidInnerRequest` extends
+`VrpcError`, the others `VerificationError`):
 
 | Class | `kind` | Thrown when |
 | ----- | ------ | ----------- |
@@ -246,13 +249,12 @@ Ankr Confidential RPC mode adds these `VerificationError` subclasses:
 | `MalformedConfidentialResponse` | `"MalformedConfidentialResponse"` | A validly signed answer is too short to open or its inner response does not decode. `.reason`: `too-short`, `framing`, `informational`, `decode-failed` |
 
 The open-mode classes `BadSignature`, `StaleTimestamp`, `MissingHeader`,
-`MalformedHeader`, `AttestationFailed`, `MalformedAttestationResponse` and
-`InvalidChainId` apply too; see the open-mode Errors section below.
+`MalformedHeader`, `AttestationFailed` and `InvalidChainId` apply too; see the open-mode Errors section below.
 
 Rule of thumb: an `UnavailableError` means nothing was verified, and retrying is
 the caller's choice. A `VerificationError` means a broken or hostile path, and
-the pin is already dropped. `InvalidInnerRequest` and `InvalidChainId` are
-caller input errors raised before anything is sent.
+the pin is already dropped (except on `StaleTimestamp`). `InvalidInnerRequest`
+and `InvalidOption` are caller input errors raised before anything is sent.
 
 ### Known behaviours
 
@@ -421,23 +423,19 @@ real Layer A anchor (an external, node-independent compose registry) is deferred
 
 ```ts
 fetchAttestation(opts: FetchAttestationOptions): Promise<Attestation>;
-verifyAttestationCorrelation(attestation: Attestation, signerPubkeyHex: string, logger?: Logger): void;
 ```
 
 `fetchAttestation` (the single attestation-fetch entry point) calls
 `GET <attestationUrl>?nonce=<bare-hex>`, appending `&node_id=<id>` **only when**
 `opts.nodeId` is present. `FetchAttestationOptions` =
-`{ attestationUrl, nonce, nodeId?, headers?, fetch? }`. A `404` →
-`AttestationNodeNotFoundError`, terminal — no retry/fallback. The nonce must be
-exactly 32 bytes or `InvalidNonce` is thrown **before** any network call. This
-route is unsigned by contract — no `vRPC-*` verification runs, and a malformed
-body throws `MalformedAttestationResponse`. `fetchAttestation` is called lazily
-per request by `TrustedVerifier` as its attestation seam, and is available
-standalone for direct use.
-`verifyAttestationCorrelation` asserts `attestation.pubkey === signerPubkeyHex`
-(the `vRPC-Pubkey` of the verified response, lowercase `0x`-hex), throwing
-`AttestationCorrelationError` on mismatch. It is called by `TrustedVerifier`'s
-lazy attestation leg.
+`{ attestationUrl, nonce, nodeId?, headers?, fetch? }`. Redirects are not
+followed; a transport failure, any non-2xx (including `404`) or a body over
+1 MiB throws `AttestationUnavailable`. The nonce must be exactly 32 bytes or
+`InvalidNonce` is thrown **before** any network call. This route is unsigned by
+contract — no `vRPC-*` verification runs, and a malformed body throws
+`AttestationFailed` (reason `malformed`). `TrustedVerifier` calls it lazily for
+every new pubkey and checks that `attestation.pubkey` equals the response's
+`vRPC-Pubkey` (`AttestationFailed`, reason `pubkey-mismatch`).
 
 `Attestation` = `{ quote: GetQuoteResponse, pubkey, composeHash, app_compose }`,
 where `app_compose` is a required field carrying the raw verbatim app-compose text
@@ -455,19 +453,21 @@ fields; some empty under the dstack simulator).
 | `DEFAULT_PUBKEY_CACHE_TTL_MS` | const | Default TTL for the `TrustedVerifier` pubkey cache. |
 | `deriveVrpcUrls(...)` | function | Derives the vRPC endpoint URL set from a base. |
 | `VrpcUrls` | type | Shape returned by `deriveVrpcUrls`. |
-| `parseChainId(...)` | function | Decodes a decimal-string chainId (e.g. `"42161"`) from the raw bytes of a signed `eth_chainId` response (the auto-derive bootstrap used by the ethers/viem adapters); throws `MalformedHeader` on invalid JSON or a non-0x-hex `result`. |
-| `validateChainId(...)` | function | Validates a chain id string (sidecar-identical rules: non-empty, ≤64 bytes, printable ASCII, no inner whitespace) and returns the trimmed value; throws `InvalidChainId`. |
+| `parseChainId(...)` | function | Decodes a decimal-string chainId (e.g. `"42161"`) from the raw bytes of a signed `eth_chainId` response (the auto-derive bootstrap used by the ethers/viem adapters); throws `InvalidChainId` on invalid JSON, a non-0x-hex `result` or a decimal id over 64 bytes. |
+| `validateChainId(...)` | function | Validates a chain id string (sidecar-identical rules: non-empty, ≤64 bytes, printable ASCII, no inner whitespace) and returns the trimmed value; throws `InvalidChainId`. Client options are checked with the same rules and throw `InvalidOption`. |
 | `isSignedVrpcResponse(...)` | function | Predicate: whether a response carries the `vRPC-*` signing headers. |
 | `fetchTransport(fetchFn?)` | function | A confidential `transport` over `fetchFn` (the global fetch when omitted): no redirect, no retry, body capped at 192 MiB, errors without the URL. |
-| `readCappedBody(response, maxBytes?)` | function | Reads a fetch `Response` body for a custom confidential `transport`; throws `ResponseTooLarge` past `maxBytes` (default 192 MiB). |
-| `ResponseTooLarge` | class | Thrown by `readCappedBody`; the client turns it into `TransportFailed` (reason `too-large`). |
+| `readCappedBody(response, maxBytes?)` | function | Reads a fetch `Response` body for a custom confidential `transport`, rejecting past `maxBytes` (default 192 MiB); the client reports that as `TransportFailed` (reason `too-large`). |
 
 ---
 
 ## Errors
 
 Every verification failure throws a subclass of the abstract `VerificationError`
-(extends `Error`). Narrow with `instanceof` or the `kind` discriminator.
+(extends `VrpcError`). Narrow with `instanceof` or the `kind` discriminator. An
+attestation that cannot be fetched or checked right now throws
+`AttestationUnavailable` (an `UnavailableError`), and invalid client options
+throw `InvalidOption`; neither is a `VerificationError`.
 
 | Class                          | `kind`                          | Thrown when                                                       |
 | ------------------------------ | ------------------------------- | ----------------------------------------------------------------- |
@@ -476,10 +476,8 @@ Every verification failure throws a subclass of the abstract `VerificationError`
 | `BadSignature`                 | `"BadSignature"`                | Ed25519 verify failed (tampered bytes or wrong chainId). `.signatureHex/.pubkeyHex/.preImageSha256` |
 | `StaleTimestamp`               | `"StaleTimestamp"`              | Valid signature but timestamp outside replay window. `.observedMs/.nowMs/.skewMs/.allowedWindowMs` |
 | `InvalidNonce`                 | `"InvalidNonce"`                | Attestation nonce not exactly 32 bytes. `.reason`                |
-| `InvalidChainId`               | `"InvalidChainId"`              | Chain id string fails `validateChainId` (empty, >64 bytes, non-printable-ASCII or whitespace). Thrown at construction / verify entry. `.chainId/.reason` |
-| `MalformedAttestationResponse` | `"MalformedAttestationResponse"`| `/attestation` body off-contract. `.reason`                      |
-| `AttestationNodeNotFoundError` | `"AttestationNodeNotFound"`     | The RPC gateway returned 404 for the targeted `node_id`. `.nodeId` |
-| `AttestationCorrelationError`  | `"AttestationCorrelation"`      | Attestation pubkey ≠ response signer. `.expectedPubkey/.actualPubkey` |
+| `InvalidChainId`               | `"InvalidChainId"`              | A chain id from the node (`eth_chainId` bootstrap) or passed to `verifyResponse` / `validateChainId` fails validation. `.chainId/.reason` |
+| `AttestationFailed`            | `"AttestationFailed"`           | The attestation is malformed, its pubkey is not the response signer, or a check failed. `.reason`: `malformed`, `pubkey-mismatch`, `check` (`.chkId`); `.detail` |
 
 ```ts
 import { VerificationError, BadSignature, TrustedVerifier } from "@w3tech.io/vrpc-core";
@@ -528,6 +526,6 @@ from the ethers provider is the same class you catch here.
 ## Example
 
 See `examples/03-vrpc-core-walkthrough.ts` at the repo root: signed wire →
-`verifyResponse` → tamper → `BadSignature` → `fetchAttestation` + correlation via
-`verifyAttestationCorrelation` → `TrustedVerifier`. Run with
+`verifyResponse` → tamper → `BadSignature` → `fetchAttestation` →
+`TrustedVerifier`. Run with
 `pnpm example:03-vrpc-core-walkthrough`.

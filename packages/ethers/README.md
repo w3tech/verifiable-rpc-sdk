@@ -197,19 +197,11 @@ await provider.getBalance("0x0000000000000000000000000000000000000000");
 
 ### Re-exported error family
 
-For `instanceof` checks without importing core directly, the shared error family
-is re-exported: `VerificationError` (base) and `BadSignature`, `MissingHeader`,
-`MalformedHeader`, `StaleTimestamp`, `InvalidChainId`. This is the same family
-the viem adapter reuses — one error family across both adapters.
-
-For Ankr Confidential RPC mode the adapter also re-exports the
-`VerificationError` subclasses `AttestationFailed`,
-`MalformedAttestationResponse`, `ConfidentialSignerMismatch`,
-`ConfidentialDecryptFailed`, `MalformedConfidentialResponse`,
-`InvalidInnerRequest`; the `UnavailableError` base with `AttestationUnavailable`,
-`RequestRejected`, `UnexpectedResponse`, `TransportFailed`,
-`ConfidentialSealFailed`; and the types `UnavailableErrorKind` and
-`ConfidentialInfo`. Each is the same class `@w3tech.io/vrpc-core` exports.
+For `instanceof` checks without importing core directly, the adapter re-exports
+everything in `@w3tech.io/vrpc-core/errors` — `VrpcError`, the `VerificationError`
+and `UnavailableError` families, `InvalidOption`, `InvalidInnerRequest`,
+`mayHaveExecuted` and their types — plus the type `ConfidentialInfo`. Each is the
+same class `@w3tech.io/vrpc-core` exports, shared with the viem adapter.
 
 ## Batching
 
@@ -275,7 +267,7 @@ answer first, so the limit is checked only after the answer is in memory.
   `err.response.body`, not in the message.
 - A call that got no verifiable answer throws an `UnavailableError`
   (`AttestationUnavailable`, `RequestRejected`, `UnexpectedResponse`,
-  `TransportFailed`, `ConfidentialSealFailed`); its `executed` field is `"no"` or
+  `TransportFailed`, `InternalError`); its `executed` field is `"no"` or
   `"unknown"`.
 - A failed signature, attestation or decryption check is a `VerificationError`
   subclass.

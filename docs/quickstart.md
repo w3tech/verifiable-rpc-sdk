@@ -147,7 +147,7 @@ carries build provenance — see [`packages/proxy/README.md`](../packages/proxy/
 
 ### Inspect mode
 
-Beyond the automatic per-call verification, the SDK exposes the proof: `fetchAttestation()` returns the raw quote, signing pubkey, and compose hash, and `verifyAttestationCorrelation()` checks the attestation pubkey against a response signer — the same correlation `TrustedVerifier` runs lazily on every new pubkey. (Behind a load balancer the attestation fetch needs the node id from a prior response - the verified path supplies it automatically.)
+Beyond the automatic per-call verification, the SDK exposes the proof: `fetchAttestation()` returns the raw quote, signing pubkey, and compose hash; `TrustedVerifier` fetches it lazily for every new pubkey and checks that the attestation pubkey is the response signer. (Behind a load balancer the attestation fetch needs the node id from a prior response - the verified path supplies it automatically.)
 
 ---
 

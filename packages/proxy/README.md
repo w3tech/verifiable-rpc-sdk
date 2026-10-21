@@ -193,16 +193,16 @@ Errors use the same JSON shape plus `executed`, and carry no `traceId`:
 | ---------- | ----------- | ---------- | ---- |
 | `BodyTooLarge` | `413` | — | Inbound request body exceeds the configured cap |
 | `UnsupportedMediaType` | `415` | — | Request has `content-encoding`, or a body without `content-type` |
-| `InvalidInnerRequest` | `400` | — | Request-target or method cannot be sealed |
+| `InvalidInnerRequest` | `400` | `no` | Request-target or method cannot be sealed |
 | `AttestationUnavailable` | `503` / `429` / `504` | `no` | Attestation failed (`429`: gateway rate limit, `504`: timeout) |
 | `RequestRejected` | `413` / `429` / `502` | `no` | Gateway refused the sealed request (`413` and `429` pass through, any other refusal is `502`) |
-| `ConfidentialSealFailed` | `500` | `no` | The request could not be sealed |
 | `UnexpectedResponse` | `502` | `unknown` | Upstream answered with something other than a sealed response |
 | `UpstreamTimeout` | `504` | `unknown` | Upstream did not answer within the configured timeout |
 | `UpstreamConnect` / `UpstreamBodyTooLarge` / `DecodeFailed` | `502` | `unknown` | Connection failed, response over the cap, or undecodable body |
 | `TransportFailed` | `502` | `unknown` | Any other transport failure |
 | `BadSignature` / `StaleTimestamp` / `MissingHeader` / `MalformedHeader` / `ConfidentialSignerMismatch` / `ConfidentialDecryptFailed` / `MalformedConfidentialResponse` | `502` | `unknown` | The answer to the sealed request failed verification |
-| `Attestation` / `MalformedAttestationResponse` and other attestation kinds | `502` | — | The attestation failed verification; the sealed request was not sent |
+| `AttestationFailed` | `502` | `no` | The attestation failed verification; the sealed request was not sent |
+| `InternalError` | `502` | `no` / `unknown` | Unexpected failure in the client (`no` before the sealed request was sent) |
 | `Internal` | `502` | — | Unexpected internal failure |
 
 ## Example
