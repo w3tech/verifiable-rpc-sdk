@@ -7,7 +7,6 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import {
   type AttestationBundle,
   AttestationError,
-  EMPTY_ALLOWLIST,
   type HardwareVerifier,
   type VerifyPolicy,
   verifyDstackAttestation,
@@ -209,7 +208,7 @@ export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestati
   }
   try {
     await verifyDstackAttestation(
-      mapAttestationToBundle(attestation, pubkeyHex, nonce),
+      mapAttestationToBundle(attestation),
       buildVerifyPolicy(pubkeyHex, nonce, opts.hardwareVerifier, logger),
     );
   } catch (err) {
@@ -226,26 +225,12 @@ export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestati
 }
 
 /** `app_compose` is self-reported by the node: CHK-A2 self-consistency only, never a trust anchor. */
-function mapAttestationToBundle(
-  attestation: Attestation,
-  pubkeyHex: string,
-  nonce: Uint8Array,
-): AttestationBundle {
+function mapAttestationToBundle(attestation: Attestation): AttestationBundle {
   return {
-    quote: { ...attestation.quote },
-    pubkey: pubkeyHex,
-    nonce: bytesToHex(nonce),
-    tcbInfo: {
-      mrtd: "",
-      rtmr0: "",
-      rtmr1: "",
-      rtmr2: "",
-      rtmr3: "",
-      app_compose: attestation.app_compose,
-      event_log: [],
-      compose_hash: attestation.composeHash,
-    },
-    signature_chain: [],
+    quote: attestation.quote.quote,
+    reportData: attestation.quote.report_data,
+    composeHash: attestation.composeHash,
+    appCompose: attestation.app_compose,
   };
 }
 
@@ -258,8 +243,6 @@ function buildVerifyPolicy(
 ): VerifyPolicy {
   return {
     binding: { expectedPubkey: pubkeyHex, expectedNonce: bytesToHex(nonce) },
-    allowlist: EMPTY_ALLOWLIST,
-    tcb: { allowedStatuses: [], rejectDebug: true },
     hardwareVerifier,
     ...(logger === defaultLogger ? {} : { logger }),
   };

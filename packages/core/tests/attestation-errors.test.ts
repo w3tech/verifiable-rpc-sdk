@@ -353,6 +353,15 @@ describe("attestation outcomes in both modes", () => {
 
     if (error === undefined) {
       const attested = await attest();
+      const nonceHex = new URL(gets[0] ?? "").searchParams.get("nonce") ?? "";
+      const { quote, composeHash } = JSON.parse(attestationBody(nonceHex)) as Fields;
+      const bundle = { quote: quote.quote, reportData: quote.report_data, composeHash };
+      expect(verifyHardware).toHaveBeenCalledWith(
+        { ...bundle, appCompose: "" },
+        expect.objectContaining({
+          binding: { expectedPubkey: TEST_PUBKEY_HEX, expectedNonce: nonceHex },
+        }),
+      );
       if (mode === "confidential") {
         expect((attested as ConfidentialInfo).pubkey).toBe(TEST_PUBKEY_HEX);
       }

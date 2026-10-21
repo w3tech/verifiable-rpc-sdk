@@ -3,7 +3,7 @@
 // CloudVerifier — a HardwareVerifier implementation backed by Phala's hosted
 // attestation-verify endpoint.
 //
-// It POSTs the raw DCAP quote (`bundle.quote.quote`, bare hex) to a configurable
+// It POSTs the raw DCAP quote (`bundle.quote`, bare hex) to a configurable
 // Phala-compatible endpoint and asserts `result.quote.verified === true`. Because
 // the vRPC trust model treats the node as untrusted, `verified` alone is
 // decorative — a genuine quote for a DIFFERENT key/node would also report
@@ -58,7 +58,7 @@ function normHex(s: string): string {
 
 /**
  * Build a {@link HardwareVerifier} backed by a Phala-compatible cloud verify
- * endpoint. The returned verifier POSTs `{ hex: bundle.quote.quote }`, asserts
+ * endpoint. The returned verifier POSTs `{ hex: bundle.quote }`, asserts
  * the cloud verdict, and binds the cloud-extracted quote body to the policy's
  * expected pubkey/nonce + the bundle's composeHash (B+). All failures throw
  * `AttestationError("CHK-P1", ...)` (fail-closed); a transport error, timeout, HTTP 5xx, 429 or
@@ -79,7 +79,7 @@ export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareV
         const res = await doFetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hex: bundle.quote.quote }),
+          body: JSON.stringify({ hex: bundle.quote }),
           signal: controller.signal,
         });
         // 2. Non-2xx → fail closed.
@@ -134,7 +134,7 @@ export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareV
       //    0x01 prefix byte + composeHash(32B) + zero-pad. Positionally compare
       //    hex[2:66] — a loose substring match would accept composeHash at any
       //    offset (or spanning the pad), weakening the bind.
-      const composeHash = normHex(bundle.tcbInfo?.compose_hash ?? "");
+      const composeHash = normHex(bundle.composeHash);
       if (!/^[0-9a-f]{64}$/.test(composeHash)) {
         throw new AttestationError(
           "CHK-P1",

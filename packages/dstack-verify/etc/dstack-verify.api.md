@@ -6,16 +6,10 @@
 
 // @public
 export interface AttestationBundle {
-    appId?: string;
-    // (undocumented)
-    instanceId?: string;
-    nonce: string;
-    pubkey: string;
-    // (undocumented)
-    quote: QuoteEnvelope;
-    signature_chain: string[];
-    // (undocumented)
-    tcbInfo: TcbInfo;
+    appCompose: string;
+    composeHash: string;
+    quote: string;
+    reportData: string;
 }
 
 // @public
@@ -159,21 +153,22 @@ export function createCloudVerifier(config?: CloudVerifierConfig): HardwareVerif
 export const DEFAULT_PHALA_VERIFY_ENDPOINT = "https://cloud-api.phala.com/api/v1/attestations/verify";
 
 // @public
-export const EMPTY_ALLOWLIST: PinnedAllowlist;
-
-// @public
 export interface EventLogEntry {
+    // (undocumented)
     digest: string;
     // (undocumented)
     event: string;
+    // (undocumented)
     event_payload: string;
     // (undocumented)
     event_type: number;
+    // (undocumented)
     imr: number;
 }
 
 // @public
 export interface HardwareVerifier {
+    // (undocumented)
     verifyHardware(bundle: AttestationBundle, policy: VerifyPolicy): Promise<void>;
 }
 
@@ -194,53 +189,9 @@ export interface Logger {
 export function parseReportData(reportDataHex: string): ReportDataBinding;
 
 // @public
-export interface PinnedAllowlist {
-    composeHashes: string[];
-    kmsIdentities: string[];
-    mrtd: string;
-    osImageHashes: string[];
-    rtmr0: string;
-    rtmr1: string;
-    rtmr2: string;
-}
-
-// @public
-export interface QuoteEnvelope {
-    event_log: string;
-    quote: string;
-    report_data: string;
-    vm_config: string;
-}
-
-// @public
 export interface ReportDataBinding {
     expectedNonce: string;
     expectedPubkey: string;
-}
-
-// @public
-export interface TcbInfo {
-    app_compose: string;
-    compose_hash?: string;
-    // (undocumented)
-    device_id?: string;
-    // (undocumented)
-    event_log: EventLogEntry[];
-    key_provider_info?: string;
-    // (undocumented)
-    mr_aggregated?: string;
-    mrtd: string;
-    os_image_hash?: string;
-    rtmr0: string;
-    rtmr1: string;
-    rtmr2: string;
-    rtmr3: string;
-}
-
-// @public
-export interface TcbPolicy {
-    allowedStatuses: string[];
-    rejectDebug?: boolean;
 }
 
 // @public (undocumented)
@@ -248,13 +199,11 @@ export function verifyDstackAttestation(bundle: AttestationBundle, policy: Verif
 
 // @public
 export interface VerifyPolicy {
-    allowInsecureMock?: boolean;
-    allowlist: PinnedAllowlist;
+    // (undocumented)
     binding: ReportDataBinding;
-    hardwareVerifier?: HardwareVerifier;
+    hardwareVerifier: HardwareVerifier;
+    // (undocumented)
     logger?: Logger;
-    pccsUrl?: string;
-    tcb: TcbPolicy;
 }
 
 // (No @packageDocumentation comment for this package)

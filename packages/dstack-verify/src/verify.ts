@@ -1,41 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// verifyDstackAttestation — the public attestation-verifier entrypoint. Its
-// signature is frozen in the contract; this file holds its body.
+// verifyDstackAttestation: CHK-A1, CHK-A2, then the mandatory hardware verifier.
 //
-// CHK-A1 (key/nonce binding) runs FIRST and is UNCONDITIONAL: it shape-gates the
-// quote's report_data, then proves report_data[0:32] == policy.binding.expectedPubkey
-// (the Ed25519 key the SDK verifies vRPC-Signature against — swapped-key/wrong-node
-// defence) and report_data[32:64] == policy.binding.expectedNonce (freshness /
-// anti-replay). A mismatch ALWAYS throws AttestationError("CHK-A1"), regardless of
-// allowInsecureMock. This is local + collateral-free: it proves "signed + bound +
-// fresh", NOT "attested to hardware" (a fabricated quote can carry arbitrary
-// report_data — A1 is only meaningful together with the deferred DCAP/RTMR layers).
+// CHK-A1 proves report_data == expectedPubkey ‖ expectedNonce (signed, bound,
+// fresh); it does not prove hardware attestation on its own.
 //
-// CHK-A2 (compose-hash self-consistency) runs AFTER A1, BEFORE the mock gate. It
-// is BEST-EFFORT / DORMANT-BY-DEFAULT: only when bundle.tcbInfo.app_compose is
-// non-empty AND tcbInfo.compose_hash is present + non-empty does it assert
-// computeComposeHash(app_compose) === normalize(compose_hash) (raw sha256, no
-// canonicalization); otherwise it SKIPS (no throw). It throws CHK-A2 on mismatch
-// even under allowInsecureMock (it precedes the mock gate).
+// CHK-A2 runs only when both appCompose and composeHash are non-empty and
+// asserts sha256(appCompose) == composeHash. Both values are self-reported by
+// the node, so a pass proves internal consistency only, never compose trust.
 //
-// ⚠️ TRUST BOUNDARY — CHK-A2 is SELF-CONSISTENCY ONLY, NOT a trust anchor.
-// Both `app_compose` and `compose_hash` come from the SAME node (its own
-// /attestation response). The check only proves the node is internally
-// consistent: a malicious node simply reports an app_compose that hashes to its
-// own forged compose_hash and passes A2 trivially. It is attacker-forgeable and
-// raises the bar against accidental config drift ONLY. Real compose trust needs
-// (a) an INDEPENDENT compose source the node cannot forge, (b) the compose_hash
-// anchored into RTMR3 via event-log replay, and (c) a DCAP-verified quote — all
-// deferred to a future release.
-//
-// After A2, step-4 hardware-signature verification runs and is MANDATORY:
-// policy.hardwareVerifier IS the hardware root of trust for the call. If no
-// verifier is configured the function throws AttestationError (fail-closed — an
-// unattested response must never pass). On success it resolves; any verifier
-// failure throws. In the live SDK path core's buildVerifyPolicy always wires the
-// Phala CloudVerifier here. (`allowInsecureMock` / `CHK-MOCK` are a separate,
-// now-unused legacy gate — the mandatory verifier supersedes them.)
+// The hardware verifier is the root of trust: without one the call throws
+// CHK-P1, so an unattested response never passes.
 
 import { AttestationError } from "./errors";
 import type { AttestationBundle, VerifyPolicy } from "./types";
@@ -60,7 +35,7 @@ export async function verifyDstackAttestation(
     );
   }
   // parseReportData also shape-gates report_data to exactly 128 hex chars.
-  const parsed = parseReportData(bundle.quote.report_data);
+  const parsed = parseReportData(bundle.reportData);
   if (normHex(parsed.expectedPubkey) !== normHex(policy.binding.expectedPubkey)) {
     throw new AttestationError(
       "CHK-A1",
@@ -79,8 +54,8 @@ export async function verifyDstackAttestation(
   // app_compose + compose_hash are BOTH self-reported by the node, so a pass
   // proves only internal consistency (forgeable); it is NOT a hardware/trust
   // anchor. Anchoring (independent compose source + RTMR3 replay + DCAP) is future work.
-  const appCompose = bundle.tcbInfo?.app_compose ?? "";
-  const reportedComposeHash = bundle.tcbInfo?.compose_hash ?? "";
+  const appCompose = bundle.appCompose;
+  const reportedComposeHash = bundle.composeHash;
   // Dormant-skip when EITHER side is empty/absent (older nodes / the simulator's
   // empty composeHash). Both empties are handled explicitly here — no silent pass.
   if (appCompose !== "" && reportedComposeHash !== "") {

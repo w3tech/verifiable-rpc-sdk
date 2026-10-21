@@ -9,6 +9,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 
 import { AttestationError, createCloudVerifier, DEFAULT_PHALA_VERIFY_ENDPOINT } from "../src/index";
@@ -46,9 +47,11 @@ expect(composeHash.startsWith("05b361b4")).toBe(true);
 
 function makeBundle(composeHashOverride?: string): AttestationBundle {
   return {
-    quote: { quote: "deadbeef" },
-    tcbInfo: { compose_hash: composeHashOverride ?? composeHash },
-  } as unknown as AttestationBundle;
+    quote: "deadbeef",
+    reportData: "",
+    composeHash: composeHashOverride ?? composeHash,
+    appCompose: "",
+  };
 }
 
 function makePolicy(over?: { expectedPubkey?: string; expectedNonce?: string }): VerifyPolicy {
@@ -57,8 +60,8 @@ function makePolicy(over?: { expectedPubkey?: string; expectedNonce?: string }):
       expectedPubkey: over?.expectedPubkey ?? expectedPubkey,
       expectedNonce: over?.expectedNonce ?? expectedNonce,
     },
-    allowInsecureMock: false,
-  } as unknown as VerifyPolicy;
+    hardwareVerifier: mockHardwareVerifier(),
+  };
 }
 
 /** A 200 response whose body is the (possibly mutated) fixture. */
