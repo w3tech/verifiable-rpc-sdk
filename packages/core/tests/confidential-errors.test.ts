@@ -195,6 +195,12 @@ const rows: Row[] = [
   row("413", RequestRejected, "no", "keep", { answer: () => fromVector("request-too-large") }),
   row("429", RequestRejected, "no", "keep", { answer: () => plain(429, "text/plain") }),
   row("502", UnexpectedResponse, "unknown", "drop", { answer: () => plain(502, "text/plain") }),
+  row("0", UnexpectedResponse, "unknown", "drop", {
+    onPost: () => ({ status: 0, headers: new Headers(), body: new Uint8Array(0) }),
+  }),
+  row("302 message/ohttp-res", UnexpectedResponse, "unknown", "drop", {
+    answer: () => plain(302, "message/ohttp-res"),
+  }),
   row("no vRPC-Signature", MissingHeader, "unknown", "drop", {
     answer: edited(({ headers: { "vRPC-Signature": _, ...headers }, ...a }) => ({ ...a, headers })),
   }),

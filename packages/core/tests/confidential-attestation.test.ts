@@ -119,15 +119,14 @@ describe("ConfidentialClient attestation: attested key", () => {
 
 describe("ConfidentialClient attestation: a transport that ignores the size cap", () => {
   test.each([
-    [200, { reason: "too-large" }],
-    [503, { reason: "status", status: 503 }],
-  ])("a %i answer over 1 MiB is AttestationUnavailable", async (status, fields) => {
+    200, 503,
+  ])("a %i answer over 1 MiB is AttestationUnavailable too-large", async (status) => {
     const node = testNode();
     node.setAttestation(() => answer(status, new Uint8Array(1_048_577)));
     const err = await rejectionOf(clientFor(node.transport).ready());
 
     expect(err).toBeInstanceOf(AttestationUnavailable);
-    expect(err).toMatchObject(fields);
+    expect(err).toMatchObject({ reason: "too-large" });
   });
 });
 

@@ -16,12 +16,7 @@ import {
 import { AttestationFailed, AttestationUnavailable, InvalidNonce } from "./errors";
 import { byteLen, truncateHex } from "./log-redact";
 import { defaultLogger, type Logger } from "./logger";
-import {
-  type ConfidentialTransport,
-  fetchTransport,
-  type OuterResponse,
-  ResponseTooLarge,
-} from "./transport";
+import { type ConfidentialTransport, fetchTransport, guardedSend } from "./transport";
 import { getHeader } from "./verify";
 
 /**
@@ -106,28 +101,22 @@ async function getAttestation(
   transport: ConfidentialTransport,
   opts: GetAttestationOptions,
 ): Promise<{ attestation: Attestation; nodeId: string | undefined }> {
-  let response: OuterResponse;
-  try {
-    response = await transport({
+  const response = await guardedSend(
+    transport,
+    {
       method: "GET",
       url:
         `${opts.attestationUrl}?nonce=${bytesToHex(opts.nonce)}` +
         (opts.nodeId === undefined ? "" : `&node_id=${encodeURIComponent(opts.nodeId)}`),
       headers: opts.headers,
-      maxBytes: MAX_ATTESTATION_BYTES,
       ...(opts.signal === undefined ? {} : { signal: opts.signal }),
-    });
-  } catch (cause) {
-    if (opts.signal?.aborted) throw opts.signal.reason;
-    if (cause instanceof ResponseTooLarge) throw new AttestationUnavailable("too-large");
-    throw new AttestationUnavailable("transport", { cause });
-  }
+    },
+    MAX_ATTESTATION_BYTES,
+    (reason, cause) =>
+      new AttestationUnavailable(reason === "network" ? "transport" : "too-large", { cause }),
+  );
   if (response.status < 200 || response.status > 299) {
     throw new AttestationUnavailable("status", { status: response.status });
-  }
-  // Backstop for a transport that ignores maxBytes.
-  if (response.body.byteLength > MAX_ATTESTATION_BYTES) {
-    throw new AttestationUnavailable("too-large");
   }
   const nodeId = getHeader(response.headers, "vRPC-NodeId");
   if (opts.requireNodeId && (nodeId === null || nodeId === "")) {

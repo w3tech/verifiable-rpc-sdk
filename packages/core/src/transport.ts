@@ -2,6 +2,8 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Outer HTTP seam of the Ankr Confidential RPC client.
 
+import { raceAbort } from "./abort";
+import type { TransportFailedReason } from "./errors";
 import type { ResponseHeaders } from "./verify";
 
 // 192 MiB: above the 160 MiB gateway response cap, so it never fires first on a relayed answer.
@@ -24,8 +26,8 @@ export interface OuterResponse {
 }
 
 /**
- * Sends one outer request: the body byte for byte, no redirect following, no retry, honouring the signal.
- * Resolves with the content-decoded response body.
+ * Sends one outer request with the body byte for byte, without following redirects or retrying,
+ * and resolves with the content-decoded body. Core enforces the signal, the size cap and error sanitising.
  */
 export type ConfidentialTransport = (request: OuterRequest) => Promise<OuterResponse>;
 
@@ -122,6 +124,26 @@ export function fetchTransport(
       throw sanitised(err);
     }
   };
+}
+
+/** Sends one outer request through an injected transport, enforcing the signal and the size cap. */
+export async function guardedSend(
+  transport: ConfidentialTransport,
+  request: OuterRequest,
+  maxBytes: number,
+  fail: (reason: TransportFailedReason, cause?: unknown) => Error,
+): Promise<OuterResponse> {
+  const { signal } = request;
+  if (signal?.aborted) throw signal.reason;
+  let response: OuterResponse;
+  try {
+    response = await raceAbort(transport({ ...request, maxBytes }), signal);
+  } catch (err) {
+    if (signal?.aborted) throw signal.reason;
+    throw err instanceof ResponseTooLarge ? fail("too-large") : fail("network", err);
+  }
+  if (response.body.byteLength > maxBytes) throw fail("too-large");
+  return response;
 }
 
 export const defaultTransport: ConfidentialTransport = fetchTransport();

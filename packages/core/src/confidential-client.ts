@@ -4,7 +4,6 @@
 
 import { createCloudVerifier, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 
-import { raceAbort } from "./abort";
 import {
   decodeInnerResponse,
   encodeInnerRequest,
@@ -37,9 +36,8 @@ import { checkOptions, withoutContentType } from "./options";
 import {
   type ConfidentialTransport,
   defaultTransport,
+  guardedSend,
   MAX_RESPONSE_BYTES,
-  type OuterResponse,
-  ResponseTooLarge,
 } from "./transport";
 import { getHeader, verifyResponse } from "./verify";
 
@@ -216,23 +214,18 @@ export class ConfidentialClient {
       nodeId: pin.nodeId,
       requestBytes: sealed.body.byteLength,
     });
-    let response: OuterResponse;
-    try {
-      response = await raceAbort(
-        this.#transport({
-          method: "POST",
-          url: `${this.#confidentialUrl}?node_id=${encodeURIComponent(pin.nodeId)}`,
-          headers: { ...this.#headers, "content-type": OHTTP_REQUEST },
-          body: sealed.body,
-          ...(signal === undefined ? {} : { signal }),
-        }),
-        signal,
-      );
-    } catch (cause) {
-      if (signal?.aborted) throw signal.reason;
-      if (cause instanceof ResponseTooLarge) throw new TransportFailed("too-large", pin.nodeId);
-      throw new TransportFailed("network", pin.nodeId, { cause });
-    }
+    const response = await guardedSend(
+      this.#transport,
+      {
+        method: "POST",
+        url: `${this.#confidentialUrl}?node_id=${encodeURIComponent(pin.nodeId)}`,
+        headers: { ...this.#headers, "content-type": OHTTP_REQUEST },
+        body: sealed.body,
+        ...(signal === undefined ? {} : { signal }),
+      },
+      MAX_RESPONSE_BYTES,
+      (reason, cause) => new TransportFailed(reason, pin.nodeId, { cause }),
+    );
     const contentType = mediaType(getHeader(response.headers, "content-type"));
     this.#logger.debug("confidential.response", {
       nodeId: pin.nodeId,
@@ -241,15 +234,13 @@ export class ConfidentialClient {
       responseBytes: response.body.byteLength,
       durationMs: Date.now() - started,
     });
-    if (response.body.byteLength > MAX_RESPONSE_BYTES) {
-      throw new TransportFailed("too-large", pin.nodeId);
-    }
 
     const { status } = response;
     const reported = contentType === "" ? undefined : contentType;
     if (
       !Number.isInteger(status) ||
       status < 200 ||
+      (status >= 300 && status <= 399) ||
       status > 599 ||
       NULL_BODY_STATUSES.has(status)
     ) {
