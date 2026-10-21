@@ -3,7 +3,6 @@
 // TrustedVerifier: `verifyResponse`, then a TTL pubkey cache, then one shared `attestNode` per
 // unknown signer, bounded by a deadline. A pubkey is cached only after its attestation verified.
 
-import { bytesToHex } from "@noble/hashes/utils.js";
 import type { HardwareVerifier } from "@w3tech.io/dstack-verify";
 import { LRUCache } from "lru-cache";
 
@@ -91,8 +90,8 @@ export class TrustedVerifier {
         headers instanceof Headers ? Object.fromEntries(headers.entries()) : { ...headers };
       logger.debug("verify.start", {
         chainId: verifyOptions.chainId,
-        req: truncateHex(bytesToHex(requestBytes)),
-        res: truncateHex(bytesToHex(responseBytes)),
+        req: truncateHex(requestBytes),
+        res: truncateHex(responseBytes),
         headers: pickVrpcHeaders(headerRecord),
       });
     }
