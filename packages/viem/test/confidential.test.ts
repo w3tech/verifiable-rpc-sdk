@@ -18,7 +18,7 @@ import {
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { serveTestNode, type TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
-import { InvalidChainId, vrpcHttp } from "@w3tech.io/vrpc-viem";
+import { InvalidOption, vrpcHttp } from "@w3tech.io/vrpc-viem";
 import {
   BaseError,
   createPublicClient,
@@ -494,13 +494,13 @@ describe("configuration errors", () => {
     return () => spies.reduce((n, spy) => n + spy.mock.calls.length, 0);
   }
 
-  test("a client without a chain throws InvalidChainId synchronously", async () => {
+  test("a client without a chain throws InvalidOption synchronously", async () => {
     const { server } = await harness();
     const consoleCalls = spyConsole();
 
-    expect(() => createPublicClient({ transport: confidential(server) })).toThrow(InvalidChainId);
+    expect(() => createPublicClient({ transport: confidential(server) })).toThrow(InvalidOption);
     expect(() => createPublicClient({ transport: fallback([confidential(server)]) })).toThrow(
-      InvalidChainId,
+      InvalidOption,
     );
     expect(server.requests).toEqual([]);
     expect(consoleCalls()).toBe(0);
@@ -511,7 +511,7 @@ describe("configuration errors", () => {
     const transport = confidential(server);
     const first = createPublicClient({ chain: arbitrum, transport });
 
-    expect(() => createPublicClient({ chain: mainnet, transport })).toThrow(InvalidChainId);
+    expect(() => createPublicClient({ chain: mainnet, transport })).toThrow(InvalidOption);
     const second = createPublicClient({ chain: arbitrum, transport });
     await first.getBlockNumber({ cacheTime: 0 });
     await second.getBlockNumber({ cacheTime: 0 });

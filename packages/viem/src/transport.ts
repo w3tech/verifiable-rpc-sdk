@@ -12,7 +12,7 @@ import {
   createCloudVerifier,
   deriveVrpcUrls,
   fetchTransport,
-  InvalidChainId,
+  InvalidOption,
   isSignedVrpcResponse,
   parseChainId,
   TrustedVerifier,
@@ -235,7 +235,7 @@ const utf8Decoder = new TextDecoder();
 /** Returns the chain a transport serves: `pinned`, or `chainId` while nothing is pinned. */
 function bindChainId(pinned: string | undefined, chainId: string): string {
   if (pinned !== undefined && pinned !== chainId) {
-    throw new InvalidChainId(chainId, `this transport is bound to chain ${pinned}`);
+    throw new InvalidOption("chainId", "this transport is bound to another chain");
   }
   return chainId;
 }
@@ -268,7 +268,7 @@ function confidentialHttp(
 
   return ({ chain, timeout: injectedTimeout }) => {
     if (chain?.id == null) {
-      throw new InvalidChainId("", "Ankr Confidential RPC mode needs the client's chain");
+      throw new InvalidOption("chainId", "Ankr Confidential RPC mode needs the client's chain");
     }
     const chainId = String(chain.id);
     boundChainId = bindChainId(boundChainId, chainId);

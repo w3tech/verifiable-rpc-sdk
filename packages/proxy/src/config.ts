@@ -6,7 +6,7 @@
 
 import { parseArgs } from "node:util";
 
-import { deriveVrpcUrls, validateChainId } from "@w3tech.io/vrpc-core";
+import { checkOptions, deriveVrpcUrls } from "@w3tech.io/vrpc-core";
 
 import { ConfigError } from "./errors";
 import type { LogLevel } from "./logger";
@@ -104,8 +104,8 @@ function parseConfidential(flag: boolean | undefined, env: string | undefined): 
 /**
  * Parse and validate the proxy configuration from CLI argv and environment.
  * Throws ConfigError for any transport/config problem and lets core's
- * InvalidChainId propagate from validateChainId — cli.ts catches both
- * families and exits non-zero before the listen socket binds.
+ * InvalidOption propagate from checkOptions — cli.ts catches both and exits
+ * non-zero before the listen socket binds.
  */
 export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig {
   let values: {
@@ -148,8 +148,7 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
     throw new ConfigError(`--upstream is not a valid URL: ${JSON.stringify(upstream)}`);
   }
 
-  // Throws core's typed InvalidChainId on a bad chain id — propagates.
-  const chainId = validateChainId(chain);
+  const { chainId } = checkOptions({ chainId: chain });
 
   const timeoutRaw = values.timeout ?? env.VRPC_PROXY_TIMEOUT;
   const upstreamTimeoutMs =

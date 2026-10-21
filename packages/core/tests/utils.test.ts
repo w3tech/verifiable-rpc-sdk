@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { MalformedHeader } from "../src/errors";
+import { InvalidChainId, MalformedHeader, VerificationError } from "../src/errors";
 import { parseChainId } from "../src/utils";
 
 const encode = (s: string): Uint8Array => new TextEncoder().encode(s);
@@ -26,5 +26,18 @@ describe("parseChainId", () => {
   test("throwsMalformedHeaderOnNonHexResult", () => {
     const body = JSON.stringify({ jsonrpc: "2.0", id: 1, result: "42161" });
     expect(() => parseChainId(encode(body))).toThrow(MalformedHeader);
+  });
+
+  test("throwsInvalidChainIdThatMayHaveExecutedWhenTheDecimalIdIsTooLong", () => {
+    const body = JSON.stringify({ jsonrpc: "2.0", id: 1, result: `0x${"f".repeat(60)}` });
+    let err: unknown;
+    try {
+      parseChainId(encode(body));
+    } catch (caught) {
+      err = caught;
+    }
+    expect(err).toBeInstanceOf(InvalidChainId);
+    expect(err).toBeInstanceOf(VerificationError);
+    expect(err).toMatchObject({ executed: "unknown" });
   });
 });

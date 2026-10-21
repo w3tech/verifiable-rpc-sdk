@@ -78,12 +78,12 @@ export class MalformedHeader extends VerificationError {
 }
 
 /**
- * Configured chain id failed validation (`validateChainId`). Chain ids are
- * opaque strings that must be non-empty after trimming, at most 64 UTF-8
- * bytes, and printable ASCII with no whitespace — mirroring the sidecar's
- * `validate_chain_id` boot check. Thrown synchronously from client
- * construction and from `verifyResponse` entry; the `reason` names the failed
- * constraint.
+ * A chain id failed `validateChainId`. Chain ids are opaque strings that must
+ * be non-empty after trimming, at most 64 UTF-8 bytes, and printable ASCII with
+ * no whitespace — mirroring the sidecar's `validate_chain_id` boot check.
+ * Thrown for an id derived from a node's `eth_chainId` answer (`parseChainId`)
+ * and from `verifyResponse` entry; client constructors report a bad `chainId`
+ * option as `InvalidOption`. The `reason` names the failed constraint.
  */
 export class InvalidChainId extends VerificationError {
   readonly kind = "InvalidChainId" as const;

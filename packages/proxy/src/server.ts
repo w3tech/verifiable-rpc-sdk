@@ -4,7 +4,7 @@
 // for the process lifetime (its LRU pubkey cache makes verification
 // network-free on cache hits), or one ConfidentialClient in Ankr Confidential
 // RPC mode, and returns an http.Server. Both constructors are synchronous
-// fail-fast — an invalid chain id throws InvalidChainId here, before any
+// fail-fast — an invalid option throws InvalidOption here, before any
 // listen socket binds.
 
 import http from "node:http";

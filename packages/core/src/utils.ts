@@ -5,8 +5,10 @@
 // self-consistent verify. A malformed body (invalid JSON, or a missing / non-0x-hex
 // `result`) throws MalformedHeader so it reads as a verify failure, consistent with
 // the fail-fast bootstrap contract — never an opaque SyntaxError / TypeError.
+// A derived id the sidecar would reject is InvalidChainId: the request was already sent.
 
 import { MalformedHeader } from "./errors";
+import { validateChainId } from "./preimage";
 
 /**
  * Decode + parse a chainId (as a DECIMAL STRING, e.g. `"42161"` for `0xa4b1`)
@@ -38,5 +40,5 @@ export function parseChainId(rawResponseBytes: Uint8Array): string {
       "auto-derived chainId could not be parsed: expected 0x-hex chain id",
     );
   }
-  return BigInt(parsed.result).toString(10);
+  return validateChainId(BigInt(parsed.result).toString(10));
 }

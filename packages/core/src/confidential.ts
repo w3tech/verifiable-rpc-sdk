@@ -25,7 +25,6 @@ export {
   ConfidentialDecryptFailed,
   ConfidentialSignerMismatch,
   InternalError,
-  InvalidChainId,
   InvalidInnerRequest,
   InvalidOption,
   MalformedAttestationResponse,

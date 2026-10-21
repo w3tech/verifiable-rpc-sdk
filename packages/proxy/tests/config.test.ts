@@ -4,7 +4,7 @@
 // defaults, env fallbacks with CLI precedence, attestation headers, and
 // attestation-URL derivation. Pure — no server, no network.
 
-import { deriveVrpcUrls, InvalidChainId } from "@w3tech.io/vrpc-core";
+import { deriveVrpcUrls } from "@w3tech.io/vrpc-core";
 import { describe, expect, test } from "vitest";
 
 import { parseConfig } from "../src/config";
@@ -31,14 +31,10 @@ describe("parseConfig", () => {
     );
   });
 
-  test("invalidChainIdPropagatesCoreInvalidChainId", () => {
-    const args = (chain: string) => ["--upstream", UPSTREAM, "--chain-id", chain];
-    // Whitespace-only trims to empty.
-    expect(() => parseConfig(args("   "), {})).toThrow(InvalidChainId);
-    // Oversized: > 64 UTF-8 bytes.
-    expect(() => parseConfig(args("a".repeat(65)), {})).toThrow(InvalidChainId);
-    // Non-printable-ASCII.
-    expect(() => parseConfig(args("café"), {})).toThrow(InvalidChainId);
+  test.each(["   ", "a".repeat(65), "café"])("chain id %j is InvalidOption", (chain) => {
+    expect(() => parseConfig(["--upstream", UPSTREAM, "--chain-id", chain], {})).toThrow(
+      expect.objectContaining({ name: "InvalidOption", option: "chainId" }),
+    );
   });
 
   test("unknownFlagThrowsConfigError", () => {

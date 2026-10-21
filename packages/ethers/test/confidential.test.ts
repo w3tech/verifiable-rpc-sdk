@@ -5,7 +5,7 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { UnexpectedResponse } from "@w3tech.io/vrpc-core";
-import { InvalidChainId, type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
+import { type VrpcOptions, VrpcProvider } from "@w3tech.io/vrpc-ethers";
 import {
   attestationStub,
   CHAIN_ID,
@@ -423,9 +423,11 @@ describe("configuration errors", () => {
     const make = (chainId: number | string | undefined, options: Record<string, unknown>) => () =>
       new VrpcProvider(url, chainId, { hardwareVerifier: mockHardwareVerifier(), ...options });
 
-    expect(make(undefined, { confidential: true })).toThrow(InvalidChainId);
-    expect(make("eip155:42161", { confidential: true })).toThrow(InvalidChainId);
-    expect(make(-1, { confidential: true })).toThrow(InvalidChainId);
+    for (const chainId of [undefined, "eip155:42161", -1]) {
+      expect(make(chainId, { confidential: true })).toThrow(
+        expect.objectContaining({ name: "InvalidOption", option: "chainId" }),
+      );
+    }
     expect(make(42161, { confidential: "true" })).toThrow(TypeError);
     expect(make(42161, { confidential: 1 })).toThrow(TypeError);
     for (const name of ["replayWindowMs", "pubkeyCacheTtlMs"]) {

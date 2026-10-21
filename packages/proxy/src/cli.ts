@@ -11,7 +11,6 @@ import {
   DEFAULT_PUBKEY_CACHE_TTL_MS,
   DEFAULT_REPLAY_WINDOW_MS,
   InvalidOption,
-  VerificationError,
 } from "@w3tech.io/vrpc-core";
 
 import { type ProxyConfig, parseConfig } from "./config";
@@ -55,11 +54,7 @@ function loadConfig(): ProxyConfig {
   try {
     return parseConfig(argv, process.env);
   } catch (err) {
-    if (
-      err instanceof ProxyError ||
-      err instanceof VerificationError ||
-      err instanceof InvalidOption
-    ) {
+    if (err instanceof ProxyError || err instanceof InvalidOption) {
       fail(err.message);
     }
     throw err;
@@ -70,11 +65,7 @@ function buildServer(config: ProxyConfig): http.Server {
   try {
     return createProxyServer(config);
   } catch (err) {
-    if (
-      err instanceof ProxyError ||
-      err instanceof VerificationError ||
-      err instanceof InvalidOption
-    ) {
+    if (err instanceof ProxyError || err instanceof InvalidOption) {
       fail(err.message);
     }
     throw err;

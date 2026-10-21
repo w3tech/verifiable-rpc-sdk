@@ -25,7 +25,7 @@ import {
 } from "@w3tech.io/vrpc-test-support";
 import {
   BadSignature,
-  InvalidChainId,
+  InvalidOption,
   MalformedHeader,
   MissingHeader,
   StaleTimestamp,
@@ -258,7 +258,7 @@ describe("vrpcHttp transport wiring", () => {
     );
   });
 
-  test("a client on another chain gets InvalidChainId and sends nothing", async () => {
+  test("a client on another chain gets InvalidOption and sends nothing", async () => {
     const counter = { n: 0 };
     const t = vrpcHttp(URL, {
       fetchFn: signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX), { counter }),
@@ -268,11 +268,11 @@ describe("vrpcHttp transport wiring", () => {
     const a = t(PINNED);
     const b = t(OTHER_CHAIN);
     await expect(a.config.request(GET_BALANCE)).resolves.toBe(SINGLE_RESULT_BALANCE_HEX);
-    await expect(b.config.request(GET_BALANCE)).rejects.toBeInstanceOf(InvalidChainId);
+    await expect(b.config.request(GET_BALANCE)).rejects.toBeInstanceOf(InvalidOption);
     expect(counter.n).toBe(1);
   });
 
-  test("a transport pinned to a wrong chain gives InvalidChainId to a client on the right chain", async () => {
+  test("a transport pinned to a wrong chain gives InvalidOption to a client on the right chain", async () => {
     const t = vrpcHttp(URL, {
       fetchFn: signingFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX)),
       replayWindowMs: WIDE_WINDOW,
@@ -281,7 +281,7 @@ describe("vrpcHttp transport wiring", () => {
     const wrong = t(OTHER_CHAIN);
     const right = t(PINNED);
     await expect(wrong.config.request(GET_BALANCE)).rejects.toBeInstanceOf(BadSignature);
-    await expect(right.config.request(GET_BALANCE)).rejects.toBeInstanceOf(InvalidChainId);
+    await expect(right.config.request(GET_BALANCE)).rejects.toBeInstanceOf(InvalidOption);
   });
 
   test("a chain pinned while the bootstrap is in flight is not overwritten by it", async () => {
@@ -316,7 +316,7 @@ describe("vrpcHttp transport wiring", () => {
     releaseSecondRead();
 
     await expect(otherChainRead).rejects.toBeInstanceOf(BadSignature);
-    await expect(noChain).rejects.toBeInstanceOf(InvalidChainId);
+    await expect(noChain).rejects.toBeInstanceOf(InvalidOption);
   });
 
   // a uint256 view eth_call → ABI-encoded result verifies + decodes.

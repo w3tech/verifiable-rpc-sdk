@@ -138,17 +138,6 @@ export class InternalError extends UnavailableError {
 }
 
 // @public
-export class InvalidChainId extends VerificationError {
-    constructor(chainId: string, reason: string);
-    // (undocumented)
-    readonly chainId: string;
-    // (undocumented)
-    readonly kind: "InvalidChainId";
-    // (undocumented)
-    readonly reason: string;
-}
-
-// @public
 export class InvalidInnerRequest extends VrpcError {
     constructor(reason: InvalidInnerRequestReason);
     // (undocumented)

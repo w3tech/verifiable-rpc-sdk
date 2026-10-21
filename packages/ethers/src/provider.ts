@@ -9,7 +9,7 @@
 import {
   createCloudVerifier,
   deriveVrpcUrls,
-  InvalidChainId,
+  InvalidOption,
   parseChainId,
   TrustedVerifier,
   type TrustedVerifierOptions,
@@ -126,12 +126,12 @@ export class VrpcProvider extends JsonRpcProvider {
     }
     if (confidential === true) {
       if (chainId === undefined) {
-        throw new InvalidChainId("", "Ankr Confidential RPC mode needs a pinned chain id");
+        throw new InvalidOption("chainId", "Ankr Confidential RPC mode needs a pinned chain id");
       }
       // A non-decimal id leaves ethers without a network: it would retry detection forever.
       if (!/^\d+$/.test(chainId)) {
-        throw new InvalidChainId(
-          chainId,
+        throw new InvalidOption(
+          "chainId",
           "Ankr Confidential RPC mode with ethers needs a decimal chain id",
         );
       }
