@@ -139,6 +139,7 @@ pnpm example:01-ethers-client          # ethers drop-in
 pnpm example:02-viem-client            # viem transport
 pnpm example:03-vrpc-core-walkthrough  # the core primitives, step by step
 pnpm example:04-proxy                  # the proxy in front of a plain fetch
+ANKR_API_KEY=<your key> pnpm example:05-confidential  # Ankr Confidential RPC mode
 ```
 
 The proxy image is signed (cosign) and carries build provenance — see [`packages/proxy/README.md`](../packages/proxy/README.md).

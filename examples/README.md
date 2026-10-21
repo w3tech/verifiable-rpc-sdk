@@ -9,6 +9,7 @@ Arbitrum vRPC endpoint.
 | 02 | `02-viem-client.ts` | Drop-in **viem** transport (`vrpcHttp`) wired into `createPublicClient` — the same calls, verified inside the transport. |
 | 03 | `03-vrpc-core-walkthrough.ts` | Step-by-step **`@w3tech.io/vrpc-core`**: signed wire → `verifyResponse` → tamper→`BadSignature` → `fetchAttestation` → `TrustedVerifier`. |
 | 04 | `04-proxy.ts` | Local verifying **proxy** (`@w3tech.io/vrpc-proxy`) spawned as a child process — a plain `fetch` client with zero SDK imports gets fail-closed-verified responses. |
+| 05 | `05-confidential.ts` | **Ankr Confidential RPC mode** with ethers (`{ confidential: true }`) and viem (`vrpcHttp(url, { confidential: true })`): attest and pin the node, then the same calls encrypted to it. See the [core README](../packages/core/README.md#ankr-confidential-rpc-mode). |
 
 ## Run
 
@@ -20,6 +21,12 @@ ANKR_API_KEY=<your key> pnpm example:all   # key optional — see note below
 Examples 01-03 send the key as an `x-api-key` header; 04 passes it to the proxy
 with `--api-key`. Without `ANKR_API_KEY`, example 04 still runs end-to-end and
 demonstrates the proxy's fail-closed refusal instead of a verified-success result.
+
+Example 05 is not part of `example:all`. It needs a key and a gateway that serves the encrypted endpoint; set `VRPC_URL` to point it at another vRPC route:
+
+```sh
+ANKR_API_KEY=<your key> VRPC_URL=<vRPC route> pnpm example:05-confidential
+```
 
 To point at a different chain, edit the URL (`https://rpc.ankr.com/<chain>_vrpc`)
 and chain id in the example. The URL is the explicit vRPC route, used verbatim
