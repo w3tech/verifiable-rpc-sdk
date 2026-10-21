@@ -6,6 +6,8 @@ Ed25519-verified over its raw content-decoded bytes before the value reaches
 your code. In the default `strict` mode a verification failure is thrown, never
 silently passed through.
 
+Upgrading from 0.3.2? See [Upgrading from 0.3 to 0.4](#upgrading-from-03-to-04).
+
 Before you rely on the signature, read the README's
 [What is verified / What is NOT verified](./README.md#what-is-verified--and-what-is-not)
 section — the trust boundary is **signed + untampered + fresh + correctly bound**,
@@ -249,6 +251,47 @@ try {
 > surfaces it as `RpcRequestError` (mapped by code), and ethers surfaces it as a
 > normal JSON-RPC error — verification only gates the signature, not the RPC
 > result semantics.
+
+## Upgrading from 0.3 to 0.4
+
+Each entry is a change for code written against 0.3.2. Ankr Confidential RPC
+was not part of 0.3.2; it is listed under [New in 0.4](#new-in-04).
+
+### @w3tech.io/vrpc-core
+
+The error changes apply to the same classes re-exported by
+`@w3tech.io/vrpc-core/errors`, `@w3tech.io/vrpc-ethers` and `@w3tech.io/vrpc-viem`.
+
+| 0.3.2 | 0.4 | What to do |
+| --- | --- | --- |
+| `MalformedAttestationResponse` | `AttestationFailed` with `reason: "malformed"` (field path in `detail`) | Catch `AttestationFailed` |
+| `AttestationCorrelationError` | `AttestationFailed` with `reason: "pubkey-mismatch"` | Catch `AttestationFailed` |
+| `AttestationNodeNotFoundError` | `AttestationUnavailable` with `reason: "status"`, `status: 404` | Catch `AttestationUnavailable` |
+| `new AttestationFailed(chkId, detail, { cause })`, `kind: "Attestation"`, `chkId: string` | `new AttestationFailed(reason, detail, { chkId, cause })`, `kind: "AttestationFailed"`, `reason: AttestationFailedReason`, `chkId` set only for `reason: "check"` | Match on `err.reason` |
+| `VerificationErrorKind` has `"MalformedAttestationResponse"`, `"AttestationNodeNotFound"`, `"AttestationCorrelation"`, `"Attestation"` | One literal `"AttestationFailed"` | Update `switch (err.kind)` |
+| `VerificationError extends Error` | `VerificationError extends VrpcError`, with `executed: "no" \| "unknown"` | Nothing; `instanceof VerificationError` still works |
+| `verifyAttestationCorrelation` | Removed; `TrustedVerifier` checks the correlation | Use `TrustedVerifier` |
+| `TrustedVerifierOptions.nonceSource`, `TrustedVerifierOptions.verifyAttestation` | Removed | Drop them; customise the attestation check with `hardwareVerifier` |
+| `DEFAULT_PUBKEY_CACHE_MAX` | Removed; the `pubkeyCacheMax` default is still 1024 | Use the literal |
+| `safeLogger`, `truncateHex` | Removed | Nothing; a `Logger` must not throw |
+| `VrpcUrls` is `{ rpcUrl, attestationUrl }` | Also has `confidentialUrl` | Build it with `deriveVrpcUrls(url)` |
+
+### @w3tech.io/dstack-verify
+
+| 0.3.2 | 0.4 | What to do |
+| --- | --- | --- |
+| `VerifyPolicy` has `allowlist`, `tcb`, `pccsUrl`, `allowInsecureMock`, optional `hardwareVerifier` | `{ binding, hardwareVerifier, logger? }`; `hardwareVerifier` is required | `{ binding, hardwareVerifier: createCloudVerifier() }` |
+| `AttestationBundle` is `{ quote: QuoteEnvelope, tcbInfo, pubkey, nonce, signature_chain, appId?, instanceId? }` | `{ quote, reportData, composeHash, appCompose }`, all strings, `""` means absent; pubkey and nonce come from `policy.binding` | In a custom `HardwareVerifier`, read `bundle.quote` and `bundle.composeHash` instead of `bundle.quote.quote` and `bundle.tcbInfo.compose_hash` |
+| `EventLogEntry`, `QuoteEnvelope`, `TcbInfo`, `PinnedAllowlist`, `TcbPolicy`, `KeyProvider`, `EMPTY_ALLOWLIST` | Removed | Delete the references |
+| `ChkId` `"CHK-MOCK"`, `ChkDisposition` `"mock-deny"`, `CHK["CHK-MOCK"]` | Removed | Delete the references |
+
+### @w3tech.io/vrpc-proxy
+
+| 0.3.2 | 0.4 | What to do |
+| --- | --- | --- |
+| `createProxyServer(config, overrides?)`, type `ProxyTestOverrides` | `createProxyServer(config)` | Drop the second argument |
+| `errorResponseBody`, `InternalProxyError` | Removed | Delete the references |
+| `new UpstreamBodyTooLargeError(maxBodyBytes)` with `maxBodyBytes` | `new UpstreamBodyTooLargeError()`, no `maxBodyBytes` | Read the limit from your `ProxyConfig.maxBodyBytes` |
 
 ---
 
