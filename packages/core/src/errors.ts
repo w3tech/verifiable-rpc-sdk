@@ -81,6 +81,8 @@ export class MalformedHeader extends VerificationError {
  * Thrown for an id derived from a node's `eth_chainId` answer (`parseChainId`)
  * and from `verifyResponse` entry; client constructors report a bad `chainId`
  * option as `InvalidOption`. The `reason` names the failed constraint.
+ * `parseChainId` also throws it, with `chainId` `"<unverified>"`, for a body
+ * that is not JSON or has no 0x-hex `result`.
  */
 export class InvalidChainId extends VerificationError {
   readonly kind = "InvalidChainId" as const;

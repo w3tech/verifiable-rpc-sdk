@@ -1,7 +1,7 @@
 import { thrownBy } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 
-import { InvalidChainId, MalformedHeader, VerificationError } from "../src/errors";
+import { InvalidChainId, VerificationError } from "../src/errors";
 import { parseChainId } from "../src/utils";
 
 const encode = (s: string): Uint8Array => new TextEncoder().encode(s);
@@ -20,13 +20,13 @@ describe("parseChainId", () => {
     expect(parseChainId(encode(body))).toBe("18446744073709551615");
   });
 
-  test("throwsMalformedHeaderOnInvalidJson", () => {
-    expect(() => parseChainId(encode("not json"))).toThrow(MalformedHeader);
+  test.each(["", "not json"])("throwsInvalidChainIdOnAnEmptyOrNonJsonBody %j", (body) => {
+    expect(() => parseChainId(encode(body))).toThrow(InvalidChainId);
   });
 
-  test("throwsMalformedHeaderOnNonHexResult", () => {
+  test("throwsInvalidChainIdOnNonHexResult", () => {
     const body = JSON.stringify({ jsonrpc: "2.0", id: 1, result: "42161" });
-    expect(() => parseChainId(encode(body))).toThrow(MalformedHeader);
+    expect(() => parseChainId(encode(body))).toThrow(InvalidChainId);
   });
 
   test("throwsInvalidChainIdThatMayHaveExecutedWhenTheDecimalIdIsTooLong", () => {

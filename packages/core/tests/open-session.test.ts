@@ -91,7 +91,7 @@ describe("createOpenSession bootstrap", () => {
     ["lying chain id", { chain: "1" }, "BadSignature"],
     ["tampered", { tamper: true }, "BadSignature"],
     ["unsigned", { unsigned: true }, "MissingHeader"],
-    ["malformed", { unsigned: true, body: "not json" }, "MalformedHeader"],
+    ["malformed", { unsigned: true, body: "not json" }, "InvalidChainId"],
     ["chain id over 64 bytes", { body: `{"result":"0x${"f".repeat(60)}"}` }, "InvalidChainId"],
     ["signed non-2xx", { status: 503 }, "httpError"],
     ["unsigned non-2xx", { status: 503, unsigned: true }, "httpError"],
@@ -110,11 +110,11 @@ describe("createOpenSession bootstrap", () => {
       "invalid UTF-8",
       new Uint8Array([...utf8.encode('{"result":"0xa4b1","x":"'), 0xff, 0x22, 0x7d]),
     ],
-  ])("an unverified %s bootstrap body is MalformedHeader that never echoes it", async (_, body) => {
+  ])("an unverified %s bootstrap body is InvalidChainId that never echoes it", async (_, body) => {
     const { s } = session();
     const err = await s.send(READ, node({}, { body }).post).catch((e: unknown) => e);
-    expect(err).toMatchObject({ kind: "MalformedHeader" });
-    expect(`${String(err)}${(err as { value: string }).value}`.length).toBeLessThan(200);
+    expect(err).toMatchObject({ kind: "InvalidChainId" });
+    expect(`${String(err)}${(err as { chainId: string }).chainId}`.length).toBeLessThan(200);
   });
 
   test("a failed bootstrap leaves no memo and the next send bootstraps again", async () => {
