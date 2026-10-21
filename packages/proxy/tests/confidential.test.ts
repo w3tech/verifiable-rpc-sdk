@@ -3,7 +3,7 @@
 // Ankr Confidential RPC mode end to end against the in-test node behind a loopback server.
 
 import { ConfidentialClient, InvalidOption } from "@w3tech.io/vrpc-core/confidential";
-import { createTestNode, TEST_SEED } from "@w3tech.io/vrpc-test-support";
+import { createTestNode, NODE_ID } from "@w3tech.io/vrpc-test-support";
 import {
   type ServedRequest,
   serveTestNode,
@@ -40,9 +40,7 @@ afterEach(async () => {
 async function startNode(seen: SeenInner[] = []): Promise<TestNodeServer> {
   nodeServer = await serveTestNode(
     createTestNode({
-      seed: TEST_SEED,
       chainId: TEST_CHAIN_ID,
-      nodeId: "proxy-node-1",
       upstream: async (inner) => {
         seen.push({
           method: inner.method,
@@ -122,7 +120,7 @@ describe("confidential mode", () => {
     expect(node.requests).toHaveLength(2);
     const [post] = posts(node.requests);
     expect(post?.path).toBe("/test_vrpc/confidential");
-    expect(post?.url).toBe(`${post?.path}?node_id=proxy-node-1`);
+    expect(post?.url).toBe(`${post?.path}?node_id=${NODE_ID}`);
     expect(post?.headers["content-type"]).toBe("message/ohttp-req");
     expect(post?.headers["accept-encoding"]).toBe("identity");
     expect(post?.headers["x-api-key"]).toBe(API_KEY);
@@ -149,7 +147,7 @@ describe("confidential mode", () => {
 
     const sealed = posts(node.requests);
     expect(sealed).toHaveLength(11);
-    expect(sealed.every((r) => r.url === `${r.path}?node_id=proxy-node-1`)).toBe(true);
+    expect(sealed.every((r) => r.url === `${r.path}?node_id=${NODE_ID}`)).toBe(true);
     expect(gets(node.requests)).toHaveLength(1);
     expect(node.node.attestations()).toBe(1);
   });

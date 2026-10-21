@@ -10,7 +10,6 @@ import {
   jsonRpcCall,
   mockHardwareVerifier,
   NODE_ID,
-  NODE_SEED,
   rejectionOf,
   TEST_SEED,
   type TestNode,
@@ -54,7 +53,7 @@ interface Harness {
 }
 
 function harness(verifierFailure?: Error): Harness {
-  const node = createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
+  const node = createTestNode();
   const logger = collectingLogger();
   const h = { node, logger, posts: 0 } as Harness;
   h.client = new ConfidentialClient({

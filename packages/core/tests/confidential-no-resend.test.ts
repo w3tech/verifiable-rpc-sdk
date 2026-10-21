@@ -7,8 +7,6 @@ import {
   jsonRpcCall,
   KEY,
   mockHardwareVerifier,
-  NODE_ID,
-  NODE_SEED,
   rejectionOf,
 } from "@w3tech.io/vrpc-test-support";
 import {
@@ -33,9 +31,6 @@ afterEach(async () => {
 
 async function serve(options: TestNodeServerOptions = {}): Promise<TestNodeServer> {
   const node = createTestNode({
-    seed: NODE_SEED,
-    chainId: CHAIN_ID,
-    nodeId: NODE_ID,
     upstream: () => ({
       status: 200,
       headers: { "content-type": "application/json" },

@@ -6,13 +6,10 @@ import * as conf from "@w3tech.io/vrpc-core/confidential";
 import * as errors from "@w3tech.io/vrpc-core/errors";
 import * as adapter from "@w3tech.io/vrpc-ethers";
 import {
-  CHAIN_ID,
   createTestNode,
   KEY,
   mockHardwareVerifier,
-  NODE_ID,
   rejectionOf,
-  TEST_SEED,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { describeAdapterErrors } from "@w3tech.io/vrpc-test-support/adapter";
@@ -30,9 +27,6 @@ describeAdapterErrors("ethers", { adapter, core, errors, confidential: conf });
 describe("an error from a live call", () => {
   test("a rejected sealed call is an instance of the classes from every entry", async () => {
     const node = createTestNode({
-      seed: TEST_SEED,
-      chainId: CHAIN_ID,
-      nodeId: NODE_ID,
       upstream: async (request): Promise<TestUpstreamResponse> => {
         const call = JSON.parse(await request.text()) as { id: number };
         return {

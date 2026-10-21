@@ -13,7 +13,6 @@ import {
   NODE_ID,
   rejectionOf,
   signedJsonHeaders,
-  TEST_SEED,
   type TestNode,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
@@ -78,9 +77,6 @@ const blockNumber16 = rpc(() => "0x10");
 async function harness(upstream: Upstream = blockNumber16): Promise<Harness> {
   const seen: UpstreamSeen[] = [];
   const node = createTestNode({
-    seed: TEST_SEED,
-    chainId: CHAIN_ID,
-    nodeId: NODE_ID,
     upstream: async (request) => {
       const body = await request.text();
       seen.push({

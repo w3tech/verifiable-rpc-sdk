@@ -5,14 +5,12 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 import { gzipSync } from "node:zlib";
-import { CHAIN_ID, NODE_ID } from "./fixtures";
 import {
   createTestNode,
   type TestNode,
   type TestNodeOptions,
   type TestOuterResponse,
 } from "./node";
-import { TEST_SEED } from "./sign";
 
 export interface ServedRequest {
   method: string;
@@ -167,13 +165,12 @@ export async function serveTestNode(
   };
 }
 
-/** Serves a test node with the shared seed, chain and node id in front of `upstream`. */
+/** Serves a default test node in front of `upstream`. */
 export function serveUpstream(
   upstream: NonNullable<TestNodeOptions["upstream"]>,
   options?: TestNodeServerOptions,
 ): Promise<TestNodeServer> {
-  const node = createTestNode({ seed: TEST_SEED, chainId: CHAIN_ID, nodeId: NODE_ID, upstream });
-  return serveTestNode(node, options);
+  return serveTestNode(createTestNode({ upstream }), options);
 }
 
 /** Leaves every later sealed POST unanswered; returns the bodies received. */

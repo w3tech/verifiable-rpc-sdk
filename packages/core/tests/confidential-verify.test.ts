@@ -7,8 +7,6 @@ import {
   createTestNode,
   jsonRpcCall,
   mockHardwareVerifier,
-  NODE_ID,
-  NODE_SEED,
   rejectionOf,
   TEST_SEED,
   type TestOuterResponse,
@@ -32,12 +30,7 @@ const OHTTP_RES = { "content-type": "message/ohttp-res" };
 const text = new TextDecoder();
 
 function setup(upstream?: () => TestUpstreamResponse) {
-  const node = createTestNode({
-    seed: NODE_SEED,
-    chainId: CHAIN_ID,
-    nodeId: NODE_ID,
-    ...(upstream === undefined ? {} : { upstream }),
-  });
+  const node = createTestNode({ upstream });
   const client = new ConfidentialClient({
     url: "https://rpc.example/eth_vrpc",
     chainId: CHAIN_ID,

@@ -223,9 +223,6 @@ function addWindows(sentinels: Set<string>, body: Uint8Array): void {
 
 function testNode(): TestNode {
   return createTestNode({
-    seed: NODE_SEED,
-    chainId: CHAIN_ID,
-    nodeId: NODE_ID,
     upstream: () => ({
       status: 200,
       headers: { "content-type": "application/json" },

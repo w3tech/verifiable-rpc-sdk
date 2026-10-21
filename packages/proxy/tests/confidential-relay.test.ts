@@ -7,7 +7,6 @@ import {
   bhttpField,
   bhttpOkResponse,
   createTestNode,
-  TEST_SEED,
   type TestUpstreamResponse,
 } from "@w3tech.io/vrpc-test-support";
 import {
@@ -75,9 +74,7 @@ afterEach(async () => {
 async function setup(): Promise<{ node: TestNodeServer; url: string }> {
   const node = await serveTestNode(
     createTestNode({
-      seed: TEST_SEED,
       chainId: TEST_CHAIN_ID,
-      nodeId: "relay-node-1",
       upstream: async (inner) => {
         const url = new URL(inner.url);
         seen.push({

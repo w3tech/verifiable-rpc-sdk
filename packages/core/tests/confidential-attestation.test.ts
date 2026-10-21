@@ -7,7 +7,6 @@ import {
   KEY,
   mockHardwareVerifier,
   NODE_ID,
-  NODE_SEED,
   rejectionOf,
   type TestNode,
   type TestOuterResponse,
@@ -32,10 +31,6 @@ const keyVectors = ed25519ToX25519 as { reject: RejectRow[] };
 const unusableKeys = keyVectors.reject.filter(
   (row) => row.reason === "small-order" || row.reason === "not-torsion-free",
 );
-
-function testNode(): TestNode {
-  return createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
-}
 
 function clientFor(
   transport: ConfidentialTransport,
@@ -95,7 +90,7 @@ describe("ConfidentialClient attestation: attested key", () => {
   )("an attested $reason key ($name) is rejected after the quote verifies", async ({
     ed25519PublicKey,
   }) => {
-    const node = testNode();
+    const node = createTestNode();
     node.setAttestation((context) =>
       edited(context, (body) => {
         body.pubkey = `0x${ed25519PublicKey}`;
@@ -121,7 +116,7 @@ describe("ConfidentialClient attestation: a transport that ignores the size cap"
   test.each([
     200, 503,
   ])("a %i answer over 1 MiB is AttestationUnavailable too-large", async (status) => {
-    const node = testNode();
+    const node = createTestNode();
     node.setAttestation(() => answer(status, new Uint8Array(1_048_577)));
     const err = await rejectionOf(clientFor(node.transport).ready());
 
@@ -132,7 +127,7 @@ describe("ConfidentialClient attestation: a transport that ignores the size cap"
 
 describe("ConfidentialClient attestation: request", () => {
   test("the attestation GET carries the nonce and the caller's headers without content-type", async () => {
-    const node = testNode();
+    const node = createTestNode();
     await clientFor(node.transport, {
       headers: { "x-api-key": KEY, "Content-Type": "application/json" },
     }).request(jsonRpcCall());
@@ -149,7 +144,7 @@ describe("ConfidentialClient attestation: request", () => {
   });
 
   test("ten concurrent cold calls share one failed attestation", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport, {
       hardwareVerifier: mockHardwareVerifier({
         fail: new AttestationError("CHK-P1", "cloud verify request failed (transport error)"),
@@ -168,7 +163,7 @@ describe("ConfidentialClient attestation: request", () => {
   });
 
   test("ready and request waiting on one failed attestation reject with the same error, not executed", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport, {
       hardwareVerifier: mockHardwareVerifier({ fail: new AttestationError("CHK-P1", "down") }),
     });

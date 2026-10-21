@@ -8,7 +8,7 @@ import { bytesToHex, concatBytes } from "@noble/hashes/utils.js";
 
 export { bytesToHex as toHex } from "@noble/hashes/utils.js";
 
-// Ed25519 seed of the test node key.
+// Ed25519 seed of the open-mode signer: signResponse and attestationStub default to it.
 export const TEST_SEED = new Uint8Array(32).fill(0x42);
 export const TEST_PUBKEY_HEX = `0x${bytesToHex(ed25519.getPublicKey(TEST_SEED))}`;
 

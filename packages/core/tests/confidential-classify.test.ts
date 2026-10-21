@@ -6,7 +6,6 @@ import {
   jsonRpcCall,
   mockHardwareVerifier,
   NODE_ID,
-  NODE_SEED,
   rejectionOf,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
@@ -65,13 +64,8 @@ async function withContentType(
   };
 }
 
-function setup(upstream?: Parameters<typeof createTestNode>[0]["upstream"]) {
-  const node = createTestNode({
-    seed: NODE_SEED,
-    chainId: CHAIN_ID,
-    nodeId: NODE_ID,
-    ...(upstream === undefined ? {} : { upstream }),
-  });
+function setup() {
+  const node = createTestNode();
   const client = new ConfidentialClient({
     url: "https://rpc.example/eth_vrpc",
     chainId: CHAIN_ID,

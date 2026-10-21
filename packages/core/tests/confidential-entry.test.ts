@@ -27,13 +27,7 @@ import type {
   TransportFailedReason,
 } from "@w3tech.io/vrpc-core/errors";
 import * as errors from "@w3tech.io/vrpc-core/errors";
-import {
-  CHAIN_ID,
-  createTestNode,
-  mockHardwareVerifier,
-  NODE_ID,
-  NODE_SEED,
-} from "@w3tech.io/vrpc-test-support";
+import { CHAIN_ID, createTestNode, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, expectTypeOf, test } from "vitest";
 
 const utf8 = new TextEncoder();
@@ -51,7 +45,7 @@ function extendsUnavailableError(value: unknown): boolean {
 
 describe("@w3tech.io/vrpc-core/confidential", () => {
   test("a JSON-RPC call through the entry succeeds", async () => {
-    const node = createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
+    const node = createTestNode();
     const client = new conf.ConfidentialClient({
       url: "https://rpc.example/eth_vrpc/0123456789abcdefghijABCDEFGHIJkl",
       chainId: CHAIN_ID,

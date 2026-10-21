@@ -6,7 +6,6 @@ import { AttestationError } from "@w3tech.io/dstack-verify";
 import {
   createTestNode,
   mockHardwareVerifier,
-  TEST_SEED,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { holdPosts, isPost, serveTestNode } from "@w3tech.io/vrpc-test-support/server";
@@ -97,9 +96,7 @@ function keep(out: Capture, res: RawResponse): RawResponse {
 async function drive(logLevel: LogLevel): Promise<Capture> {
   const node = await serveTestNode(
     createTestNode({
-      seed: TEST_SEED,
       chainId: TEST_CHAIN_ID,
-      nodeId: "logging-node-1",
       upstream: () => ({
         status: 200,
         headers: { "content-type": "application/json" },

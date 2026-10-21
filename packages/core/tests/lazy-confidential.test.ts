@@ -4,8 +4,6 @@ import {
   jsonRpcCall,
   KEY,
   mockHardwareVerifier,
-  NODE_ID,
-  NODE_SEED,
   rejectionOf,
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -22,10 +20,6 @@ function optionsFor(node: ReturnType<typeof createTestNode>): ConfidentialClient
   };
 }
 
-function testNode() {
-  return createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
-}
-
 describe("LazyConfidentialClient", () => {
   afterEach(() => {
     vi.doUnmock("../src/confidential-client");
@@ -36,19 +30,19 @@ describe("LazyConfidentialClient", () => {
     { replayWindowMs: 0 },
     { chainId: undefined as unknown as string },
   ])("a bad option %o throws InvalidOption at construction", (bad) => {
-    expect(() => new LazyConfidentialClient({ ...optionsFor(testNode()), ...bad })).toThrow(
+    expect(() => new LazyConfidentialClient({ ...optionsFor(createTestNode()), ...bad })).toThrow(
       InvalidOption,
     );
   });
 
   test("a content-type header is ignored by both clients, valid or not", () => {
-    const options = { ...optionsFor(testNode()), headers: { "Content-Type": "bad\nvalue" } };
+    const options = { ...optionsFor(createTestNode()), headers: { "Content-Type": "bad\nvalue" } };
     expect(() => new ConfidentialClient(options)).not.toThrow();
     expect(() => new LazyConfidentialClient(options)).not.toThrow();
   });
 
   test("request and ready load one client and report the same pin", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = new LazyConfidentialClient(optionsFor(node));
     expect(client.getConfidentialInfo()).toBeUndefined();
 
@@ -82,7 +76,7 @@ describe("LazyConfidentialClient", () => {
     vi.resetModules();
     const { LazyConfidentialClient: Lazy } = await import("../src/lazy-confidential");
     const { InternalError } = await import("../src/errors");
-    const node = testNode();
+    const node = createTestNode();
     const client = new Lazy(optionsFor(node));
 
     const err = await rejectionOf(client.request(jsonRpcCall()));
@@ -96,7 +90,7 @@ describe("LazyConfidentialClient", () => {
   });
 
   test("later changes to the caller's options object are not used", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const options = { ...optionsFor(node), headers: { "x-api-key": KEY } };
     const client = new LazyConfidentialClient(options);
     options.url = "::not a url";

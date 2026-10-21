@@ -2,7 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode: what the node receives, what is refused locally, and the outer wire headers.
 
-import { createTestNode, TEST_SEED } from "@w3tech.io/vrpc-test-support";
+import { createTestNode, NODE_ID } from "@w3tech.io/vrpc-test-support";
 import {
   type ServedRequest,
   serveTestNode,
@@ -19,7 +19,6 @@ import {
 import { TEST_CHAIN_ID } from "./support/test-overrides";
 
 const API_KEY = "configured-key-1";
-const NODE_ID = "request-node-1";
 const PATH_KEY = "ab".repeat(32);
 const JSON_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const ANSWER = '{"ok":true}';
@@ -49,9 +48,7 @@ afterEach(async () => {
 async function startNode(): Promise<TestNodeServer> {
   nodeServer = await serveTestNode(
     createTestNode({
-      seed: TEST_SEED,
       chainId: TEST_CHAIN_ID,
-      nodeId: NODE_ID,
       upstream: async (inner) => {
         const url = new URL(inner.url);
         seen.push({

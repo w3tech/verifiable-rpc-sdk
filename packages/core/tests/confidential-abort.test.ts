@@ -5,7 +5,6 @@ import {
   jsonRpcCall,
   mockHardwareVerifier,
   NODE_ID,
-  NODE_SEED,
   rejectionOf,
   type TestOuterRequest,
   type TestOuterResponse,
@@ -16,10 +15,6 @@ import { AttestationUnavailable } from "../src/errors";
 import type { ConfidentialTransport } from "../src/transport";
 
 const KEYED_URL = "https://rpc.example/eth_vrpc/0123456789abcdefghijABCDEFGHIJkl";
-
-function testNode() {
-  return createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
-}
 
 function clientFor(
   transport: ConfidentialTransport,
@@ -59,7 +54,7 @@ function recordProcessEvent(event: "warning" | "unhandledRejection"): unknown[] 
 
 describe("cancellation", () => {
   test("a signal aborted before the call rejects with its reason and sends nothing", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     const reason = new Error("stop");
     const controller = new AbortController();
@@ -73,7 +68,7 @@ describe("cancellation", () => {
   });
 
   test("an abort while waiting for a shared attestation leaves the other waiters and the attestation alone", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     node.setAttestation(async (context) => {
@@ -99,7 +94,7 @@ describe("cancellation", () => {
   });
 
   test("ready rejects with the reason when aborted during the attestation", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     node.setAttestation(async (context) => {
@@ -122,7 +117,7 @@ describe("cancellation", () => {
   });
 
   test("AbortSignal.timeout rejects with a TimeoutError", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     await client.ready();
     node.setConfidential(async (context) => {
@@ -138,7 +133,7 @@ describe("cancellation", () => {
 
   test("a stuck attestation ends after 60 s even when the transport ignores its signal", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000 });
-    const node = testNode();
+    const node = createTestNode();
     let stall = true;
     const stalled: TestOuterRequest[] = [];
     const transport: ConfidentialTransport = (request) => {
@@ -174,7 +169,7 @@ describe("cancellation", () => {
 
   test("a shared attestation failing after every waiter left is handled and not kept", async () => {
     const unhandled = recordProcessEvent("unhandledRejection");
-    const node = testNode();
+    const node = createTestNode();
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     node.setAttestation(async () => {
@@ -205,7 +200,7 @@ describe("cancellation", () => {
 
   test("50 cold calls sharing one signal print no warning and leave no abort listener", async () => {
     const warnings = recordProcessEvent("warning");
-    const node = testNode();
+    const node = createTestNode();
     // The client's own listeners are under test, not the in-test transport's.
     const transport: ConfidentialTransport = ({ signal: _signal, ...request }) =>
       node.transport(request);

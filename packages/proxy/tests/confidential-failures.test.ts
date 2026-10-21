@@ -9,7 +9,7 @@ import { getPublicKeyAsync } from "@noble/ed25519";
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
 import { ConfidentialClient } from "@w3tech.io/vrpc-core/confidential";
 import type { TestOuterResponse, TestUpstreamResponse } from "@w3tech.io/vrpc-test-support";
-import { createTestNode, rejectionOf, TEST_SEED, toHex } from "@w3tech.io/vrpc-test-support";
+import { createTestNode, rejectionOf, toHex } from "@w3tech.io/vrpc-test-support";
 import {
   closeServer,
   holdPosts,
@@ -112,9 +112,7 @@ async function startHarness(options: {
 }): Promise<Harness> {
   const node = await serveTestNode(
     createTestNode({
-      seed: TEST_SEED,
       chainId: TEST_CHAIN_ID,
-      nodeId: "failure-node-1",
       upstream: () => answer(),
     }),
   );
@@ -489,9 +487,7 @@ describe("concurrent and interrupted requests", () => {
       Promise.withResolvers<TestOuterResponse>();
     const node = await serveTestNode(
       createTestNode({
-        seed: TEST_SEED,
         chainId: TEST_CHAIN_ID,
-        nodeId: "failure-node-1",
         upstream: () => answer(),
       }),
     );

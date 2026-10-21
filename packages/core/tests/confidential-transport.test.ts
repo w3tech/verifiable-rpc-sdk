@@ -10,7 +10,6 @@ import {
   KEY,
   mockHardwareVerifier,
   NODE_ID,
-  NODE_SEED,
   rejectionOf,
   type TestNode,
   type TestOuterResponse,
@@ -146,7 +145,7 @@ function answerWith(mode: Mode, isPost: boolean, answer: TestOuterResponse, res:
 }
 
 async function harness(): Promise<Harness> {
-  const node = createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
+  const node = createTestNode();
   const log: Seen[] = [];
   const partial = Promise.withResolvers<void>();
   const sockets = new Set<Socket>();
@@ -399,7 +398,7 @@ describe("default transport fetch contract", () => {
   });
 
   test("an opaque redirect on the confidential request is an unexpected response", async () => {
-    const node = createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
+    const node = createTestNode();
     vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
       if (init.method === "POST") return opaqueRedirect();
       const answer = await node.transport({

@@ -4,8 +4,7 @@ import {
   jsonRpcCall,
   mockHardwareVerifier,
   NODE_ID,
-  NODE_SEED,
-  type TestNodeOptions,
+  type TestNode,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -16,10 +15,6 @@ import type { ConfidentialTransport } from "../src/transport";
 const KEYED_URL = "https://rpc.example/eth_vrpc/0123456789abcdefghijABCDEFGHIJkl";
 
 const T0 = 1_800_000_000_000;
-
-function testNode(overrides: Partial<TestNodeOptions> = {}) {
-  return createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID, ...overrides });
-}
 
 function clientFor(
   transport: ConfidentialTransport,
@@ -34,7 +29,7 @@ function clientFor(
   });
 }
 
-function posts(node: ReturnType<typeof testNode>): number {
+function posts(node: TestNode): number {
   return node.requests.filter((request) => request.method === "POST").length;
 }
 
@@ -52,7 +47,7 @@ afterEach(() => {
 
 describe("ready and getConfidentialInfo", () => {
   test("a cold client has no info; ready attests once and returns the pinned node", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     expect(client.getConfidentialInfo()).toBeUndefined();
 
@@ -75,7 +70,7 @@ describe("ready and getConfidentialInfo", () => {
   });
 
   test("a second ready and a following request reuse the pin", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     const first = await client.ready();
     const second = await client.ready();
@@ -93,7 +88,7 @@ describe("ready and getConfidentialInfo", () => {
 
 describe("single flight", () => {
   test("50 concurrent cold calls share one attestation", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     const responses = await Promise.all(
       Array.from({ length: 50 }, () => client.request(jsonRpcCall())),
@@ -105,7 +100,7 @@ describe("single flight", () => {
   });
 
   test("a failed shared attestation rejects every caller with one error and is not kept", async () => {
-    const node = testNode();
+    const node = createTestNode();
     node.setAttestation(() => plain(503, "text/plain"));
     const client = clientFor(node.transport);
     const results = await Promise.allSettled(
@@ -134,7 +129,7 @@ describe("single flight", () => {
 describe("pin lifetime", () => {
   test("a pin lives pubkeyCacheTtlMs from its attestation", async () => {
     vi.useFakeTimers({ now: T0 });
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport, { pubkeyCacheTtlMs: 1000 });
     const { attestedAt } = await client.ready();
 
@@ -151,7 +146,7 @@ describe("pin lifetime", () => {
 
   test("without the option a pin lives one hour", async () => {
     vi.useFakeTimers({ now: T0 });
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     const { attestedAt } = await client.ready();
 
@@ -168,7 +163,7 @@ describe("pin lifetime", () => {
 describe("eviction", () => {
   test("a late failure on an older pin keeps the fresh pin", async () => {
     vi.useFakeTimers({ now: T0 });
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     await client.ready();
 
@@ -207,7 +202,7 @@ describe("eviction", () => {
 
   test("re-attesting the same node id yields a new pin", async () => {
     vi.useFakeTimers({ now: T0 });
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     const first = await client.ready();
 
@@ -224,7 +219,7 @@ describe("eviction", () => {
   });
 
   test("an inner 500 keeps the pin", async () => {
-    const node = testNode({ upstream: () => ({ status: 500, body: "boom" }) });
+    const node = createTestNode({ upstream: () => ({ status: 500, body: "boom" }) });
     const client = clientFor(node.transport);
     await client.ready();
 

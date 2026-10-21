@@ -4,6 +4,7 @@
 
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { attestationBody } from "./attestation";
+import { CHAIN_ID, NODE_ID, NODE_SEED } from "./fixtures";
 import { createRecipient } from "./recipient";
 import { type SignOptions, signResponse } from "./sign";
 
@@ -28,11 +29,15 @@ export interface TestUpstreamResponse {
 }
 
 export interface TestNodeOptions {
-  seed: Uint8Array;
-  chainId: string;
-  /** Sent as `vRPC-NodeId`; `null` omits the header. Default `test-node-1`. */
+  /** Default `NODE_SEED`. */
+  seed?: Uint8Array;
+  /** Default `CHAIN_ID`. */
+  chainId?: string;
+  /** Sent as `vRPC-NodeId`; `null` omits the header. Default `NODE_ID`. */
   nodeId?: string | null;
-  upstream?: (request: Request) => TestUpstreamResponse | Promise<TestUpstreamResponse>;
+  upstream?:
+    | ((request: Request) => TestUpstreamResponse | Promise<TestUpstreamResponse>)
+    | undefined;
 }
 
 type TestSignOptions = Omit<SignOptions, "nodeId">;
@@ -84,10 +89,12 @@ function defaultUpstream(): TestUpstreamResponse {
   };
 }
 
-export function createTestNode(options: TestNodeOptions): TestNode {
-  const recipient = createRecipient(options.seed);
+export function createTestNode(options: TestNodeOptions = {}): TestNode {
+  const seed = options.seed ?? NODE_SEED;
+  const chainId = options.chainId ?? CHAIN_ID;
+  const recipient = createRecipient(seed);
   const pubkeyHex = `0x${bytesToHex(recipient.ed25519PublicKey)}`;
-  const nodeId = options.nodeId === undefined ? "test-node-1" : options.nodeId;
+  const nodeId = options.nodeId === undefined ? NODE_ID : options.nodeId;
   const nodeIdHeader: Record<string, string> = nodeId === null ? {} : { "vRPC-NodeId": nodeId };
   const upstream = options.upstream ?? defaultUpstream;
   const requests: TestOuterRequest[] = [];
@@ -99,7 +106,7 @@ export function createTestNode(options: TestNodeOptions): TestNode {
     return {
       status: 200,
       headers: { "content-type": "application/json", ...nodeIdHeader },
-      body: utf8.encode(attestationBody(nonceHex, { seed: options.seed })),
+      body: utf8.encode(attestationBody(nonceHex, { seed })),
     };
   }
 
@@ -108,8 +115,8 @@ export function createTestNode(options: TestNodeOptions): TestNode {
     responseBody: Uint8Array,
     signOptions: TestSignOptions = {},
   ): Record<string, string> {
-    return signResponse(options.chainId, requestBody, responseBody, {
-      seed: signOptions.seed ?? options.seed,
+    return signResponse(chainId, requestBody, responseBody, {
+      seed: signOptions.seed ?? seed,
       timestampMs: signOptions.timestampMs,
       pubkeyHex: signOptions.pubkeyHex ?? (signOptions.seed === undefined ? pubkeyHex : undefined),
       nodeId: nodeId ?? undefined,

@@ -7,12 +7,10 @@ import {
   KEY,
   mockHardwareVerifier,
   NODE_ID,
-  NODE_SEED,
   rejectionOf,
   signResponse,
   TEST_PUBKEY_HEX,
   TEST_SEED,
-  type TestNodeOptions,
   thrownBy,
 } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
@@ -34,10 +32,6 @@ const utf8 = new TextEncoder();
 const JSON_RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 const DEFAULT_UPSTREAM_BODY = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 
-function testNode(overrides: Partial<TestNodeOptions> = {}) {
-  return createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID, ...overrides });
-}
-
 function clientFor(
   transport: ConfidentialTransport,
   overrides: Partial<ConfidentialClientOptions> = {},
@@ -53,7 +47,7 @@ function clientFor(
 
 describe("ConfidentialClient", () => {
   test("a JSON-RPC call returns the upstream's status, content-type and body", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const response = await clientFor(node.transport).request(jsonRpcCall());
 
     expect(response.status).toBe(200);
@@ -71,7 +65,7 @@ describe("ConfidentialClient", () => {
         return this.#headers.get(name);
       }
     }
-    const node = testNode();
+    const node = createTestNode();
     const transport: ConfidentialTransport = async (request) => {
       const answer = await node.transport(request);
       return { ...answer, headers: new ForeignHeaders(answer.headers) as unknown as Headers };
@@ -84,7 +78,7 @@ describe("ConfidentialClient", () => {
   });
 
   test("the first call attests then posts ciphertext; the second call only posts", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport);
     await client.request(jsonRpcCall());
 
@@ -113,7 +107,7 @@ describe("ConfidentialClient", () => {
     ["absent", null],
     ["empty", ""],
   ])("a %s vRPC-NodeId on the attestation answer is AttestationUnavailable and nothing is posted", async (_label, nodeId) => {
-    const node = testNode({ nodeId });
+    const node = createTestNode({ nodeId });
     const err = await rejectionOf(clientFor(node.transport).request(jsonRpcCall()));
 
     expect(err).toBeInstanceOf(AttestationUnavailable);
@@ -127,7 +121,7 @@ describe("ConfidentialClient", () => {
   });
 
   test("a header object whose get returns undefined on a miss still reports a missing vRPC-NodeId", async () => {
-    const node = testNode({ nodeId: null });
+    const node = createTestNode({ nodeId: null });
     const transport: ConfidentialTransport = async (request) => {
       const answer = await node.transport(request);
       const headers = new Map(Object.entries(answer.headers).map(([k, v]) => [k.toLowerCase(), v]));
@@ -144,7 +138,7 @@ describe("ConfidentialClient", () => {
   });
 
   test("a sealed answer signed by another key is ConfidentialSignerMismatch", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const transport: ConfidentialTransport = async (request) => {
       const response = await node.transport(request);
       if (request.method !== "POST" || request.body === undefined) return response;
@@ -176,7 +170,7 @@ describe("ConfidentialClient", () => {
       seen.push(String(input));
       return new Response("unavailable", { status: 503 });
     }) as typeof fetch;
-    const client = clientFor(testNode().transport, {
+    const client = clientFor(createTestNode().transport, {
       hardwareVerifier: undefined,
       fetch: fetchStub,
     });
@@ -202,7 +196,7 @@ describe("ConfidentialClient call surface", () => {
       "content-type-required",
     ],
   ])("%s is rejected as InvalidInnerRequest before any request", async (_label, inner, reason) => {
-    const node = testNode();
+    const node = createTestNode();
     const err = await rejectionOf(clientFor(node.transport).request(inner));
 
     expect(err).toBeInstanceOf(InvalidInnerRequest);
@@ -215,7 +209,7 @@ describe("ConfidentialClient call surface", () => {
   });
 
   test("an API key in headers goes on both legs and the caller's content-type is dropped", async () => {
-    const node = testNode();
+    const node = createTestNode();
     const client = clientFor(node.transport, {
       url: BASE_URL,
       headers: { "x-api-key": KEY, "Content-Type": "application/json" },
@@ -230,7 +224,7 @@ describe("ConfidentialClient call surface", () => {
   });
 
   test("an API key in the path stays in the path; the caller's query and hash are dropped", async () => {
-    const node = testNode();
+    const node = createTestNode();
     await clientFor(node.transport, { url: `${KEYED_URL}?debug=1#top` }).request(jsonRpcCall());
 
     const [attestation, call] = node.requests;
@@ -239,7 +233,7 @@ describe("ConfidentialClient call surface", () => {
   });
 
   test("a client without headers sends only content-type on the POST and nothing on the GET", async () => {
-    const node = testNode();
+    const node = createTestNode();
     await clientFor(node.transport).request(jsonRpcCall());
 
     expect(node.requests[0]?.headers).toEqual({});
@@ -248,7 +242,7 @@ describe("ConfidentialClient call surface", () => {
 
   test("the node id is sent opaque and percent-encoded", async () => {
     const nodeId = "node 1/\u00fc?&=#";
-    const node = testNode({ nodeId });
+    const node = createTestNode({ nodeId });
     await clientFor(node.transport).request(jsonRpcCall());
 
     const url = node.requests[1]?.url ?? "";
@@ -258,7 +252,7 @@ describe("ConfidentialClient call surface", () => {
 
   test("a REST-shaped GET reaches the upstream with its method, path, query and accept", async () => {
     let seen: Request | undefined;
-    const node = testNode({
+    const node = createTestNode({
       upstream: (request) => {
         seen = request;
         return {
@@ -285,7 +279,7 @@ describe("ConfidentialClient call surface", () => {
 
   test("a GET without body or content-type is sealed and answered", async () => {
     let seen: Request | undefined;
-    const node = testNode({
+    const node = createTestNode({
       upstream: (request) => {
         seen = request;
         return { status: 200, headers: { "content-type": "text/plain" }, body: "ok" };
@@ -300,7 +294,7 @@ describe("ConfidentialClient call surface", () => {
   });
 
   test("an inner 404 is returned, not thrown", async () => {
-    const node = testNode({
+    const node = createTestNode({
       upstream: () => ({
         status: 404,
         headers: { "content-type": "text/plain" },
@@ -322,7 +316,7 @@ describe("ConfidentialClient call surface", () => {
   });
 
   test("no inner metadata or plaintext appears on the wire", async () => {
-    const node = testNode();
+    const node = createTestNode();
     await clientFor(node.transport, { headers: { "x-api-key": KEY } }).request({
       method: "POST",
       path: "/sentinel-path?q=sentinel-query",
@@ -349,7 +343,7 @@ describe("ConfidentialClient call surface", () => {
   });
 
   test("concurrent calls on one client each use their own sealing context", async () => {
-    const node = testNode({
+    const node = createTestNode({
       upstream: async (request) => ({
         status: 200,
         headers: { "content-type": "application/json" },
@@ -389,7 +383,7 @@ describe("ConfidentialClient call surface", () => {
     "url",
     "chainId",
   ] as const)("a missing %s throws InvalidOption at construction and sends nothing", (option) => {
-    const node = testNode();
+    const node = createTestNode();
     const err = thrownBy(() => clientFor(node.transport, { [option]: undefined }));
     expect(err).toBeInstanceOf(InvalidOption);
     expect(err).toMatchObject({ option, executed: "no" });
