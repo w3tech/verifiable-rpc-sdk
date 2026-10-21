@@ -62,7 +62,7 @@ function normHex(s: string): string {
  * the cloud verdict, and binds the cloud-extracted quote body to the policy's
  * expected pubkey/nonce + the bundle's composeHash (B+). All failures throw
  * `AttestationError("CHK-P1", ...)` (fail-closed); a transport error, timeout, HTTP 5xx, 429 or
- * 408 also sets `unavailable`. Never prints.
+ * 408, or an answer body that cannot be read or parsed also sets `unavailable`. Never prints.
  */
 export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareVerifier {
   const endpoint = config.endpoint ?? DEFAULT_PHALA_VERIFY_ENDPOINT;
@@ -71,50 +71,43 @@ export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareV
 
   return {
     async verifyHardware(bundle: AttestationBundle, policy: VerifyPolicy): Promise<void> {
-      // 1. POST the raw DCAP quote with an AbortController timeout.
+      // 1. POST the raw DCAP quote and read the answer under one AbortController timeout.
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
-      let res: Response;
+      let parsed: CloudVerifyResponse;
       try {
-        res = await doFetch(endpoint, {
+        const res = await doFetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ hex: bundle.quote.quote }),
           signal: controller.signal,
         });
+        // 2. Non-2xx → fail closed.
+        if (!res.ok) {
+          const transient = res.status >= 500 || res.status === 429 || res.status === 408;
+          throw new AttestationError(
+            "CHK-P1",
+            `cloud verify endpoint returned HTTP ${res.status}`,
+            transient ? { unavailable: true } : undefined,
+          );
+        }
+        // 3. Parse; a body that cannot be read or parsed is an outage, not a verdict.
+        parsed = (await res.json()) as CloudVerifyResponse;
       } catch (cause) {
+        if (cause instanceof AttestationError) throw cause;
         const aborted =
           cause instanceof Error && (cause.name === "AbortError" || controller.signal.aborted);
-        throw new AttestationError(
-          "CHK-P1",
-          aborted
-            ? `cloud verify request timed out after ${timeoutMs}ms`
-            : "cloud verify request failed (transport error)",
-          { cause, unavailable: true },
-        );
+        const detail = aborted
+          ? `cloud verify request timed out after ${timeoutMs}ms`
+          : cause instanceof SyntaxError
+            ? "malformed cloud verify response (invalid JSON)"
+            : "cloud verify request failed (transport error)";
+        throw new AttestationError("CHK-P1", detail, { cause, unavailable: true });
       } finally {
         clearTimeout(timer);
       }
 
-      // 2. Non-2xx → fail closed.
-      if (!res.ok) {
-        const transient = res.status >= 500 || res.status === 429 || res.status === 408;
-        throw new AttestationError(
-          "CHK-P1",
-          `cloud verify endpoint returned HTTP ${res.status}`,
-          transient ? { unavailable: true } : undefined,
-        );
-      }
-
-      // 3. Parse + shape-gate the response.
-      let parsed: CloudVerifyResponse;
-      try {
-        parsed = (await res.json()) as CloudVerifyResponse;
-      } catch (cause) {
-        throw new AttestationError("CHK-P1", "malformed cloud verify response (invalid JSON)", {
-          cause,
-        });
-      }
+      // Shape-gate the response.
       const quote = parsed.quote;
       if (quote === undefined || quote === null || quote.body === undefined) {
         throw new AttestationError("CHK-P1", "malformed cloud verify response (missing quote)");

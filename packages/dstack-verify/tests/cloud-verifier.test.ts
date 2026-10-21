@@ -189,6 +189,14 @@ describe("createCloudVerifier — negatives (all fail closed with CHK-P1)", () =
 
   const status = (code: number) => async () =>
     ({ ok: false, status: code, json: async () => ({}) }) as unknown as Response;
+  const abortedBy = (signal: AbortSignal | null | undefined) =>
+    new Promise<never>((_, reject) => {
+      signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+    });
+  const body =
+    (json: (signal: AbortSignal | null | undefined) => Promise<unknown>) =>
+    async (_url: string, init: RequestInit) =>
+      ({ ok: true, status: 200, json: () => json(init.signal) }) as unknown as Response;
   test.each([
     ["HTTP 500", status(500), true],
     ["HTTP 503", status(503), true],
@@ -201,19 +209,25 @@ describe("createCloudVerifier — negatives (all fail closed with CHK-P1)", () =
       },
       true,
     ],
+    ["timeout", (_url: string, init: RequestInit) => abortedBy(init.signal), true],
+    ["body read timeout", body(abortedBy), true],
     [
-      "timeout",
-      (_url: string, init: RequestInit) =>
-        new Promise<Response>((_, reject) => {
-          init.signal?.addEventListener("abort", () =>
-            reject(new DOMException("aborted", "AbortError")),
-          );
-        }),
+      "body read disconnect",
+      body(async () => {
+        throw new TypeError("terminated");
+      }),
+      true,
+    ],
+    [
+      "non-JSON 200",
+      body(async () => {
+        throw new SyntaxError("Unexpected token '<'");
+      }),
       true,
     ],
     ["HTTP 400", status(400), undefined],
     ["HTTP 422", status(422), undefined],
-  ] as const)("%s → unavailable %s", async (_name, fetch, unavailable) => {
+  ] as const)("%s → unavailable %s", { timeout: 1_000 }, async (_name, fetch, unavailable) => {
     const verifier = createCloudVerifier({
       fetch: fetch as unknown as typeof globalThis.fetch,
       timeoutMs: 5,
