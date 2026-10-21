@@ -46,10 +46,10 @@ type AttestOptions = Omit<AttestNodeOptions, "expectPubkey" | "nodeId">;
 export async function attestPin(opts: AttestOptions): Promise<AttestedNode> {
   const { logger } = opts;
   const started = Date.now();
-  logger.debug("confidential.attest.start");
+  logger?.debug("confidential.attest.start");
   try {
     const node = await attest(opts);
-    logger.debug("confidential.attest.ok", {
+    logger?.debug("confidential.attest.ok", {
       nodeId: node.nodeId,
       pubkey: node.pubkeyHex,
       composeHash: node.composeHash,
@@ -57,7 +57,7 @@ export async function attestPin(opts: AttestOptions): Promise<AttestedNode> {
     });
     return node;
   } catch (err) {
-    logger.debug("confidential.attest.fail", {
+    logger?.debug("confidential.attest.fail", {
       kind: errorKind(err),
       durationMs: Date.now() - started,
     });

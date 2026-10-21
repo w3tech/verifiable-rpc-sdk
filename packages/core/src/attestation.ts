@@ -14,7 +14,7 @@ import {
 
 import { AttestationFailed, AttestationUnavailable, InvalidNonce } from "./errors";
 import { byteLen, truncateHex } from "./log-redact";
-import { defaultLogger, type Logger } from "./logger";
+import type { Logger } from "./logger";
 import { type ConfidentialTransport, fetchTransport, guardedSend } from "./transport";
 import { getHeader, NODE_ID_RE } from "./verify";
 
@@ -137,8 +137,8 @@ export interface AttestNodeOptions {
   attestationUrl: string;
   headers: Record<string, string>;
   hardwareVerifier: HardwareVerifier;
-  /** Already safe-wrapped; `defaultLogger` keeps the path silent. */
-  logger: Logger;
+  /** Already safe-wrapped; absent keeps the path silent. */
+  logger?: Logger | undefined;
   signal?: AbortSignal | undefined;
   /** Open mode: the verified signer; the attested pubkey must equal it. */
   expectPubkey?: string;
@@ -170,7 +170,7 @@ export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestati
   const { logger, expectPubkey } = opts;
   const nonce = crypto.getRandomValues(new Uint8Array(32));
   // The URL may carry the API key; nodeId and nonce identify the fetch.
-  logger.debug("attestation.fetch", {
+  logger?.debug("attestation.fetch", {
     ...(opts.nodeId === undefined ? {} : { nodeId: opts.nodeId }),
     nonce: bytesToHex(nonce),
   });
@@ -187,7 +187,7 @@ export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestati
   }
   const pubkeyHex = attestation.pubkey.toLowerCase();
   if (expectPubkey !== undefined) {
-    logger.debug("attestation.correlation", {
+    logger?.debug("attestation.correlation", {
       expectedPubkey: expectPubkey,
       actualPubkey: pubkeyHex,
       match: pubkeyHex === expectPubkey,
@@ -196,7 +196,7 @@ export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestati
       throw new AttestationFailed("pubkey-mismatch", `expected ${expectPubkey}, got ${pubkeyHex}`);
     }
   }
-  if (logger !== defaultLogger) {
+  if (logger) {
     logger.debug("attestation.received", {
       reportData: attestation.quote.report_data,
       composeHash: attestation.composeHash,
@@ -239,12 +239,12 @@ function buildVerifyPolicy(
   pubkeyHex: string,
   nonce: Uint8Array,
   hardwareVerifier: HardwareVerifier,
-  logger: Logger,
+  logger: Logger | undefined,
 ): VerifyPolicy {
   return {
     binding: { expectedPubkey: pubkeyHex, expectedNonce: bytesToHex(nonce) },
     hardwareVerifier,
-    ...(logger === defaultLogger ? {} : { logger }),
+    ...(logger === undefined ? {} : { logger }),
   };
 }
 

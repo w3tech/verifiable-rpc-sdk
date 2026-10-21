@@ -166,9 +166,6 @@ export const DEFAULT_PUBKEY_CACHE_TTL_MS = 3600000;
 export const DEFAULT_REPLAY_WINDOW_MS = 60000;
 
 // @public
-export const defaultLogger: Logger;
-
-// @public
 export function deriveVrpcUrls(url: string): VrpcUrls;
 
 // @public

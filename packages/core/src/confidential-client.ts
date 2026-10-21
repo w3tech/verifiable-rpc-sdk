@@ -23,7 +23,7 @@ import {
   UnexpectedResponse,
   VrpcError,
 } from "./errors";
-import { defaultLogger, type Logger, safeLogger } from "./logger";
+import { type Logger, safeLogger } from "./logger";
 import { attestPin, errorKind, type Pin, PinSlot } from "./node-session";
 import {
   OhttpError,
@@ -126,7 +126,7 @@ export class ConfidentialClient {
   readonly #confidentialUrl: string;
   readonly #headers: Record<string, string>;
   readonly #transport: ConfidentialTransport;
-  readonly #logger: Logger;
+  readonly #logger: Logger | undefined;
   readonly #slot: PinSlot;
 
   constructor(options: ConfidentialClientOptions) {
@@ -143,7 +143,7 @@ export class ConfidentialClient {
     const hardwareVerifier =
       options.hardwareVerifier ??
       createCloudVerifier(options.fetch === undefined ? {} : { fetch: options.fetch });
-    const logger = options.logger ? safeLogger(options.logger) : defaultLogger;
+    const logger = options.logger && safeLogger(options.logger);
     this.#logger = logger;
     const headers = this.#headers;
     this.#slot = new PinSlot(
@@ -198,7 +198,7 @@ export class ConfidentialClient {
       if (!sent) e.executed = "no";
       else if (pin !== undefined && evictsPin(e)) {
         this.#slot.evict(pin);
-        this.#logger.debug("confidential.evict", { nodeId: pin.nodeId, kind: errorKind(e) });
+        this.#logger?.debug("confidential.evict", { nodeId: pin.nodeId, kind: errorKind(e) });
       }
       throw e;
     }
@@ -210,7 +210,7 @@ export class ConfidentialClient {
     signal: AbortSignal | undefined,
   ): Promise<ConfidentialResponse> {
     const started = Date.now();
-    this.#logger.debug("confidential.request", {
+    this.#logger?.debug("confidential.request", {
       nodeId: pin.nodeId,
       requestBytes: sealed.body.byteLength,
     });
@@ -228,7 +228,7 @@ export class ConfidentialClient {
         new TransportFailed(tooLarge ? "too-large" : "network", pin.nodeId, { cause }),
     );
     const contentType = mediaType(getHeader(response.headers, "content-type"));
-    this.#logger.debug("confidential.response", {
+    this.#logger?.debug("confidential.response", {
       nodeId: pin.nodeId,
       status: response.status,
       contentType,
@@ -254,7 +254,7 @@ export class ConfidentialClient {
     const verified = await verifyResponse(sealed.body, response.body, response.headers, {
       chainId: this.#chainId,
       ...(this.#replayWindowMs === undefined ? {} : { replayWindowMs: this.#replayWindowMs }),
-      ...(this.#logger === defaultLogger ? {} : { logger: this.#logger }),
+      ...(this.#logger === undefined ? {} : { logger: this.#logger }),
     });
     if (verified.verification.pubkeyHex !== pin.pubkeyHex) {
       throw new ConfidentialSignerMismatch(pin.pubkeyHex, verified.verification.pubkeyHex);

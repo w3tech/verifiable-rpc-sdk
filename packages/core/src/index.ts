@@ -31,7 +31,7 @@ export * from "./errors";
 export { LazyConfidentialClient } from "./lazy-confidential";
 export { byteLen, pickVrpcHeaders } from "./log-redact";
 export type { Logger } from "./logger";
-export { createConsoleLogger, defaultLogger } from "./logger";
+export { createConsoleLogger } from "./logger";
 export type { OpenSession, OpenSessionOptions, PostResponse } from "./open-session";
 export { createOpenSession } from "./open-session";
 export type { CheckedOptions, OptionsInput } from "./options";

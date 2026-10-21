@@ -11,7 +11,7 @@ import { raceAbort } from "./abort";
 import { ATTESTATION_TIMEOUT_MS, attestNode } from "./attestation";
 import { AttestationUnavailable } from "./errors";
 import { pickVrpcHeaders, truncateHex } from "./log-redact";
-import { defaultLogger, type Logger, safeLogger } from "./logger";
+import { type Logger, safeLogger } from "./logger";
 import { checkOptions } from "./options";
 import { type ConfidentialTransport, fetchTransport } from "./transport";
 import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
@@ -66,7 +66,7 @@ export class TrustedVerifier {
   private readonly headers: Record<string, string>;
   private readonly transport: ConfidentialTransport;
   private readonly hardwareVerifier: HardwareVerifier;
-  private readonly logger: Logger;
+  private readonly logger: Logger | undefined;
   private readonly ttlMs: number;
 
   constructor(opts: TrustedVerifierOptions) {
@@ -85,7 +85,7 @@ export class TrustedVerifier {
     this.transport = fetchTransport(opts.fetch);
     this.hardwareVerifier =
       opts.hardwareVerifier ?? createCloudVerifier(opts.fetch ? { fetch: opts.fetch } : {});
-    this.logger = opts.logger ? safeLogger(opts.logger) : defaultLogger;
+    this.logger = opts.logger && safeLogger(opts.logger);
   }
 
   /** `verifyResponse` (throws propagate), then the cache, then a shared `attestNode` on a miss; caches only after success. */
@@ -94,7 +94,7 @@ export class TrustedVerifier {
     responseBytes: Uint8Array,
     headers: ResponseHeaders,
   ): Promise<VerifiedPair> {
-    if (this.logger !== defaultLogger) {
+    if (this.logger) {
       // Only vrpc-* headers are logged, never authorization or x-api-key.
       const headerRecord: Record<string, string> =
         headers instanceof Headers ? Object.fromEntries(headers.entries()) : { ...headers };
@@ -109,12 +109,12 @@ export class TrustedVerifier {
     const pair = await verifyResponse(requestBytes, responseBytes, headers, {
       chainId: this.chainId,
       ...(this.replayWindowMs === undefined ? {} : { replayWindowMs: this.replayWindowMs }),
-      ...(this.logger === defaultLogger ? {} : { logger: this.logger }),
+      ...(this.logger === undefined ? {} : { logger: this.logger }),
     });
 
     const pubkeyHex = pair.verification.pubkeyHex;
     const fresh = this.cache.has(pubkeyHex);
-    this.logger.debug("cache.lookup", {
+    this.logger?.debug("cache.lookup", {
       pubkeyHex,
       hit: fresh,
       ...(fresh ? { note: "cached → skip attestation" } : {}),
@@ -158,6 +158,6 @@ export class TrustedVerifier {
       clearTimeout(timer);
     }
     this.cache.set(pubkeyHex, true);
-    this.logger.debug("cache.store", { pubkeyHex, ttlMs: this.ttlMs });
+    this.logger?.debug("cache.store", { pubkeyHex, ttlMs: this.ttlMs });
   }
 }

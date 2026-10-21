@@ -2,12 +2,12 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Unit tests for the logger seam (logger.ts) and the redaction/truncation
 // helpers (log-redact.ts): truncation shape, byte-length, header allowlist
-// redaction, the no-op default, and the never-throw safe wrapper.
+// redaction, and the never-throw safe wrapper.
 
 import { collectingLogger } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, it } from "vitest";
 import { byteLen, pickVrpcHeaders, truncateHex } from "../src/log-redact";
-import { defaultLogger, safeLogger } from "../src/logger";
+import { safeLogger } from "../src/logger";
 
 describe("truncateHex", () => {
   it("keeps exactly keepBytes*2 hex chars then … then a (NB) byte-count suffix", () => {
@@ -88,13 +88,6 @@ describe("pickVrpcHeaders", () => {
     const dump = JSON.stringify(out);
     expect(dump).not.toContain("secret-token");
     expect(dump).not.toContain("sk-live-deadbeef");
-  });
-});
-
-describe("defaultLogger", () => {
-  it("is a no-op: returns undefined and throws nothing", () => {
-    expect(defaultLogger.debug("verify.start")).toBeUndefined();
-    expect(() => defaultLogger.debug("verify.start", { req: "0xabcd" })).not.toThrow();
   });
 });
 
