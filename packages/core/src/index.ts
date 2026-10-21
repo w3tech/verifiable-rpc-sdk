@@ -63,17 +63,17 @@ export {
   VrpcError,
 } from "./errors";
 export { LazyConfidentialClient } from "./lazy-confidential";
-export { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
+export { byteLen, pickVrpcHeaders } from "./log-redact";
 export type { Logger } from "./logger";
-export { createConsoleLogger, defaultLogger, safeLogger } from "./logger";
+export { createConsoleLogger, defaultLogger } from "./logger";
 export type { OpenSession, OpenSessionOptions, PostResponse } from "./open-session";
 export { createOpenSession } from "./open-session";
 export type { CheckedOptions, OptionsInput } from "./options";
 export { checkOptions, DEFAULT_PUBKEY_CACHE_TTL_MS } from "./options";
 export { buildPreImage, validateChainId } from "./preimage";
-export { fetchTransport, ResponseTooLarge, readCappedBody } from "./transport";
+export { fetchTransport, readCappedBody } from "./transport";
 export type { TrustedVerifierOptions } from "./trusted-verifier";
-export { DEFAULT_PUBKEY_CACHE_MAX, TrustedVerifier } from "./trusted-verifier";
+export { TrustedVerifier } from "./trusted-verifier";
 export { parseChainId } from "./utils";
 export type { ResponseHeaders, VerifiedPair, VerifyResponseOptions } from "./verify";
 export { DEFAULT_REPLAY_WINDOW_MS, isSignedVrpcResponse, verifyResponse } from "./verify";

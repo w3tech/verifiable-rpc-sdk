@@ -17,7 +17,7 @@ import { type ConfidentialTransport, fetchTransport } from "./transport";
 import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
 
 /** Default max distinct verified pubkeys held in the cache before LRU eviction. */
-export const DEFAULT_PUBKEY_CACHE_MAX = 1024;
+const DEFAULT_PUBKEY_CACHE_MAX = 1024;
 
 /** Construction options for {@link TrustedVerifier}. */
 export interface TrustedVerifierOptions {
@@ -39,7 +39,7 @@ export interface TrustedVerifierOptions {
   fetch?: typeof fetch | undefined;
   /** Verified-pubkey cache TTL in ms; default {@link DEFAULT_PUBKEY_CACHE_TTL_MS}. */
   pubkeyCacheTtlMs?: number | undefined;
-  /** Max distinct verified pubkeys cached before LRU eviction; default {@link DEFAULT_PUBKEY_CACHE_MAX}. */
+  /** Max distinct verified pubkeys cached before LRU eviction; default 1024. */
   pubkeyCacheMax?: number | undefined;
   // NOTE: the policy inputs `allowlist`/`tcb`/`pccsUrl` were removed — the
   // mock verifier ignores them, so exposing them on the published surface is
@@ -54,8 +54,8 @@ export interface TrustedVerifierOptions {
   hardwareVerifier?: HardwareVerifier | undefined;
   /**
    * OPT-IN debug logger. Inject to narrate the verify flow; omit (the default)
-   * and the SDK stays silent. Wrapped in {@link safeLogger} at construction so a
-   * throwing `debug()` can never break verification.
+   * and the SDK stays silent. A throwing `debug()` is swallowed, so it can never
+   * break verification.
    */
   logger?: Logger | undefined;
 }

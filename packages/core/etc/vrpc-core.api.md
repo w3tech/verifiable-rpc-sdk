@@ -160,9 +160,6 @@ export function createOpenSession<R extends PostResponse>(options: OpenSessionOp
 export { DEFAULT_PHALA_VERIFY_ENDPOINT }
 
 // @public
-export const DEFAULT_PUBKEY_CACHE_MAX = 1024;
-
-// @public
 export const DEFAULT_PUBKEY_CACHE_TTL_MS = 3600000;
 
 // @public (undocumented)
@@ -406,14 +403,6 @@ export class RequestRejected extends UnavailableError {
 export type ResponseHeaders = Headers | Record<string, string>;
 
 // @public
-export class ResponseTooLarge extends Error {
-    constructor();
-}
-
-// @public
-export function safeLogger(inner: Logger): Logger;
-
-// @public
 export class StaleTimestamp extends VerificationError {
     constructor(ctx: StaleTimestampContext);
     // (undocumented)
@@ -451,9 +440,6 @@ export class TransportFailed extends UnavailableError {
 
 // @public (undocumented)
 export type TransportFailedReason = "network" | "too-large";
-
-// @public
-export function truncateHex(hex: string, keepBytes?: number): string;
 
 // @public
 export class TrustedVerifier {
