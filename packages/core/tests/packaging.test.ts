@@ -246,6 +246,7 @@ describe("bundling", () => {
         "VrpcError",
         "VerificationError",
         "UnavailableError",
+        "InternalError",
         "ResponseTooLarge",
       ]) {
         const declaring = outputs.filter((file) => CLASS_DECLARATION(name).test(read(file)));

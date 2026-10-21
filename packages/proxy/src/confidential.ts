@@ -6,7 +6,6 @@ import type http from "node:http";
 
 import {
   AttestationUnavailable,
-  ConfidentialSealFailed,
   InvalidInnerRequest,
   RequestRejected,
   TransportFailed,
@@ -120,7 +119,6 @@ function statusOf(err: VrpcError): number {
   if (err instanceof RequestRejected && (err.status === 413 || err.status === 429)) {
     return err.status;
   }
-  if (err instanceof ConfidentialSealFailed) return 500;
   return 502;
 }
 

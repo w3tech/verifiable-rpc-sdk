@@ -7,8 +7,8 @@ import {
   AttestationUnavailable,
   BadSignature,
   ConfidentialDecryptFailed,
-  ConfidentialSealFailed,
   ConfidentialSignerMismatch,
+  InternalError,
   InvalidInnerRequest,
   type InvalidInnerRequestReason,
   InvalidNonce,
@@ -144,10 +144,14 @@ describe("TransportFailed", () => {
   });
 });
 
-test("seal failure is 500 executed no", () => {
-  const err = new ConfidentialSealFailed({ cause: new Error("x") });
-  err.executed = "no";
-  expectRow(err, 500, "ConfidentialSealFailed", "no");
+test.each([
+  "no",
+  "unknown",
+] as const)("InternalError is 502 executed %s without its cause", (executed) => {
+  const err = new InternalError({ cause: new Error("secret-detail") });
+  err.executed = executed;
+  const result = expectRow(err, 502, "InternalError", executed);
+  expect(result.message).not.toContain("secret-detail");
 });
 
 describe("verification failures", () => {

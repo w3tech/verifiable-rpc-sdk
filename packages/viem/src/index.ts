@@ -26,8 +26,8 @@ export {
   AttestationUnavailable,
   BadSignature,
   ConfidentialDecryptFailed,
-  ConfidentialSealFailed,
   ConfidentialSignerMismatch,
+  InternalError,
   InvalidChainId,
   InvalidInnerRequest,
   MalformedAttestationResponse,
@@ -40,6 +40,7 @@ export {
   UnavailableError,
   UnexpectedResponse,
   VerificationError,
+  VrpcError,
 } from "@w3tech.io/vrpc-core";
 export type { ConfidentialInfo } from "@w3tech.io/vrpc-core/confidential";
 export type { VrpcHttpOptions } from "./options";

@@ -7,8 +7,8 @@ import {
   AttestationUnavailable,
   BadSignature,
   ConfidentialDecryptFailed,
-  ConfidentialSealFailed,
   ConfidentialSignerMismatch,
+  InternalError,
   InvalidChainId,
   InvalidInnerRequest,
   InvalidNonce,
@@ -50,7 +50,6 @@ describe("errors", () => {
       new AttestationUnavailable("timeout"),
       new UnexpectedResponse(502, "n"),
       new TransportFailed("network", "n"),
-      new ConfidentialSealFailed(),
     ];
     for (const err of all) {
       expect(err).toBeInstanceOf(VrpcError);
@@ -355,17 +354,16 @@ describe("errors", () => {
     expect("cause" in new TransportFailed("too-large", "node-1")).toBe(false);
   });
 
-  test("confidentialSealFailedIsUnavailableAndKeepsCause", () => {
-    const cause = new Error("platform crypto failure");
-    const err = new ConfidentialSealFailed({ cause });
+  test("internalErrorIsUnavailableAndKeepsCauseOutOfTheMessage", () => {
+    const cause = new TypeError("secret-detail");
+    const err = new InternalError({ cause });
     expect(err instanceof UnavailableError).toBe(true);
     expect(err instanceof VerificationError).toBe(false);
-    expect(err.kind).toBe("ConfidentialSealFailed");
-    expect(err.name).toBe("ConfidentialSealFailed");
+    expect(err.kind).toBe("InternalError");
+    expect(err.name).toBe("InternalError");
+    expect(err.executed).toBe("unknown");
     expect(err.cause).toBe(cause);
-    expect(err.message).toBe(
-      "Confidential request could not be sealed by the local crypto runtime",
-    );
+    expect(err.message).toBe("Internal error in the Ankr Confidential RPC client");
   });
 
   test("confidentialDecryptAndMalformedResponseAreVerificationKinds", () => {

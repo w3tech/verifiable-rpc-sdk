@@ -13,8 +13,8 @@ const ERROR_CLASSES = [
   "AttestationUnavailable",
   "BadSignature",
   "ConfidentialDecryptFailed",
-  "ConfidentialSealFailed",
   "ConfidentialSignerMismatch",
+  "InternalError",
   "InvalidChainId",
   "InvalidInnerRequest",
   "MalformedAttestationResponse",
@@ -27,19 +27,21 @@ const ERROR_CLASSES = [
   "UnavailableError",
   "UnexpectedResponse",
   "VerificationError",
+  "VrpcError",
 ] as const;
 
 const CONFIDENTIAL_CLASSES = [
   "AttestationUnavailable",
   "ConfidentialDecryptFailed",
-  "ConfidentialSealFailed",
   "ConfidentialSignerMismatch",
+  "InternalError",
   "InvalidInnerRequest",
   "MalformedConfidentialResponse",
   "RequestRejected",
   "TransportFailed",
   "UnavailableError",
   "UnexpectedResponse",
+  "VrpcError",
 ] as const;
 
 type Namespace = Record<string, unknown>;

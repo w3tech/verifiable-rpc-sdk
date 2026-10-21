@@ -15,8 +15,8 @@ import {
 } from "./bhttp";
 import {
   ConfidentialDecryptFailed,
-  ConfidentialSealFailed,
   ConfidentialSignerMismatch,
+  InternalError,
   MalformedConfidentialResponse,
   RequestRejected,
   TransportFailed,
@@ -85,15 +85,6 @@ function withoutContentType(headers: Record<string, string>): Record<string, str
   return Object.fromEntries(
     Object.entries(headers).filter(([name]) => name.toLowerCase() !== "content-type"),
   );
-}
-
-async function seal(nodeKey: Uint8Array, bhttp: Uint8Array): Promise<SealedRequest> {
-  try {
-    return await sealRequest(nodeKey, bhttp);
-  } catch (cause) {
-    // The key was validated and derived at attestation, so any failure here is the local runtime's.
-    throw new ConfidentialSealFailed({ cause });
-  }
 }
 
 async function open(opener: ResponseOpener, body: Uint8Array): Promise<InnerResponse> {
@@ -204,7 +195,7 @@ export class ConfidentialClient {
   /**
    * Sends one inner request sealed to the pinned node; any inner status is returned, not thrown.
    * An abort rejects with `signal.reason`; aborting after the request was sent leaves the outcome unknown.
-   * A failure of the local crypto runtime while sealing is `ConfidentialSealFailed`; nothing was sent.
+   * Any other failure that is not a `VrpcError` is `InternalError`, with the original value as `cause`.
    * Every failure raised before the request was handed to the transport has `executed: "no"`.
    */
   async request(
@@ -218,20 +209,21 @@ export class ConfidentialClient {
       if (signal?.aborted) throw signal.reason;
       const bhttp = await encodeInnerRequest(inner);
       pin = await this.#slot.acquire(signal);
-      const sealed = await seal(pin.nodeKey, bhttp);
+      const sealed = await sealRequest(pin.nodeKey, bhttp);
       if (signal?.aborted) throw signal.reason;
       sent = true;
       return await this.#exchange(pin, sealed, signal);
     } catch (err) {
       if (signal?.aborted && err === signal.reason) throw err;
-      if (!sent && err instanceof VrpcError) err.executed = "no";
+      const e = err instanceof VrpcError ? err : new InternalError({ cause: err });
+      if (!sent) e.executed = "no";
       if (pin !== undefined) {
         this.#slot.evict(pin);
         if (this.#logger !== defaultLogger) {
-          this.#logger.debug("confidential.evict", { nodeId: pin.nodeId, kind: errorKind(err) });
+          this.#logger.debug("confidential.evict", { nodeId: pin.nodeId, kind: errorKind(e) });
         }
       }
-      throw err;
+      throw e;
     }
   }
 

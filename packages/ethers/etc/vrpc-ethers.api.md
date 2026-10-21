@@ -10,10 +10,10 @@ import { AttestationUnavailableReason } from '@w3tech.io/vrpc-core';
 import { BadSignature } from '@w3tech.io/vrpc-core';
 import { ConfidentialDecryptFailed } from '@w3tech.io/vrpc-core';
 import { ConfidentialInfo } from '@w3tech.io/vrpc-core/confidential';
-import { ConfidentialSealFailed } from '@w3tech.io/vrpc-core';
 import { ConfidentialSignerMismatch } from '@w3tech.io/vrpc-core';
 import { FetchRequest } from 'ethers';
 import { HardwareVerifier } from '@w3tech.io/vrpc-core';
+import { InternalError } from '@w3tech.io/vrpc-core';
 import { InvalidChainId } from '@w3tech.io/vrpc-core';
 import { InvalidInnerRequest } from '@w3tech.io/vrpc-core';
 import { InvalidInnerRequestReason } from '@w3tech.io/vrpc-core';
@@ -36,6 +36,7 @@ import { UnavailableError } from '@w3tech.io/vrpc-core';
 import { UnavailableErrorKind } from '@w3tech.io/vrpc-core';
 import { UnexpectedResponse } from '@w3tech.io/vrpc-core';
 import { VerificationError } from '@w3tech.io/vrpc-core';
+import { VrpcError } from '@w3tech.io/vrpc-core';
 
 export { AttestationFailed }
 
@@ -49,9 +50,9 @@ export { ConfidentialDecryptFailed }
 
 export { ConfidentialInfo }
 
-export { ConfidentialSealFailed }
-
 export { ConfidentialSignerMismatch }
+
+export { InternalError }
 
 export { InvalidChainId }
 
@@ -84,6 +85,8 @@ export { UnavailableErrorKind }
 export { UnexpectedResponse }
 
 export { VerificationError }
+
+export { VrpcError }
 
 // @public
 export interface VrpcOptions extends JsonRpcApiProviderOptions {

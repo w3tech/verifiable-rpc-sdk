@@ -108,15 +108,6 @@ export class ConfidentialDecryptFailed extends VerificationError {
 }
 
 // @public
-export class ConfidentialSealFailed extends UnavailableError {
-    constructor(options?: {
-        cause?: unknown;
-    });
-    // (undocumented)
-    readonly kind: "ConfidentialSealFailed";
-}
-
-// @public
 export class ConfidentialSignerMismatch extends VerificationError {
     constructor(expectedPubkey: string, actualPubkey: string);
     // (undocumented)
@@ -179,6 +170,15 @@ export interface GetQuoteResponse {
 }
 
 export { HardwareVerifier }
+
+// @public
+export class InternalError extends UnavailableError {
+    constructor(options: {
+        cause: unknown;
+    });
+    // (undocumented)
+    readonly kind: "InternalError";
+}
 
 // @public
 export class InvalidChainId extends VerificationError {
@@ -366,7 +366,7 @@ export abstract class UnavailableError extends VrpcError {
 }
 
 // @public (undocumented)
-export type UnavailableErrorKind = "AttestationUnavailable" | "RequestRejected" | "UnexpectedResponse" | "TransportFailed" | "ConfidentialSealFailed";
+export type UnavailableErrorKind = "AttestationUnavailable" | "RequestRejected" | "UnexpectedResponse" | "TransportFailed" | "InternalError";
 
 // @public
 export class UnexpectedResponse extends UnavailableError {

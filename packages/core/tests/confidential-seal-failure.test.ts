@@ -9,7 +9,7 @@ import {
 } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test, vi } from "vitest";
 import { ConfidentialClient } from "../src/confidential-client";
-import { ConfidentialSealFailed, UnavailableError } from "../src/errors";
+import { InternalError, UnavailableError } from "../src/errors";
 import { InvalidNodeKey } from "../src/node-key";
 import { OhttpError, sealRequest } from "../src/ohttp";
 
@@ -35,16 +35,16 @@ describe("sealing failures", () => {
     ["InvalidNodeKey malformed", new InvalidNodeKey("malformed")],
     ["InvalidNodeKey encap-failed", new InvalidNodeKey("encap-failed")],
     ["a platform TypeError", new TypeError("crypto.subtle unavailable")],
-  ])("%s while sealing is ConfidentialSealFailed with that cause, nothing is sent and the pin is dropped", async (_label, failure) => {
+  ])("%s while sealing is InternalError with that cause, nothing is sent and the pin is dropped", async (_label, failure) => {
     const { node, client } = setup();
     await client.request(jsonRpcCall());
     vi.mocked(sealRequest).mockRejectedValueOnce(failure);
 
     const err = await rejectionOf(client.request(jsonRpcCall()));
-    expect(err).toBeInstanceOf(ConfidentialSealFailed);
+    expect(err).toBeInstanceOf(InternalError);
     expect(err).toBeInstanceOf(UnavailableError);
-    const sealFailed = err as ConfidentialSealFailed;
-    expect(sealFailed.kind).toBe("ConfidentialSealFailed");
+    const sealFailed = err as InternalError;
+    expect(sealFailed.kind).toBe("InternalError");
     expect(sealFailed.executed).toBe("no");
     expect(sealFailed.cause).toBe(failure);
     expect(node.requests.filter((r) => r.method === "POST")).toHaveLength(1);
