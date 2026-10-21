@@ -22,6 +22,7 @@ export interface AttestationBundle {
 export class AttestationError extends Error {
     constructor(chkId: ChkId, detail: string, options?: {
         cause?: unknown;
+        unavailable?: true;
     });
     // (undocumented)
     readonly chkId: ChkId;
@@ -29,6 +30,7 @@ export class AttestationError extends Error {
     readonly detail: string;
     // (undocumented)
     readonly kind: AttestationErrorKind;
+    readonly unavailable?: true;
 }
 
 // @public

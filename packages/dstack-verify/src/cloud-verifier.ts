@@ -61,7 +61,8 @@ function normHex(s: string): string {
  * endpoint. The returned verifier POSTs `{ hex: bundle.quote.quote }`, asserts
  * the cloud verdict, and binds the cloud-extracted quote body to the policy's
  * expected pubkey/nonce + the bundle's composeHash (B+). All failures throw
- * `AttestationError("CHK-P1", ...)` (fail-closed). Never prints.
+ * `AttestationError("CHK-P1", ...)` (fail-closed); a transport error, timeout, HTTP 5xx, 429 or
+ * 408 also sets `unavailable`. Never prints.
  */
 export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareVerifier {
   const endpoint = config.endpoint ?? DEFAULT_PHALA_VERIFY_ENDPOINT;
@@ -89,7 +90,7 @@ export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareV
           aborted
             ? `cloud verify request timed out after ${timeoutMs}ms`
             : "cloud verify request failed (transport error)",
-          { cause },
+          { cause, unavailable: true },
         );
       } finally {
         clearTimeout(timer);
@@ -97,7 +98,12 @@ export function createCloudVerifier(config: CloudVerifierConfig = {}): HardwareV
 
       // 2. Non-2xx → fail closed.
       if (!res.ok) {
-        throw new AttestationError("CHK-P1", `cloud verify endpoint returned HTTP ${res.status}`);
+        const transient = res.status >= 500 || res.status === 429 || res.status === 408;
+        throw new AttestationError(
+          "CHK-P1",
+          `cloud verify endpoint returned HTTP ${res.status}`,
+          transient ? { unavailable: true } : undefined,
+        );
       }
 
       // 3. Parse + shape-gate the response.

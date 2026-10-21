@@ -3,6 +3,7 @@
 // Every attestation outcome in both modes: each row runs through the open-mode TrustedVerifier
 // and the Ankr Confidential RPC handshake against the same `/attestation` answer.
 
+import { AttestationError } from "@w3tech.io/dstack-verify";
 import {
   attestationBody,
   CHAIN_ID,
@@ -27,7 +28,11 @@ interface Row {
   /** Omitted when the attestation verifies. */
   error?: { type: new (...args: never[]) => Error; reason: string };
   hardwareCalls: number;
+  /** Thrown by the hardware verifier; the error must carry it as `cause`. */
+  hardwareError?: Error;
 }
+
+const PHALA_OUTAGE = new AttestationError("CHK-P1", "HTTP 503", { unavailable: true });
 
 const ROWS: Row[] = [
   {
@@ -48,6 +53,13 @@ const ROWS: Row[] = [
     },
     error: { type: AttestationUnavailable, reason: "too-large" },
     hardwareCalls: 0,
+  },
+  {
+    name: "a hardware verifier outage",
+    body: (nonceHex) => attestationBody(nonceHex),
+    error: { type: AttestationUnavailable, reason: "verifier" },
+    hardwareCalls: 1,
+    hardwareError: PHALA_OUTAGE,
   },
 ];
 
@@ -80,13 +92,14 @@ const MODES: Record<string, Mode> = {
 const CASES = ROWS.flatMap((row) => Object.keys(MODES).map((mode) => ({ ...row, mode })));
 
 describe("attestation outcomes in both modes", () => {
-  test.each(CASES)("$name ($mode)", async ({ body, error, hardwareCalls, mode }) => {
+  test.each(CASES)("$name ($mode)", async ({ body, error, hardwareCalls, hardwareError, mode }) => {
     const fetch = (async (url: string) => {
       const nonceHex = new URL(url).searchParams.get("nonce") ?? "";
       return new Response(body(nonceHex), { headers: { "vRPC-NodeId": NODE_ID } });
     }) as typeof globalThis.fetch;
     const hardwareVerifier = mockHardwareVerifier();
     const verifyHardware = vi.spyOn(hardwareVerifier, "verifyHardware");
+    if (hardwareError) verifyHardware.mockRejectedValue(hardwareError);
     const run = (MODES[mode] as Mode)(fetch, hardwareVerifier);
 
     if (error === undefined) {
@@ -95,6 +108,7 @@ describe("attestation outcomes in both modes", () => {
       const err = await rejectionOf(run);
       expect(err).toBeInstanceOf(error.type);
       expect(err).toMatchObject({ reason: error.reason });
+      if (hardwareError) expect((err as Error).cause).toBe(hardwareError);
     }
     expect(verifyHardware).toHaveBeenCalledTimes(hardwareCalls);
   });

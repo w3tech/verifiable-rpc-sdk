@@ -181,7 +181,7 @@ describe("ConfidentialClient", () => {
       fetch: fetchStub,
     });
 
-    expect(await rejectionOf(client.ready())).toBeInstanceOf(VerificationError);
+    expect(await rejectionOf(client.ready())).toMatchObject({ reason: "verifier" });
     expect(seen).toEqual([DEFAULT_PHALA_VERIFY_ENDPOINT]);
   });
 });

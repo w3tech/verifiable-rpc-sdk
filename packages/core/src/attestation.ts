@@ -226,6 +226,9 @@ export async function attestNode(opts: AttestNodeOptions): Promise<NodeAttestati
       buildVerifyPolicy(pubkey, nonce, opts.hardwareVerifier, logger),
     );
   } catch (err) {
+    if (err instanceof AttestationError && err.unavailable) {
+      throw new AttestationUnavailable("verifier", { cause: err });
+    }
     if (err instanceof AttestationError) {
       throw new AttestationFailed(err.chkId, err.detail, { cause: err });
     }

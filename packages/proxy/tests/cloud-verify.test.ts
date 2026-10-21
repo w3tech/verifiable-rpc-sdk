@@ -36,7 +36,9 @@ function mockNetwork() {
   vi.mocked(undici.fetch).mockImplementation(async (input, init) => {
     const url = String(input);
     calls.push({ url, dispatcher: init?.dispatcher });
-    if (!url.includes("/attestation")) return new undici.Response("unavailable", { status: 503 });
+    if (url === DEFAULT_PHALA_VERIFY_ENDPOINT || !url.includes("/attestation")) {
+      return new undici.Response("unavailable", { status: 503 });
+    }
     const nonce = new URL(url).searchParams.get("nonce") ?? "";
     return new undici.Response(attestationBody(nonce), {
       headers: { "content-type": "application/json" },
@@ -69,9 +71,9 @@ describe("cloud verify egress", () => {
     cleanups.push(() => mock.close());
     const url = await serve(createProxyServer(testConfig(mock.url)));
 
-    const { kind } = await postRpc(url);
+    const { status, kind } = await postRpc(url);
     expect(globalFetch).not.toHaveBeenCalled();
-    expect(kind).toBe("Attestation");
+    expect({ status, kind }).toEqual({ status: 503, kind: "AttestationUnavailable" });
     const attestation = calls.find((c) => c.url.includes("/attestation"));
     expect(attestation?.dispatcher).toBeInstanceOf(undici.Agent);
     const phala = calls.find((c) => c.url === DEFAULT_PHALA_VERIFY_ENDPOINT);

@@ -66,13 +66,14 @@ function okResponse(body: unknown): Response {
   return { ok: true, status: 200, json: async () => body } as unknown as Response;
 }
 
-async function expectChkP1(promise: Promise<void>): Promise<void> {
+async function expectChkP1(promise: Promise<void>, unavailable?: true): Promise<void> {
   try {
     await promise;
     throw new Error("expected throw");
   } catch (e) {
     expect(e).toBeInstanceOf(AttestationError);
     expect((e as AttestationError).chkId).toBe("CHK-P1");
+    expect((e as AttestationError).unavailable).toBe(unavailable);
   }
 }
 
@@ -179,30 +180,6 @@ describe("createCloudVerifier — negatives (all fail closed with CHK-P1)", () =
     await expectChkP1(verifier.verifyHardware(makeBundle(""), makePolicy()));
   });
 
-  test("non-2xx (400) → throws", async () => {
-    const verifier = createCloudVerifier({
-      fetch: (async () =>
-        ({
-          ok: false,
-          status: 400,
-          json: async () => ({}),
-        }) as unknown as Response) as unknown as typeof globalThis.fetch,
-    });
-    await expectChkP1(verifier.verifyHardware(makeBundle(), makePolicy()));
-  });
-
-  test("non-2xx (500) → throws", async () => {
-    const verifier = createCloudVerifier({
-      fetch: (async () =>
-        ({
-          ok: false,
-          status: 500,
-          json: async () => ({}),
-        }) as unknown as Response) as unknown as typeof globalThis.fetch,
-    });
-    await expectChkP1(verifier.verifyHardware(makeBundle(), makePolicy()));
-  });
-
   test("malformed body (no quote) → throws", async () => {
     const verifier = createCloudVerifier({
       fetch: (async () => okResponse({})) as unknown as typeof globalThis.fetch,
@@ -210,11 +187,37 @@ describe("createCloudVerifier — negatives (all fail closed with CHK-P1)", () =
     await expectChkP1(verifier.verifyHardware(makeBundle(), makePolicy()));
   });
 
-  test("timeout / abort → throws", async () => {
-    const abortFetch = (async () => {
-      throw new DOMException("aborted", "AbortError");
-    }) as unknown as typeof globalThis.fetch;
-    const verifier = createCloudVerifier({ fetch: abortFetch, timeoutMs: 5 });
-    await expectChkP1(verifier.verifyHardware(makeBundle(), makePolicy()));
+  const status = (code: number) => async () =>
+    ({ ok: false, status: code, json: async () => ({}) }) as unknown as Response;
+  test.each([
+    ["HTTP 500", status(500), true],
+    ["HTTP 503", status(503), true],
+    ["HTTP 429", status(429), true],
+    ["HTTP 408", status(408), true],
+    [
+      "transport throw",
+      async () => {
+        throw new TypeError("fetch failed");
+      },
+      true,
+    ],
+    [
+      "timeout",
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_, reject) => {
+          init.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+      true,
+    ],
+    ["HTTP 400", status(400), undefined],
+    ["HTTP 422", status(422), undefined],
+  ] as const)("%s → unavailable %s", async (_name, fetch, unavailable) => {
+    const verifier = createCloudVerifier({
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      timeoutMs: 5,
+    });
+    await expectChkP1(verifier.verifyHardware(makeBundle(), makePolicy()), unavailable);
   });
 });

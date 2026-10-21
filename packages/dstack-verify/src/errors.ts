@@ -25,11 +25,13 @@ export type AttestationErrorKind = "Attestation";
  */
 export class AttestationError extends Error {
   readonly kind: AttestationErrorKind = "Attestation";
+  /** Set when the verify service itself failed transiently; a retry may succeed. */
+  declare readonly unavailable?: true;
 
   constructor(
     public readonly chkId: ChkId,
     public readonly detail: string,
-    options?: { cause?: unknown },
+    options?: { cause?: unknown; unavailable?: true },
   ) {
     super(`Attestation verification failed [${chkId}]: ${detail}`);
     // The built-in Error base leaves `name` as "Error"; set it from the concrete
@@ -37,6 +39,9 @@ export class AttestationError extends Error {
     this.name = this.constructor.name;
     if (options?.cause !== undefined) {
       (this as { cause?: unknown }).cause = options.cause;
+    }
+    if (options?.unavailable) {
+      this.unavailable = true;
     }
   }
 }

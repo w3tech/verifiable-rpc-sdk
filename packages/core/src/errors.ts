@@ -329,7 +329,8 @@ export type AttestationUnavailableReason =
   | "transport"
   | "too-large"
   | "node-id-missing"
-  | "timeout";
+  | "timeout"
+  | "verifier";
 
 /**
  * The node could not be attested, so the call was not sent.
