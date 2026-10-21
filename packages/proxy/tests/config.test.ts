@@ -111,13 +111,13 @@ describe("parseConfig", () => {
     expect(config.attestationUrl).toBe("https://rpc.ankr.com/arbitrum_vrpc/attestation");
   });
 
-  test("upstreamQueryProducesWarning", () => {
+  test("upstreamQueryStaysOnTheRpcLegAndWarnsAboutTheAttestationLeg", () => {
     const config = parseConfig(
-      ["--upstream", "https://rpc.example.com/chain?key=abc", "--chain-id", "test-chain"],
+      ["--upstream", "https://rpc.example.com/chain/?key=abc", "--chain-id", "test-chain"],
       {},
     );
-    expect(config.warnings).toBeDefined();
-    expect(config.warnings?.length).toBeGreaterThan(0);
+    expect(config.upstreamUrl).toBe("https://rpc.example.com/chain?key=abc");
+    expect(config.warnings?.[0]).toContain("the derived attestation URL drops");
   });
 
   test("upstreamQueryWarningInConfidentialModeSaysNoKeyIsSent", () => {

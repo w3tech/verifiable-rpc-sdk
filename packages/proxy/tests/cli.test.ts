@@ -34,7 +34,7 @@ describe.skipIf(!existsSync(CLI) && process.env.REQUIRE_DIST !== "1")("startup b
   test.each([
     [
       `https://h.example/arbitrum_vrpc/${KEY32}?apikey=sentinel-query&x=1`,
-      "https://h.example/arbitrum_vrpc/***",
+      "https://h.example/arbitrum_vrpc/***?apikey=***&x=***",
     ],
     [`https://h.example/arbitrum_vrpc/${KEY64}`, "https://h.example/arbitrum_vrpc/***"],
     ["http://127.0.0.1:8969/eth_vrpc", "http://127.0.0.1:8969/eth_vrpc"],

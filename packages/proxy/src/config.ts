@@ -192,7 +192,8 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   const { rpcUrl, attestationUrl } = deriveVrpcUrls(upstream);
 
   const config: ProxyConfig = {
-    upstreamUrl: rpcUrl,
+    // The RPC leg keeps the user's query; the derived attestation and confidential URLs drop it.
+    upstreamUrl: `${rpcUrl}${upstreamParsed.search}`,
     chainId,
     attestationUrl,
     attestationHeaders,
