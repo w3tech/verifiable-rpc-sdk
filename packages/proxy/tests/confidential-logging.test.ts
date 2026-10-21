@@ -2,7 +2,6 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode: logs and error bodies carry no path, query, plaintext, key or client header.
 
-import { setTimeout as delay } from "node:timers/promises";
 import { AttestationError } from "@w3tech.io/dstack-verify";
 import {
   createTestNode,
@@ -10,7 +9,7 @@ import {
   TEST_SEED,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
-import { isPost, serveTestNode } from "@w3tech.io/vrpc-test-support/server";
+import { holdPosts, isPost, serveTestNode } from "@w3tech.io/vrpc-test-support/server";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { LogLevel } from "../src/logger";
 import { type RawResponse, rawRequest, startConfidentialProxy } from "./support/proxy";
@@ -152,10 +151,7 @@ async function drive(logLevel: LogLevel): Promise<Capture> {
   ).toBe(502);
   node.node.setConfidential();
 
-  node.answer(async (request) => {
-    if (isPost(request)) await delay(1000);
-    return undefined;
-  });
+  holdPosts(node);
   expect(
     (await send("POST", "/sentinel-path/rpc?sentinel-query=1", RPC_BODY, "application/json"))
       .status,

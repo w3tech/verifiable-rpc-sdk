@@ -4,7 +4,6 @@
 
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { setTimeout as delay } from "node:timers/promises";
 import { gzipSync } from "node:zlib";
 import { getPublicKeyAsync } from "@noble/ed25519";
 import { AttestationError, type HardwareVerifier } from "@w3tech.io/dstack-verify";
@@ -86,10 +85,9 @@ function plain(status: number, contentType: string | undefined, body: string): T
 const gets = (wire: ServedRequest[]) => wire.filter((r) => r.method === "GET").length;
 const posts = (wire: ServedRequest[]) => wire.filter((r) => r.method === "POST").length;
 
-const delayed = (method: string, ms: number) => async (request: ServedRequest) => {
-  if (request.method === method) await delay(ms);
-  return undefined;
-};
+/** Never answers; only the proxy's own timeout or abort ends the request. */
+const stalled = (method: string) => (request: ServedRequest) =>
+  request.method === method ? new Promise<undefined>(() => {}) : undefined;
 
 const repeatedNodeId =
   (method: string) => async (request: ServedRequest, forward: () => Promise<TestOuterResponse>) => {
@@ -231,7 +229,7 @@ const attestationRows: Row[] = [
   },
   {
     title: "attestation slower than the timeout",
-    install: ({ node }) => node.answer(delayed("GET", 1000)),
+    install: ({ node }) => node.answer(stalled("GET")),
     status: 504,
     kind: "AttestationUnavailable",
     executed: "no",
@@ -294,7 +292,7 @@ const postRows: Row[] = [
   },
   {
     title: "node answer slower than the timeout",
-    install: ({ node }) => node.answer(delayed("POST", 1000)),
+    install: ({ node }) => node.answer(stalled("POST")),
     status: 504,
     kind: "UpstreamTimeout",
     executed: "unknown",
@@ -531,26 +529,22 @@ describe("concurrent and interrupted requests", () => {
     });
     cleanups.push(async () => write.mockRestore());
     const h = await startHarness({ startup: "ok", config: { logLevel: "debug" } });
-    h.node.answer(delayed("POST", 200));
+    h.node.answer(stalled("POST"));
     const target = new URL(h.proxy.url);
-    const aborted = new Promise<void>((resolve) => {
-      const req = http.request({
-        host: target.hostname,
-        port: target.port,
-        method: "POST",
-        path: "/",
-        headers: { "content-type": "application/json" },
-        signal: AbortSignal.timeout(50),
-      });
-      req.on("error", () => resolve());
-      req.on("response", () => resolve());
-      req.end(RPC_BODY);
+    const req = http.request({
+      host: target.hostname,
+      port: target.port,
+      method: "POST",
+      path: "/",
+      headers: { "content-type": "application/json" },
     });
-    await aborted;
+    req.on("error", () => {});
+    req.end(RPC_BODY);
+    await vi.waitFor(() => expect(posts(h.node.requests)).toBe(1));
+    req.destroy();
     await vi.waitFor(() =>
       expect(stderr.some((l) => / proxy\.(relay|clientAborted|error)\b/.test(l))).toBe(true),
     );
-    expect(posts(h.node.requests)).toBe(1);
     expect(gets(h.node.requests)).toBe(1);
 
     h.node.answer();
