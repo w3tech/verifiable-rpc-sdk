@@ -8,12 +8,12 @@ import {
   createServer as createHttpServer,
   request as httpRequest,
   type IncomingHttpHeaders,
-  type IncomingMessage,
   type OutgoingHttpHeaders,
 } from "node:http";
 import { type AddressInfo, createServer as createNetServer, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { buffer as readBody } from "node:stream/consumers";
 import { CHAIN_ID } from "./fixtures";
 import { type RpcCall, rpcAnswer } from "./node";
 import { closeServer, listen } from "./server";
@@ -402,15 +402,6 @@ function omit(headers: OutgoingHttpHeaders, names: readonly string[]): OutgoingH
     if (value !== undefined && !names.includes(name.toLowerCase())) out[name] = value;
   }
   return out;
-}
-
-function readBody(stream: IncomingMessage): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    stream.on("data", (chunk: Buffer) => chunks.push(chunk));
-    stream.on("end", () => resolve(Buffer.concat(chunks)));
-    stream.on("error", reject);
-  });
 }
 
 function requireEnv(name: string): string {

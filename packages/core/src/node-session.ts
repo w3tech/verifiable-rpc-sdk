@@ -9,7 +9,7 @@ import { raceAbort } from "./abort";
 import { type AttestNodeOptions, attestNode, type NodeAttestation } from "./attestation";
 import { AttestationFailed } from "./errors";
 
-export type AttestedNode = NodeAttestation<string> & { readonly nodeKey: Uint8Array };
+type AttestedNode = NodeAttestation<string> & { readonly nodeKey: Uint8Array };
 
 export function nodeKeyFromEd25519(ed25519PublicKey: Uint8Array): Uint8Array {
   try {
@@ -26,7 +26,7 @@ export function nodeKeyFromEd25519(ed25519PublicKey: Uint8Array): Uint8Array {
 export type Pin = AttestedNode & { readonly expiresAt: number };
 
 /** A log-safe name for a failure: the error's `kind`, else its `name`. */
-export function errorKind(err: unknown): string {
+function errorKind(err: unknown): string {
   if (typeof err === "object" && err !== null) {
     const { kind, name } = err as { kind?: unknown; name?: unknown };
     if (typeof kind === "string") return kind;
@@ -74,8 +74,8 @@ export class PinSlot {
     this.#ttlMs = ttlMs;
   }
 
-  current(now = Date.now()): Pin | undefined {
-    return this.#pin !== undefined && now < this.#pin.expiresAt ? this.#pin : undefined;
+  current(): Pin | undefined {
+    return this.#pin !== undefined && Date.now() < this.#pin.expiresAt ? this.#pin : undefined;
   }
 
   acquire(signal?: AbortSignal): Promise<Pin> {

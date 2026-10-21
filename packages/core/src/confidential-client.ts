@@ -21,7 +21,7 @@ import {
   VrpcError,
 } from "./errors";
 import type { Logger } from "./logger";
-import { attestPin, errorKind, type Pin, PinSlot } from "./node-session";
+import { attestPin, type Pin, PinSlot } from "./node-session";
 import { openResponse, type SealedRequest, sealRequest } from "./ohttp";
 import { checkOptions, resolveSeams, withoutContentType } from "./options";
 import { type ConfidentialTransport, guardedSend, MAX_RESPONSE_BYTES } from "./transport";
@@ -165,7 +165,7 @@ export class ConfidentialClient {
       if (!sent) e.executed = "no";
       else if (pin !== undefined && evictsPin(e)) {
         this.#slot.evict(pin);
-        this.#logger?.debug("confidential.evict", { nodeId: pin.nodeId, kind: errorKind(e) });
+        this.#logger?.debug("confidential.evict", { nodeId: pin.nodeId, kind: e.kind });
       }
       throw e;
     }

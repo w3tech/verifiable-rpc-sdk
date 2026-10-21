@@ -13,7 +13,7 @@ import {
 import { Agent, type RequestInit, fetch as undiciFetch } from "undici";
 import { confidentialHandler, createConfidentialTransport } from "./confidential";
 import type { ProxyConfig } from "./config";
-import { BodyTooLargeError, describeError, renderError } from "./errors";
+import { BodyTooLargeError, codeOf, describeError, renderError } from "./errors";
 import { createProxyLogger, type ProxyLogger } from "./logger";
 import { openHandler } from "./pipeline";
 import { bufferStream } from "./upstream";
@@ -46,7 +46,7 @@ function createServer(
     bufferStream(req, maxBodyBytes, () => new BodyTooLargeError(maxBodyBytes))
       .then((body) => handler(req, body, res, disconnected.signal))
       .catch((err: unknown) => {
-        if (res.destroyed || (err as { code?: string } | null | undefined)?.code === "ECONNRESET") {
+        if (res.destroyed || codeOf(err) === "ECONNRESET") {
           log.debug("proxy.clientAborted");
           res.destroy();
           return;

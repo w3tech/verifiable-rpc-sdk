@@ -27,7 +27,7 @@ const TIMESTAMP_OFFSET = 96;
 /** Maximum UTF-8 byte length accepted for a chain id. Mirrors sidecar `CHAIN_ID_MAX_LEN`. */
 const CHAIN_ID_MAX_LEN = 64;
 
-const U64_MAX = (1n << 64n) - 1n;
+export const U64_MAX = (1n << 64n) - 1n;
 
 const textEncoder = new TextEncoder();
 

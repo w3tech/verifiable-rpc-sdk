@@ -15,6 +15,9 @@ import {
   toUtf8Bytes,
 } from "ethers";
 
+// Same checks as ethers' toUtf8String, which keeps a BOM.
+const strictUtf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+
 // A FetchRequest.registerGetUrl() made before this module loads is taken for the stock fetcher.
 const stockGetUrl = new FetchRequest("http://localhost").getUrlFunc;
 
@@ -126,26 +129,33 @@ export async function sendConfidential(
     contentType: "application/json",
     body: toUtf8Bytes(JSON.stringify(payload)),
   });
-  const inner = new FetchResponse(
-    res.status,
-    "",
-    res.contentType === undefined ? {} : { "content-type": res.contentType },
-    res.body,
-  );
-  if (!inner.ok()) {
+  // Only on the error paths: FetchResponse copies the body and bodyJson decodes it one byte at a time.
+  const inner = () =>
+    new FetchResponse(
+      res.status,
+      "",
+      res.contentType === undefined ? {} : { "content-type": res.contentType },
+      res.body,
+    );
+  if (res.status < 200 || res.status > 299) {
     // Built by hand: the ethers ok-assertion copies the decrypted body into the message.
-    const status = `${inner.statusCode} `;
+    const status = `${res.status} `;
     throw makeError(`server response ${status}`, "SERVER_ERROR", {
       request: "unknown request",
-      response: inner,
+      response: inner(),
       info: { requestUrl: null, responseStatus: status },
     });
   }
-  const parsed: unknown = inner.bodyJson;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(strictUtf8.decode(res.body));
+  } catch {
+    // Throws ethers' own error for a body that is not UTF-8 JSON.
+    parsed = inner().bodyJson;
+  }
   const results = (Array.isArray(parsed) ? parsed : [parsed]) as unknown[];
   const payloads = Array.isArray(payload) ? payload : [payload];
-  const answered = (id: number) =>
-    results.some((r) => r !== null && typeof r === "object" && (r as { id?: unknown }).id === id);
+  const answered = (id: number) => results.some((r) => (r as { id?: unknown }).id === id);
   // ethers' own error for a missing id quotes every result and request in its message.
   if (
     !results.every((r) => r !== null && typeof r === "object") ||

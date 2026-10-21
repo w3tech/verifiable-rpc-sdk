@@ -82,14 +82,14 @@ export function createOpenSession<R extends OuterResponse>(
         throw httpError(response, payload);
       }
       await verifier.verify(body, response.body, response.headers);
+      if (ok(response)) return JSON.parse(strictUtf8.decode(response.body));
       let json: unknown;
       try {
         json = JSON.parse(strictUtf8.decode(response.body));
-      } catch (err) {
-        if (ok(response)) throw err;
+      } catch {
+        // An unparsable error body leaves `json` undefined.
       }
-      if (!ok(response)) throw httpError(response, payload, json);
-      return json;
+      throw httpError(response, payload, json);
     },
     async chainId(post) {
       await current(post);

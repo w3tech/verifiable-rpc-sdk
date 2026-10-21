@@ -43,7 +43,6 @@ export class LazyConfidentialClient {
   }
 
   #load(): Promise<ConfidentialClient> {
-    if (this.#client !== undefined) return Promise.resolve(this.#client);
     this.#loading ??= import("./confidential-client")
       .then(({ ConfidentialClient }) => (this.#client = new ConfidentialClient(this.#options)))
       .catch((cause: unknown) => {

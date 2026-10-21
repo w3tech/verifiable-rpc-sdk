@@ -8,7 +8,6 @@ import { HttpRequestError, RpcRequestError } from "viem";
 const utf8 = new TextDecoder();
 
 function parse(body: Uint8Array): unknown {
-  if (body.byteLength === 0) return undefined;
   try {
     return JSON.parse(utf8.decode(body));
   } catch {

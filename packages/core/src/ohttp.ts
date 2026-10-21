@@ -20,7 +20,7 @@ import { ConfidentialDecryptFailed, MalformedConfidentialResponse } from "./erro
 
 export type KemChoice = "native" | "js";
 
-export const CONTRACT_KEY_ID = 0x00;
+const CONTRACT_KEY_ID = 0x00;
 
 const utf8 = new TextEncoder();
 const EMPTY = new Uint8Array(0);
@@ -80,7 +80,7 @@ export async function selectKem(): Promise<KemChoice> {
 
 let contractSuitePromise: Promise<CipherSuite> | undefined;
 
-export function contractSuite(): Promise<CipherSuite> {
+function contractSuite(): Promise<CipherSuite> {
   contractSuitePromise ??= selectKem().then((kem) => createSuite(kem));
   return contractSuitePromise;
 }

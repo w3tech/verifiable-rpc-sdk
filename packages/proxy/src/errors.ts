@@ -125,15 +125,20 @@ export class DecodeFailedError extends ProxyError {
   }
 }
 
-const UNDICI_TIMEOUT_CODES = new Set([
+const UNDICI_TIMEOUT_CODES = new Set<unknown>([
   "UND_ERR_CONNECT_TIMEOUT",
   "UND_ERR_HEADERS_TIMEOUT",
   "UND_ERR_BODY_TIMEOUT",
 ]);
 
+/** The `code` of an error-like value, if any. */
+export function codeOf(err: unknown): unknown {
+  return (err as { code?: unknown } | null | undefined)?.code;
+}
+
 /** True for an undici connect, headers or body timeout. */
 function isUndiciTimeout(err: unknown): boolean {
-  return UNDICI_TIMEOUT_CODES.has((err as { code?: string } | null | undefined)?.code ?? "");
+  return UNDICI_TIMEOUT_CODES.has(codeOf(err));
 }
 
 /** The HTTP status for an attestation that could not be obtained, in both proxy modes. */
@@ -144,7 +149,7 @@ function attestationUnavailableStatus(err: AttestationUnavailable): number {
 
 /** The one map of an upstream failure, by its `code`; the original error stays the `cause`. */
 export function upstreamError(cause: unknown): ProxyError {
-  const code = (cause as { code?: unknown } | null | undefined)?.code;
+  const code = codeOf(cause);
   let err: ProxyError;
   if (isUndiciTimeout(cause)) {
     err = new UpstreamTimeoutError("Upstream did not respond within the configured timeout");
@@ -194,7 +199,7 @@ export function describeError(err: unknown): {
   } else {
     return { status: 502, kind: "Internal", message: "Internal proxy error" };
   }
-  const code = (err.cause as { code?: unknown } | null | undefined)?.code;
+  const code = codeOf(err.cause);
   const traceId = (err as { traceId?: unknown }).traceId;
   return {
     ...described,

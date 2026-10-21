@@ -26,7 +26,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 import { BadSignature, MalformedHeader, MissingHeader, StaleTimestamp } from "./errors";
 import type { Logger } from "./logger";
-import { buildPreImage, validateChainId } from "./preimage";
+import { buildPreImage, U64_MAX, validateChainId } from "./preimage";
 
 export const DEFAULT_REPLAY_WINDOW_MS = 60_000;
 
@@ -39,7 +39,6 @@ const SIGNATURE_HEX_RE = /^0x[0-9a-f]{128}$/;
 const PUBKEY_HEX_RE = /^0x[0-9a-f]{64}$/;
 const TIMESTAMP_RE = /^\d{1,20}$/;
 export const NODE_ID_RE = /^[^,]+$/;
-const U64_MAX = (1n << 64n) - 1n;
 
 /**
  * Headers as they may arrive from any transport: a `Headers` object (fetch /

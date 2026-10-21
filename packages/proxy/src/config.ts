@@ -6,7 +6,7 @@
 
 import { parseArgs } from "node:util";
 
-import { checkOptions, deriveVrpcUrls } from "@w3tech.io/vrpc-core";
+import { checkOptions } from "@w3tech.io/vrpc-core";
 
 import { ConfigError } from "./errors";
 import type { LogLevel } from "./logger";
@@ -148,7 +148,7 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
     throw new ConfigError(`--upstream is not a valid URL: ${JSON.stringify(upstream)}`);
   }
 
-  const { chainId } = checkOptions({ chainId: chain });
+  const { chainId, urls } = checkOptions({ chainId: chain, url: upstream });
 
   const timeoutRaw = values.timeout ?? env.VRPC_PROXY_TIMEOUT;
   const upstreamTimeoutMs =
@@ -189,7 +189,7 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   // Both legs derive from the one user URL (same as the SDK adapters): the RPC
   // route is the URL verbatim — the user spells the vRPC route out explicitly
   // (e.g. `/arbitrum_vrpc`) — and the attestation route appends `/attestation`.
-  const { rpcUrl, attestationUrl } = deriveVrpcUrls(upstream);
+  const { rpcUrl, attestationUrl } = urls;
 
   const config: ProxyConfig = {
     // The RPC leg keeps the user's query; the derived attestation and confidential URLs drop it.
