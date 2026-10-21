@@ -1,31 +1,21 @@
 // Integration tests for the signed-call wire contract against a live sidecar
-// backed by the dstack simulator + an in-process mock JSON-RPC upstream. Drives
+// backed by the dstack simulator and an echo JSON-RPC upstream. Drives
 // `verifyResponse` over raw fetched bytes plus the standalone `fetchAttestation`
-// helper. See `tests/integration/harness.ts` for the spawn machinery — this file
-// is just assertions.
-//
-// Env-gated: if any of `DSTACK_SIMULATOR_BIN`, `DSTACK_SIMULATOR_FIXTURES_DIR`,
-// or `SIDECAR_BIN` is unset, the entire `describe` block is skipped and a
-// one-line skip message is logged at module load.
+// helper.
 
+import { CHAIN_ID } from "@w3tech.io/vrpc-test-support";
+import {
+  INTEROP_SKIP_MESSAGE,
+  type Interop,
+  integrationEnabled,
+  spawnInterop,
+} from "@w3tech.io/vrpc-test-support/interop";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { fetchAttestation, type VerifiedPair, verifyResponse } from "../../src/index";
-import {
-  cleanup,
-  integrationEnabled,
-  type MockUpstreamHandle,
-  type SidecarHandle,
-  type SimulatorHandle,
-  spawnMockUpstream,
-  spawnSidecar,
-  spawnSimulator,
-} from "./harness";
 
 if (!integrationEnabled) {
-  console.log(
-    "[integration] skipping — set DSTACK_SIMULATOR_BIN, DSTACK_SIMULATOR_FIXTURES_DIR, SIDECAR_BIN to run",
-  );
+  console.log(INTEROP_SKIP_MESSAGE);
 }
 
 const d = integrationEnabled ? describe : describe.skip;
@@ -58,24 +48,20 @@ async function verifiedBlockNumber(
   url: string,
 ): Promise<{ pair: VerifiedPair; responseBytes: Uint8Array }> {
   const { requestBytes, responseBytes, headers } = await rpcCall(url, "eth_blockNumber", []);
-  const pair = await verifyResponse(requestBytes, responseBytes, headers, { chainId: "1" });
+  const pair = await verifyResponse(requestBytes, responseBytes, headers, { chainId: CHAIN_ID });
   return { pair, responseBytes };
 }
 
 d("integration: call", () => {
-  let simulator: SimulatorHandle | undefined;
-  let upstream: MockUpstreamHandle | undefined;
-  let sidecar: SidecarHandle | undefined;
+  let env: Interop | undefined;
+  let sidecar: Interop["sidecar"] | undefined;
 
   beforeAll(async () => {
-    simulator = await spawnSimulator();
-    upstream = await spawnMockUpstream();
-    sidecar = await spawnSidecar(simulator.socketPath, upstream.url, "1");
-  });
+    env = await spawnInterop();
+    sidecar = env.sidecar;
+  }, 60_000);
 
-  afterAll(async () => {
-    await cleanup([sidecar, upstream, simulator]);
-  });
+  afterAll(() => env?.kill());
 
   it("eth_blockNumber over the live wire verifies with a valid signature", async () => {
     if (!sidecar) throw new Error("sidecar not initialised");

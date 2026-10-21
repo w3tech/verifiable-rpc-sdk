@@ -4,7 +4,7 @@
 // defaults, env fallbacks with CLI precedence, attestation headers, and
 // attestation-URL derivation. Pure — no server, no network.
 
-import { deriveVrpcUrls, InvalidChainId } from "@w3tech.io/vrpc-core";
+import { deriveVrpcUrls } from "@w3tech.io/vrpc-core";
 import { describe, expect, test } from "vitest";
 
 import { parseConfig } from "../src/config";
@@ -31,14 +31,10 @@ describe("parseConfig", () => {
     );
   });
 
-  test("invalidChainIdPropagatesCoreInvalidChainId", () => {
-    const args = (chain: string) => ["--upstream", UPSTREAM, "--chain-id", chain];
-    // Whitespace-only trims to empty.
-    expect(() => parseConfig(args("   "), {})).toThrow(InvalidChainId);
-    // Oversized: > 64 UTF-8 bytes.
-    expect(() => parseConfig(args("a".repeat(65)), {})).toThrow(InvalidChainId);
-    // Non-printable-ASCII.
-    expect(() => parseConfig(args("café"), {})).toThrow(InvalidChainId);
+  test.each(["   ", "a".repeat(65), "café"])("chain id %j is InvalidOption", (chain) => {
+    expect(() => parseConfig(["--upstream", UPSTREAM, "--chain-id", chain], {})).toThrow(
+      expect.objectContaining({ name: "InvalidOption", option: "chainId" }),
+    );
   });
 
   test("unknownFlagThrowsConfigError", () => {
@@ -115,13 +111,28 @@ describe("parseConfig", () => {
     expect(config.attestationUrl).toBe("https://rpc.ankr.com/arbitrum_vrpc/attestation");
   });
 
-  test("upstreamQueryProducesWarning", () => {
+  test("upstreamQueryStaysOnTheRpcLegAndWarnsAboutTheAttestationLeg", () => {
     const config = parseConfig(
-      ["--upstream", "https://rpc.example.com/chain?key=abc", "--chain-id", "test-chain"],
+      ["--upstream", "https://rpc.example.com/chain/?key=abc", "--chain-id", "test-chain"],
       {},
     );
-    expect(config.warnings).toBeDefined();
-    expect(config.warnings?.length).toBeGreaterThan(0);
+    expect(config.upstreamUrl).toBe("https://rpc.example.com/chain?key=abc");
+    expect(config.warnings?.[0]).toContain("the derived attestation URL drops");
+  });
+
+  test("upstreamQueryWarningInConfidentialModeSaysNoKeyIsSent", () => {
+    const config = parseConfig(
+      [
+        "--upstream",
+        "https://rpc.example.com/chain?key=abc",
+        "--chain-id",
+        "test-chain",
+        "--confidential",
+      ],
+      {},
+    );
+    expect(config.warnings).toHaveLength(1);
+    expect(config.warnings?.[0]).toContain("no API key is sent unless --api-key");
   });
 
   test("apiKeyFlagSetsConfigAndAttestationHeader", () => {
@@ -140,5 +151,52 @@ describe("parseConfig", () => {
     const config = parseConfig(BASE, {});
     expect(config.apiKey).toBeUndefined();
     expect(config.attestationHeaders["x-api-key"]).toBeUndefined();
+  });
+
+  test("confidentialFlagTurnsModeOn", () => {
+    expect(parseConfig([...BASE, "--confidential"], {}).confidential).toBe(true);
+  });
+
+  test("confidentialEnvAcceptsOneAndTrueInAnyCase", () => {
+    for (const value of ["1", "true", "TRUE", "True"]) {
+      expect(parseConfig(BASE, { VRPC_PROXY_CONFIDENTIAL: value }).confidential).toBe(true);
+    }
+  });
+
+  test("confidentialEnvZeroFalseEmptyOrUnsetLeavesModeOff", () => {
+    for (const value of ["0", "false", "FALSE", ""]) {
+      expect(parseConfig(BASE, { VRPC_PROXY_CONFIDENTIAL: value }).confidential).not.toBe(true);
+    }
+    expect(parseConfig(BASE, {}).confidential).not.toBe(true);
+  });
+
+  test("confidentialEnvUnrecognisedValueThrowsConfigError", () => {
+    for (const value of ["yes", "on", "2", " 1"]) {
+      const parse = () => parseConfig(BASE, { VRPC_PROXY_CONFIDENTIAL: value });
+      expect(parse).toThrow(ConfigError);
+      expect(parse).toThrow(/--confidential/);
+      expect(parse).toThrow(/VRPC_PROXY_CONFIDENTIAL/);
+    }
+  });
+
+  test("confidentialFlagRejectsAValue", () => {
+    expect(() => parseConfig(["--confidential=true", ...BASE], {})).toThrow(ConfigError);
+  });
+
+  test("confidentialFlagWinsOverEnvOff", () => {
+    const config = parseConfig([...BASE, "--confidential"], { VRPC_PROXY_CONFIDENTIAL: "0" });
+    expect(config.confidential).toBe(true);
+  });
+
+  test("confidentialModeKeepsListenDefaultAndAddsNoWarning", () => {
+    const config = parseConfig([...BASE, "--confidential"], {});
+    expect(config.listenHost).toBe("127.0.0.1");
+    expect(config.listenPort).toBe(8969);
+    expect(config.warnings).toBeUndefined();
+  });
+
+  test("confidentialModeStillRequiresChainId", () => {
+    expect(() => parseConfig(["--upstream", UPSTREAM, "--confidential"], {})).toThrow(ConfigError);
+    expect(() => parseConfig(["--upstream", UPSTREAM, "--confidential"], {})).toThrow(/--chain-id/);
   });
 });

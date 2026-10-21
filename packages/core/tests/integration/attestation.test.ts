@@ -4,38 +4,26 @@
 
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
-import { fetchAttestation } from "../../src/index";
 import {
-  cleanup,
+  type Interop,
   integrationEnabled,
-  type MockUpstreamHandle,
-  type SidecarHandle,
-  type SimulatorHandle,
-  spawnMockUpstream,
-  spawnSidecar,
-  spawnSimulator,
-} from "./harness";
+  spawnInterop,
+} from "@w3tech.io/vrpc-test-support/interop";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { fetchAttestation } from "../../src/index";
 
 const d = integrationEnabled ? describe : describe.skip;
 
 d("integration: attestation", () => {
-  let simulator: SimulatorHandle | undefined;
-  let upstream: MockUpstreamHandle | undefined;
-  let sidecar: SidecarHandle | undefined;
+  let env: Interop | undefined;
+  let sidecar: Interop["sidecar"] | undefined;
 
   beforeAll(async () => {
-    simulator = await spawnSimulator();
-    // `/attestation` does not hit the upstream, but the sidecar still requires
-    // `--upstream-url` to start, so spawn a mock and pass its URL.
-    upstream = await spawnMockUpstream();
-    sidecar = await spawnSidecar(simulator.socketPath, upstream.url, "1");
-  });
+    env = await spawnInterop();
+    sidecar = env.sidecar;
+  }, 60_000);
 
-  afterAll(async () => {
-    await cleanup([sidecar, upstream, simulator]);
-  });
+  afterAll(() => env?.kill());
 
   it("fetchAttestation returns a parseable Attestation against a live simulator-backed sidecar", async () => {
     if (!sidecar) throw new Error("sidecar not initialised");
@@ -93,6 +81,7 @@ d("integration: attestation", () => {
     const saved = JSON.parse(await fs.readFile(fixturePath, "utf8")) as {
       pubkey: string;
       composeHash: string;
+      app_compose: string;
       quote: {
         quote: string;
         event_log: string;
@@ -102,7 +91,7 @@ d("integration: attestation", () => {
     };
 
     // Top-level key set is fixed.
-    expect(Object.keys(saved).sort()).toEqual(["composeHash", "pubkey", "quote"]);
+    expect(Object.keys(saved).sort()).toEqual(["app_compose", "composeHash", "pubkey", "quote"]);
 
     // pubkey stable across runs against the same simulator/key path.
     if (saved.pubkey !== att.pubkey) {
@@ -110,6 +99,8 @@ d("integration: attestation", () => {
     }
 
     // composeHash stable under same simulator config (typically "").
+    // The simulator's attestation.bin bakes a compose hash its app-compose.json does not hash to,
+    // so the saved composeHash != sha256(app_compose) is expected; do not edit the fixture by hand.
     if (saved.composeHash !== att.composeHash) {
       throw new Error(
         `fixture mismatch at $.composeHash: saved=${saved.composeHash} live=${att.composeHash}`,

@@ -1,14 +1,12 @@
-// Scaffold self-check: proves the mirrored request-aware signer in
-// `fixtures.ts` produces `vRPC-*` headers that `@w3tech.io/vrpc-core`
-// `verifyResponse` ACCEPTS for the happy path, and that the fail-closed paths
-// (wrong-chain signature, unsigned) reject as expected. This guards the offline
-// test harness itself — NOT core crypto, which `packages/core/tests/verify.test.ts`
+// Scaffold self-check: proves the kit signer `signedJsonHeaders` produces
+// `vRPC-*` headers that `@w3tech.io/vrpc-core` `verifyResponse` ACCEPTS for the
+// happy path, and that the fail-closed paths (wrong-chain signature, unsigned)
+// reject as expected. This guards the offline test harness itself — NOT core crypto, which `packages/core/tests/verify.test.ts`
 // already covers. The adapter WIRING proper is covered by the transport suite.
 
 import { BadSignature, MissingHeader, verifyResponse } from "@w3tech.io/vrpc-core";
+import { CHAIN_ID, signedJsonHeaders, WIDE_WINDOW } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
-
-import { CHAIN_ID, signResponseBytes } from "./fixtures";
 
 const REQUEST_BYTES = new TextEncoder().encode(
   JSON.stringify({
@@ -23,11 +21,11 @@ const RESPONSE_BYTES = new TextEncoder().encode(
 );
 
 describe("offline fixture scaffold (viem)", () => {
-  test("signResponseBytes output verifies under vrpc-core", async () => {
-    const headers = await signResponseBytes(REQUEST_BYTES, RESPONSE_BYTES);
+  test("signedJsonHeaders output verifies under vrpc-core", async () => {
+    const headers = signedJsonHeaders(CHAIN_ID, REQUEST_BYTES, RESPONSE_BYTES);
     const pair = await verifyResponse(REQUEST_BYTES, RESPONSE_BYTES, headers, {
       chainId: CHAIN_ID,
-      replayWindowMs: Number.MAX_SAFE_INTEGER,
+      replayWindowMs: WIDE_WINDOW,
     });
     expect(pair.responseBytes).toEqual(RESPONSE_BYTES);
     expect(pair.verification.signatureHex).toMatch(/^0x[0-9a-f]{128}$/);
@@ -35,13 +33,11 @@ describe("offline fixture scaffold (viem)", () => {
   });
 
   test("wrong signing chain id rejects with BadSignature", async () => {
-    const headers = await signResponseBytes(REQUEST_BYTES, RESPONSE_BYTES, {
-      signingChainId: 1n,
-    });
+    const headers = signedJsonHeaders("1", REQUEST_BYTES, RESPONSE_BYTES);
     await expect(
       verifyResponse(REQUEST_BYTES, RESPONSE_BYTES, headers, {
         chainId: CHAIN_ID,
-        replayWindowMs: Number.MAX_SAFE_INTEGER,
+        replayWindowMs: WIDE_WINDOW,
       }),
     ).rejects.toBeInstanceOf(BadSignature);
   });
@@ -52,7 +48,7 @@ describe("offline fixture scaffold (viem)", () => {
         REQUEST_BYTES,
         RESPONSE_BYTES,
         { "content-type": "application/json" },
-        { chainId: CHAIN_ID, replayWindowMs: Number.MAX_SAFE_INTEGER },
+        { chainId: CHAIN_ID, replayWindowMs: WIDE_WINDOW },
       ),
     ).rejects.toBeInstanceOf(MissingHeader);
   });

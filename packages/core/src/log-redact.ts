@@ -3,20 +3,25 @@
 // Pure truncation + redaction helpers for the opt-in debug logger.
 //
 // These functions are the SINGLE point where logged field values are shortened
-// or sanitized, so the leak surface is auditable in one place. They are pure,
-// dependency-free, and shared by core + dstack-verify. Header logging keeps ONLY
-// vrpc-* headers (public protocol data) and drops everything else, so a credential
-// header (authorization / x-api-key) can never leak by omission.
+// or sanitized, so the leak surface is auditable in one place. Header logging keeps
+// ONLY vrpc-* headers (public protocol data) and drops everything else, so a
+// credential header (authorization / x-api-key) can never leak by omission.
+
+import { bytesToHex } from "@noble/hashes/utils.js";
 
 /**
  * Keep the first `keepBytes` of a hex blob and append `…(NB)` (byte count) when
- * truncated. Accepts the value with or without a leading `0x`; always returns a
- * `0x`-prefixed string. A value already at-or-below `keepBytes` is returned in
- * full. Default keep = 4 bytes (8 hex chars) — enough to recognize a prefix, too
- * little to reconstruct anything.
+ * truncated. Accepts hex with or without a leading `0x`, or raw bytes, of which only
+ * the kept prefix is hex-encoded; always returns a `0x`-prefixed string. A value
+ * already at-or-below `keepBytes` is returned in full. Default keep = 4 bytes
+ * (8 hex chars) — enough to recognize a prefix, too little to reconstruct anything.
  */
-export function truncateHex(hex: string, keepBytes = 4): string {
-  const body = hex.replace(/^0x/i, "");
+export function truncateHex(value: string | Uint8Array, keepBytes = 4): string {
+  if (typeof value !== "string") {
+    const head = `0x${bytesToHex(value.subarray(0, keepBytes))}`;
+    return value.length <= keepBytes ? head : `${head}…(${value.length}B)`;
+  }
+  const body = value.replace(/^0x/i, "");
   const keep = keepBytes * 2;
   return body.length <= keep
     ? `0x${body}`

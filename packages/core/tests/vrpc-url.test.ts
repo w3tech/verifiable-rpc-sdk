@@ -10,6 +10,7 @@ describe("deriveVrpcUrls", () => {
     expect(deriveVrpcUrls(`https://rpc.ankr.com/arbitrum_vrpc/${KEY}`)).toEqual({
       rpcUrl: `https://rpc.ankr.com/arbitrum_vrpc/${KEY}`,
       attestationUrl: `https://rpc.ankr.com/arbitrum_vrpc/${KEY}/attestation`,
+      confidentialUrl: `https://rpc.ankr.com/arbitrum_vrpc/${KEY}/confidential`,
     });
   });
 
@@ -17,6 +18,7 @@ describe("deriveVrpcUrls", () => {
     expect(deriveVrpcUrls("https://rpc.example.com/arbitrum_vrpc")).toEqual({
       rpcUrl: "https://rpc.example.com/arbitrum_vrpc",
       attestationUrl: "https://rpc.example.com/arbitrum_vrpc/attestation",
+      confidentialUrl: "https://rpc.example.com/arbitrum_vrpc/confidential",
     });
   });
 
@@ -24,6 +26,7 @@ describe("deriveVrpcUrls", () => {
     expect(deriveVrpcUrls("https://rpc.example.com/arbitrum_vrpc/")).toEqual({
       rpcUrl: "https://rpc.example.com/arbitrum_vrpc",
       attestationUrl: "https://rpc.example.com/arbitrum_vrpc/attestation",
+      confidentialUrl: "https://rpc.example.com/arbitrum_vrpc/confidential",
     });
   });
 
@@ -32,6 +35,7 @@ describe("deriveVrpcUrls", () => {
     expect(deriveVrpcUrls("https://rpc.example.com/arbitrum")).toEqual({
       rpcUrl: "https://rpc.example.com/arbitrum",
       attestationUrl: "https://rpc.example.com/arbitrum/attestation",
+      confidentialUrl: "https://rpc.example.com/arbitrum/confidential",
     });
   });
 
@@ -39,6 +43,7 @@ describe("deriveVrpcUrls", () => {
     expect(deriveVrpcUrls("http://node.example:8545")).toEqual({
       rpcUrl: "http://node.example:8545",
       attestationUrl: "http://node.example:8545/attestation",
+      confidentialUrl: "http://node.example:8545/confidential",
     });
   });
 
@@ -48,6 +53,7 @@ describe("deriveVrpcUrls", () => {
     expect(deriveVrpcUrls(`https://rpc.ankr.com/premium-http/ton_api_v2_vrpc/${KEY}`)).toEqual({
       rpcUrl: `https://rpc.ankr.com/premium-http/ton_api_v2_vrpc/${KEY}`,
       attestationUrl: `https://rpc.ankr.com/premium-http/ton_api_v2_vrpc/${KEY}/attestation`,
+      confidentialUrl: `https://rpc.ankr.com/premium-http/ton_api_v2_vrpc/${KEY}/confidential`,
     });
   });
 });

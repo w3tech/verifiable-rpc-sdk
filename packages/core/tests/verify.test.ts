@@ -1,4 +1,4 @@
-import { getPublicKeyAsync, signAsync } from "@noble/ed25519";
+import { rejectionOf, signResponse } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -8,19 +8,9 @@ import {
   MissingHeader,
   StaleTimestamp,
 } from "../src/errors";
-import { buildPreImage } from "../src/preimage";
-import { type ResponseHeaders, verifyResponse } from "../src/verify";
+import { isSignedVrpcResponse, type ResponseHeaders, verifyResponse } from "../src/verify";
 
-const TEST_SEED = new Uint8Array(32).fill(0x42);
 const CHAIN_ID = "1";
-
-function toHex(bytes: Uint8Array): string {
-  let out = "";
-  for (const b of bytes) {
-    out += b.toString(16).padStart(2, "0");
-  }
-  return out;
-}
 
 interface SignedTriple {
   requestBytes: Uint8Array;
@@ -41,22 +31,10 @@ async function signTriple(
 ): Promise<SignedTriple> {
   const requestBytes = new TextEncoder().encode(request);
   const responseBytes = new TextEncoder().encode(response);
-  const preImage = buildPreImage(
-    opts.signingChainId ?? CHAIN_ID,
-    requestBytes,
-    responseBytes,
+  const headers = signResponse(opts.signingChainId ?? CHAIN_ID, requestBytes, responseBytes, {
     timestampMs,
-  );
-  const signature = await signAsync(preImage, TEST_SEED);
-  const pubkey = await getPublicKeyAsync(TEST_SEED);
-  const headers: Record<string, string> = {
-    "vRPC-Signature": `0x${toHex(signature)}`,
-    "vRPC-Timestamp": timestampMs.toString(),
-    "vRPC-Pubkey": `0x${toHex(pubkey)}`,
-  };
-  if (opts.nodeId !== undefined) {
-    headers["vRPC-NodeId"] = opts.nodeId;
-  }
+    nodeId: opts.nodeId,
+  });
   return { requestBytes, responseBytes, headers };
 }
 
@@ -85,12 +63,9 @@ describe("verifyResponse", () => {
     const tampered = new TextEncoder().encode(
       JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0xdeadbeef" }),
     );
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, tampered, t.headers, { chainId: CHAIN_ID, nowMs });
-    } catch (err) {
-      caught = err;
-    }
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, tampered, t.headers, { chainId: CHAIN_ID, nowMs }),
+    );
     expect(caught).toBeInstanceOf(BadSignature);
     if (caught instanceof BadSignature) {
       expect(caught.kind).toBe("BadSignature");
@@ -103,12 +78,9 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     // Signed with chain id "137", verified expecting "1" -> wrong pre-image.
     const t = await signTriple(REQUEST, RESPONSE, nowMs, { signingChainId: "137" });
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, { chainId: "1", nowMs });
-    } catch (err) {
-      caught = err;
-    }
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, { chainId: "1", nowMs }),
+    );
     expect(caught).toBeInstanceOf(BadSignature);
   });
 
@@ -129,15 +101,12 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const t = await signTriple(REQUEST, RESPONSE, nowMs);
     delete t.headers["vRPC-Signature"];
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(MissingHeader);
     if (caught instanceof MissingHeader) {
       expect(caught.headerName).toBe("vRPC-Signature");
@@ -148,15 +117,12 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const t = await signTriple(REQUEST, RESPONSE, nowMs);
     delete t.headers["vRPC-Timestamp"];
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(MissingHeader);
     if (caught instanceof MissingHeader) {
       expect(caught.headerName).toBe("vRPC-Timestamp");
@@ -167,91 +133,63 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const t = await signTriple(REQUEST, RESPONSE, nowMs);
     delete t.headers["vRPC-Pubkey"];
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(MissingHeader);
     if (caught instanceof MissingHeader) {
       expect(caught.headerName).toBe("vRPC-Pubkey");
     }
   });
 
-  test("malformedSignatureHexThrowsMalformed", async () => {
+  const twice = (v: string) => `${v}, ${v}`;
+  test.each([
+    { label: "a short vRPC-Signature", name: "vRPC-Signature", value: () => "0xnotcorrectlength" },
+    { label: "a short vRPC-Pubkey", name: "vRPC-Pubkey", value: () => "deadbeef" },
+    { label: "a non-numeric vRPC-Timestamp", name: "vRPC-Timestamp", value: () => "nope" },
+    {
+      label: "a vRPC-Timestamp above u64",
+      name: "vRPC-Timestamp",
+      value: () => (1n << 64n).toString(),
+    },
+    { label: "a repeated vRPC-Signature", name: "vRPC-Signature", value: twice },
+    { label: "a repeated vRPC-Pubkey", name: "vRPC-Pubkey", value: twice },
+    { label: "a repeated vRPC-Timestamp", name: "vRPC-Timestamp", value: twice },
+    { label: "a repeated vRPC-NodeId", name: "vRPC-NodeId", value: () => "n1, n2" },
+    { label: "an empty vRPC-NodeId", name: "vRPC-NodeId", value: () => "" },
+  ])("$label throws MalformedHeader", async ({ name, value }) => {
     const nowMs = BigInt(Date.now());
-    const t = await signTriple(REQUEST, RESPONSE, nowMs);
-    t.headers["vRPC-Signature"] = "0xnotcorrectlength";
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
-        chainId: CHAIN_ID,
-        nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+    const t = await signTriple(REQUEST, RESPONSE, nowMs, { nodeId: "n1" });
+    t.headers[name] = value(t.headers[name] ?? "");
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, { chainId: CHAIN_ID, nowMs }),
+    );
     expect(caught).toBeInstanceOf(MalformedHeader);
-    if (caught instanceof MalformedHeader) {
-      expect(caught.headerName).toBe("vRPC-Signature");
-    }
+    expect((caught as MalformedHeader).headerName).toBe(name);
   });
 
-  test("malformedPubkeyHexThrowsMalformed", async () => {
+  test("timestampAtU64MaxIsNotMalformed", async () => {
     const nowMs = BigInt(Date.now());
     const t = await signTriple(REQUEST, RESPONSE, nowMs);
-    t.headers["vRPC-Pubkey"] = "deadbeef";
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
-        chainId: CHAIN_ID,
-        nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(MalformedHeader);
-    if (caught instanceof MalformedHeader) {
-      expect(caught.headerName).toBe("vRPC-Pubkey");
-    }
-  });
-
-  test("malformedTimestampNotNumericThrowsMalformed", async () => {
-    const nowMs = BigInt(Date.now());
-    const t = await signTriple(REQUEST, RESPONSE, nowMs);
-    t.headers["vRPC-Timestamp"] = "nope";
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
-        chainId: CHAIN_ID,
-        nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(MalformedHeader);
-    if (caught instanceof MalformedHeader) {
-      expect(caught.headerName).toBe("vRPC-Timestamp");
-    }
+    t.headers["vRPC-Timestamp"] = ((1n << 64n) - 1n).toString();
+    await expect(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, { chainId: CHAIN_ID, nowMs }),
+    ).rejects.toBeInstanceOf(BadSignature);
   });
 
   test("staleTimestampPastThrowsStaleTimestamp", async () => {
     const nowMs = BigInt(Date.now());
     const staleMs = nowMs - 120_000n;
     const t = await signTriple(REQUEST, RESPONSE, staleMs);
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(StaleTimestamp);
     if (caught instanceof StaleTimestamp) {
       expect(caught.allowedWindowMs).toBe(60_000);
@@ -264,15 +202,12 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const futureMs = nowMs + 120_000n;
     const t = await signTriple(REQUEST, RESPONSE, futureMs);
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(StaleTimestamp);
     if (caught instanceof StaleTimestamp) {
       expect(caught.skewMs).toBe(120_000n);
@@ -283,16 +218,13 @@ describe("verifyResponse", () => {
     const nowMs = BigInt(Date.now());
     const slightlyOldMs = nowMs - 1n;
     const t = await signTriple(REQUEST, RESPONSE, slightlyOldMs);
-    let caught: unknown;
-    try {
-      await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
+    const caught = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
         chainId: CHAIN_ID,
         replayWindowMs: 0,
         nowMs,
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(StaleTimestamp);
     if (caught instanceof StaleTimestamp) {
       expect(caught.allowedWindowMs).toBe(0);
@@ -345,12 +277,12 @@ describe("verifyResponse", () => {
 
   test("nodeIdCapturedWhenHeaderPresent", async () => {
     const nowMs = BigInt(Date.now());
-    const t = await signTriple(REQUEST, RESPONSE, nowMs, { nodeId: "node-xyz" });
+    const t = await signTriple(REQUEST, RESPONSE, nowMs, { nodeId: "region/node 7" });
     const pair = await verifyResponse(t.requestBytes, t.responseBytes, t.headers, {
       chainId: CHAIN_ID,
       nowMs,
     });
-    expect(pair.nodeId).toBe("node-xyz");
+    expect(pair.nodeId).toBe("region/node 7");
   });
 
   test("nodeIdOmittedWhenHeaderAbsent", async () => {
@@ -362,5 +294,31 @@ describe("verifyResponse", () => {
     });
     expect(pair.nodeId).toBeUndefined();
     expect("nodeId" in pair).toBe(false);
+  });
+});
+
+describe("header objects whose get returns undefined on a miss", () => {
+  function mapHeaders(headers: Record<string, string>): ResponseHeaders {
+    return new Map(Object.entries(headers)) as unknown as ResponseHeaders;
+  }
+
+  test("isSignedVrpcResponse is false for an unsigned response and true for a signed one", async () => {
+    const t = await signTriple(REQUEST, RESPONSE, BigInt(Date.now()));
+    expect(isSignedVrpcResponse(mapHeaders({ "content-type": "application/json" }))).toBe(false);
+    expect(isSignedVrpcResponse(mapHeaders(t.headers))).toBe(true);
+  });
+
+  test("an absent vRPC-Signature is MissingHeader", async () => {
+    const nowMs = BigInt(Date.now());
+    const t = await signTriple(REQUEST, RESPONSE, nowMs);
+    delete t.headers["vRPC-Signature"];
+    const err = await rejectionOf(
+      verifyResponse(t.requestBytes, t.responseBytes, mapHeaders(t.headers), {
+        chainId: CHAIN_ID,
+        nowMs,
+      }),
+    );
+    expect(err).toBeInstanceOf(MissingHeader);
+    expect((err as MissingHeader).headerName).toBe("vRPC-Signature");
   });
 });

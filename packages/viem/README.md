@@ -12,7 +12,7 @@ change.
 **before `JSON.parse`**, and feeds them — with the exact request bytes it
 POSTed — into `@w3tech.io/vrpc-core`'s `verifyResponse`. Only after verification
 passes is the body parsed and the result returned. Verification is
-**fail-closed** by default (`strict`).
+**fail-closed**.
 
 All verification logic is reused from `@w3tech.io/vrpc-core` — none is copied
 here, and there is no `ethers` import (manifest isolation). The error family is
@@ -158,10 +158,6 @@ errors and propagates (fail-closed).
 | `hardwareVerifier` | `HardwareVerifier`     | Phala cloud verifier (vrpc-core) | Internal/advanced. Overrides the mandatory hardware-signature verifier. Point it at a self-hosted endpoint, a future local-DCAP verifier, or a no-network test mock. Hardware verification is always-on and cannot be disabled; omitting this keeps the cloud default. |
 | `logger`         | `Logger`                 | no-op (silent)   | Internal/advanced. Opt-in debug logger forwarded to verification to narrate the verify flow at debug level. Use `createConsoleLogger()` from `@w3tech.io/vrpc-core`. Safe-wrapped (never throws-through) and redacts secrets — observability only, never part of the verify decision. |
 
-> v6.0 removed the inert `allowlist`/`tcb`/`pccsUrl` options. v7.0 reintroduces
-> them as consumer-pinned anchors once the verifier consumes them. `headers`
-> (above) stays — it covers both the RPC POST and the attestation fetch.
-
 `fetchFn` (already documented above) feeds **both** legs — the RPC POST and the
 attestation GET — which is also the offline test/example seam.
 
@@ -255,16 +251,21 @@ try {
 
 | Outcome                                   | What the transport throws |
 |-------------------------------------------|---------------------------|
-| Tampered / forged signature               | `BadSignature` (a `VerificationError`) — fail-closed in `strict`. |
+| Tampered / forged signature               | `BadSignature` (a `VerificationError`) — fail-closed. |
 | Stripped `vRPC-*` headers (downgrade)     | `MissingHeader` (a `VerificationError`) — fail-closed. |
 | Wrong chain id (signed for another chain) | `BadSignature`. |
 | Signed JSON-RPC `{ error }` body          | viem's own `RpcRequestError` — **NOT** a `VerificationError` (verification passed; `buildRequest` maps it by code). |
 | Unsigned non-2xx (gateway 502 / timeout)  | viem's `HttpRequestError` **before** verify — reads as a network error, not a verify attack. |
 | Signed non-2xx with `{ error }` body      | still flows into verify; its signed error surfaces as an ordinary `RpcRequestError`. |
+| Signed 2xx that is not a JSON-RPC object  | `HttpRequestError` (not JSON, not an object, or a non-object `error`). As with `http`, only a truthy `error` fails: `"error": null` returns the `result`. |
 
-`MissingHeader`, `MalformedHeader`, `BadSignature`, and `StaleTimestamp` all
-extend `VerificationError`, which extends `Error`. They are the identical
-classes re-exported by `@w3tech.io/vrpc-ethers` (cross-adapter parity).
+`MissingHeader`, `MalformedHeader`, `BadSignature`, `StaleTimestamp` and
+`InvalidChainId` all extend `VerificationError`, which extends `VrpcError`. The
+package re-exports everything in `@w3tech.io/vrpc-core/errors` — the
+`VerificationError` and `UnavailableError` families, `InvalidOption`,
+`InvalidInnerRequest`, `mayHaveExecuted` and their types — plus the type
+`ConfidentialInfo`. They are the identical classes `@w3tech.io/vrpc-core` and
+`@w3tech.io/vrpc-ethers` export.
 
 ### Fail-closed
 
@@ -280,6 +281,76 @@ Batching is **OFF by default**. Every action issues a single non-batched
 `{ jsonrpc: "2.0", id: 1, method, params }` request that is verified as one
 unit. Batched-as-one-unit verification is a deferred opt-in — consistent with
 the ethers adapter's stance.
+
+---
+
+## Ankr Confidential RPC mode
+
+What the gateway and the node can see, the limits and the errors are described in
+the [core Ankr Confidential RPC mode section](../core/README.md#ankr-confidential-rpc-mode).
+
+`vrpcHttp(url, { confidential: true })` sends every JSON-RPC call encrypted to
+an attested node. The client must declare `chain`; without it
+`createPublicClient` throws. One `vrpcHttp()` instance serves one chain.
+
+**Turn off CCIP-Read.** CCIP-Read (EIP-3668) requests go to the gateway URL a
+contract names, in plaintext and outside Ankr Confidential RPC: viem sends
+`{ sender, data }` there for any `call` that reverts with `OffchainLookup`, and
+it is on by default. The transport cannot change a client option; create the
+client with `ccipRead: false` to keep every request encrypted.
+
+```ts
+const client = createPublicClient({
+  chain: arbitrum,
+  transport: vrpcHttp(url, { confidential: true }),
+  ccipRead: false,
+});
+```
+
+`await client.transport.ready()` attests up front;
+`client.transport.getConfidentialInfo()` returns the pinned node. The first call
+includes the attestation and counts against `timeout` (10 s by default), so call
+`ready()` at start-up.
+
+**Do not combine with a transport that is not in Ankr Confidential RPC mode.**
+`fallback([vrpcHttp(url, { confidential: true }), http(otherUrl)])` sends a
+failed call in plaintext to the next transport. `fallback` moves on for every
+error except user rejections and reverts, a failed signature or attestation
+check included.
+
+**Retries.** Nothing in the SDK resends a call: a 429, a redirect or a gateway
+error is thrown as a typed error. `fallback` retries the whole request
+(`retryCount`, 3 by default): set `retryCount: 0` when you use it. A per-call
+`retryCount` you pass to `client.request` is honoured and resends the call.
+A `fetchFn` of your own must pass `init.redirect` (`"manual"`) through and must
+not retry; otherwise it follows a redirect or resends the encrypted request and
+the API key itself. It also carries the default hardware verifier's call.
+
+**Response size.** The transport stops reading an answer past 192 MiB and the
+call fails with `TransportFailed`, with your `fetchFn` too. A response without a
+web stream body (node-fetch, a fetch polyfill) is read in full first, so the
+limit is checked only after the answer is in memory.
+
+**Errors.**
+
+- Core errors reach viem actions wrapped in viem's `UnknownRpcError`; find them
+  with `err.walk()`.
+- An inner `{ error }` answer becomes `RpcRequestError`, which viem maps by code
+  exactly as with `http` (for example to `InternalRpcError`).
+- An inner non-2xx answer is `HttpRequestError`, or `RpcRequestError` when its
+  body is a JSON-RPC error.
+
+Every error class with its `executed` value, the request and response size
+limits and the timeouts are listed in the core section's
+[Limits](../core/README.md#limits) and [Errors](../core/README.md#errors)
+subsections.
+
+**No batching.** `vrpcHttp` does not batch in Ankr Confidential RPC mode either:
+each call is one JSON-RPC request sent as one encrypted request.
+
+**Versions.** Install `@w3tech.io/vrpc-viem` and `@w3tech.io/vrpc-core` at the
+same version, so an error class you import from core is the one the transport
+throws.
 
 ---
 

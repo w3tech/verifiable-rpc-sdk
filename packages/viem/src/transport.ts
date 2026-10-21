@@ -1,30 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// vrpcHttp — verifiable drop-in for viem's `http(url)` transport. A custom
-// transport whose `request` owns its fetch, captures the RAW content-decoded
-// response bytes BEFORE `JSON.parse`, and verifies them through vrpc-core's seam
-// (the same one ethers' `_send` uses). Always fail-closed: a verify failure
-// throws and no unverified data is returned. A signed JSON-RPC `{error}` body
-// surfaces as viem's `RpcRequestError` (not a VerificationError) so
-// `buildRequest` maps it by code.
+// vrpcHttp — verifiable drop-in for viem's `http(url)` transport. Open mode posts raw bytes and
+// maps the answers the core open session verified; Ankr Confidential RPC mode seals every call.
 
 import {
-  deriveVrpcUrls,
-  isSignedVrpcResponse,
-  parseChainId,
-  TrustedVerifier,
-  type TrustedVerifierOptions,
+  checkOptions,
+  createOpenSession,
+  InvalidOption,
+  LazyConfidentialClient,
 } from "@w3tech.io/vrpc-core";
+import type { ConfidentialInfo } from "@w3tech.io/vrpc-core/confidential";
 import { createTransport, HttpRequestError, RpcRequestError, type Transport } from "viem";
 
+import { isRpcError, mapInnerResponse, resultOf } from "./confidential";
 import type { VrpcHttpOptions } from "./options";
 
-// Drop `undefined`-valued keys: `exactOptionalPropertyTypes` forbids passing an
-// explicit `undefined` to an optional slot. `as T` is the one audited assertion.
-function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefined }): T {
-  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T;
-}
-
+/**
+ * Ankr Confidential RPC mode: every JSON-RPC call is sealed to an attested node. CCIP-Read
+ * requests go to the gateway a contract names in plaintext; create the client with
+ * `ccipRead: false` to keep every request encrypted. The client must declare `chain`; one
+ * transport binds one chain.
+ * `client.transport.ready()` attests up front and `getConfidentialInfo()` reports the pinned node;
+ * both are typed only when `confidential` is the literal `true`.
+ */
+export function vrpcHttp(
+  url: string,
+  opts: VrpcHttpOptions & { confidential: true },
+): Transport<"vrpc-http", ConfidentialValue>;
 /**
  * A viem `Transport` that Ed25519-verifies every response over its raw bytes
  * before it reaches the client. Drop-in:
@@ -37,156 +39,163 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
  * `eth_chainId` response on the first request (fail-fast, no unverified fallback);
  * declaring `chain` on the client pins YOUR chain and skips the bootstrap.
  */
-export function vrpcHttp(url: string, opts: VrpcHttpOptions = {}): Transport<"vrpc-http"> {
+export function vrpcHttp(url: string, opts?: VrpcHttpOptions): Transport<"vrpc-http">;
+export function vrpcHttp(
+  url: string,
+  opts: VrpcHttpOptions = {},
+): Transport<"vrpc-http"> | Transport<"vrpc-http", ConfidentialValue> {
+  const { urls, confidential } = checkOptions({
+    url,
+    headers: opts.headers,
+    replayWindowMs: opts.replayWindowMs,
+    pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
+    confidential: opts.confidential,
+  });
+  if (confidential) return confidentialHttp(urls.rpcUrl, opts);
   const fetchFn = opts.fetchFn ?? fetch;
-
-  // Derive the `/attestation` sub-route from the single URL.
-  const { rpcUrl, attestationUrl } = deriveVrpcUrls(url);
-
-  // Pinned from the viem client's chain.id (seeded in the factory below), or
-  // auto-derived lazily when no chain is set; the in-flight bootstrap promise is
-  // memoized so concurrent first calls share ONE fetch.
-  let chainIdResolved: string | undefined;
-  let chainIdPromise: Promise<string> | null = null;
-
-  // ONE TrustedVerifier per transport (lifetime pubkey cache); built lazily once
-  // chainId is known. (v6.0: the verifier defaults the trust policy internally.)
-  let trustedVerifier: TrustedVerifier | undefined;
-  const getTrustedVerifier = (chainId: string): TrustedVerifier => {
-    if (trustedVerifier === undefined) {
-      trustedVerifier = new TrustedVerifier(
-        pruneUndefined<TrustedVerifierOptions>({
-          chainId,
-          attestationUrl,
-          replayWindowMs: opts.replayWindowMs,
-          pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
-          headers: opts.headers,
-          // fetchFn's (url, init) => Promise<Response> aligns with the verifier's
-          // `fetch` for the attestation GET leg.
-          fetch: opts.fetchFn as typeof fetch | undefined,
-          hardwareVerifier: opts.hardwareVerifier,
-          logger: opts.logger,
-        }),
-      );
-    }
-    return trustedVerifier;
-  };
+  const { rpcUrl, attestationUrl } = urls;
+  const session = createOpenSession<{ status: number; headers: Headers; body: Uint8Array }>({
+    attestationUrl,
+    headers: opts.headers,
+    fetch: opts.fetchFn as typeof fetch | undefined,
+    replayWindowMs: opts.replayWindowMs,
+    pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
+    hardwareVerifier: opts.hardwareVerifier,
+    logger: opts.logger,
+    // As viem's http transport: RpcRequestError only for a well-formed JSON-RPC error.
+    httpError: (response, payload, json) =>
+      isRpcError(json)
+        ? new RpcRequestError({
+            body: payload as Record<string, unknown>,
+            error: json.error,
+            url: rpcUrl,
+          })
+        : new HttpRequestError({
+            body: payload as Record<string, unknown>,
+            status: response.status,
+            headers: response.headers,
+            url: rpcUrl,
+          }),
+  });
 
   return ({ chain, timeout: injectedTimeout }) => {
-    // viem injects the client's `chain`; its id is the pin source (chainId left
-    // the options bag — mirrors ethers taking it from the ctor). No chain → the
-    // lazy verified eth_chainId bootstrap fills it on the first request.
-    if (chainIdResolved === undefined && chain?.id != null) {
-      // viem chain ids are plain numbers; decimal stringification matches what
-      // EVM sidecars are configured with (e.g. 42161 → "42161").
-      chainIdResolved = String(chain.id);
-    }
-    // Effective timeout: explicit option → client-injected → viem's 10s default.
-    const timeout = opts.timeout ?? injectedTimeout ?? 10_000;
+    // viem chain ids are plain numbers; decimal stringification matches the sidecar config.
+    const clientChainId = chain?.id == null ? undefined : String(chain.id);
+    const config = baseConfig(opts, injectedTimeout);
+    const { timeout } = config;
 
-    // Derive chainId from a self-consistently verified `eth_chainId` response (its
-    // own `result` IS the chainId, so the signature only verifies for the chain
-    // the node really signed). Memoized; reuses the in-scope fetch/headers/timeout;
-    // on verify failure chainIdResolved is NOT set (fail-fast, no fallback).
-    const resolveChainId = (): Promise<string> => {
-      if (chainIdResolved != null) {
-        return Promise.resolve(chainIdResolved);
-      }
-      if (chainIdPromise != null) {
-        return chainIdPromise;
-      }
-      chainIdPromise = (async () => {
-        const { requestBytes, rawResponseBytes, res } = await post({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "eth_chainId",
-          params: [],
-        });
-
-        const chainId = parseChainId(rawResponseBytes);
-        await getTrustedVerifier(chainId).verify(requestBytes, rawResponseBytes, res.headers);
-
-        chainIdResolved = chainId;
-        return chainId;
-      })();
-      return chainIdPromise;
-    };
-
-    // Shared POST choke (mirrors ethers' #post): serialize once, fetch, capture the
-    // RAW content-decoded body. `res.text()` decodes gzip/br transparently — the
-    // sidecar signs the decoded body — so encode that exact text for the pre-image.
-    const post = async (payload: Record<string, unknown>) => {
-      const body = JSON.stringify(payload);
+    const post = async (body: Uint8Array) => {
       const res = await fetchFn(rpcUrl, {
         method: "POST",
         headers: { "content-type": "application/json", ...opts.headers },
         body,
         ...(timeout ? { signal: AbortSignal.timeout(timeout) } : {}),
       });
-      const rawText = await res.text();
       return {
-        requestBytes: new TextEncoder().encode(body),
-        rawText,
-        rawResponseBytes: new TextEncoder().encode(rawText),
-        res,
+        status: res.status,
+        headers: res.headers,
+        body: new Uint8Array(await res.arrayBuffer()),
       };
     };
 
     return createTransport(
       {
-        key: "vrpc-http",
-        name: "vRPC HTTP JSON-RPC",
-        type: "vrpc-http",
-        // Hardcoded; viem's injected default is ignored: buildRequest would RETRY a
-        // codeless VerificationError 3× and re-wrap it as UnknownRpcError, masking
-        // the failure. retryCount:0 lets the typed error propagate (recover via
-        // err.walk / .cause).
-        retryCount: 0,
-        timeout,
+        ...config,
         async request({ method, params }) {
-          // POST first, then resolve chainId (memoized) and verify the held bytes.
-          const { requestBytes, rawText, rawResponseBytes, res } = await post({
-            jsonrpc: "2.0",
-            id: 1,
-            method,
-            params,
-          });
-
-          // HTTP-status parity with ethers `response.assertOk()`: an UNSIGNED
-          // non-2xx (gateway 502 / timeout) is a transport failure → network error,
-          // not a `MissingHeader` that looks like an attack. A SIGNED non-2xx body
-          // still flows into verify; an unsigned 2xx still fails closed.
-          if (!res.ok && !isSignedVrpcResponse(res.headers)) {
-            throw new HttpRequestError({
-              body: { method, params },
-              status: res.status,
-              headers: res.headers,
-              url: rpcUrl,
-            });
-          }
-
-          const chainId = chainIdResolved ?? (await resolveChainId());
-          // Pass the fetch `Headers` directly — the verifier reads it
-          // case-insensitively; lowercasing into a Record would risk smuggling.
-          await getTrustedVerifier(chainId).verify(requestBytes, rawResponseBytes, res.headers);
-
-          // Parse ONLY after verify. `any` mirrors viem's own `http` transport
-          // (returns the parsed value untyped); a parse failure propagates (fail-closed).
-          // biome-ignore lint/suspicious/noExplicitAny: viem request returns untyped.
-          const parsed: any = JSON.parse(rawText);
-          // Signed JSON-RPC error = PRESENCE of the `error` key (not a truthy check).
-          if (parsed != null && "error" in parsed) {
-            // Same class viem's http transport throws — buildRequest maps it by code.
-            throw new RpcRequestError({
-              body: { method, params },
-              error: parsed.error,
-              url: rpcUrl,
-            });
-          }
-          return parsed.result;
+          if (clientChainId !== undefined) session.pin(clientChainId);
+          const payload = { jsonrpc: "2.0", id: 1, method, params };
+          return resultOf(await session.send(payload, post), rpcUrl, undefined, payload);
         },
       },
       { url: rpcUrl },
+    );
+  };
+}
+
+function baseConfig(opts: VrpcHttpOptions, injectedTimeout: number | undefined) {
+  return {
+    key: "vrpc-http",
+    name: "vRPC HTTP JSON-RPC",
+    type: "vrpc-http",
+    // Hardcoded; viem's injected default is ignored: buildRequest would RETRY a
+    // codeless VerificationError 3× and re-wrap it as UnknownRpcError, masking
+    // the failure. retryCount:0 lets the typed error propagate (recover via
+    // err.walk / .cause).
+    retryCount: 0,
+    timeout: opts.timeout ?? injectedTimeout ?? 10_000,
+  } as const;
+}
+
+/** Aborts with the caller's reason, or with a `TimeoutError` after `timeoutMs` when positive. */
+function callSignal(caller: AbortSignal | undefined, timeoutMs: number): AbortSignal | undefined {
+  const timeout = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
+  if (caller === undefined || timeout === undefined) return caller ?? timeout;
+  return AbortSignal.any([caller, timeout]);
+}
+
+const utf8 = new TextEncoder();
+/** Members `vrpcHttp(url, { confidential: true })` adds to `client.transport`. */
+export interface ConfidentialValue {
+  url: string;
+  /** Attests now unless a valid pin exists, and returns the pinned node. */
+  ready(options?: { signal?: AbortSignal }): Promise<ConfidentialInfo>;
+  /** The pinned node, or `undefined` before the first attestation and after the pin expired or was dropped. */
+  getConfidentialInfo(): ConfidentialInfo | undefined;
+}
+
+function confidentialHttp(
+  rpcUrl: string,
+  opts: VrpcHttpOptions,
+): Transport<"vrpc-http", ConfidentialValue> {
+  const origin = new URL(rpcUrl).origin;
+  let bound: { chainId: string; client: LazyConfidentialClient } | undefined;
+
+  return ({ chain, timeout: injectedTimeout }) => {
+    if (chain?.id == null) {
+      throw new InvalidOption("chainId", "Ankr Confidential RPC mode needs the client's chain");
+    }
+    const chainId = String(chain.id);
+    if (bound !== undefined && bound.chainId !== chainId) {
+      throw new InvalidOption("chainId", "this transport is bound to another chain");
+    }
+    bound ??= {
+      chainId,
+      client: new LazyConfidentialClient({
+        url: rpcUrl,
+        chainId,
+        headers: opts.headers,
+        replayWindowMs: opts.replayWindowMs,
+        pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
+        logger: opts.logger,
+        hardwareVerifier: opts.hardwareVerifier,
+        fetch: opts.fetchFn as typeof fetch | undefined,
+      }),
+    };
+    const confidential = bound.client;
+    const config = baseConfig(opts, injectedTimeout);
+
+    return createTransport(
+      {
+        ...config,
+        async request({ method, params }, options) {
+          const signal = callSignal(options?.signal, config.timeout);
+          const res = await confidential.request(
+            {
+              method: "POST",
+              path: "/",
+              contentType: "application/json",
+              body: utf8.encode(JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })),
+            },
+            signal === undefined ? undefined : { signal },
+          );
+          return mapInnerResponse(res, origin);
+        },
+      },
+      {
+        url: rpcUrl,
+        ready: (options?: { signal?: AbortSignal }) => confidential.ready(options),
+        getConfidentialInfo: () => confidential.getConfidentialInfo(),
+      },
     );
   };
 }

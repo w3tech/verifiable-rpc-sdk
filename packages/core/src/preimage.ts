@@ -14,7 +14,7 @@
 // by `tests/preimage.test.ts::preImageLayoutIsByteExact` and the known-answer
 // chain-id hash vectors copied verbatim from the sidecar test suite.
 
-import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 
 import { InvalidChainId } from "./errors";
 
@@ -23,12 +23,11 @@ const CHAIN_ID_HASH_OFFSET = 0;
 const REQ_HASH_OFFSET = 32;
 const RESP_HASH_OFFSET = 64;
 const TIMESTAMP_OFFSET = 96;
-const HASH_LEN = 32;
 
 /** Maximum UTF-8 byte length accepted for a chain id. Mirrors sidecar `CHAIN_ID_MAX_LEN`. */
 const CHAIN_ID_MAX_LEN = 64;
 
-const U64_MAX = (1n << 64n) - 1n;
+export const U64_MAX = (1n << 64n) - 1n;
 
 const textEncoder = new TextEncoder();
 
@@ -49,14 +48,6 @@ export function u64LE(n: bigint): Uint8Array {
   const buf = new Uint8Array(8);
   new DataView(buf.buffer).setBigUint64(0, n, true);
   return buf;
-}
-
-/**
- * Thin wrapper over `@noble/hashes/sha2`'s `sha256`. Returns a fresh 32-byte
- * `Uint8Array`.
- */
-export function sha256(data: Uint8Array): Uint8Array {
-  return nobleSha256(data);
 }
 
 /**
@@ -99,40 +90,6 @@ export function validateChainId(chainId: string): string {
 }
 
 /**
- * Build the canonical 104-byte pre-image from pre-computed hashes.
- *
- * Mirrors sidecar `build_pre_image(&chain_id_hash, &req_hash, &resp_hash, ts)`.
- * Internal API, exported for tests only — production callers should use
- * `buildPreImage`, which hashes the chain id and raw bodies and forwards here.
- *
- * Throws `RangeError` if any hash is not exactly 32 bytes. The pre-image
- * has no domain-error failure modes a consumer would catch (any failure
- * indicates a programmer error in the SDK, not a sidecar misbehaviour).
- */
-export function buildPreImageFromHashes(
-  chainIdHash: Uint8Array,
-  requestHash: Uint8Array,
-  responseHash: Uint8Array,
-  timestampMs: bigint,
-): Uint8Array {
-  if (chainIdHash.length !== HASH_LEN) {
-    throw new RangeError(`chainIdHash must be ${HASH_LEN} bytes, got ${chainIdHash.length}`);
-  }
-  if (requestHash.length !== HASH_LEN) {
-    throw new RangeError(`requestHash must be ${HASH_LEN} bytes, got ${requestHash.length}`);
-  }
-  if (responseHash.length !== HASH_LEN) {
-    throw new RangeError(`responseHash must be ${HASH_LEN} bytes, got ${responseHash.length}`);
-  }
-  const buf = new Uint8Array(PRE_IMAGE_LEN);
-  buf.set(chainIdHash, CHAIN_ID_HASH_OFFSET);
-  buf.set(requestHash, REQ_HASH_OFFSET);
-  buf.set(responseHash, RESP_HASH_OFFSET);
-  buf.set(u64LE(timestampMs), TIMESTAMP_OFFSET);
-  return buf;
-}
-
-/**
  * Build the canonical 104-byte pre-image for a request/response pair.
  *
  * Computes `sha256(utf8(chainId))` and the SHA-256 body hashes, then assembles
@@ -149,10 +106,10 @@ export function buildPreImage(
   responseBody: Uint8Array,
   timestampMs: bigint,
 ): Uint8Array {
-  return buildPreImageFromHashes(
-    sha256(textEncoder.encode(chainId)),
-    sha256(requestBody),
-    sha256(responseBody),
-    timestampMs,
-  );
+  const buf = new Uint8Array(PRE_IMAGE_LEN);
+  buf.set(sha256(textEncoder.encode(chainId)), CHAIN_ID_HASH_OFFSET);
+  buf.set(sha256(requestBody), REQ_HASH_OFFSET);
+  buf.set(sha256(responseBody), RESP_HASH_OFFSET);
+  buf.set(u64LE(timestampMs), TIMESTAMP_OFFSET);
+  return buf;
 }

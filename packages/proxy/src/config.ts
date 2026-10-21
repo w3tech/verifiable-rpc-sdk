@@ -6,7 +6,7 @@
 
 import { parseArgs } from "node:util";
 
-import { deriveVrpcUrls, validateChainId } from "@w3tech.io/vrpc-core";
+import { checkOptions } from "@w3tech.io/vrpc-core";
 
 import { ConfigError } from "./errors";
 import type { LogLevel } from "./logger";
@@ -31,6 +31,11 @@ export interface ProxyConfig {
   pubkeyCacheTtlMs?: number;
   maxBodyBytes: number;
   logLevel: LogLevel;
+  /**
+   * Ankr Confidential RPC mode: every request is sealed to the attested node;
+   * nothing is sent upstream in plaintext.
+   */
+  confidential?: boolean;
   /** Non-fatal startup warnings; cli.ts prints them to stderr. */
   warnings?: string[];
 }
@@ -49,6 +54,7 @@ const PARSE_OPTIONS = {
   "attestation-cache-ttl": { type: "string" },
   "log-level": { type: "string" },
   "max-body-bytes": { type: "string" },
+  confidential: { type: "boolean" },
 } as const;
 
 function parsePositiveInt(value: string, flag: string): number {
@@ -83,11 +89,23 @@ function parseListen(value: string): { host: string; port: number } {
   return { host, port };
 }
 
+// An unrecognised value is an error, never a silent fall back to open mode.
+function parseConfidential(flag: boolean | undefined, env: string | undefined): boolean {
+  if (flag === true) return true;
+  if (env === undefined || env === "") return false;
+  const value = env.toLowerCase();
+  if (value === "1" || value === "true") return true;
+  if (value === "0" || value === "false") return false;
+  throw new ConfigError(
+    `VRPC_PROXY_CONFIDENTIAL must be 1, true, 0 or false (or pass --confidential), got ${JSON.stringify(env)}`,
+  );
+}
+
 /**
  * Parse and validate the proxy configuration from CLI argv and environment.
  * Throws ConfigError for any transport/config problem and lets core's
- * InvalidChainId propagate from validateChainId — cli.ts catches both
- * families and exits non-zero before the listen socket binds.
+ * InvalidOption propagate from checkOptions — cli.ts catches both and exits
+ * non-zero before the listen socket binds.
  */
 export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig {
   let values: {
@@ -100,6 +118,7 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
     "attestation-cache-ttl"?: string;
     "log-level"?: string;
     "max-body-bytes"?: string;
+    confidential?: boolean;
   };
   try {
     ({ values } = parseArgs({
@@ -129,8 +148,7 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
     throw new ConfigError(`--upstream is not a valid URL: ${JSON.stringify(upstream)}`);
   }
 
-  // Throws core's typed InvalidChainId on a bad chain id — propagates.
-  const chainId = validateChainId(chain);
+  const { chainId, urls } = checkOptions({ chainId: chain, url: upstream });
 
   const timeoutRaw = values.timeout ?? env.VRPC_PROXY_TIMEOUT;
   const upstreamTimeoutMs =
@@ -171,10 +189,11 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   // Both legs derive from the one user URL (same as the SDK adapters): the RPC
   // route is the URL verbatim — the user spells the vRPC route out explicitly
   // (e.g. `/arbitrum_vrpc`) — and the attestation route appends `/attestation`.
-  const { rpcUrl, attestationUrl } = deriveVrpcUrls(upstream);
+  const { rpcUrl, attestationUrl } = urls;
 
   const config: ProxyConfig = {
-    upstreamUrl: rpcUrl,
+    // The RPC leg keeps the user's query; the derived attestation and confidential URLs drop it.
+    upstreamUrl: `${rpcUrl}${upstreamParsed.search}`,
     chainId,
     attestationUrl,
     attestationHeaders,
@@ -193,9 +212,14 @@ export function parseConfig(argv: string[], env: NodeJS.ProcessEnv): ProxyConfig
   if (apiKey !== undefined && apiKey !== "") {
     config.apiKey = apiKey;
   }
+  if (parseConfidential(values.confidential, env.VRPC_PROXY_CONFIDENTIAL)) {
+    config.confidential = true;
+  }
   if (upstreamParsed.search !== "") {
     config.warnings = [
-      "The upstream URL carries query parameters, which the derived attestation URL drops; prefer --api-key or a key-in-path upstream URL.",
+      config.confidential === true
+        ? "The upstream URL carries query parameters, which the derived attestation and confidential URLs drop; in Ankr Confidential RPC mode no API key is sent unless --api-key or a key-in-path upstream URL is used."
+        : "The upstream URL carries query parameters, which the derived attestation URL drops; prefer --api-key or a key-in-path upstream URL.",
     ];
   }
   return config;

@@ -1,0 +1,122 @@
+{
+  "description": "Known-answer vectors for Ankr Confidential RPC (POST /confidential): key conversion, encapsulated requests and responses including one encrypted inner error, and the plaintext errors returned before decapsulation. Byte strings are lowercase hex without a 0x prefix.",
+  "suite": {
+    "key_id": 0,
+    "kem_id": 32,
+    "kdf_id": 1,
+    "aead_id": 2
+  },
+  "provenance": {
+    "generator": "tests/vectors/generator: Go standard library (crypto/ed25519, crypto/ecdh, crypto/hpke, crypto/hkdf, crypto/aes, crypto/cipher)",
+    "go_version": "go1.27.2",
+    "randomness": "testing/cryptotest.SetGlobalRandom, seed 1"
+  },
+  "key_conversion": [
+    {
+      "name": "test-seed",
+      "seed": "112233445566778899aabbccddeeff000f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "ed25519_public_key": "9b58e5628f7632f23c7f6837196b2892cd217855ca961318e5950b8e849ba538",
+      "skR": "683cd62939133d434f463c517cac2b5e22c1b77338d9367361100d4c82dcdc4c",
+      "pkR": "6ffa23f97ea11199a707e64f994c231f18bb61ee34f6fb05bbeabf4d140d0456"
+    }
+  ],
+  "envelopes": [
+    {
+      "name": "post-json-rpc",
+      "skR": "683cd62939133d434f463c517cac2b5e22c1b77338d9367361100d4c82dcdc4c",
+      "pkR": "6ffa23f97ea11199a707e64f994c231f18bb61ee34f6fb05bbeabf4d140d0456",
+      "request": {
+        "method": "POST",
+        "scheme": "https",
+        "authority": "localhost",
+        "path": "/",
+        "fields": [
+          {
+            "name": "content-type",
+            "value": "application/json"
+          }
+        ],
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}"
+      },
+      "bhttp_request": "0004504f5354056874747073096c6f63616c686f7374012f1e0c636f6e74656e742d74797065106170706c69636174696f6e2f6a736f6e3f7b226a736f6e727063223a22322e30222c226964223a312c226d6574686f64223a226574685f626c6f636b4e756d626572222c22706172616d73223a5b5d7d00",
+      "hdr": "00002000010002",
+      "info": "6d6573736167652f626874747020726571756573740000002000010002",
+      "enc": "2a92b7344e112cbbc2c1674b413a5a35399a978e14abc40dfd36b4affbe24264",
+      "encapsulated_request": "000020000100022a92b7344e112cbbc2c1674b413a5a35399a978e14abc40dfd36b4affbe2426452d4af2e398d6dc0becaa0b25dfe53b3f0fe67aa3b8e6b6e81c3f86587cac57fac8b4de7a710b21bf4214cea0e9c1209bdd727011ed1ea903c4da26af4ddae109e246bd22c150e45ff9d9df55dfefcaab61a1119ad6a43a043316b5e80a4b4b14a27d5d9632a7d31010497683232147fbcfe426c8569ed9075071141b98a0acc085ed8050026482e",
+      "export_secret": "c11beede82991480946911b3dda55a4a705d2a5e43467d1acafe331acb3d24f6",
+      "response": {
+        "status": 200,
+        "fields": [
+          {
+            "name": "content-type",
+            "value": "application/json"
+          }
+        ],
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x10\"}"
+      },
+      "bhttp_response": "0140c81e0c636f6e74656e742d74797065106170706c69636174696f6e2f6a736f6e287b226a736f6e727063223a22322e30222c226964223a312c22726573756c74223a2230783130227d00",
+      "response_nonce": "0cd87274d67084caaf0e0d36c8496db7fef55fe0e125750aa608d5e20ffc2d12",
+      "aead_key": "babd50e320be0320fd5055c2d51acc847ccd5cc0fd0197c41592669a5d5c8642",
+      "aead_nonce": "031879ac297535b27a496e76",
+      "encapsulated_response": "0cd87274d67084caaf0e0d36c8496db7fef55fe0e125750aa608d5e20ffc2d12f7bc127ee6055b8ca0e8a6639db6781ae18f494e8109c70a66da626596242ac0ec1750e8567fc204dcaf03e12e52066ff95ed371750eb3c8d7efe4e93ac13c57f7422466a08e3149874feb5e5c252cd0fffb348006c7fb963ea2ae6c"
+    },
+    {
+      "name": "inner-error-bad-request",
+      "skR": "683cd62939133d434f463c517cac2b5e22c1b77338d9367361100d4c82dcdc4c",
+      "pkR": "6ffa23f97ea11199a707e64f994c231f18bb61ee34f6fb05bbeabf4d140d0456",
+      "request": {
+        "method": "POST",
+        "scheme": "https",
+        "authority": "localhost",
+        "path": "@evil.example/x",
+        "fields": [
+          {
+            "name": "content-type",
+            "value": "application/json"
+          }
+        ],
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}"
+      },
+      "bhttp_request": "0004504f5354056874747073096c6f63616c686f73740f406576696c2e6578616d706c652f781e0c636f6e74656e742d74797065106170706c69636174696f6e2f6a736f6e3f7b226a736f6e727063223a22322e30222c226964223a312c226d6574686f64223a226574685f626c6f636b4e756d626572222c22706172616d73223a5b5d7d00",
+      "hdr": "00002000010002",
+      "info": "6d6573736167652f626874747020726571756573740000002000010002",
+      "enc": "ce083a23682c9d8d00430b0289dce6dd59fed5dcb906d9e66f1148ded2722043",
+      "encapsulated_request": "00002000010002ce083a23682c9d8d00430b0289dce6dd59fed5dcb906d9e66f1148ded27220437bcb8986796bd0e4ab446025d0d96bc54279dca9d12eb99e681ac20ab6c7601b1fe68e8d22a7203c29f73eb9c0a7639cd611c39703558e3ff6bda43a56e317d7d47d286f02b6329a12604b533bbf2c9083f260aedb1bdf1ef5b6ab4bd4175d58e4c13963298af457f960bf4899b2949fb445989459a2866d2640041e2d6d4c66cdfd6da4146790d44e4e4f604630aca405bd1d014fd6",
+      "export_secret": "5854667f097cc126548eb0bef27accb70d3d56f49f0247d9ef4fb13164b47d0f",
+      "response": {
+        "status": 400,
+        "fields": [
+          {
+            "name": "content-type",
+            "value": "application/problem+json"
+          }
+        ],
+        "body": "{\"type\":\"urn:vrpc:error:bad-request\",\"title\":\"Bad request\"}"
+      },
+      "bhttp_response": "014190260c636f6e74656e742d74797065186170706c69636174696f6e2f70726f626c656d2b6a736f6e3b7b2274797065223a2275726e3a767270633a6572726f723a6261642d72657175657374222c227469746c65223a224261642072657175657374227d00",
+      "response_nonce": "3a311de85bcdb3207b7c831d1c902015740489ea155426385fb678d710f367fb",
+      "aead_key": "5f8c53c37c9be2ff00416c2814e26f158a84f20f9a5e596301f47b4d436b3218",
+      "aead_nonce": "0f1b831c59e168f2290a577b",
+      "encapsulated_response": "3a311de85bcdb3207b7c831d1c902015740489ea155426385fb678d710f367fbeb379e3311fc2c8470d17a47dd8ce6d5d73a6369eaba6e0f9dba43023235c53560cbf07c278a0482b9dec81879784d4ef78dc99eef5313843a8efca1280468390fecc456d2c927b61a167b9aaf1c370b835d0959d4fb01b85b3a1f444b9e5a0a8dadcf220d0171754d08b6d5d0078ca5594792326a0fb9",
+      "outer_status": 400
+    }
+  ],
+  "pre_decapsulation_errors": [
+    {
+      "name": "ohttp-key",
+      "status": 400,
+      "content_type": "application/problem+json",
+      "body": "7b2274797065223a2268747470733a2f2f69616e612e6f72672f61737369676e6d656e74732f687474702d70726f626c656d2d7479706573236f687474702d6b6579222c227469746c65223a224f626c6976696f75732048545450206b657920636f6e66696775726174696f6e206e6f742061636365707461626c65227d"
+    },
+    {
+      "name": "request-too-large",
+      "status": 413,
+      "body": ""
+    },
+    {
+      "name": "method-not-allowed",
+      "status": 405,
+      "body": ""
+    }
+  ]
+}

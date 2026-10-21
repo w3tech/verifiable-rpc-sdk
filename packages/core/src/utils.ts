@@ -1,18 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
 // Parse the chainId from a raw `eth_chainId` response body — the conversion the
-// auto-derive bootstrap (both the ethers and viem adapters) runs before the
-// self-consistent verify. A malformed body (invalid JSON, or a missing / non-0x-hex
-// `result`) throws MalformedHeader so it reads as a verify failure, consistent with
-// the fail-fast bootstrap contract — never an opaque SyntaxError / TypeError.
+// auto-derive bootstrap runs before the self-consistent verify. A malformed body
+// (not UTF-8 JSON, or a missing / non-0x-hex `result`) and a derived id the sidecar
+// would reject both throw InvalidChainId — never an opaque SyntaxError / TypeError.
+// The body is unverified at this point, so no error echoes it.
 
-import { MalformedHeader } from "./errors";
+import { InvalidChainId } from "./errors";
+import { validateChainId } from "./preimage";
+
+/** Strict UTF-8 decoder: bytes that are not UTF-8 throw instead of becoming U+FFFD. */
+export const strictUtf8 = new TextDecoder("utf-8", { fatal: true });
 
 /**
  * Decode + parse a chainId (as a DECIMAL STRING, e.g. `"42161"` for `0xa4b1`)
- * from the raw bytes of a signed `eth_chainId` response. The 0x-hex result is
- * converted via `BigInt()` then base-10 `toString()` — no `Number` round-trip,
- * since a chain id may exceed `Number.MAX_SAFE_INTEGER`.
+ * from the raw bytes of a signed `eth_chainId` response. The 0x-hex result (at
+ * most 256 bits, an EVM QUANTITY) is converted via `BigInt()` then base-10
+ * `toString()` — no `Number` round-trip, since a chain id may exceed
+ * `Number.MAX_SAFE_INTEGER`.
  *
  * The decimal string is what EVM nodes are configured with (the arbitrum GA
  * node uses `"42161"`), so EVM auto-detect binds the exact string the sidecar
@@ -20,23 +25,15 @@ import { MalformedHeader } from "./errors";
  * configure their chain id explicitly.
  */
 export function parseChainId(rawResponseBytes: Uint8Array): string {
-  const rawText = new TextDecoder().decode(rawResponseBytes);
-  let parsed: { result?: string };
+  let result: unknown;
   try {
-    parsed = JSON.parse(rawText) as { result?: string };
+    result = (JSON.parse(strictUtf8.decode(rawResponseBytes)) as { result?: unknown } | null)
+      ?.result;
   } catch {
-    throw new MalformedHeader(
-      "eth_chainId.result",
-      rawText,
-      "auto-derived chainId could not be parsed: bootstrap body is not valid JSON",
-    );
+    throw new InvalidChainId("<unverified>", "body is not UTF-8 JSON");
   }
-  if (typeof parsed.result !== "string" || !/^0x[0-9a-fA-F]+$/.test(parsed.result)) {
-    throw new MalformedHeader(
-      "eth_chainId.result",
-      String(parsed.result),
-      "auto-derived chainId could not be parsed: expected 0x-hex chain id",
-    );
+  if (typeof result !== "string" || !/^0x[0-9a-fA-F]{1,64}$/.test(result)) {
+    throw new InvalidChainId("<unverified>", "expected a 0x-hex chain id");
   }
-  return BigInt(parsed.result).toString(10);
+  return validateChainId(BigInt(result).toString(10));
 }

@@ -1,16 +1,13 @@
-import { bytesToHex } from "@noble/hashes/utils.js";
+import { rejectionOf } from "@w3tech.io/vrpc-test-support";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
-import { fetchAttestation, verifyAttestationCorrelation } from "../src/attestation";
-import {
-  AttestationCorrelationError,
-  AttestationNodeNotFoundError,
-  InvalidNonce,
-  MalformedAttestationResponse,
-} from "../src/errors";
+import { fetchAttestation } from "../src/attestation";
+import { InvalidNonce } from "../src/errors";
 
 const TEST_URL = "http://test.local:8545";
 const TEST_ATTESTATION_URL = `${TEST_URL}/attestation`;
+const MiB = 1_048_576;
+const CHUNK = 65_536;
 
 /**
  * Canonical hand-crafted golden fixture — mirrors the sidecar's Rust unit
@@ -31,13 +28,15 @@ const GOLDEN_FIXTURE = {
 };
 
 interface MockState {
-  capturedUrl: string | undefined;
+  urls: string[];
+  headers: Array<Record<string, string> | undefined>;
 }
 
 function installMockFetch(body: unknown, extraHeaders: Record<string, string> = {}): MockState {
-  const state: MockState = { capturedUrl: undefined };
-  globalThis.fetch = (async (input: string | URL | Request) => {
-    state.capturedUrl = typeof input === "string" ? input : input.toString();
+  const state: MockState = { urls: [], headers: [] };
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    state.urls.push(String(input));
+    state.headers.push(init?.headers as Record<string, string> | undefined);
     return new Response(JSON.stringify(body), {
       status: 200,
       headers: { "content-type": "application/json", ...extraHeaders },
@@ -65,15 +64,12 @@ describe("fetchAttestation", () => {
     }) as unknown as typeof fetch;
 
     for (const len of [0, 31, 33]) {
-      let caught: unknown;
-      try {
-        await fetchAttestation({
+      const caught = await rejectionOf(
+        fetchAttestation({
           attestationUrl: TEST_ATTESTATION_URL,
           nonce: new Uint8Array(len),
-        });
-      } catch (err) {
-        caught = err;
-      }
+        }),
+      );
       expect(caught).toBeInstanceOf(InvalidNonce);
       if (caught instanceof InvalidNonce) {
         expect(caught.reason).toContain("32 bytes");
@@ -82,30 +78,25 @@ describe("fetchAttestation", () => {
     }
   });
 
-  test("nonceLength32Succeeds", async () => {
-    const state = installMockFetch(GOLDEN_FIXTURE);
-    const result = await fetchAttestation({
-      attestationUrl: TEST_ATTESTATION_URL,
-      nonce: new Uint8Array(32),
-    });
-    expect(state.capturedUrl).toBeDefined();
-    expect(result.quote.quote).toBe("00010203");
-  });
+  const NONCE = new Uint8Array(32);
+  NONCE.set([0xde, 0xad, 0xbe, 0xef]);
+  NONCE[31] = 0xff;
+  const NONCE_HEX = `deadbeef${"00".repeat(27)}ff`;
 
-  test("urlIsAttestationWithBareHexNonce", async () => {
+  test.each([
+    { nodeId: undefined, query: `?nonce=${NONCE_HEX}` },
+    { nodeId: "node-1", query: `?nonce=${NONCE_HEX}&node_id=node-1` },
+    { nodeId: "region/node 7", query: `?nonce=${NONCE_HEX}&node_id=region%2Fnode%207` },
+  ])("GETs $query with the caller's headers", async ({ nodeId, query }) => {
     const state = installMockFetch(GOLDEN_FIXTURE);
-    const nonce = new Uint8Array(32);
-    nonce[0] = 0xde;
-    nonce[1] = 0xad;
-    nonce[2] = 0xbe;
-    nonce[3] = 0xef;
-    await fetchAttestation({ attestationUrl: TEST_ATTESTATION_URL, nonce });
-    const expectedHex = bytesToHex(nonce);
-    expect(state.capturedUrl).toBe(`${TEST_URL}/attestation?nonce=${expectedHex}`);
-    // No 0x prefix in the URL.
-    expect(state.capturedUrl).not.toContain("nonce=0x");
-    // Lowercase, 64 hex chars.
-    expect(expectedHex).toMatch(/^[0-9a-f]{64}$/);
+    await fetchAttestation({
+      attestationUrl: TEST_ATTESTATION_URL,
+      nonce: NONCE,
+      headers: { "x-api-key": "from-headers" },
+      ...(nodeId === undefined ? {} : { nodeId }),
+    });
+    expect(state.urls).toEqual([`${TEST_ATTESTATION_URL}${query}`]);
+    expect(state.headers[0]?.["x-api-key"]).toBe("from-headers");
   });
 
   test("goldenFixtureParsesToAttestation", async () => {
@@ -139,70 +130,6 @@ describe("fetchAttestation", () => {
     expect(result.app_compose).toBe("");
   });
 
-  test("malformedTopLevelQuoteThrows", async () => {
-    installMockFetch({
-      quote: "abcdef",
-      pubkey: "0x00",
-      composeHash: "feed",
-    });
-    let caught: unknown;
-    try {
-      await fetchAttestation({ attestationUrl: TEST_ATTESTATION_URL, nonce: new Uint8Array(32) });
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(MalformedAttestationResponse);
-    if (caught instanceof MalformedAttestationResponse) {
-      expect(caught.reason).toContain("quote");
-    }
-  });
-
-  test("missingFieldsThrow", async () => {
-    const cases: Array<{ body: unknown; fieldPath: string }> = [
-      {
-        body: {
-          quote: GOLDEN_FIXTURE.quote,
-          composeHash: "feed",
-        },
-        fieldPath: "pubkey",
-      },
-      {
-        body: {
-          quote: GOLDEN_FIXTURE.quote,
-          pubkey: "0x00",
-        },
-        fieldPath: "composeHash",
-      },
-      {
-        body: {
-          quote: {
-            quote: "00",
-            // event_log missing
-            report_data: "00",
-            vm_config: "",
-          },
-          pubkey: "0x00",
-          composeHash: "feed",
-        },
-        fieldPath: "event_log",
-      },
-    ];
-
-    for (const { body, fieldPath } of cases) {
-      installMockFetch(body);
-      let caught: unknown;
-      try {
-        await fetchAttestation({ attestationUrl: TEST_ATTESTATION_URL, nonce: new Uint8Array(32) });
-      } catch (err) {
-        caught = err;
-      }
-      expect(caught).toBeInstanceOf(MalformedAttestationResponse);
-      if (caught instanceof MalformedAttestationResponse) {
-        expect(caught.reason).toContain(fieldPath);
-      }
-    }
-  });
-
   test("unsignedRouteIgnoresVrpcHeaders", async () => {
     // Sub-case 1: no vRPC-* headers at all — must succeed.
     installMockFetch(GOLDEN_FIXTURE);
@@ -224,176 +151,34 @@ describe("fetchAttestation", () => {
     expect(b.composeHash).toBe("deadbeef");
   });
 
-  // ── Gateway-routed attestation: the former via-gateway helper's describe,
-  // merged in. The helper's `{ rpcBaseUrl, chain, nodeId, nonce, ... }` args are
-  // now expressed as `{ attestationUrl: rpcBaseUrl + "/" + chain + "_vrpc/attestation",
-  // nodeId, nonce, ... }` — the SAME final URL the mock matches. ──────────────
-  describe("via gateway routing", () => {
-    const gatewayAttestationUrl = `${RPC_BASE}/eth_vrpc/attestation`;
-
-    test("nonceMustBe32Bytes", async () => {
-      globalThis.fetch = ((): Response => {
-        throw new Error("fetch called — synchronous validation failed");
-      }) as unknown as typeof fetch;
-      let caught: unknown;
-      try {
-        await fetchAttestation({
-          attestationUrl: gatewayAttestationUrl,
-          nodeId: "node-1",
-          nonce: new Uint8Array(31),
-        });
-      } catch (err) {
-        caught = err;
-      }
-      expect(caught).toBeInstanceOf(InvalidNonce);
-    });
-
-    test("buildsExactContractUrl", async () => {
-      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
-      const nonce = new Uint8Array(32);
-      await fetchAttestation({
-        attestationUrl: gatewayAttestationUrl,
-        nodeId: "node-1",
-        nonce,
-      });
-      const expectedHex = bytesToHex(nonce);
-      expect(state.urls[0]).toBe(
-        `${RPC_BASE}/eth_vrpc/attestation?nonce=${expectedHex}&node_id=node-1`,
-      );
-      expect(state.urls[0]).not.toContain("nonce=0x");
-    });
-
-    test("nonceHexRoundTripsByteIntact", async () => {
-      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
-      const nonce = new Uint8Array(32);
-      nonce[0] = 0xde;
-      nonce[1] = 0xad;
-      nonce[2] = 0xbe;
-      nonce[3] = 0xef;
-      nonce[31] = 0xff;
-      await fetchAttestation({
-        attestationUrl: gatewayAttestationUrl,
-        nodeId: "node-1",
-        nonce,
-      });
-      const expectedHex = bytesToHex(nonce);
-      expect(expectedHex).toMatch(/^[0-9a-f]{64}$/);
-      expect(state.urls[0]).toContain(`nonce=${expectedHex}`);
-    });
-
-    test("nodeIdIsUrlEncoded", async () => {
-      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
-      await fetchAttestation({
-        attestationUrl: gatewayAttestationUrl,
-        nodeId: "region/node 7",
-        nonce: new Uint8Array(32),
-      });
-      expect(state.urls[0]).toContain("node_id=region%2Fnode%207");
-      expect(state.urls[0]).not.toContain("node_id=region/node 7");
-    });
-
-    test("nodeIdAbsentOmitsNodeIdParam", async () => {
-      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
-      await fetchAttestation({
-        attestationUrl: gatewayAttestationUrl,
-        nonce: new Uint8Array(32),
-      });
-      expect(state.urls[0]).toContain("?nonce=");
-      expect(state.urls[0]).not.toContain("node_id=");
-    });
-
-    test("status404ThrowsNodeNotFoundWithNoRetry", async () => {
-      const state = installGatewayMockFetch({}, 404);
-      let caught: unknown;
-      try {
-        await fetchAttestation({
-          attestationUrl: gatewayAttestationUrl,
-          nodeId: "stale-node",
-          nonce: new Uint8Array(32),
-        });
-      } catch (err) {
-        caught = err;
-      }
-      expect(caught).toBeInstanceOf(AttestationNodeNotFoundError);
-      if (caught instanceof AttestationNodeNotFoundError) {
-        expect(caught.nodeId).toBe("stale-node");
-      }
-      // No fallback or retry.
-      expect(state.calls).toBe(1);
-    });
-
-    test("headersSetXApiKeyOnAttestationLeg", async () => {
-      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
-      await fetchAttestation({
-        attestationUrl: gatewayAttestationUrl,
-        nodeId: "node-1",
-        nonce: new Uint8Array(32),
-        headers: { "x-api-key": "from-headers" },
-      });
-      expect(state.headers[0]?.["x-api-key"]).toBe("from-headers");
-    });
-
-    test("reusesNarrowAttestationOnMalformedBody", async () => {
-      installGatewayMockFetch({ quote: "abcdef", pubkey: "0x00", composeHash: "feed" });
-      let caught: unknown;
-      try {
-        await fetchAttestation({
-          attestationUrl: gatewayAttestationUrl,
-          nodeId: "node-1",
-          nonce: new Uint8Array(32),
-        });
-      } catch (err) {
-        caught = err;
-      }
-      expect(caught).toBeInstanceOf(MalformedAttestationResponse);
-    });
-  });
-});
-
-const RPC_BASE = "https://rpc.ankr.com";
-
-interface GatewayMockState {
-  urls: string[];
-  headers: Array<Record<string, string> | undefined>;
-  calls: number;
-}
-
-function installGatewayMockFetch(body: unknown, status = 200): GatewayMockState {
-  const state: GatewayMockState = { urls: [], headers: [], calls: 0 };
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    state.calls += 1;
-    state.urls.push(typeof input === "string" ? input : input.toString());
-    state.headers.push(init?.headers as Record<string, string> | undefined);
-    return new Response(JSON.stringify(body), {
-      status,
-      headers: { "content-type": "application/json" },
-    });
-  }) as typeof fetch;
-  return state;
-}
-
-describe("verifyAttestationCorrelation", () => {
-  const pubkey = "0x0000000000000000000000000000000000000000000000000000000000000000";
-
-  test("returnsOnPubkeyMatch", () => {
-    const attestation = { ...GOLDEN_FIXTURE, pubkey };
-    expect(() => verifyAttestationCorrelation(attestation, pubkey)).not.toThrow();
-  });
-
-  test("throwsCorrelationOnMismatch", () => {
-    const attestationPubkey = `0x${"ab".repeat(32)}`;
-    const responsePubkey = `0x${"cd".repeat(32)}`;
-    const attestation = { ...GOLDEN_FIXTURE, pubkey: attestationPubkey };
-    let caught: unknown;
-    try {
-      verifyAttestationCorrelation(attestation, responsePubkey);
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(AttestationCorrelationError);
-    if (caught instanceof AttestationCorrelationError) {
-      expect(caught.expectedPubkey).toBe(responsePubkey);
-      expect(caught.actualPubkey).toBe(attestationPubkey);
-    }
+  test.each([
+    {
+      name: "a declared length over 1 MiB",
+      headers: { "content-length": String(MiB + 1) },
+      max: 0,
+    },
+    { name: "an endless body", headers: {}, max: MiB + CHUNK },
+  ])("the 1 MiB cap stops reading $name", async ({ headers, max }) => {
+    let read = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull: (controller) => {
+          read += CHUNK;
+          controller.enqueue(new Uint8Array(CHUNK));
+        },
+        cancel: () => {
+          cancelled = true;
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const fetch = (async () => new Response(body, { headers })) as typeof globalThis.fetch;
+    const err = await rejectionOf(
+      fetchAttestation({ attestationUrl: TEST_ATTESTATION_URL, nonce: new Uint8Array(32), fetch }),
+    );
+    expect(err).toMatchObject({ reason: "too-large" });
+    expect(cancelled).toBe(true);
+    expect(read).toBeLessThanOrEqual(max);
   });
 });

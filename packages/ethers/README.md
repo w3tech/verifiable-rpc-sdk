@@ -105,16 +105,18 @@ new VrpcProvider(url: string | FetchRequest, chainId?: number | bigint | string,
   The chain-id string is hashed into the 104-byte pre-image; version gate: SDK
   `>=0.3.0` requires sidecar `>=0.5.0` (older sidecars sign the legacy
   pre-image and verification fails closed).
-  - **Explicit (recommended)** — `new VrpcProvider(url, chainId)`. For an
-    all-decimal id the constructor pins it as a static network
+  - **Explicit (recommended)** — `new VrpcProvider(url, chainId)`. The
+    constructor pins the id as a static network
     (`staticNetwork: true`) so the provider issues **zero** `eth_chainId`
     round-trips; this only skips the round-trip and does not weaken the
     signature binding. It also pins to **your expected chain**, catching a
     wrong-node / wrong-URL misconfig where auto-derive (which trusts the node's
     self-reported chain) would happily verify *genuine* data from the *wrong*
-    chain. A non-decimal (CAIP-2 style) id cannot be represented as an ethers
-    network, so no network arg is pinned — the verifier still binds the exact
-    string. To pass options without pinning a chain id, use
+    chain. The id must be an integer `BigInt()` parses (`"42161"`, `"0x89"`,
+    `"-239"`); any other string, such as a CAIP-2 style `"eip155:42161"`, throws
+    `InvalidOption` at construction, because ethers cannot hold it as a network.
+    The verifier still binds the exact string. To pass options without pinning a
+    chain id, use
     `new VrpcProvider(url, undefined, { ... })`.
   - **Omitted (auto-derive)** — `new VrpcProvider(url)`. On first use the
     provider derives the chain id from a **signed `eth_chainId` response**,
@@ -146,8 +148,8 @@ Spread order is enforced so `staticNetwork` cannot be overridden away.
 
 > [!NOTE]
 > Hardware attestation is **always-on and fail-closed**. By default
-> `TrustedVerifier` wires the real Phala CloudVerifier (`createCloudVerifier()`,
-> via vrpc-core's `buildVerifyPolicy`); it **cannot be disabled**. Override the
+> `TrustedVerifier` wires the real Phala CloudVerifier (`createCloudVerifier()`);
+> it **cannot be disabled**. Override the
 > internal `hardwareVerifier` option only to point at a self-hosted endpoint, a
 > future local-DCAP verifier, or a no-network test mock. The `report_data →
 > pubkey/nonce` binding check (CHK-A1) runs unconditionally; the compose-hash
@@ -174,13 +176,13 @@ errors and propagates (fail-closed).
 | Field            | Type                         | Default          | Meaning |
 | ---------------- | ---------------------------- | ---------------- | ------- |
 | `pubkeyCacheTtlMs` | `number`                   | `3_600_000` (1h) | Verified-pubkey cache TTL (ms). A second read within TTL reuses the cache and skips the attestation fetch; past TTL the pubkey is re-attested (no stale trust). |
+| `hardwareVerifier` | `HardwareVerifier`         | Phala cloud verifier (vrpc-core) | Internal/advanced. Overrides the mandatory hardware-signature verifier; it cannot be disabled. |
+| `fetch`            | `typeof fetch`             | global `fetch`   | Carries the attestation GET and the default hardware verifier's call. In Ankr Confidential RPC mode the attestation GET and the sealed requests go through the `FetchRequest`, and through this `fetch` unless it has a `getUrlFunc` of your own. |
+| `logger`           | `Logger`                   | no-op (silent)   | Opt-in debug logger for the verify flow (`createConsoleLogger()` from `@w3tech.io/vrpc-core`). |
 
 > Auth/headers: set them on the `FetchRequest` you pass as the URL
 > (`req.setHeader("x-api-key", …)`) — those cover BOTH the RPC POST and the
-> attestation fetch. (v6.0 removed the inert `allowlist`/`tcb`/`pccsUrl` options —
-> they were trust-anchor knobs the verifier does not yet consume — and the
-> redundant `headers` option; v7.0 reintroduces the trust-anchor options for
-> local-DCAP verification.)
+> attestation fetch.
 
 ```ts
 // Auth the idiomatic ethers way: set it on the FetchRequest. The SDK reuses
@@ -198,10 +200,11 @@ await provider.getBalance("0x0000000000000000000000000000000000000000");
 
 ### Re-exported error family
 
-For `instanceof` checks without importing core directly, the shared error family
-is re-exported: `VerificationError` (base) and `BadSignature`, `MissingHeader`,
-`MalformedHeader`, `StaleTimestamp`. This is the same family the viem adapter
-reuses — one error family across both adapters.
+For `instanceof` checks without importing core directly, the adapter re-exports
+everything in `@w3tech.io/vrpc-core/errors` — `VrpcError`, the `VerificationError`
+and `UnavailableError` families, `InvalidOption`, `InvalidInnerRequest`,
+`mayHaveExecuted` and their types — plus the type `ConfidentialInfo`. Each is the
+same class `@w3tech.io/vrpc-core` exports, shared with the viem adapter.
 
 ## Batching
 
@@ -210,6 +213,76 @@ When ethers coalesces concurrent calls into one array payload, the **entire body
 is verified once** over the raw bytes, and ethers' drain loop correlates the
 array results back to each caller by id. Set `batchMaxCount` / `batchStallTime`
 exactly as you would on a stock `JsonRpcProvider`.
+
+## Ankr Confidential RPC mode
+
+What the gateway and the node can see, the limits and the errors are described in
+the [core Ankr Confidential RPC mode section](../core/README.md#ankr-confidential-rpc-mode).
+
+`new VrpcProvider(url, chainId, { confidential: true })` sends every JSON-RPC
+call encrypted to an attested node.
+The chain id is required. `await provider.confidentialReady()`
+attests up front; `provider.getConfidentialInfo()` returns the pinned node. Auth
+headers, credentials and the timeout come from the `FetchRequest` you pass as the
+URL and apply to both requests. Without a `getUrlFunc` of your own, both requests
+and the default hardware verifier's call go through the `fetch` option.
+
+**CCIP-Read is off.** CCIP-Read (EIP-3668) would send `{ sender, data }` in
+plaintext to a gateway URL the contract names, so the provider sets
+`disableCcipRead`: a call that reverts with `OffchainLookup` fails with
+`CALL_EXCEPTION`, and ENS names with off-chain resolvers do not resolve. Do not
+set it back to `false`. ENS avatar and IPFS metadata fetches are not JSON-RPC
+calls and still go out in plaintext.
+
+**Do not combine with a provider that is not in Ankr Confidential RPC mode.**
+ethers `FallbackProvider` sends calls to its other providers in plaintext: it
+sends every `broadcastTransaction` to all providers, queries all of them at
+start-up, and starts the next provider whenever one fails or takes longer than
+`stallTimeout` (400 ms by default), which includes the first call that attests
+the node. Even with confidential providers only, `FallbackProvider` can run the
+same call on more than one node.
+
+**Batches.** ethers batches concurrent calls; in Ankr Confidential RPC mode one
+batch is sent as one encrypted request. Above the node's batch limit of 1000
+calls the node answers HTTP 413 and every call in the batch fails with the same
+error. Keep `batchMaxCount` at 1000 or less (ethers' default is 100) and keep
+`batchMaxSize` at its default.
+
+**No retries.** Nothing in the SDK resends a call: a 429, a redirect or a gateway
+error is thrown as a typed error. Use your own retry policy if you need one.
+Without a `getUrlFunc` of your own the SDK never follows a redirect. A
+`getUrlFunc` you set on the `FetchRequest` must not follow redirects or retry:
+the SDK only sees the answer it returns, so a redirect it followed has already
+resent the encrypted request and the API key. In a browser build it with
+`FetchRequest.createGetUrlFunc({ redirect: "manual" })`. A function passed to
+`FetchRequest.registerGetUrl()` counts as your own only when it is registered
+after `@w3tech.io/vrpc-ethers` is imported; one registered before that import is
+replaced by the SDK's fetch.
+
+**Response size.** Without a `getUrlFunc` of your own, both requests go through
+`fetch` and the SDK stops reading an answer past 192 MiB. A `getUrlFunc` you set,
+or a `fetch` without a stream body (a polyfill, React Native), reads the whole
+answer first, so the limit is checked only after the answer is in memory.
+
+**Errors.**
+
+- An inner non-2xx answer is ethers `SERVER_ERROR`; its body is at
+  `err.response.body`, not in the message.
+- A call that got no verifiable answer throws an `UnavailableError`
+  (`AttestationUnavailable`, `RequestRejected`, `UnexpectedResponse`,
+  `TransportFailed`, `InternalError`); its `executed` field is `"no"` or
+  `"unknown"`.
+- A failed signature, attestation or decryption check is a `VerificationError`
+  subclass.
+
+Every error class with its `executed` value, the request and response size
+limits and the timeouts are listed in the core section's
+[Limits](../core/README.md#limits) and [Errors](../core/README.md#errors)
+subsections.
+
+**Versions.** Install `@w3tech.io/vrpc-ethers` and `@w3tech.io/vrpc-core` at the
+same version, so an error class you import from core is the one the provider
+throws.
 
 ## Error handling
 

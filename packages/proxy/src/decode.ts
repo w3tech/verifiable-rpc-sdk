@@ -14,38 +14,17 @@ import { DecodeFailedError } from "./errors";
 type AsyncCodec = (buf: Buffer, opts: { maxOutputLength: number }) => Promise<Buffer>;
 
 const gunzip = promisify(zlib.gunzip) as AsyncCodec;
-const inflate = promisify(zlib.inflate) as AsyncCodec;
-const brotliDecompress = promisify(zlib.brotliDecompress) as AsyncCodec;
 
-/**
- * Runtime zstd feature detect — `zlib.zstdDecompressSync` landed in Node
- * 23.8; older runtimes lack it, in which case a zstd upstream response fails
- * closed as DecodeFailed.
- */
-export function zstdAvailable(): boolean {
-  return typeof zlib.zstdDecompressSync === "function";
-}
-
-function resolveCodec(coding: string): AsyncCodec {
-  switch (coding) {
-    case "gzip":
-    case "x-gzip":
-      return gunzip;
-    case "deflate":
-      // zlib-wrapped deflate per RFC. Raw-deflate servers exist in the wild;
-      // their bodies fail to decode and fail closed — no inflateRaw fallback.
-      return inflate;
-    case "br":
-      return brotliDecompress;
-    case "zstd":
-      if (zstdAvailable()) {
-        return promisify(zlib.zstdDecompress) as AsyncCodec;
-      }
-      throw new DecodeFailedError(`Unsupported upstream content-encoding: "${coding}"`);
-    default:
-      throw new DecodeFailedError(`Unsupported upstream content-encoding: "${coding}"`);
-  }
-}
+// A Map, not an object literal: a coding named like an Object.prototype key must not resolve.
+const CODECS = new Map<string, AsyncCodec>([
+  ["gzip", gunzip],
+  ["x-gzip", gunzip],
+  // zlib-wrapped deflate per RFC. Raw-deflate servers exist in the wild;
+  // their bodies fail to decode and fail closed — no inflateRaw fallback.
+  ["deflate", promisify(zlib.inflate) as AsyncCodec],
+  ["br", promisify(zlib.brotliDecompress) as AsyncCodec],
+  ["zstd", promisify(zlib.zstdDecompress) as AsyncCodec],
+]);
 
 /**
  * Decode `body` per its Content-Encoding list into the plaintext copy used
@@ -55,7 +34,7 @@ function resolveCodec(coding: string): AsyncCodec {
  * fails like any other decode error.
  *
  * Absent or identity-only Content-Encoding returns the input unchanged.
- * Unknown/unavailable coding and decode failure (including the output cap)
+ * Unknown coding and decode failure (including the output cap)
  * → DecodeFailedError — fail closed upstream.
  */
 export async function decodeBody(
@@ -70,7 +49,10 @@ export async function decodeBody(
 
   let out = body;
   for (const coding of codings.reverse()) {
-    const codec = resolveCodec(coding);
+    const codec = CODECS.get(coding);
+    if (codec === undefined) {
+      throw new DecodeFailedError(`Unsupported upstream content-encoding: "${coding}"`);
+    }
     try {
       out = await codec(out, { maxOutputLength });
     } catch (err) {

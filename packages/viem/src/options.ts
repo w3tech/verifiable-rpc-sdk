@@ -14,6 +14,11 @@ import type { HardwareVerifier, Logger } from "@w3tech.io/vrpc-core";
  */
 export interface VrpcHttpOptions {
   /**
+   * `true` turns on Ankr Confidential RPC mode; the client must then declare `chain`.
+   * `headers`, `fetchFn` and `timeout` apply to both the attestation and the sealed request.
+   */
+  confidential?: boolean;
+  /**
    * Replay window (ms) forwarded to `verifyResponse`. Omitted → vrpc-core
    * default (60s). Tests pass a wide window to neutralize static-fixture
    * staleness.
@@ -34,7 +39,9 @@ export interface VrpcHttpOptions {
   /**
    * Injectable fetch seam (mirrors viem's `http` transport `fetchFn`). Defaults
    * to the global `fetch`. Lets tests drive the transport offline and consumers
-   * pass a routing fetch wrapper.
+   * pass a routing fetch wrapper. In Ankr Confidential RPC mode it must honour
+   * `init.redirect` (`"manual"`) and must not retry: a followed redirect or a retry
+   * resends the encrypted request and the API key.
    */
   fetchFn?: (url: string, init: RequestInit) => Promise<Response>;
   /**
@@ -64,7 +71,3 @@ export interface VrpcHttpOptions {
    */
   logger?: Logger;
 }
-
-// NOTE (v6.0): `allowlist`/`tcb`/`pccsUrl` were removed — the mock verifier
-// ignores them, so exposing inert security knobs is misleading; v7.0 reintroduces
-// them when the real verifier needs consumer-pinned anchors.

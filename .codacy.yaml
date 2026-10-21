@@ -7,5 +7,6 @@ exclude_paths:
   - "packages/**/src/**"
   - "packages/**/test/**"
   - "packages/**/tests/**"
+  - "packages/**/browser/**"
   - "packages/**/*.config.ts"
   - "examples/**"

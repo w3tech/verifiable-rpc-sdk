@@ -83,3 +83,50 @@ jobs:
               exit 1
               ;;
           esac
+
+      # Startup attestation fails against an unreachable upstream; the
+      # container must keep serving typed errors and log no request path.
+      - name: Smoke test (Ankr Confidential RPC mode, unreachable upstream)
+        run: |
+          docker run -d --name vrpc-proxy-smoke -p 127.0.0.1:8969:8969 vrpc-proxy:test \
+            --confidential --upstream http://127.0.0.1:9/test_vrpc --chain-id 1 --log-level error
+          for i in $(seq 1 30); do
+            curl -s -o /dev/null http://127.0.0.1:8969/ && break
+            sleep 1
+          done
+          POST=$(curl -s -X POST -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' \
+            -w '|%{http_code}' 'http://127.0.0.1:8969/smoke-path?smoke-query=1' || true)
+          TRACE=$(curl -s -X TRACE -w '|%{http_code}' http://127.0.0.1:8969/ || true)
+          sleep 1
+          LOGS=$(docker logs vrpc-proxy-smoke 2>&1)
+          fail() {
+            echo "::error::$1"
+            echo "$LOGS"
+            exit 1
+          }
+          echo "POST: $POST"
+          echo "TRACE: $TRACE"
+          case "$POST" in
+            *'"kind":"AttestationUnavailable"'*'"executed":"no"'*'|503') ;;
+            *) fail "expected 503 AttestationUnavailable with executed no" ;;
+          esac
+          case "$TRACE" in
+            *'"kind":"InvalidInnerRequest"'*'|400') ;;
+            *) fail "expected 400 InvalidInnerRequest for TRACE" ;;
+          esac
+          if [ "$(docker inspect -f '{{.State.Running}}' vrpc-proxy-smoke)" != "true" ]; then
+            fail "expected the container to keep running"
+          fi
+          case "$LOGS" in
+            *proxy.attestFailed*) ;;
+            *) fail "expected the startup attestation failure in the logs" ;;
+          esac
+          case "$LOGS" in
+            *smoke-path*|*smoke-query*) fail "request path or query found in the logs" ;;
+          esac
+          echo "confidential smoke OK"
+
+      - name: Remove smoke container
+        if: always()
+        run: docker rm -f vrpc-proxy-smoke || true

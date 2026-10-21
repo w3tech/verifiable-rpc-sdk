@@ -1,0 +1,516 @@
+// vrpcHttp in Ankr Confidential RPC mode (`confidential: true`) against an in-test node behind a
+// loopback HTTP server: wire shape, results and errors equal to open mode, configuration errors,
+// the transport value and attestation sharing.
+
+import { getEventListeners } from "node:events";
+import { RequestRejected, VrpcError } from "@w3tech.io/vrpc-core";
+import {
+  attestationAnswer,
+  CHAIN_ID,
+  countOf,
+  isGet,
+  isPost,
+  jsonResponse,
+  KEY,
+  mockHardwareVerifier,
+  NODE_ID,
+  type RpcCall,
+  rejectionOf,
+  rpcUpstream,
+  signedJsonHeaders,
+  type TestUpstream,
+  WIDE_WINDOW,
+} from "@w3tech.io/vrpc-test-support";
+import { expectNoSecrets, serveRpcNode } from "@w3tech.io/vrpc-test-support/adapter";
+import { holdPosts } from "@w3tech.io/vrpc-test-support/server";
+import { InvalidOption, mayHaveExecuted, vrpcHttp } from "@w3tech.io/vrpc-viem";
+import {
+  BaseError,
+  createPublicClient,
+  defineChain,
+  fallback,
+  HttpRequestError,
+  RpcRequestError,
+} from "viem";
+import { describe, expect, onTestFinished, test, vi } from "vitest";
+import { APP_COMPOSE, arbitrum, confidential, walkFind } from "./fixtures";
+
+function rpcError(code: number, message: string, status = 200): TestUpstream {
+  return async (request) => {
+    const call = (await request.json()) as RpcCall;
+    return jsonResponse({ jsonrpc: "2.0", id: call.id, error: { code, message } }, status);
+  };
+}
+
+describe("a single call", () => {
+  test("attests, then sends one sealed POST, and resolves to the upstream's value", async () => {
+    const { server, seen } = await serveRpcNode();
+    const client = createPublicClient({ chain: arbitrum, transport: confidential(server) });
+
+    await expect(client.request({ method: "eth_blockNumber" })).resolves.toBe("0x10");
+
+    expect(server.requests.map((r) => r.method)).toEqual(["GET", "POST"]);
+    const [get, post] = server.requests;
+    expect(get?.url).toMatch(/^\/eth_vrpc\/attestation\?nonce=[0-9a-f]{64}$/);
+    expect(post?.url).toBe(`/eth_vrpc/confidential?node_id=${NODE_ID}`);
+    expect(post?.headers["content-type"]).toBe("message/ohttp-req");
+    for (const request of server.requests) expect(request.headers["x-api-key"]).toBe(KEY);
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.method).toBe("POST");
+    expect(seen[0]?.path).toBe("/");
+    expect(seen[0]?.contentType).toBe("application/json");
+    expect(JSON.parse(seen[0]?.body ?? "")).toMatchObject({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "eth_blockNumber",
+    });
+  });
+
+  test("a viem action returns the decoded value and a second call reuses the pin", async () => {
+    const { server } = await serveRpcNode();
+    const client = createPublicClient({ chain: arbitrum, transport: confidential(server) });
+
+    await expect(client.getBlockNumber({ cacheTime: 0 })).resolves.toBe(16n);
+    await expect(client.getBlockNumber({ cacheTime: 0 })).resolves.toBe(16n);
+
+    expect(server.requests.map((r) => r.method)).toEqual(["GET", "POST", "POST"]);
+  });
+
+  test("a node JSON-RPC error rejects from the transport as RpcRequestError", async () => {
+    const { server } = await serveRpcNode(rpcError(-32000, "boom"));
+    const { config } = confidential(server)({ chain: arbitrum });
+
+    const err = await rejectionOf(config.request({ method: "eth_blockNumber" }));
+    expect(err).toBeInstanceOf(RpcRequestError);
+    expect((err as RpcRequestError).code).toBe(-32000);
+  });
+});
+
+const mainnet = defineChain({ ...arbitrum, id: 1, name: "Ethereum" });
+const ADDRESS = "0x1111111111111111111111111111111111111111" as const;
+const CALL_RESULT = `0x${"00".repeat(31)}2a` as const;
+const TX_HASH = `0x${"ab".repeat(32)}` as const;
+
+const parityUpstream = rpcUpstream((call) => {
+  switch (call.method) {
+    case "eth_blockNumber":
+      return "0x10";
+    case "eth_getBalance":
+      return "0x1bc16d674ec80000";
+    case "eth_call":
+      return CALL_RESULT;
+    case "eth_chainId":
+      return "0xa4b1";
+    default:
+      return null;
+  }
+});
+
+// Open mode answered by the same upstream function, signed over the exact request bytes.
+function openFetch(upstream: TestUpstream) {
+  return async (url: string, init: RequestInit): Promise<Response> => {
+    if (url.includes("/attestation")) return attestationAnswer(url, { appCompose: APP_COMPOSE });
+    const requestBytes = init.body as Uint8Array;
+    const answer = await upstream(new Request(url, { method: "POST", body: requestBytes }));
+    const responseBody = String(answer.body);
+    const responseBytes = new TextEncoder().encode(responseBody);
+    const headers = signedJsonHeaders(CHAIN_ID, requestBytes, responseBytes, { nodeId: NODE_ID });
+    return new Response(responseBody, { status: answer.status, headers });
+  };
+}
+
+async function until(predicate: () => boolean): Promise<void> {
+  for (let i = 0; i < 200 && !predicate(); i++) await new Promise((r) => setTimeout(r, 5));
+  expect(predicate()).toBe(true);
+}
+
+describe("results equal open mode", () => {
+  test("getBlockNumber, getBalance, call and a null result", async () => {
+    const { server } = await serveRpcNode(parityUpstream);
+    const sealed = createPublicClient({ chain: arbitrum, transport: confidential(server) });
+    const open = createPublicClient({
+      chain: arbitrum,
+      transport: vrpcHttp("http://open.invalid/eth_vrpc", {
+        fetchFn: openFetch(parityUpstream),
+        replayWindowMs: WIDE_WINDOW,
+        hardwareVerifier: mockHardwareVerifier(),
+      }),
+    });
+
+    const run = (client: typeof open) =>
+      Promise.all([
+        client.getBlockNumber({ cacheTime: 0 }),
+        client.getBalance({ address: ADDRESS }),
+        client.call({ to: ADDRESS, data: "0x12345678" }),
+        client.request({ method: "eth_getTransactionByHash", params: [TX_HASH] }),
+      ]);
+
+    const [sealedValues, openValues] = [await run(sealed), await run(open)];
+    expect(sealedValues).toEqual(openValues);
+    expect(sealedValues).toEqual([16n, 2_000_000_000_000_000_000n, { data: CALL_RESULT }, null]);
+  });
+
+  test("the answer is read from the raw bytes, never as text", async () => {
+    const { server } = await serveRpcNode();
+    const fetchFn = async (url: string, init: RequestInit): Promise<Response> => {
+      const response = await fetch(url, init);
+      Object.defineProperty(response, "text", {
+        value: () => {
+          throw new Error("text() is not used");
+        },
+      });
+      return response;
+    };
+    const client = createPublicClient({
+      chain: arbitrum,
+      transport: confidential(server, { fetchFn }),
+    });
+
+    await expect(client.getBlockNumber({ cacheTime: 0 })).resolves.toBe(16n);
+  });
+});
+
+describe("errors", () => {
+  const SENTINEL_PARAM = "sentinel-param";
+  const request = { method: "eth_blockNumber", params: [SENTINEL_PARAM] } as const;
+
+  function raw(status: number, contentType: string, body: string): TestUpstream {
+    return () => ({ status, headers: { "content-type": contentType }, body });
+  }
+
+  const cases: Array<{
+    name: string;
+    upstream: TestUpstream;
+    type: typeof RpcRequestError | typeof HttpRequestError;
+    code?: number;
+    status?: number;
+  }> = [
+    {
+      name: "an inner 200 with an error member",
+      upstream: rpcError(-32603, "m"),
+      type: RpcRequestError,
+      code: -32603,
+    },
+    {
+      name: "an inner 500 with a JSON-RPC error body",
+      upstream: rpcError(-32005, "limit exceeded", 500),
+      type: RpcRequestError,
+      code: -32005,
+    },
+    {
+      name: "an inner 413 problem document",
+      upstream: raw(
+        413,
+        "application/problem+json",
+        '{"type":"urn:vrpc:error:batch-too-large","title":"sentinel-reply"}',
+      ),
+      type: HttpRequestError,
+      status: 413,
+    },
+    {
+      name: "an inner 502 text answer",
+      upstream: raw(502, "text/plain", "sentinel-reply bad gateway"),
+      type: HttpRequestError,
+      status: 502,
+    },
+    {
+      name: "an inner 200 with an empty body",
+      upstream: raw(200, "application/json", ""),
+      type: HttpRequestError,
+      status: 200,
+    },
+    {
+      name: "an inner 200 that is not JSON",
+      upstream: raw(200, "application/json", "not json sentinel-reply"),
+      type: HttpRequestError,
+      status: 200,
+    },
+    {
+      name: "an inner 200 with JSON null",
+      upstream: raw(200, "application/json", "null"),
+      type: HttpRequestError,
+      status: 200,
+    },
+    {
+      name: "an inner 200 whose error member is a string",
+      upstream: raw(200, "application/json", '{"jsonrpc":"2.0","id":1,"error":"sentinel-reply"}'),
+      type: HttpRequestError,
+      status: 200,
+    },
+    {
+      name: "an inner 500 whose error member is null",
+      upstream: raw(500, "application/json", '{"jsonrpc":"2.0","id":1,"error":null}'),
+      type: HttpRequestError,
+      status: 500,
+    },
+    {
+      name: "an inner 200 with a JSON array",
+      upstream: raw(200, "application/json", '["sentinel-reply"]'),
+      type: HttpRequestError,
+      status: 200,
+    },
+  ];
+
+  function expectClean(err: unknown): void {
+    expectNoSecrets([err], ["sentinel-reply", SENTINEL_PARAM, KEY, "/eth_vrpc"], []);
+  }
+
+  test.each(cases)("$name rejects from the transport with the viem class", async (row) => {
+    const { server } = await serveRpcNode(row.upstream);
+    const { config } = confidential(server)({ chain: arbitrum });
+
+    const err = await rejectionOf(config.request(request));
+    expect(err).toBeInstanceOf(row.type);
+    if (row.code !== undefined) expect((err as RpcRequestError).code).toBe(row.code);
+    if (row.status !== undefined) expect((err as HttpRequestError).status).toBe(row.status);
+    expectClean(err);
+  });
+
+  test.each(cases)("$name reaches client.request with the viem class inside", async (row) => {
+    const { server } = await serveRpcNode(row.upstream);
+    const client = createPublicClient({ chain: arbitrum, transport: confidential(server) });
+
+    const err = await rejectionOf(client.request(request as never));
+    const found = walkFind(err, row.type);
+    expect(found).toBeInstanceOf(row.type);
+    if (row.code !== undefined) expect((found as RpcRequestError).code).toBe(row.code);
+    if (row.status !== undefined) expect((found as HttpRequestError).status).toBe(row.status);
+    expectClean(err);
+  });
+
+  test("an inner 200 whose error member is null returns the result", async () => {
+    const { server } = await serveRpcNode(
+      raw(200, "application/json", '{"jsonrpc":"2.0","id":1,"result":"0x1","error":null}'),
+    );
+    const { config } = confidential(server)({ chain: arbitrum });
+
+    expect(await config.request(request)).toBe("0x1");
+  });
+
+  test("a core error passes through unchanged", async () => {
+    const { server } = await serveRpcNode();
+    server.answer((r) =>
+      r.method === "POST"
+        ? { status: 429, headers: { "content-type": "text/plain" }, body: "slow down" }
+        : undefined,
+    );
+    const transport = confidential(server);
+
+    const direct = await rejectionOf(transport({ chain: arbitrum }).config.request(request));
+    expect(direct).toBeInstanceOf(RequestRejected);
+
+    const client = createPublicClient({ chain: arbitrum, transport });
+    const walked = walkFind(await rejectionOf(client.request(request as never)), RequestRejected);
+    expect(walked).toBeInstanceOf(RequestRejected);
+    expect(walked?.status).toBe(429);
+    expect(walked?.executed).toBe("no");
+  });
+
+  test("mayHaveExecuted sees through the viem error: false after a failed attestation, true after a gateway 502", async () => {
+    const { server } = await serveRpcNode();
+    const client = createPublicClient({ chain: arbitrum, transport: confidential(server) });
+    server.answer((r) => (r.method === "POST" ? undefined : { status: 503 }));
+    const failed = await rejectionOf(client.getBlockNumber());
+    expect(failed).toBeInstanceOf(BaseError);
+    expect(failed).not.toBeInstanceOf(VrpcError);
+    expect(mayHaveExecuted(failed)).toBe(false);
+
+    server.answer((r) =>
+      r.method === "POST" ? { status: 502, headers: { "content-type": "text/plain" } } : undefined,
+    );
+    const sent = await rejectionOf(client.getBlockNumber({ cacheTime: 0 }));
+    expect(sent).not.toBeInstanceOf(VrpcError);
+    expect(mayHaveExecuted(sent)).toBe(true);
+  });
+});
+
+describe("headers", () => {
+  test("a caller content-type is dropped and the key is sent on both requests", async () => {
+    const { server } = await serveRpcNode();
+    const client = createPublicClient({
+      chain: arbitrum,
+      transport: confidential(server, {
+        headers: { "x-api-key": KEY, "Content-Type": "application/json" },
+      }),
+    });
+
+    await client.getBlockNumber({ cacheTime: 0 });
+
+    const [get, post] = server.requests;
+    expect(post?.headers["content-type"]).toBe("message/ohttp-req");
+    expect(get?.headers["content-type"]).not.toBe("application/json");
+    for (const r of server.requests) expect(r.headers["x-api-key"]).toBe(KEY);
+  });
+});
+
+describe("signals", () => {
+  test("a timeout rejects the call with a TimeoutError cause, with or without a caller signal", async () => {
+    const { server } = await serveRpcNode();
+    holdPosts(server);
+    const client = createPublicClient({
+      chain: arbitrum,
+      transport: confidential(server, { timeout: 200 }),
+    });
+
+    const err = await rejectionOf(client.getBlockNumber({ cacheTime: 0 }));
+    expect(walkFind(err, DOMException)?.name).toBe("TimeoutError");
+    const withCaller = await rejectionOf(
+      client.request({ method: "eth_blockNumber" }, { signal: new AbortController().signal }),
+    );
+    expect(walkFind(withCaller, DOMException)?.name).toBe("TimeoutError");
+  });
+
+  test("a caller abort after the request was sent rejects the call with the caller's reason", async () => {
+    const { server } = await serveRpcNode();
+    holdPosts(server);
+    const client = createPublicClient({ chain: arbitrum, transport: confidential(server) });
+    const controller = new AbortController();
+    const reason = new Error("caller abort");
+
+    const pending = rejectionOf(
+      client.request({ method: "eth_blockNumber" }, { signal: controller.signal }),
+    );
+    await until(() => server.requests.some(isPost));
+    const abortedAt = Date.now();
+    controller.abort(reason);
+    const err = await pending;
+
+    expect(Date.now() - abortedAt).toBeLessThan(2_000);
+    const seen: unknown[] = [];
+    for (
+      let e: unknown = err;
+      e != null && !seen.includes(e);
+      e = (e as { cause?: unknown }).cause
+    ) {
+      seen.push(e);
+    }
+    expect(seen).toContain(reason);
+  });
+
+  test("calls sharing one long-lived caller signal leave no abort listener on it and warn nothing", async () => {
+    const { server } = await serveRpcNode();
+    const client = createPublicClient({ chain: arbitrum, transport: confidential(server) });
+    await client.transport.ready();
+    const warnings: unknown[] = [];
+    const onWarning = (warning: unknown) => warnings.push(warning);
+    process.on("warning", onWarning);
+    onTestFinished(() => {
+      process.off("warning", onWarning);
+    });
+    const controller = new AbortController();
+
+    const calls = Array.from({ length: 20 }, () =>
+      client.request({ method: "eth_blockNumber" }, { signal: controller.signal }),
+    );
+    await expect(Promise.all(calls)).resolves.toEqual(Array(20).fill("0x10"));
+    await new Promise((r) => setImmediate(r));
+
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+    expect(warnings).toEqual([]);
+  });
+});
+
+describe("configuration errors", () => {
+  const methods = ["log", "info", "warn", "error", "debug"] as const;
+
+  function spyConsole() {
+    const spies = methods.map((m) => vi.spyOn(console, m));
+    onTestFinished(() => {
+      for (const spy of spies) spy.mockRestore();
+    });
+    return () => spies.reduce((n, spy) => n + spy.mock.calls.length, 0);
+  }
+
+  test("a client without a chain throws InvalidOption synchronously", async () => {
+    const { server } = await serveRpcNode();
+    const consoleCalls = spyConsole();
+
+    expect(() => createPublicClient({ transport: confidential(server) })).toThrow(InvalidOption);
+    expect(() => createPublicClient({ transport: fallback([confidential(server)]) })).toThrow(
+      InvalidOption,
+    );
+    expect(server.requests).toEqual([]);
+    expect(consoleCalls()).toBe(0);
+  });
+
+  test("a second chain on the same transport throws; the same chain shares one attestation", async () => {
+    const { server } = await serveRpcNode();
+    const transport = confidential(server);
+    const first = createPublicClient({ chain: arbitrum, transport });
+
+    expect(() => createPublicClient({ chain: mainnet, transport })).toThrow(InvalidOption);
+    const second = createPublicClient({ chain: arbitrum, transport });
+    await first.getBlockNumber({ cacheTime: 0 });
+    await second.getBlockNumber({ cacheTime: 0 });
+
+    expect(server.requests.map((r) => r.method)).toEqual(["GET", "POST", "POST"]);
+  });
+
+  test("a non-boolean confidential option throws InvalidOption", async () => {
+    const { server } = await serveRpcNode();
+    const consoleCalls = spyConsole();
+
+    expect(() => vrpcHttp(`${server.url}/eth_vrpc`, { confidential: "true" } as never)).toThrow(
+      InvalidOption,
+    );
+    expect(server.requests).toEqual([]);
+    expect(consoleCalls()).toBe(0);
+  });
+});
+
+describe("transport value", () => {
+  test("ready() attests once and getConfidentialInfo() reports the pinned node", async () => {
+    const { node, server } = await serveRpcNode();
+    const client = createPublicClient({ chain: arbitrum, transport: confidential(server) });
+
+    expect(client.transport.getConfidentialInfo()).toBeUndefined();
+    const info = await client.transport.ready();
+    expect(info).toMatchObject({ nodeId: NODE_ID, pubkey: node.pubkeyHex });
+    expect(client.transport.getConfidentialInfo()).toEqual(info);
+    await client.transport.ready();
+
+    expect(server.requests.map((r) => r.method)).toEqual(["GET"]);
+  });
+
+  test("open mode has neither member", () => {
+    const client = createPublicClient({
+      chain: arbitrum,
+      transport: vrpcHttp("http://open.invalid/eth_vrpc"),
+    });
+
+    expect("ready" in client.transport).toBe(false);
+    expect("getConfidentialInfo" in client.transport).toBe(false);
+  });
+});
+
+describe("attestation sharing", () => {
+  test("fallback calls the factory per request and the calls still share one attestation", async () => {
+    const { server } = await serveRpcNode();
+    const client = createPublicClient({
+      chain: arbitrum,
+      transport: fallback([confidential(server)], { retryCount: 0 }),
+    });
+
+    for (let i = 0; i < 3; i++) await client.getBlockNumber({ cacheTime: 0 });
+
+    expect(countOf(server, isGet)).toBe(1);
+    expect(countOf(server, isPost)).toBe(3);
+  });
+
+  test("ten concurrent first calls put one attestation and ten sealed requests on the wire", async () => {
+    const { server } = await serveRpcNode(rpcUpstream(() => "0x1"));
+    const client = createPublicClient({ chain: arbitrum, transport: confidential(server) });
+
+    const addresses = Array.from(
+      { length: 10 },
+      (_, i) => `0x${(i + 1).toString(16).padStart(40, "0")}` as const,
+    );
+    await expect(
+      Promise.all(addresses.map((address) => client.getBalance({ address }))),
+    ).resolves.toEqual(Array(10).fill(1n));
+
+    expect(countOf(server, isGet)).toBe(1);
+    expect(countOf(server, isPost)).toBe(10);
+  });
+});

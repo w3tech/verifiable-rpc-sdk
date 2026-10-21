@@ -1,22 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Frozen verify-step signatures. computeComposeHash + parseReportData are
-// implemented (used by the active CHK-A1/CHK-A2 checks); replayRtmr +
-// extractKeyProvider remain throwing stubs until the real DCAP layers land.
+// Verify steps: computeComposeHash (CHK-A2) and parseReportData (CHK-A1).
 
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 
 import { AttestationError } from "./errors";
-import type { EventLogEntry, KeyProvider, ReportDataBinding } from "./types";
+import type { ReportDataBinding } from "./types";
 
-/**
- * CHK-A4/P3: replay one IMR's event log to its expected RTMR
- * (SHA-384 chain, INIT_MR zero state, 48-byte right-pad). Returns the RTMR hex.
- */
-export function replayRtmr(events: EventLogEntry[]): string {
-  void events;
-  throw new Error("replayRtmr: not implemented yet");
+/** Bare lowercase hex for comparison (strip optional `0x`, lowercase). */
+export function normHex(s: string): string {
+  return s.replace(/^0x/i, "").toLowerCase();
 }
 
 /**
@@ -37,7 +31,7 @@ export function computeComposeHash(appCompose: string): string {
  * `AttestationError("CHK-A1", …)` on malformed input — never a silent slice.
  */
 export function parseReportData(reportDataHex: string): ReportDataBinding {
-  const hex = reportDataHex.replace(/^0x/i, "").toLowerCase();
+  const hex = normHex(reportDataHex);
   if (!/^[0-9a-f]{128}$/.test(hex)) {
     throw new AttestationError(
       "CHK-A1",
@@ -48,10 +42,4 @@ export function parseReportData(reportDataHex: string): ReportDataBinding {
     expectedPubkey: `0x${hex.slice(0, 64)}`,
     expectedNonce: hex.slice(64, 128),
   };
-}
-
-/** CHK-P7: extract the key-provider identity from the RTMR3 event log. */
-export function extractKeyProvider(events: EventLogEntry[]): KeyProvider {
-  void events;
-  throw new Error("extractKeyProvider: not implemented yet");
 }

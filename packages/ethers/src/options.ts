@@ -30,7 +30,12 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
   replayWindowMs?: number;
   /** Verified-pubkey cache TTL (ms) for the attestation seam; default 1h (vrpc-core). */
   pubkeyCacheTtlMs?: number;
-  /** `fetch` override for the attestation leg — test injectable. Internal. */
+  /**
+   * `fetch` override for the attestation GET and the default hardware verifier's call — test
+   * injectable. Internal. In Ankr Confidential RPC mode the attestation GET and the sealed
+   * requests go through the `FetchRequest`, and through this `fetch` unless it has a
+   * `getUrlFunc` of its own.
+   */
   fetch?: typeof fetch;
   /**
    * Internal / advanced. Override the mandatory hardware-signature verifier
@@ -49,10 +54,11 @@ export interface VrpcOptions extends JsonRpcApiProviderOptions {
    * truncated) — it is observability only, never part of the verify decision.
    */
   logger?: Logger;
+  /**
+   * Turns on Ankr Confidential RPC mode (`confidential: true`): every call is sealed to an attested
+   * node. Requires a chain id. CCIP-Read is turned off, since it would send call data in
+   * plaintext to a URL the contract names. A `getUrlFunc` set on the `FetchRequest` must not
+   * follow redirects or retry.
+   */
+  confidential?: boolean;
 }
-
-// NOTE (v6.0): `allowlist`/`tcb`/`pccsUrl` were removed — the mock verifier
-// ignores them, so exposing inert security knobs is misleading; v7.0 reintroduces
-// them. `headers` was removed too: set auth on the `FetchRequest` you pass as the
-// URL (`req.setHeader("x-api-key", …)`), which already covers BOTH the RPC POST
-// and the internal attestation fetch.

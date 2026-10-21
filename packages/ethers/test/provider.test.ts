@@ -1,69 +1,50 @@
-// VrpcProvider adapter-WIRING suite.
-//
-// These tests assert ADAPTER WIRING ONLY: that `VrpcProvider._send` routes every
-// JSON-RPC call through `vrpc-core` `verifyResponse` over the raw response bytes
-// before parse, maps results/errors/null back to callers, preserves native
-// batching with id-correlation, and is fail-closed (always strict) + the
-// re-exported VerificationError family.
-//
-// They do NOT re-test Ed25519 / pre-image / replay-window correctness — that is
-// core's `packages/core/tests/verify.test.ts`. The request-aware
-// `signingRequest` helper signs over the EXACT bytes ethers POSTs, so a real
-// getBalance / Contract / batch payload verifies without the test predicting
-// ethers' internal payload encoding.
+// VrpcProvider open-mode wiring: FetchRequest behaviour, response classes and
+// option rules. Bootstrap, verify and decode are tested once in core
+// (`packages/core/tests/open-session.test.ts`).
 
+import { InvalidOption, VerificationError, VrpcProvider } from "@w3tech.io/vrpc-ethers";
 import {
-  BadSignature,
-  InvalidChainId,
-  MalformedHeader,
-  MissingHeader,
-  VerificationError,
-  VrpcProvider,
-} from "@w3tech.io/vrpc-ethers";
-import { Contract, FetchRequest, Interface, toBeHex } from "ethers";
-import { describe, expect, test } from "vitest";
-import { CHAIN_ID, SINGLE_RESULT_BALANCE_HEX, signResponseBytes } from "./fixtures";
-import { installAttestationMock, signingRequest } from "./helpers";
-import { mockHardwareVerifier } from "./support/mock-hardware-verifier";
+  attestationStub,
+  CHAIN_ID,
+  flipFirstDigit,
+  jsonResult,
+  mockHardwareVerifier,
+  rejectionOf,
+  SINGLE_RESULT_BALANCE_HEX,
+  type SignedAnswerOptions,
+  signedAnswer,
+  signedJsonHeaders,
+  thrownBy,
+  WIDE_WINDOW,
+} from "@w3tech.io/vrpc-test-support";
+import {
+  type ServedAnswer,
+  type ServedRequest,
+  serveUpstream,
+  type TestNodeServerOptions,
+} from "@w3tech.io/vrpc-test-support/server";
+import { Contract, FetchRequest, FetchResponse, Interface, isError, toBeHex } from "ethers";
+import { describe, expect, onTestFinished, test } from "vitest";
+import { signingRequest } from "./helpers";
 
 // Always-on verify seam: the FIRST verified read per pubkey lazily fetches the
 // node attestation. These adapter-WIRING tests are offline — the RPC POST leg is
 // the request-aware getUrlFunc mock (per-instance), and the `/attestation` GET
 // leg is served by this injected `fetch`. The mock's pubkey is derived from the
 // SAME TEST_SEED the RPC responses are signed with, so pubkey correlation passes
-// and the v5.0 mock verifier (allowInsecureMock) resolves — the read reaches its
+// and the mock hardware verifier resolves — the read reaches its
 // assertion. Each VrpcProvider below threads `fetch: ATT.fetch`; signed RPC
 // responses carry a `vRPC-NodeId` so the seam routes the attestation fetch with
 // `node_id` (the no-node_id path is exercised in provider.attestation.test.ts).
-const ATT = installAttestationMock();
+const ATT = attestationStub();
 const NODE_ID = "node-abc";
 
-/**
- * Build a `FetchRequest` whose `getUrlFunc`:
- *  - answers a SIGNED `eth_chainId` bootstrap whose `{result}` carries
- *    `bootstrapChainId` (default CHAIN_ID), signed over the exact request bytes
- *    bound to `bootstrapSigningChainId` (default `bootstrapChainId`, i.e. a
- *    self-consistent bootstrap), then optionally tampered/unsigned, and
- *  - answers every OTHER method with `responseBody`, SIGNED over the exact bytes
- *    posted, bound to `signingChainId` (default CHAIN_ID).
- *
- * `bootstrapHits` counts the bootstrap fetches (memoization / zero-bootstrap
- * assertions). The bootstrap is now VERIFIED self-consistently: a bootstrap
- * whose claimed `result` differs from the chain it was signed for, a tampered
- * bootstrap, or an unsigned bootstrap all fail FAST at `#resolveChainId`.
- */
+// Answers `eth_chainId` with a signed `bootstrapChainId` and every other method with
+// `responseBody` signed for CHAIN_ID.
 function autoDeriveRequest(
   responseBody: string,
   opts: {
     bootstrapChainId?: string;
-    bootstrapSigningChainId?: string;
-    bootstrapUnsigned?: boolean;
-    bootstrapTamper?: boolean;
-    // Override the bootstrap body with a raw (possibly malformed) string —
-    // bad JSON, missing `result`, or non-hex `result`. Returned UNSIGNED since
-    // the parse/shape guard must reject it BEFORE verifyResponse runs.
-    bootstrapRawBody?: string;
-    signingChainId?: string;
     bootstrapHits?: { n: number };
   } = {},
 ): FetchRequest {
@@ -77,52 +58,14 @@ function autoDeriveRequest(
       if (opts.bootstrapHits) {
         opts.bootstrapHits.n += 1;
       }
-      if (opts.bootstrapRawBody !== undefined) {
-        // Malformed bootstrap body: must be rejected at parse/shape time with a
-        // typed MalformedHeader BEFORE verifyResponse — no signature needed.
-        return {
-          statusCode: 200,
-          statusMessage: "OK",
-          headers: { "content-type": "application/json" },
-          body: new TextEncoder().encode(opts.bootstrapRawBody),
-        };
-      }
       const bootstrapResult = `0x${BigInt(bootstrapChainId).toString(16)}`;
-      let body = new TextEncoder().encode(
+      const body = new TextEncoder().encode(
         JSON.stringify({ jsonrpc: "2.0", id: 1, result: bootstrapResult }),
       );
-      if (opts.bootstrapUnsigned) {
-        // UNSIGNED bootstrap → MissingHeader fail-fast at bootstrap.
-        return {
-          statusCode: 200,
-          statusMessage: "OK",
-          headers: { "content-type": "application/json" },
-          body,
-        };
-      }
-      // SIGNED bootstrap: by default signed over the SAME chain it claims
-      // (self-consistent → verifies). `bootstrapSigningChainId` forges a
-      // mismatch (signed for a chain != claimed result) → BadSignature.
-      const headers = await signResponseBytes(requestBytes, body, {
-        signingChainId: opts.bootstrapSigningChainId ?? bootstrapChainId,
-      });
-      if (opts.bootstrapTamper) {
-        // Flip the first ASCII digit AFTER signing → BadSignature (body stays
-        // valid JSON so the parse before verify still succeeds).
-        body = new Uint8Array(body);
-        for (let i = 0; i < body.length; i++) {
-          if (body[i] >= 0x30 && body[i] <= 0x39) {
-            body[i] = body[i] === 0x39 ? 0x30 : body[i] + 1;
-            break;
-          }
-        }
-      }
+      const headers = signedJsonHeaders(bootstrapChainId, requestBytes, body);
       return { statusCode: 200, statusMessage: "OK", headers, body };
     }
-    const headers = await signResponseBytes(requestBytes, responseBytes, {
-      nodeId: NODE_ID,
-      ...(opts.signingChainId !== undefined ? { signingChainId: opts.signingChainId } : {}),
-    });
+    const headers = signedJsonHeaders(CHAIN_ID, requestBytes, responseBytes, { nodeId: NODE_ID });
     return { statusCode: 200, statusMessage: "OK", headers, body: responseBytes };
   };
   return req;
@@ -130,29 +73,24 @@ function autoDeriveRequest(
 
 const CHAIN_ID_NUMBER = Number(CHAIN_ID); // 42161 (arbitrum)
 const ADDR = "0x1111111111111111111111111111111111111111";
-// Wide window neutralizes the static FIXTURE_TIMESTAMP_MS staleness; production
-// keeps the vrpc-core default (60s). `fetch: ATT.fetch` serves the always-on
+// `fetch: ATT.fetch` serves the always-on
 // attestation leg offline (every provider below threads it).
 // Hardware verification is mandatory + defaults to a network cloud POST; inject
-// the no-network mock so every provider built with WIDE_WINDOW verifies offline.
-const WIDE_WINDOW = {
-  replayWindowMs: Number.MAX_SAFE_INTEGER,
+// the no-network mock so every provider built with WIDE_OPTIONS verifies offline.
+const WIDE_OPTIONS = {
+  replayWindowMs: WIDE_WINDOW,
   fetch: ATT.fetch,
   hardwareVerifier: mockHardwareVerifier(),
 } as const;
-
-function jsonResult(id: number, result: unknown): string {
-  return JSON.stringify({ jsonrpc: "2.0", id, result });
-}
 
 describe("VrpcProvider._send wiring", () => {
   test("verified value routes through _send: getBalance returns the decoded balance", async () => {
     // The id ethers assigns to the first call is 1; the request-aware signer
     // signs whatever ethers actually POSTs, so we only need the response shape.
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID }),
+      signingRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
+      WIDE_OPTIONS,
     );
     const balance = await provider.getBalance(ADDR);
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX)); // 2 ETH in wei
@@ -164,42 +102,12 @@ describe("VrpcProvider._send wiring", () => {
     const value = 123_456_789n;
     const encoded = iface.encodeFunctionResult("totalSupply", [value]);
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, encoded), { nodeId: NODE_ID }),
+      signingRequest(jsonResult(encoded), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
+      WIDE_OPTIONS,
     );
     const contract = new Contract("0x2222222222222222222222222222222222222222", iface, provider);
-    expect(await contract.totalSupply()).toBe(value);
-  });
-
-  test("tampered response → BadSignature, fail-closed (strict default)", async () => {
-    const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { tamper: true }),
-      CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
-    );
-    await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
-  });
-
-  test("wrong chainId → BadSignature (signed for one chain, verified against another)", async () => {
-    // Sign the response bound to chain 1 (mainnet) but construct the provider
-    // for arbitrum (42161): the signature is valid yet the pre-image chainId
-    // differs → BadSignature.
-    const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { signingChainId: "1" }),
-      CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
-    );
-    await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
-  });
-
-  test("unsigned response → MissingHeader, fail-closed (strict default)", async () => {
-    const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { unsigned: true }),
-      CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
-    );
-    await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(MissingHeader);
+    expect(await contract.getFunction("totalSupply")()).toBe(value);
   });
 
   test("signed JSON-RPC {error} → ordinary ethers RPC error, NOT a VerificationError", async () => {
@@ -213,74 +121,37 @@ describe("VrpcProvider._send wiring", () => {
         { nodeId: NODE_ID },
       ),
       CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
+      WIDE_OPTIONS,
     );
     // The signature is valid (verified first); ethers then surfaces the RPC
     // error. It must NOT be downgraded into / confused with a VerificationError.
-    const err = await provider.getBalance(ADDR).then(
-      () => {
-        throw new Error("expected rejection");
-      },
-      (e) => e,
-    );
+    const err = await rejectionOf(provider.getBalance(ADDR));
     expect(err).not.toBeInstanceOf(VerificationError);
   });
 
   test("signed {result:null} returns null (getBlock of a missing block)", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, null), { nodeId: NODE_ID }),
+      signingRequest(jsonResult(null), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
+      WIDE_OPTIONS,
     );
     expect(await provider.getBlock(99_999_999)).toBeNull();
   });
 
-  // raw-transaction broadcast funnels through the verified `_send`.
-  // `eth_sendRawTransaction` is the broadcast method; driving it via `_send`
-  // (provider.send) proves it is NOT special-cased around verification: the
-  // signed tx-hash result is verified, and a tampered response on the SAME
-  // method path fails closed exactly like a read.
   const RAW_SIGNED_TX =
     "0x02f8730182012c8459682f008502540be40082520894aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa880de0b6b3a764000080c001a0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2a04f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6";
   const TX_HASH = "0x88df020a2f000000000000000000000000000000000000000000000000000088";
 
   test("verified broadcast — eth_sendRawTransaction returns the verified tx hash", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, TX_HASH), { nodeId: NODE_ID }),
+      signingRequest(jsonResult(TX_HASH), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
+      WIDE_OPTIONS,
     );
     const hash = await provider.send("eth_sendRawTransaction", [RAW_SIGNED_TX]);
     expect(hash).toBe(TX_HASH);
   });
 
-  test("unsigned broadcast response → MissingHeader (broadcast is NOT exempt from verification)", async () => {
-    const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, TX_HASH), { unsigned: true }),
-      CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
-    );
-    await expect(provider.send("eth_sendRawTransaction", [RAW_SIGNED_TX])).rejects.toBeInstanceOf(
-      MissingHeader,
-    );
-  });
-
-  test("tampered broadcast response → BadSignature, fail-closed", async () => {
-    const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, TX_HASH), { tamper: true }),
-      CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
-    );
-    await expect(provider.send("eth_sendRawTransaction", [RAW_SIGNED_TX])).rejects.toBeInstanceOf(
-      BadSignature,
-    );
-  });
-
-  // HTTP event-polling RPC calls funnel through the verified `_send`.
-  // ethers' poll loop issues `eth_getLogs` (event filters) and
-  // `eth_getFilterChanges` (filter subscriptions) via the same `_send`
-  // chokepoint. Proving the underlying RPC verifies (and rejects unsigned) is
-  // exactly the event-poll guarantee — no need to spin the polling timer.
   const LOG_ENTRY = {
     address: "0x3333333333333333333333333333333333333333",
     topics: ["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"],
@@ -295,82 +166,42 @@ describe("VrpcProvider._send wiring", () => {
 
   test("verified eth_getLogs — polling/event funnels through verified _send", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, [LOG_ENTRY]), { nodeId: NODE_ID }),
+      signingRequest(jsonResult([LOG_ENTRY]), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
+      WIDE_OPTIONS,
     );
     const logs = await provider.getLogs({ address: LOG_ENTRY.address, fromBlock: 0x10d4f });
     expect(logs).toHaveLength(1);
-    expect(logs[0].transactionHash).toBe(TX_HASH);
-  });
-
-  test("unsigned eth_getLogs response → MissingHeader (poll path is NOT exempt)", async () => {
-    const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, [LOG_ENTRY]), { unsigned: true }),
-      CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
-    );
-    await expect(
-      provider.getLogs({ address: LOG_ENTRY.address, fromBlock: 0x10d4f }),
-    ).rejects.toBeInstanceOf(MissingHeader);
+    expect(logs[0]?.transactionHash).toBe(TX_HASH);
   });
 
   test("verified eth_getFilterChanges — filter-subscription poll funnels through verified _send", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, [LOG_ENTRY]), { nodeId: NODE_ID }),
+      signingRequest(jsonResult([LOG_ENTRY]), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
+      WIDE_OPTIONS,
     );
     // The filter-poll RPC ethers fires on each tick. Driving it via `_send`
     // proves the poll-loop's RPC is verified before the parsed changes surface.
     const changes = await provider.send("eth_getFilterChanges", ["0x1"]);
     expect(changes).toHaveLength(1);
-    expect((changes as Array<{ transactionHash: string }>)[0].transactionHash).toBe(TX_HASH);
+    expect((changes as Array<{ transactionHash: string }>)[0]?.transactionHash).toBe(TX_HASH);
   });
 
-  test("tampered eth_getFilterChanges response → BadSignature, fail-closed", async () => {
-    const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, [LOG_ENTRY]), { tamper: true }),
-      CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
-    );
-    await expect(provider.send("eth_getFilterChanges", ["0x1"])).rejects.toBeInstanceOf(
-      BadSignature,
-    );
-  });
-
-  // chain ids beyond Number.MAX_SAFE_INTEGER (2^53−1) must survive the
-  // constructor without precision loss. The pre-image hashes the exact decimal
-  // string, so a `number`-widened chainId would diverge from what the sidecar
-  // signed and reject an intact response (false BadSignature). Passing a bigint
-  // through the constructor → decimal string → verify({ chainId }) chain must
-  // round-trip the exact value: sign-and-verify succeeds for the large id, and a
-  // one-off mismatch still throws BadSignature (verification is NOT weakened).
+  // The pre-image binds the exact decimal string, so a number-widened id would fail an intact answer.
   const LARGE_CHAIN_ID = (1n << 53n) + 12_345n; // 9_007_199_254_753_337n > 2^53−1
 
   test("large chainId > 2^53−1 round-trips exactly (bigint, no precision loss)", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
-        chainId: LARGE_CHAIN_ID.toString(10),
+      signingRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), {
+        signingChainId: LARGE_CHAIN_ID.toString(10),
         nodeId: NODE_ID,
       }),
       LARGE_CHAIN_ID,
-      WIDE_WINDOW,
+      WIDE_OPTIONS,
     );
     const balance = await provider.getBalance(ADDR);
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
-  });
-
-  test("large chainId mismatch still fails closed (BadSignature, verification not weakened)", async () => {
-    // Signed for LARGE_CHAIN_ID+1, verified against LARGE_CHAIN_ID → mismatch.
-    const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
-        signingChainId: (LARGE_CHAIN_ID + 1n).toString(10),
-      }),
-      LARGE_CHAIN_ID,
-      WIDE_WINDOW,
-    );
-    await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
   });
 
   test("batch: verified once over the array body, results correlate by id", async () => {
@@ -390,12 +221,12 @@ describe("VrpcProvider._send wiring", () => {
         return { jsonrpc: "2.0", id: p.id, result: SINGLE_RESULT_BALANCE_HEX };
       });
       const responseBytes = new TextEncoder().encode(JSON.stringify(results));
-      const headers = await signResponseBytes(requestBytes, responseBytes, { nodeId: NODE_ID });
+      const headers = signedJsonHeaders(CHAIN_ID, requestBytes, responseBytes, { nodeId: NODE_ID });
       return { statusCode: 200, statusMessage: "OK", headers, body: responseBytes };
     };
 
     const provider = new VrpcProvider(req, CHAIN_ID_NUMBER, {
-      ...WIDE_WINDOW,
+      ...WIDE_OPTIONS,
       batchMaxCount: 10,
       batchStallTime: 10,
     });
@@ -408,127 +239,22 @@ describe("VrpcProvider._send wiring", () => {
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
   });
 
-  // CHAINID-OPTIONAL — chainId is now optional; the bare-url form auto-derives
-  // it from a SIGNED eth_chainId response, VERIFIED self-consistently (the
-  // response's own result IS the chainId), memoized so concurrent first calls
-  // share a single fetch, and a tampered/forged/unsigned bootstrap fails FAST.
-
   test("bare-url auto-derive: NO chainId → SIGNED bootstrap is verified, then a verified read succeeds", async () => {
     const provider = new VrpcProvider(
-      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX)),
+      autoDeriveRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX)),
       undefined,
-      WIDE_WINDOW,
+      WIDE_OPTIONS,
     );
     const balance = await provider.getBalance(ADDR);
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
-  });
-
-  test("auto-derive memoization: N concurrent first calls fire exactly ONE eth_chainId bootstrap", async () => {
-    const bootstrapHits = { n: 0 };
-    const provider = new VrpcProvider(
-      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
-      undefined,
-      { ...WIDE_WINDOW, batchMaxCount: 1 },
-    );
-    await Promise.all([
-      provider.getBalance(ADDR),
-      provider.getBalance(ADDR),
-      provider.getBalance(ADDR),
-      provider.getBalance(ADDR),
-    ]);
-    expect(bootstrapHits.n).toBe(1);
-  });
-
-  test("auto-derive FAIL-FAST: a lying bootstrap (result claims a chain ≠ what it was signed for) → BadSignature AT BOOTSTRAP", async () => {
-    // Bootstrap CLAIMS chain 1 (result=0x1) but is SIGNED for arbitrum
-    // (CHAIN_ID). #resolveChainId parses C=1 and verifies with chainId=1 → the
-    // pre-image binds 1 while the signature is over CHAIN_ID → BadSignature,
-    // thrown at bootstrap (fail-FAST) BEFORE any real read. No silent-accept,
-    // no deferred BadSignature on a later call.
-    const provider = new VrpcProvider(
-      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
-        bootstrapChainId: "1",
-        bootstrapSigningChainId: CHAIN_ID,
-        signingChainId: CHAIN_ID,
-      }),
-      undefined,
-      WIDE_WINDOW,
-    );
-    await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
-  });
-
-  test("auto-derive FAIL-FAST: a tampered bootstrap response → BadSignature AT BOOTSTRAP", async () => {
-    const provider = new VrpcProvider(
-      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapTamper: true }),
-      undefined,
-      WIDE_WINDOW,
-    );
-    await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
-  });
-
-  test("auto-derive FAIL-FAST: an UNSIGNED bootstrap response → MissingHeader AT BOOTSTRAP", async () => {
-    const provider = new VrpcProvider(
-      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapUnsigned: true }),
-      undefined,
-      WIDE_WINDOW,
-    );
-    await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(MissingHeader);
-  });
-
-  test("auto-derive FAIL-FAST: a malformed bootstrap body → typed MalformedHeader (not raw SyntaxError/TypeError) AT BOOTSTRAP", async () => {
-    // Invalid JSON → would throw a raw SyntaxError before verify; coerced to a
-    // typed VerificationError so the malformed bootstrap reads as a verify
-    // failure.
-    const badJson = new VrpcProvider(
-      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
-        bootstrapRawBody: "{not valid json",
-      }),
-      undefined,
-      WIDE_WINDOW,
-    );
-    await expect(badJson.getBalance(ADDR)).rejects.toBeInstanceOf(MalformedHeader);
-
-    // Missing `result` → would throw a raw TypeError from BigInt(undefined);
-    // coerced to MalformedHeader.
-    const missingResult = new VrpcProvider(
-      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
-        bootstrapRawBody: JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32000 } }),
-      }),
-      undefined,
-      WIDE_WINDOW,
-    );
-    await expect(missingResult.getBalance(ADDR)).rejects.toBeInstanceOf(MalformedHeader);
-
-    // Non-hex `result` → would throw a raw SyntaxError from BigInt("0xZZ");
-    // coerced to MalformedHeader.
-    const nonHex = new VrpcProvider(
-      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
-        bootstrapRawBody: JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0xZZ" }),
-      }),
-      undefined,
-      WIDE_WINDOW,
-    );
-    await expect(nonHex.getBalance(ADDR)).rejects.toBeInstanceOf(MalformedHeader);
-  });
-
-  test("explicit-pin → ZERO bootstrap fetch (eth_chainId is never issued)", async () => {
-    const bootstrapHits = { n: 0 };
-    const provider = new VrpcProvider(
-      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
-      CHAIN_ID_NUMBER,
-      WIDE_WINDOW,
-    );
-    const balance = await provider.getBalance(ADDR);
-    expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
-    expect(bootstrapHits.n).toBe(0);
   });
 
   test("positional bigint chainId pins (zero bootstrap)", async () => {
     const bootstrapHits = { n: 0 };
     const provider = new VrpcProvider(
-      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
+      autoDeriveRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
       BigInt(CHAIN_ID),
-      WIDE_WINDOW,
+      WIDE_OPTIONS,
     );
     const balance = await provider.getBalance(ADDR);
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
@@ -542,23 +268,206 @@ describe("VrpcProvider._send wiring", () => {
   test("number, bigint and string chainId args all bind the same decimal string", async () => {
     for (const arg of [42_161, 42_161n, "42161"] as const) {
       const provider = new VrpcProvider(
-        signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID }),
+        signingRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID }),
         arg,
-        WIDE_WINDOW,
+        WIDE_OPTIONS,
       );
       const balance = await provider.getBalance(ADDR);
       expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
     }
   });
 
-  test("non-EVM string chainId is accepted at construction (no network pin)", () => {
-    // No network assertions and no requests fired — ethers cannot represent a
-    // non-EVM network; the verifier would bind the exact string on first use.
-    // "-239" is TON's global id (non-decimal → no staticNetwork pin).
-    expect(() => new VrpcProvider("http://test.invalid", "-239", WIDE_WINDOW)).not.toThrow();
+  test("a non-EVM integer chainId is accepted at construction", () => {
+    // "-239" is TON's global id: BigInt parses it, so ethers holds it as a static network
+    // and the verifier binds the exact string.
+    expect(() => new VrpcProvider("http://test.invalid", "-239", WIDE_OPTIONS)).not.toThrow();
   });
 
-  test("invalid string chainId throws InvalidChainId at construction", () => {
-    expect(() => new VrpcProvider("http://test.invalid", " ", WIDE_WINDOW)).toThrow(InvalidChainId);
+  test("a chainId ethers cannot hold as a network is InvalidOption at construction", () => {
+    // ethers would retry network detection every second, forever.
+    expect(() => new VrpcProvider("http://test.invalid", "eip155:42161", WIDE_OPTIONS)).toThrow(
+      expect.objectContaining({ name: "InvalidOption", option: "chainId" }),
+    );
+  });
+});
+
+function provide(url: string | FetchRequest): VrpcProvider {
+  const provider = new VrpcProvider(url, CHAIN_ID_NUMBER, WIDE_OPTIONS);
+  onTestFinished(() => provider.destroy());
+  return provider;
+}
+
+async function outcome(provider: VrpcProvider): Promise<string> {
+  try {
+    const balance = await provider.getBalance(ADDR);
+    return balance === BigInt(SINGLE_RESULT_BALANCE_HEX) ? "value" : String(balance);
+  } catch (err) {
+    return isError(err, "SERVER_ERROR") ? "SERVER_ERROR" : (err as Error).name;
+  }
+}
+
+function signed(request: ServedRequest): ServedAnswer {
+  const { id } = JSON.parse(new TextDecoder().decode(request.body)) as { id: number };
+  return signedAnswer(request.body, jsonResult(SINGLE_RESULT_BALANCE_HEX, id));
+}
+
+async function serve(options?: TestNodeServerOptions) {
+  const server = await serveUpstream(() => ({ status: 500 }), options);
+  onTestFinished(() => server.close());
+  return server;
+}
+
+describe("FetchRequest semantics", () => {
+  test("a 429 answer is retried and the retried answer verifies", async () => {
+    const req = signingRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID });
+    const sign = req.getUrlFunc;
+    let posts = 0;
+    req.getUrlFunc = async (sentReq, signal) => {
+      posts += 1;
+      if (posts > 1) return sign(sentReq, signal);
+      return { statusCode: 429, statusMessage: "", headers: { "retry-after": "1" }, body: null };
+    };
+    expect(await outcome(provide(req))).toBe("value");
+    expect(posts).toBe(2);
+  });
+
+  test("a 307 redirect is followed and the final answer verifies", async () => {
+    const server = await serve();
+    server.answer((request) =>
+      request.path === "/rpc"
+        ? { status: 307, headers: { location: `${server.url}/elsewhere` } }
+        : signed(request),
+    );
+    expect(await outcome(provide(`${server.url}/rpc`))).toBe("value");
+    const [first, second] = server.requests;
+    expect([first?.path, second?.path]).toEqual(["/rpc", "/elsewhere"]);
+    expect(second?.body).toEqual(first?.body);
+  });
+
+  test("a gzip answer verifies over the decoded bytes", async () => {
+    const server = await serve({ gzipWhenAccepted: true });
+    server.answer(signed);
+    expect(await outcome(provide(`${server.url}/rpc`))).toBe("value");
+    expect(server.requests[0]?.gzipped).toBe(true);
+  });
+
+  test.each([
+    ["throws a throttle error once, the retry verifies", false, "value"],
+    ["changes the body, BadSignature", true, "BadSignature"],
+  ])("processFunc %s", async (_, change, expected) => {
+    const req = signingRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID });
+    let calls = 0;
+    req.processFunc = async (request, response) => {
+      calls += 1;
+      if (!change && calls === 1) response.throwThrottleError("busy", 1);
+      if (!change) return response;
+      const { statusCode, statusMessage, headers, body } = response;
+      return new FetchResponse(
+        statusCode,
+        statusMessage,
+        headers,
+        flipFirstDigit(body ?? new Uint8Array()),
+        request,
+      );
+    };
+    expect(await outcome(provide(req))).toBe(expected);
+    expect(calls).toBe(change ? 1 : 2);
+  });
+});
+
+describe("response classes", () => {
+  test.each<[string, SignedAnswerOptions, string, number]>([
+    ["signed 2xx → value", {}, "value", 1],
+    ["signed 500 → SERVER_ERROR", { status: 500 }, "SERVER_ERROR", 1],
+    ["tampered signed 500 → BadSignature", { status: 500, tamper: true }, "BadSignature", 0],
+    ["unsigned 2xx → MissingHeader", { unsigned: true }, "MissingHeader", 0],
+    ["unsigned 502 → SERVER_ERROR", { status: 502, unsigned: true }, "SERVER_ERROR", 0],
+  ])("%s", async (_, answer, expected, attestations) => {
+    const req = signingRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), {
+      nodeId: NODE_ID,
+      ...answer,
+    });
+    const sign = req.getUrlFunc;
+    const posts: string[] = [];
+    req.getUrlFunc = async (sentReq, signal) => {
+      posts.push(new TextDecoder().decode(sentReq.body ?? new Uint8Array()));
+      return sign(sentReq, signal);
+    };
+    const attested: string[] = [];
+    const provider = new VrpcProvider(req, CHAIN_ID_NUMBER, {
+      ...WIDE_OPTIONS,
+      fetch: (async (input: string | URL | Request) => {
+        attested.push(String(input));
+        return ATT.fetch(input);
+      }) as typeof fetch,
+    });
+    expect(await outcome(provider)).toBe(expected);
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toContain("eth_getBalance");
+    expect(attested).toHaveLength(attestations);
+  });
+
+  test("a signed 2xx that is not JSON is ethers' own bodyJson error", async () => {
+    const provider = provide(signingRequest("not json", { nodeId: NODE_ID }));
+    const err = await provider.getBalance(ADDR).catch((e: unknown) => e);
+    expect(isError(err, "UNSUPPORTED_OPERATION")).toBe(true);
+  });
+});
+
+describe("constructor options", () => {
+  const sent: string[] = [];
+  const counting = {
+    ...WIDE_OPTIONS,
+    fetch: (async (input: string | URL | Request) => {
+      sent.push(String(input));
+      return ATT.fetch(input);
+    }) as typeof fetch,
+  };
+
+  function invalidOption(make: () => unknown): InvalidOption {
+    const err = thrownBy(make);
+    expect(err).toBeInstanceOf(InvalidOption);
+    return err as InvalidOption;
+  }
+
+  test("a bad URL is InvalidOption in both modes and its message omits the URL", () => {
+    for (const confidential of [false, true]) {
+      const err = invalidOption(() => new VrpcProvider("::bad SECRETKEY42", 1, { confidential }));
+      expect(err).toMatchObject({ option: "url", executed: "no" });
+      expect(`${String(err)} ${JSON.stringify(err)}`).not.toContain("SECRETKEY42");
+    }
+  });
+
+  test("a fractional chain id is InvalidOption", () => {
+    expect(invalidOption(() => new VrpcProvider("http://test.invalid", 1.5))).toMatchObject({
+      option: "chainId",
+    });
+  });
+
+  test.each(
+    [false, true].flatMap((confidential) =>
+      ["replayWindowMs", "pubkeyCacheTtlMs"].flatMap((option) =>
+        [0, -1, 1.5, Number.POSITIVE_INFINITY].map((value) => ({ confidential, option, value })),
+      ),
+    ),
+  )("confidential=$confidential $option=$value throws InvalidOption and sends nothing", ({
+    confidential,
+    option,
+    value,
+  }) => {
+    const url = new FetchRequest("http://test.invalid");
+    url.getUrlFunc = async (req) => {
+      sent.push(req.url);
+      throw new Error("nothing may be sent");
+    };
+    const make = () =>
+      new VrpcProvider(url, CHAIN_ID, { ...counting, confidential, [option]: value });
+    expect(invalidOption(make)).toMatchObject({ option, executed: "no" });
+    expect(sent).toEqual([]);
+  });
+
+  test("confidentialReady in open mode still rejects with TypeError", async () => {
+    const provider = new VrpcProvider("http://test.invalid", CHAIN_ID, WIDE_OPTIONS);
+    await expect(provider.confidentialReady()).rejects.toBeInstanceOf(TypeError);
   });
 });

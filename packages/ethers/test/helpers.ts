@@ -2,10 +2,8 @@
 // without touching the network. `provider.test.ts` feeds the
 // signed fixtures from `fixtures.ts` through `VrpcProvider._send` via this seam.
 
-import { getPublicKeyAsync } from "@noble/ed25519";
+import { type SignedAnswerOptions, signedAnswer } from "@w3tech.io/vrpc-test-support";
 import { FetchRequest } from "ethers";
-
-import { type SignFixtureOptions, signResponseBytes, TEST_SEED } from "./fixtures";
 
 /**
  * Build a `FetchRequest` that resolves to a synthetic response carrying the
@@ -33,22 +31,6 @@ export function fixtureRequest(
 }
 
 /**
- * Options for {@link signingRequest}.
- */
-export interface SigningRequestOptions extends SignFixtureOptions {
-  /**
-   * If true, emit ONLY `content-type` (no `vRPC-*` triple) — drives the
-   * strict-mode `MissingHeader` fail-closed path.
-   */
-  unsigned?: boolean;
-  /**
-   * If true, flip a byte of the signed response body so the signature no longer
-   * matches — drives `BadSignature`.
-   */
-  tamper?: boolean;
-}
-
-/**
  * Build a `FetchRequest` whose `getUrlFunc` signs the chosen `responseBody` over
  * the EXACT request bytes ethers POSTs (`req.body`), then returns the signed
  * response. This is the request-aware seam the adapter uses so a real
@@ -56,98 +38,33 @@ export interface SigningRequestOptions extends SignFixtureOptions {
  * the test predicting ethers' internal payload bytes (key order, id counter,
  * resolved blockTag). This suite asserts adapter WIRING, not pre-image bytes.
  *
+ * A function `responseBody` gets the request id, so repeated calls answer their own id.
  * `tamper` flips a response byte AFTER signing → `BadSignature`. `unsigned`
- * strips the `vRPC-*` triple → `MissingHeader`. `signingChainId` (via
- * SigningRequestOptions) forges a valid signature bound to a different chain →
- * `BadSignature` when verified against the provider's chainId.
+ * strips the `vRPC-*` triple → `MissingHeader`. `signingChainId` forges a valid
+ * signature bound to a different chain → `BadSignature` when verified against
+ * the provider's chainId.
  */
 export function signingRequest(
-  responseBody: string,
-  opts: SigningRequestOptions = {},
+  responseBody: string | ((id: number) => string),
+  opts: SignedAnswerOptions = {},
 ): FetchRequest {
   const req = new FetchRequest("http://test.invalid");
-  const responseBytes = new TextEncoder().encode(responseBody);
   req.getUrlFunc = async (sentReq) => {
     // The exact bytes ethers serialized and POSTed (JSON.stringify(payload)).
     const requestBytes = sentReq.body ?? new Uint8Array();
-    const headers = opts.unsigned
-      ? { "content-type": "application/json" }
-      : await signResponseBytes(requestBytes, responseBytes, opts);
-    let body = responseBytes;
-    if (opts.tamper) {
-      body = new Uint8Array(responseBytes);
-      // Mutate ONE digit byte AFTER signing so the bytes differ (→ BadSignature)
-      // while the body stays valid UTF-8/JSON. Flip the first ASCII digit
-      // (0x30-0x39) found, mapping it to a different digit.
-      for (let i = 0; i < body.length; i++) {
-        if (body[i] >= 0x30 && body[i] <= 0x39) {
-          body[i] = body[i] === 0x39 ? 0x30 : body[i] + 1;
-          break;
-        }
-      }
-    }
-    return { statusCode: 200, statusMessage: "OK", headers, body };
+    const answer = signedAnswer(
+      requestBytes,
+      typeof responseBody === "string"
+        ? responseBody
+        : responseBody((JSON.parse(new TextDecoder().decode(requestBytes)) as { id: number }).id),
+      opts,
+    );
+    return {
+      statusCode: answer.status,
+      statusMessage: "",
+      headers: answer.headers,
+      body: answer.body,
+    };
   };
   return req;
-}
-
-/** Local lowercase-hex encode (no `0x` prefix). */
-function toHex(bytes: Uint8Array): string {
-  let out = "";
-  for (const b of bytes) {
-    out += b.toString(16).padStart(2, "0");
-  }
-  return out;
-}
-
-/** Mutable state returned by {@link installAttestationMock}. */
-export interface AttMockState {
-  /** `fetch` override to pass as the provider's `fetch` option (attestation leg). */
-  fetch: typeof fetch;
-  /** Count of `/attestation` GETs served (cache / fail-closed assertions). */
-  attGetCount: number;
-}
-
-/**
- * Mock ONLY the attestation GET leg (the always-on verify seam fetches it on the
- * FIRST read per pubkey). The returned `pubkey` is derived from the SAME
- * TEST_SEED the RPC responses are signed with, so the seam's pubkey correlation
- * passes; the mock verifier (allowInsecureMock) then resolves.
- *
- * `requireNodeId` mimics a gateway route that can only resolve WITH a `node_id`
- * query param: a fetch lacking `node_id` returns 404 → the seam fails closed
- * (exercises the no-node_id path). Counts how many times `/attestation` is hit.
- */
-export function installAttestationMock(opts: { requireNodeId?: boolean } = {}): AttMockState {
-  const state: AttMockState = { fetch: (() => {}) as unknown as typeof fetch, attGetCount: 0 };
-  const impl = async (input: string | URL | Request): Promise<Response> => {
-    const url = typeof input === "string" ? input : input.toString();
-    if (url.includes("/attestation")) {
-      state.attGetCount += 1;
-      // Gateway-style routing: without a node_id the route cannot resolve → 404,
-      // which fetchAttestation maps to AttestationNodeNotFoundError (fail-closed).
-      if (opts.requireNodeId === true && !url.includes("node_id=")) {
-        return new Response("not found", { status: 404 });
-      }
-      const attPubkey = await getPublicKeyAsync(TEST_SEED);
-      // CHK-A1 binds report_data[0:32]==pubkey and [32:64]==the fetch nonce. The
-      // seam sends the nonce as the bare-hex `?nonce=` query param; echo it so
-      // report_data = pubkey(bare) ‖ nonce(bare) passes the 128-hex shape gate +
-      // binding regardless of the (random) nonceSource.
-      const nonceHex = new URL(url).searchParams.get("nonce") ?? "";
-      const reportData = `${toHex(attPubkey)}${nonceHex}`;
-      const body = {
-        quote: { quote: "00", event_log: "00", report_data: reportData, vm_config: "" },
-        pubkey: `0x${toHex(attPubkey)}`,
-        composeHash: "deadbeef",
-      };
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
-    throw new Error(`unexpected fetch: ${url}`);
-  };
-  state.fetch = impl as typeof fetch;
-  return state;
 }

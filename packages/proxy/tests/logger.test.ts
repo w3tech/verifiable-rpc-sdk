@@ -44,5 +44,6 @@ describe("createProxyLogger", () => {
       throw new Error("sink down");
     });
     expect(() => log.error("proxy.error")).not.toThrow();
+    expect(() => createProxyLogger("debug", () => {}).debug("e", { n: 1n })).not.toThrow();
   });
 });

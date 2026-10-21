@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Typed verification errors thrown by the vrpc-core verification APIs.
+// Typed errors thrown by vrpc-core; every class extends the root `VrpcError`.
 //
 // Discriminated union via the `kind` field plus a class hierarchy:
 //   try { ... } catch (err: unknown) {
@@ -20,26 +20,36 @@ export type VerificationErrorKind =
   | "BadSignature"
   | "StaleTimestamp"
   | "InvalidNonce"
-  | "MalformedAttestationResponse"
-  | "AttestationNodeNotFound"
-  | "AttestationCorrelation"
-  | "Attestation";
+  | "AttestationFailed"
+  | "ConfidentialSignerMismatch"
+  | "ConfidentialDecryptFailed"
+  | "MalformedConfidentialResponse";
+
+/** Root of every error class in vrpc-core. */
+export abstract class VrpcError extends Error {
+  abstract readonly kind: string;
+  /**
+   * `"no"`: the gateway or node did not run this attempt; an edge proxy retry may have run an earlier attempt of the same call.
+   * `"unknown"`: the call may or may not have run; check state before resending a state-changing call.
+   */
+  executed: "no" | "unknown" = "unknown";
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options?.cause === undefined ? undefined : { cause: options.cause });
+    // `this.constructor.name` reflects the concrete subclass at runtime, so
+    // `JSON.stringify`-style serialisation and logging report e.g. "BadSignature"
+    // rather than the abstract "VerificationError" or the v8 default "Error".
+    this.name = this.constructor.name;
+  }
+}
 
 /**
  * Abstract base for all verification errors. The `kind` discriminator is set
  * by each concrete subclass to a literal type, so consumers can narrow via
  * `if (err.kind === "BadSignature") { ... }` without `instanceof` chains.
  */
-export abstract class VerificationError extends Error {
-  abstract readonly kind: VerificationErrorKind;
-
-  constructor(message: string) {
-    super(message);
-    // `this.constructor.name` reflects the concrete subclass at runtime, so
-    // `JSON.stringify`-style serialisation and logging report e.g. "BadSignature"
-    // rather than the abstract "VerificationError" or the v8 default "Error".
-    this.name = this.constructor.name;
-  }
+export abstract class VerificationError extends VrpcError {
+  abstract override readonly kind: VerificationErrorKind;
 }
 
 /** Required `vRPC-*` response header was absent from the signed response. */
@@ -65,12 +75,14 @@ export class MalformedHeader extends VerificationError {
 }
 
 /**
- * Configured chain id failed validation (`validateChainId`). Chain ids are
- * opaque strings that must be non-empty after trimming, at most 64 UTF-8
- * bytes, and printable ASCII with no whitespace — mirroring the sidecar's
- * `validate_chain_id` boot check. Thrown synchronously from client
- * construction and from `verifyResponse` entry; the `reason` names the failed
- * constraint.
+ * A chain id failed `validateChainId`. Chain ids are opaque strings that must
+ * be non-empty after trimming, at most 64 UTF-8 bytes, and printable ASCII with
+ * no whitespace — mirroring the sidecar's `validate_chain_id` boot check.
+ * Thrown for an id derived from a node's `eth_chainId` answer (`parseChainId`)
+ * and from `verifyResponse` entry; client constructors report a bad `chainId`
+ * option as `InvalidOption`. The `reason` names the failed constraint.
+ * `parseChainId` also throws it, with `chainId` `"<unverified>"`, for a body
+ * that is not JSON or has no 0x-hex `result`.
  */
 export class InvalidChainId extends VerificationError {
   readonly kind = "InvalidChainId" as const;
@@ -99,6 +111,8 @@ export interface BadSignatureContext {
  * the caller can correlate the failure with sidecar-side logs. These values
  * are public — the signature was emitted in a response header, the pubkey
  * is bound into the TDX attestation quote — so logging them is safe.
+ *
+ * In Ankr Confidential RPC mode, a response cut in transit after its status was sent also fails this way.
  */
 export class BadSignature extends VerificationError {
   readonly kind = "BadSignature" as const;
@@ -130,6 +144,8 @@ export interface StaleTimestampContext {
 /**
  * Signed timestamp fell outside the replay window. The signature itself was
  * valid — the response is just too old (or too far in the future) to accept.
+ *
+ * In Ankr Confidential RPC mode, the call ran and its response was rejected.
  */
 export class StaleTimestamp extends VerificationError {
   readonly kind = "StaleTimestamp" as const;
@@ -159,67 +175,213 @@ export class InvalidNonce extends VerificationError {
   }
 }
 
-/** The sidecar returned a body that does not match the documented attestation wire shape. */
-export class MalformedAttestationResponse extends VerificationError {
-  readonly kind = "MalformedAttestationResponse" as const;
+export type AttestationFailedReason = "malformed" | "pubkey-mismatch" | "check";
 
-  constructor(public readonly reason: string) {
-    super(`Malformed attestation response: ${reason}`);
+/**
+ * The attestation evidence was fetched and does not prove the node; fail closed.
+ * `chkId` names the failed `CHK-*` item and is set only for `reason "check"`.
+ */
+export class AttestationFailed extends VerificationError {
+  readonly kind = "AttestationFailed" as const;
+  declare readonly chkId?: string;
+
+  constructor(
+    public readonly reason: AttestationFailedReason,
+    public readonly detail: string,
+    options?: { chkId?: string; cause?: unknown },
+  ) {
+    super(`Attestation verification failed [${options?.chkId ?? reason}]: ${detail}`, options);
+    if (options?.chkId !== undefined) {
+      this.chkId = options.chkId;
+    }
   }
 }
 
-/**
- * The RPC proxy could not route attestation to the requested `node_id` (HTTP
- * 404). The node id is stale or unknown; the SDK does NOT retry or fall back to
- * another node — a targeted attestation request that misses is terminal.
- */
-export class AttestationNodeNotFoundError extends VerificationError {
-  readonly kind = "AttestationNodeNotFound" as const;
-
-  constructor(public readonly nodeId: string) {
-    super(`Attestation node not found: ${nodeId}`);
-  }
-}
-
-/**
- * The fetched attestation's `pubkey` did not match the pubkey that signed the
- * RPC response (`vRPC-Pubkey`). The attestation belongs to a different node than
- * the one that served the verified response — correlation failed.
- */
-export class AttestationCorrelationError extends VerificationError {
-  readonly kind = "AttestationCorrelation" as const;
+/** A confidential response was signed by a key other than the pinned node key. */
+export class ConfidentialSignerMismatch extends VerificationError {
+  readonly kind = "ConfidentialSignerMismatch" as const;
 
   constructor(
     public readonly expectedPubkey: string,
     public readonly actualPubkey: string,
   ) {
+    super(`Response signer ${actualPubkey} is not the pinned node key ${expectedPubkey}`);
+  }
+}
+
+export type InvalidInnerRequestReason =
+  | "method"
+  | "path"
+  | "header"
+  | "content-type-required"
+  | "encode-failed";
+
+/** The caller's inner request cannot be sent; rejected before any network call. */
+export class InvalidInnerRequest extends VrpcError {
+  readonly kind = "InvalidInnerRequest" as const;
+
+  constructor(public readonly reason: InvalidInnerRequestReason) {
+    super(`Inner request rejected: ${reason}`);
+  }
+}
+
+export type OptionName =
+  | "url"
+  | "chainId"
+  | "headers"
+  | "replayWindowMs"
+  | "pubkeyCacheTtlMs"
+  | "confidential";
+
+/** An option failed its check, so nothing was sent; the message never carries the value. */
+export class InvalidOption extends VrpcError {
+  readonly kind = "InvalidOption" as const;
+
+  constructor(
+    public readonly option: OptionName,
+    public readonly reason: string,
+  ) {
+    super(`Invalid ${option}: ${reason}`);
+    this.executed = "no";
+  }
+}
+
+/** A confidential response carried a valid signature but could not be decrypted. */
+export class ConfidentialDecryptFailed extends VerificationError {
+  readonly kind = "ConfidentialDecryptFailed" as const;
+
+  constructor() {
+    super("Signed confidential response could not be decrypted");
+  }
+}
+
+export type MalformedConfidentialResponseReason =
+  | "too-short"
+  | "framing"
+  | "informational"
+  | "decode-failed";
+
+/** A validly signed confidential response is too short to open or its inner response does not decode. */
+export class MalformedConfidentialResponse extends VerificationError {
+  readonly kind = "MalformedConfidentialResponse" as const;
+
+  constructor(public readonly reason: MalformedConfidentialResponseReason) {
+    super(`Malformed confidential response: ${reason}`);
+  }
+}
+
+export type UnavailableErrorKind =
+  | "AttestationUnavailable"
+  | "RequestRejected"
+  | "UnexpectedResponse"
+  | "TransportFailed"
+  | "InternalError";
+
+/** Base of the errors raised when a confidential call got no verifiable answer. */
+export abstract class UnavailableError extends VrpcError {
+  abstract override readonly kind: UnavailableErrorKind;
+}
+
+export type AttestationUnavailableReason =
+  | "status"
+  | "transport"
+  | "too-large"
+  | "node-id-missing"
+  | "timeout"
+  | "verifier";
+
+/**
+ * The attestation evidence could not be fetched or checked; retrying may succeed.
+ * A browser calling another origin cannot read `vRPC-NodeId` and gets `node-id-missing`.
+ */
+export class AttestationUnavailable extends UnavailableError {
+  readonly kind = "AttestationUnavailable" as const;
+  declare readonly status?: number;
+
+  constructor(
+    public readonly reason: AttestationUnavailableReason,
+    options?: { status?: number; cause?: unknown },
+  ) {
     super(
-      `Attestation pubkey mismatch: expected ${expectedPubkey} (RPC response), ` +
-        `got ${actualPubkey} (attestation)`,
+      reason === "status"
+        ? `Attestation unavailable: HTTP ${options?.status}`
+        : `Attestation unavailable: ${reason}`,
+      options,
     );
+    if (options?.status !== undefined) {
+      this.status = options.status;
+    }
+  }
+}
+
+/** The confidential endpoint answered with something other than a sealed response. */
+export class UnexpectedResponse extends UnavailableError {
+  readonly kind = "UnexpectedResponse" as const;
+  declare readonly contentType?: string;
+
+  constructor(
+    public readonly status: number,
+    public readonly nodeId: string,
+    contentType?: string,
+  ) {
+    super(`Unexpected confidential response: HTTP ${status}`);
+    if (contentType !== undefined) {
+      this.contentType = contentType;
+    }
+  }
+}
+
+/** A 4xx that is not an encrypted answer: the gateway or node refused this attempt. */
+export class RequestRejected extends UnavailableError {
+  readonly kind = "RequestRejected" as const;
+  declare readonly contentType?: string;
+
+  constructor(
+    public readonly status: number,
+    public readonly nodeId: string,
+    contentType?: string,
+  ) {
+    super(`Confidential request rejected: HTTP ${status}`);
+    this.executed = "no";
+    if (contentType !== undefined) {
+      this.contentType = contentType;
+    }
+  }
+}
+
+export type TransportFailedReason = "network" | "too-large";
+
+/** The confidential request failed in transport, or its answer exceeded the response size cap. */
+export class TransportFailed extends UnavailableError {
+  readonly kind = "TransportFailed" as const;
+
+  constructor(
+    public readonly reason: TransportFailedReason,
+    public readonly nodeId: string,
+    options?: { cause?: unknown },
+  ) {
+    super(`Confidential request failed in transport: ${reason}`, options);
+  }
+}
+
+/** An unexpected failure in the client or an injected seam; `cause` holds the original value. */
+export class InternalError extends UnavailableError {
+  readonly kind = "InternalError" as const;
+
+  constructor(options: { cause: unknown }) {
+    super("Internal error in the Ankr Confidential RPC client", options);
   }
 }
 
 /**
- * dstack/TDX attestation verification failed. This is core's wrapper around the
- * leaf `@w3tech.io/dstack-verify` `AttestationError`: that package is a standalone
- * leaf (its error does NOT extend `VerificationError`), so the trust seam catches
- * it at the `verifyDstackAttestation` boundary and re-throws it as this member of
- * the `VerificationError` family — keeping the SDK's public error contract
- * (callers catch `VerificationError`) intact. The original leaf error is attached
- * as `cause`; `chkId` records which `CHK-*` item failed.
+ * `false` only when the first `VrpcError` on `err` or its `.cause` chain says the call did not run.
+ * Follows `.cause` because viem wraps the error a transport throws; anything else may have run.
  */
-export class AttestationFailed extends VerificationError {
-  readonly kind = "Attestation" as const;
-
-  constructor(
-    public readonly chkId: string,
-    public readonly detail: string,
-    options?: { cause?: unknown },
-  ) {
-    super(`Attestation verification failed [${chkId}]: ${detail}`);
-    if (options?.cause !== undefined) {
-      (this as { cause?: unknown }).cause = options.cause;
-    }
+export function mayHaveExecuted(err: unknown): boolean {
+  let e = err;
+  for (let depth = 0; depth < 16 && typeof e === "object" && e !== null; depth++) {
+    if (e instanceof VrpcError) return e.executed !== "no";
+    e = (e as { cause?: unknown }).cause;
   }
+  return true;
 }
