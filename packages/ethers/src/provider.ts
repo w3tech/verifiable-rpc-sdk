@@ -1,37 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// VrpcProvider — verifiable drop-in for ethers' JsonRpcProvider. Overrides only
-// `_send` (the single HTTP chokepoint) to verify the raw, content-decoded
-// response body against vrpc-core's Ed25519 seam before `JSON.parse`. Native
-// batching is preserved. Always fail-closed: a verify failure throws and no
-// unverified data is ever returned.
+// VrpcProvider — verifiable drop-in for ethers' JsonRpcProvider. Open mode sends
+// through ethers' FetchRequest (retry, redirect, gzip, processFunc) and hands the
+// answer to the core open-mode session, which bootstraps, verifies and decodes it.
 
 import {
   checkOptions,
+  createOpenSession,
   InvalidOption,
   LazyConfidentialClient,
-  parseChainId,
-  TrustedVerifier,
-  type TrustedVerifierOptions,
+  type OpenSession,
 } from "@w3tech.io/vrpc-core";
 import type { ConfidentialInfo } from "@w3tech.io/vrpc-core/confidential";
 import {
   type FetchRequest,
+  type FetchResponse,
   type JsonRpcPayload,
   JsonRpcProvider,
   type JsonRpcResult,
   Network,
-  toUtf8Bytes,
-  toUtf8String,
 } from "ethers";
 
 import { fetchRequestTransport, sendConfidential } from "./confidential";
 import type { VrpcOptions } from "./options";
 
-// Drop `undefined`-valued keys: `exactOptionalPropertyTypes` forbids passing an
-// explicit `undefined` to an optional slot. `as T` is the one audited assertion.
-function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefined }): T {
-  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T;
+interface Posted {
+  status: number;
+  headers: Readonly<Record<string, string>>;
+  body: Uint8Array;
+  fetch: FetchResponse;
 }
 
 /**
@@ -47,14 +44,7 @@ function pruneUndefined<T extends object>(obj: { [K in keyof T]: T[K] | undefine
  * `new VrpcProvider(url, undefined, { pubkeyCacheTtlMs })`.
  */
 export class VrpcProvider extends JsonRpcProvider {
-  #chainId: string | undefined;
-  // Memoized in-flight bootstrap: N concurrent first calls share ONE fetch.
-  #chainIdPromise: Promise<string> | null = null;
-  // Builds the verifier from options closed over at construction; chainId is the
-  // one late-bound field (may be auto-derived), so it is the factory's argument.
-  readonly #makeVerifier: (chainId: string) => TrustedVerifier;
-  // ONE TrustedVerifier per provider (lifetime cache); eager on pin, lazy on auto-derive.
-  #trustedVerifier: TrustedVerifier | undefined;
+  readonly #session: OpenSession<Posted>;
   readonly #confidential: LazyConfidentialClient | undefined;
 
   constructor(
@@ -114,20 +104,18 @@ export class VrpcProvider extends JsonRpcProvider {
       networkChainId != null ? { ...ethersOpts, staticNetwork: true } : ethersOpts;
     super(superUrl, networkChainId ?? undefined, superOptions);
 
-    this.#chainId = chainId;
-    this.#makeVerifier = (resolvedChainId) =>
-      new TrustedVerifier(
-        pruneUndefined<TrustedVerifierOptions>({
-          chainId: resolvedChainId,
-          attestationUrl,
-          pubkeyCacheTtlMs,
-          headers: attestationHeaders,
-          fetch: attestationFetch,
-          replayWindowMs,
-          hardwareVerifier,
-          logger,
-        }),
-      );
+    // In Ankr Confidential RPC mode the session only answers _detectNetwork from the pin.
+    this.#session = createOpenSession({
+      chainId,
+      attestationUrl,
+      headers: attestationHeaders,
+      fetch: attestationFetch,
+      replayWindowMs,
+      pubkeyCacheTtlMs,
+      hardwareVerifier,
+      logger,
+      httpError: (response: Posted) => response.fetch.assertOk(),
+    });
     if (confidential === true && chainId !== undefined) {
       // CCIP-Read would send the call data in plaintext to a URL the contract names.
       this.disableCcipRead = true;
@@ -141,9 +129,6 @@ export class VrpcProvider extends JsonRpcProvider {
         fetch: attestationFetch,
         transport: fetchRequestTransport(() => this._getConnection()),
       });
-    } else if (chainId != null) {
-      // Build the verifier now if possible; auto-derive defers to the first _send.
-      this.#trustedVerifier = this.#makeVerifier(chainId);
     }
   }
 
@@ -163,85 +148,32 @@ export class VrpcProvider extends JsonRpcProvider {
     return this.#confidential?.getConfidentialInfo();
   }
 
-  // POST, verify the raw bytes, then parse. chainId resolved lazily if unset.
+  // assertOk runs only on a verified answer, so an error never carries an unverified body.
   override async _send(
     payload: JsonRpcPayload | Array<JsonRpcPayload>,
   ): Promise<Array<JsonRpcResult>> {
     if (this.#confidential !== undefined) return sendConfidential(this.#confidential, payload);
-    const { requestBytes, rawResponseBytes, headers } = await this.#post(payload);
-
-    const chainId = this.#chainId ?? (await this.#resolveChainId());
-    await this.#getTrustedVerifier(chainId).verify(requestBytes, rawResponseBytes, headers);
-
-    const parsed = JSON.parse(toUtf8String(rawResponseBytes)) as
-      | JsonRpcResult
-      | Array<JsonRpcResult>;
-    return Array.isArray(parsed) ? parsed : [parsed];
+    const { response, json } = await this.#session.send(payload, (body) => this.#post(body));
+    response.fetch.assertOk();
+    const results = json as JsonRpcResult | Array<JsonRpcResult>;
+    return Array.isArray(results) ? results : [results];
   }
 
-  // Feed the SAME memoized resolver as _send so detection and verification agree.
-  // Auto-derived ids are always decimal (parseChainId), so BigInt is safe here;
-  // a pinned CAIP-2 style id has no ethers Network representation and fails loud.
+  // A pinned CAIP-2 style id has no ethers Network representation and fails loud.
   override async _detectNetwork(): Promise<Network> {
-    return Network.from(BigInt(await this.#resolveChainId()));
+    return Network.from(BigInt(await this.#session.chainId((body) => this.#post(body))));
   }
 
-  // POST a payload, return the request/response bytes + headers the verifier needs.
-  async #post(payload: JsonRpcPayload | Array<JsonRpcPayload>) {
-    const requestBody = JSON.stringify(payload);
+  async #post(body: Uint8Array): Promise<Posted> {
     const request = this._getConnection();
-    request.body = requestBody;
+    request.body = body;
     request.setHeader("content-type", "application/json");
-    const response = await request.send();
-    response.assertOk();
+    const fetch = await request.send();
     return {
-      requestBytes: toUtf8Bytes(requestBody),
-      rawResponseBytes: response.body ?? new Uint8Array(),
-      headers: response.headers,
+      status: fetch.statusCode,
+      headers: fetch.headers,
+      body: fetch.body ?? new Uint8Array(),
+      fetch,
     };
-  }
-
-  // Derive chainId from a self-consistently verified `eth_chainId` response (its
-  // own `result` IS the chainId, so the signature only verifies for the chain the
-  // node really signed). Memoized; own request, never via _send. A failed
-  // bootstrap fails its own call and leaves neither the memo nor a verifier, so
-  // the next call bootstraps again (no unverified fallback).
-  #resolveChainId(): Promise<string> {
-    if (this.#chainId != null) {
-      return Promise.resolve(this.#chainId);
-    }
-    if (this.#chainIdPromise != null) {
-      return this.#chainIdPromise;
-    }
-    this.#chainIdPromise = (async () => {
-      try {
-        const { requestBytes, rawResponseBytes, headers } = await this.#post({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "eth_chainId",
-          params: [],
-        });
-
-        const chainId = parseChainId(rawResponseBytes);
-        const verifier = this.#makeVerifier(chainId);
-        await verifier.verify(requestBytes, rawResponseBytes, headers);
-
-        this.#trustedVerifier = verifier;
-        this.#chainId = chainId;
-        return chainId;
-      } catch (err) {
-        this.#chainIdPromise = null;
-        throw err;
-      }
-    })();
-    return this.#chainIdPromise;
-  }
-
-  // Memoized verifier, built lazily once chainId is known.
-  #getTrustedVerifier(chainId: string): TrustedVerifier {
-    if (this.#trustedVerifier === undefined) {
-      this.#trustedVerifier = this.#makeVerifier(chainId);
-    }
-    return this.#trustedVerifier;
   }
 }
