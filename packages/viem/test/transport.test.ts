@@ -18,6 +18,8 @@ import {
   attestationAnswer,
   CHAIN_ID,
   mockHardwareVerifier,
+  type SignedAnswerOptions,
+  signedAnswer,
   signedJsonHeaders,
   thrownBy,
 } from "@w3tech.io/vrpc-test-support";
@@ -47,19 +49,14 @@ const NODE_ID = "node-abc";
 
 const sentText = (init: RequestInit): string => new TextDecoder().decode(init.body as Uint8Array);
 
-interface SeamOptions {
-  /** Strip the vRPC-* headers entirely (downgrade attack) → MissingHeader. */
-  unsigned?: boolean;
-  /** Flip one ASCII digit of the response body AFTER signing → BadSignature. */
-  tamper?: boolean;
-  /** Chain id used ONLY for signing (forge a chain-id-mismatch fixture). */
-  signingChainId?: string;
+// `unsigned` strips the vRPC-* headers (downgrade attack) → MissingHeader; `tamper` flips one
+// ASCII digit of the response body AFTER signing → BadSignature; `signingChainId` forges a
+// chain-id-mismatch fixture.
+interface SeamOptions extends SignedAnswerOptions {
   /** Increment on every call — proves retryCount:0 (no retry of a failure). */
   counter?: { n: number };
   /** Capture the raw POST body of each call (batch-default assertion). */
   bodies?: string[];
-  /** Override the HTTP status code (e.g. 502) for the status check. */
-  status?: number;
   /** Capture each call's RequestInit (e.g. to assert the timeout signal). */
   inits?: RequestInit[];
   /** Send a second vRPC-NodeId line after signing. */
@@ -90,34 +87,16 @@ function signingFetch(
     if (seam.inits) {
       seam.inits.push(init);
     }
-    const requestBytes = init.body as Uint8Array;
     if (seam.bodies) {
       seam.bodies.push(sentText(init));
     }
-    const responseBytes = new TextEncoder().encode(responseBody);
-
-    if (seam.unsigned) {
-      return new Response(responseBody, {
-        status: seam.status ?? 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    const chainId = seam.signingChainId ?? CHAIN_ID;
-    const headers = signedJsonHeaders(chainId, requestBytes, responseBytes, { nodeId: NODE_ID });
-
-    // Tamper AFTER signing: flip one ASCII digit in the body so it stays valid
-    // UTF-8 / JSON but the signed bytes no longer match → BadSignature.
-    let outBody = responseBody;
-    if (seam.tamper) {
-      const idx = responseBody.search(/[0-9]/);
-      const ch = responseBody[idx];
-      const flipped = ch === "9" ? "8" : String(Number(ch) + 1);
-      outBody = responseBody.slice(0, idx) + flipped + responseBody.slice(idx + 1);
-    }
-    const out = new Headers(headers);
-    if (seam.repeatNodeId) out.append("vRPC-NodeId", "n2");
-    return new Response(outBody, { status: seam.status ?? 200, headers: out });
+    const answer = signedAnswer(init.body as Uint8Array, responseBody, {
+      ...seam,
+      nodeId: NODE_ID,
+    });
+    const headers = new Headers(answer.headers);
+    if (seam.repeatNodeId) headers.append("vRPC-NodeId", "n2");
+    return new Response(answer.body, { status: answer.status, headers });
   };
 }
 

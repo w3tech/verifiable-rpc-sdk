@@ -5,6 +5,7 @@
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, concatBytes } from "@noble/hashes/utils.js";
+import { CHAIN_ID } from "./fixtures";
 
 export { bytesToHex as toHex } from "@noble/hashes/utils.js";
 
@@ -65,4 +66,46 @@ export function signedJsonHeaders(
       timestampMs: options.timestampMs ?? FIXTURE_TIMESTAMP_MS,
     }),
   };
+}
+
+export interface SignedAnswerOptions {
+  /** Only `content-type`, without the `vRPC-*` headers. */
+  unsigned?: boolean | undefined;
+  /** Changes a digit of the body after signing. */
+  tamper?: boolean | undefined;
+  /** Chain id bound into the signature; default `CHAIN_ID`. */
+  signingChainId?: string | undefined;
+  status?: number | undefined;
+  nodeId?: string | undefined;
+}
+
+// `responseBody` as an open-mode node answers `request`, with signedJsonHeaders.
+export function signedAnswer(
+  request: Uint8Array,
+  responseBody: string,
+  options: SignedAnswerOptions = {},
+): { status: number; headers: Record<string, string>; body: Uint8Array<ArrayBuffer> } {
+  const body = utf8.encode(responseBody);
+  const headers = options.unsigned
+    ? { "content-type": "application/json" }
+    : signedJsonHeaders(options.signingChainId ?? CHAIN_ID, request, body, {
+        nodeId: options.nodeId,
+      });
+  return {
+    status: options.status ?? 200,
+    headers,
+    body: options.tamper ? flipFirstDigit(body) : body,
+  };
+}
+
+// A copy of `bytes` with its first ASCII digit changed, so it stays valid JSON.
+export function flipFirstDigit(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(bytes);
+  for (const [i, b] of out.entries()) {
+    if (b >= 0x30 && b <= 0x39) {
+      out[i] = b === 0x39 ? 0x30 : b + 1;
+      break;
+    }
+  }
+  return out;
 }

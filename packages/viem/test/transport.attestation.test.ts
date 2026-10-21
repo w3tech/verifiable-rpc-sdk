@@ -22,7 +22,7 @@ import {
   attestationStub,
   CHAIN_ID,
   mockHardwareVerifier,
-  signedJsonHeaders,
+  signedAnswer,
 } from "@w3tech.io/vrpc-test-support";
 import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 import { createPublicClient, defineChain } from "viem";
@@ -60,13 +60,12 @@ function seamFetch(opts: { withNodeId?: boolean } = {}): SeamFetch {
   const fetchFn = async (url: string, init: RequestInit): Promise<Response> => {
     if (url.includes("/attestation")) return attestation.fetch(url);
     // RPC POST leg: sign over the EXACT bytes the transport POSTed.
-    const requestBytes = init.body as Uint8Array;
-    const responseBody = jsonResult(SINGLE_RESULT_BALANCE_HEX);
-    const responseBytes = new TextEncoder().encode(responseBody);
-    const headers = signedJsonHeaders(CHAIN_ID, requestBytes, responseBytes, {
-      ...(withNodeId ? { nodeId: NODE_ID } : {}),
-    });
-    return new Response(responseBody, { status: 200, headers });
+    const answer = signedAnswer(
+      init.body as Uint8Array,
+      jsonResult(SINGLE_RESULT_BALANCE_HEX),
+      withNodeId ? { nodeId: NODE_ID } : {},
+    );
+    return new Response(answer.body, { status: answer.status, headers: answer.headers });
   };
   return { fetchFn, attestation };
 }

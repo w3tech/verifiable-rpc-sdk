@@ -6,7 +6,10 @@ import { InvalidOption, VerificationError, VrpcProvider } from "@w3tech.io/vrpc-
 import {
   attestationStub,
   CHAIN_ID,
+  flipFirstDigit,
   mockHardwareVerifier,
+  type SignedAnswerOptions,
+  signedAnswer,
   signedJsonHeaders,
   thrownBy,
 } from "@w3tech.io/vrpc-test-support";
@@ -19,7 +22,7 @@ import {
 import { Contract, FetchRequest, FetchResponse, Interface, isError, toBeHex } from "ethers";
 import { describe, expect, onTestFinished, test } from "vitest";
 import { jsonResult, SINGLE_RESULT_BALANCE_HEX, WIDE_WINDOW } from "./fixtures";
-import { flipFirstDigit, type SigningRequestOptions, signingRequest } from "./helpers";
+import { signingRequest } from "./helpers";
 
 // Always-on verify seam: the FIRST verified read per pubkey lazily fetches the
 // node attestation. These adapter-WIRING tests are offline — the RPC POST leg is
@@ -301,8 +304,7 @@ async function outcome(provider: VrpcProvider): Promise<string> {
 
 function signed(request: ServedRequest): ServedAnswer {
   const { id } = JSON.parse(new TextDecoder().decode(request.body)) as { id: number };
-  const body = new TextEncoder().encode(jsonResult(id, SINGLE_RESULT_BALANCE_HEX));
-  return { status: 200, headers: signedJsonHeaders(CHAIN_ID, request.body, body), body };
+  return signedAnswer(request.body, jsonResult(id, SINGLE_RESULT_BALANCE_HEX));
 }
 
 async function serve(options?: TestNodeServerOptions) {
@@ -370,7 +372,7 @@ describe("FetchRequest semantics", () => {
 });
 
 describe("response classes", () => {
-  test.each<[string, SigningRequestOptions, string, number]>([
+  test.each<[string, SignedAnswerOptions, string, number]>([
     ["signed 2xx → value", {}, "value", 1],
     ["signed 500 → SERVER_ERROR", { status: 500 }, "SERVER_ERROR", 1],
     ["tampered signed 500 → BadSignature", { status: 500, tamper: true }, "BadSignature", 0],
