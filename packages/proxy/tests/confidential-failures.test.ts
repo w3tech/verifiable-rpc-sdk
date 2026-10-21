@@ -205,6 +205,14 @@ const attestationRows: Row[] = [
     executed: "no",
   },
   {
+    title: "attestation with a repeated node id",
+    install: ({ node }) =>
+      node.setWire({ extraHeaders: { "vrpc-nodeid": ["n1", "n2"] }, only: "GET" }),
+    status: 502,
+    kind: "Attestation",
+    executed: "no",
+  },
+  {
     title: "attestation slower than the timeout",
     install: ({ node }) => node.setWire({ delayMs: 1000, only: "GET" }),
     status: 504,

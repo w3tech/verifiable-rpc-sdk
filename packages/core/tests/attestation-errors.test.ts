@@ -250,8 +250,7 @@ const ROWS: Row[] = [
         ["vRPC-NodeId", NODE_ID],
         ["vRPC-NodeId", "n2"],
       ]),
-    error: unavailable("node-id-missing", 200),
-    modes: ["confidential"],
+    error: failed("malformed", "vRPC-NodeId must be a single node id"),
   },
   {
     name: "a fetch that never answers",

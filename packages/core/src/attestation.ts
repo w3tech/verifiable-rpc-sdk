@@ -119,11 +119,15 @@ async function getAttestation(
   if (response.status < 200 || response.status > 299) {
     throw new AttestationUnavailable("status", { status: response.status });
   }
-  const nodeId = getHeader(response.headers, "vRPC-NodeId");
-  if (opts.requireNodeId && (nodeId === null || !NODE_ID_RE.test(nodeId))) {
+  const nodeId = getHeader(response.headers, "vRPC-NodeId") || undefined;
+  // A repeated header arrives comma-joined: malformed evidence, as on a signed response.
+  if (nodeId !== undefined && !NODE_ID_RE.test(nodeId)) {
+    throw new AttestationFailed("malformed", "vRPC-NodeId must be a single node id");
+  }
+  if (opts.requireNodeId && nodeId === undefined) {
     throw new AttestationUnavailable("node-id-missing", { status: response.status });
   }
-  return { attestation: parseAttestationBody(response.body), nodeId: nodeId ?? undefined };
+  return { attestation: parseAttestationBody(response.body), nodeId };
 }
 
 // Above the gateway's attestation timeout plus the hardware verifier's.
