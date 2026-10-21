@@ -1,70 +1,37 @@
+import { sha256 } from "@noble/hashes/sha2.js";
 import { toHex } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
 import { InvalidChainId } from "../src/errors";
-import {
-  buildPreImage,
-  buildPreImageFromHashes,
-  sha256,
-  u64LE,
-  validateChainId,
-} from "../src/preimage";
+import { buildPreImage, u64LE, validateChainId } from "../src/preimage";
 
 const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
+const chainIdHash = (chainId: string): string =>
+  toHex(buildPreImage(chainId, new Uint8Array(0), new Uint8Array(0), 0n).slice(0, 32));
 
 describe("preimage", () => {
   /**
-   * Mirror of sidecar `src/signing.rs::tests::pre_image_layout_is_byte_exact`.
+   * The layout of sidecar `src/signing.rs::tests::pre_image_layout_is_byte_exact`:
    *
-   * Inputs:
-   *   chain_id_hash = [0xcc; 32]
-   *   request_hash  = [0xaa; 32]
-   *   response_hash = [0xbb; 32]
-   *   timestamp_ms  = 0x9988776655443322
-   *
-   * Expected 104-byte layout:
-   *   [0..32]   chain_id_hash     = cc * 32
-   *   [32..64]  request_hash      = aa * 32
-   *   [64..96]  response_hash     = bb * 32
-   *   [96..104] timestamp_ms LE   = 22 33 44 55 66 77 88 99
+   *   [0..32]   sha256(utf8(chain_id))
+   *   [32..64]  sha256(request_body)
+   *   [64..96]  sha256(response_body)
+   *   [96..104] timestamp_ms LE   = 22 33 44 55 66 77 88 99 for 0x9988776655443322
    *
    * If this drifts even one byte, the SDK verifies against the wrong bytes and
    * the sidecar's signatures stop verifying. Hard fail.
    */
   test("preImageLayoutIsByteExact", () => {
-    const chainIdHash = new Uint8Array(32).fill(0xcc);
-    const requestHash = new Uint8Array(32).fill(0xaa);
-    const responseHash = new Uint8Array(32).fill(0xbb);
-    const timestampMs = 0x9988776655443322n;
-
-    const pre = buildPreImageFromHashes(chainIdHash, requestHash, responseHash, timestampMs);
+    const req = new Uint8Array([0x01, 0x02, 0x03]);
+    const resp = new Uint8Array([0x04, 0x05, 0x06]);
+    const pre = buildPreImage("42161", req, resp, 0x9988776655443322n);
 
     expect(pre.length).toBe(104);
-
-    // chain_id_hash (32B) — all 0xcc
-    expect(pre.slice(0, 32).every((b) => b === 0xcc)).toBe(true);
-
-    // request_hash (32B) — all 0xaa
-    expect(pre.slice(32, 64).every((b) => b === 0xaa)).toBe(true);
-
-    // response_hash (32B) — all 0xbb
-    expect(pre.slice(64, 96).every((b) => b === 0xbb)).toBe(true);
-
-    // timestamp_ms (8B LE)
+    expect(toHex(pre.slice(0, 32))).toBe(toHex(sha256(utf8("42161"))));
+    expect(toHex(pre.slice(32, 64))).toBe(toHex(sha256(req)));
+    expect(toHex(pre.slice(64, 96))).toBe(toHex(sha256(resp)));
     expect(Array.from(pre.slice(96, 104))).toEqual([
       0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99,
     ]);
-
-    // Public builder: buildPreImage hashes the chain id string internally and
-    // places sha256(utf8(chainId)) at [0..32].
-    const req = new Uint8Array([0x01, 0x02, 0x03]);
-    const resp = new Uint8Array([0x04, 0x05, 0x06]);
-    const ts = 1_700_000_000_000n;
-    const full = buildPreImage("42161", req, resp, ts);
-    expect(full.length).toBe(104);
-    expect(toHex(full.slice(0, 32))).toBe(toHex(sha256(utf8("42161"))));
-    expect(toHex(full.slice(32, 64))).toBe(toHex(sha256(req)));
-    expect(toHex(full.slice(64, 96))).toBe(toHex(sha256(resp)));
-    expect(Array.from(full.slice(96, 104))).toEqual(Array.from(u64LE(ts)));
   });
 
   /**
@@ -75,27 +42,17 @@ describe("preimage", () => {
    * Stellar network id (sha256 of the mainnet passphrase), EVM "42161".
    */
   test("chainIdHashMatchesKnownAnswer", () => {
-    expect(toHex(sha256(utf8("-239")))).toBe(
+    expect(chainIdHash("-239")).toBe(
       "7d1a0b60d68a1efc2e01df13132034d669b2ce5b05c8bf6d4ae6322e810c5659",
     );
     // Stellar's chain id is its network id — SHA-256 of the mainnet network
     // passphrase — a 64-char (64-byte) hex string, at the validation limit.
-    expect(
-      toHex(sha256(utf8("7ac33997544e3175d266bd022439b22cdb16508c01163f26e5cb2a3e1045a979"))),
-    ).toBe("dd4a5b7a84a301d6a8db49bff6877b3ef17b03d7afd19302fab324d1b7b4e1f7");
-    expect(toHex(sha256(utf8("42161")))).toBe(
+    expect(chainIdHash("7ac33997544e3175d266bd022439b22cdb16508c01163f26e5cb2a3e1045a979")).toBe(
+      "dd4a5b7a84a301d6a8db49bff6877b3ef17b03d7afd19302fab324d1b7b4e1f7",
+    );
+    expect(chainIdHash("42161")).toBe(
       "936a20303015aca26be61e6782c83b1de6b4b25f3dbdf555a97d85e0477a53a9",
     );
-  });
-
-  /**
-   * Mirror of sidecar `sha256_matches_known_value`. Sanity check that the
-   * @noble/hashes/sha2 wrapper is wired correctly.
-   * sha256("") == e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-   */
-  test("sha256OfEmptyMatchesKnownValue", () => {
-    const h = sha256(new Uint8Array(0));
-    expect(toHex(h)).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
   });
 
   /**
@@ -176,17 +133,6 @@ describe("preimage", () => {
     expect(() => buildPreImage("1", new Uint8Array([1]), new Uint8Array([2]), 1n << 64n)).toThrow(
       RangeError,
     );
-  });
-
-  test("buildPreImageFromHashesRejectsNon32ByteHashes", () => {
-    const ok = new Uint8Array(32);
-    // chainIdHash wrong length.
-    expect(() => buildPreImageFromHashes(new Uint8Array(31), ok, ok, 0n)).toThrow(RangeError);
-    expect(() => buildPreImageFromHashes(new Uint8Array(33), ok, ok, 0n)).toThrow(RangeError);
-    // requestHash wrong length.
-    expect(() => buildPreImageFromHashes(ok, new Uint8Array(31), ok, 0n)).toThrow(RangeError);
-    // responseHash wrong length.
-    expect(() => buildPreImageFromHashes(ok, ok, new Uint8Array(33), 0n)).toThrow(RangeError);
   });
 
   /**

@@ -21,11 +21,12 @@
 // parsing — those stay in the transport layer.
 
 import { verifyAsync } from "@noble/ed25519";
+import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 
 import { BadSignature, MalformedHeader, MissingHeader, StaleTimestamp } from "./errors";
 import type { Logger } from "./logger";
-import { buildPreImage, sha256, validateChainId } from "./preimage";
+import { buildPreImage, validateChainId } from "./preimage";
 
 export const DEFAULT_REPLAY_WINDOW_MS = 60_000;
 
