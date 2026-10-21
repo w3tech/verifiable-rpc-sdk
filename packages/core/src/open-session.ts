@@ -80,12 +80,14 @@ export function createOpenSession<R extends PostResponse>(
       }
     },
     async send(payload, post) {
+      // Bootstrap first, so a failed bootstrap never follows a request the node already ran.
+      const verifier = await current(post);
       const body = encoder.encode(JSON.stringify(payload));
       const response = await post(body);
       if (!ok(response) && !isSignedVrpcResponse(response.headers)) {
         throw httpError(response, payload);
       }
-      await (await current(post)).verify(body, response.body, response.headers);
+      await verifier.verify(body, response.body, response.headers);
       let json: unknown;
       try {
         json = JSON.parse(strictUtf8.decode(response.body));

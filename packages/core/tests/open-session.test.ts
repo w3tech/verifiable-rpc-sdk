@@ -95,10 +95,11 @@ describe("createOpenSession bootstrap", () => {
     ["chain id over 64 bytes", { body: `{"result":"0x${"f".repeat(60)}"}` }, "InvalidChainId"],
     ["signed non-2xx", { status: 503 }, "httpError"],
     ["unsigned non-2xx", { status: 503, unsigned: true }, "httpError"],
-  ])("a %s bootstrap answer fails the send", async (_, boot, expected) => {
+  ])("a %s bootstrap answer fails the send before the caller's post", async (_, boot, expected) => {
     const n = node({}, boot);
     const { s, attests } = session();
     expect(await outcome(s.send(READ, n.post))).toBe(expected);
+    expect(n.stats).toEqual({ posts: 1, bootstraps: 1 });
     if (expected === "httpError") expect(attests).toHaveLength(0);
   });
 
@@ -174,11 +175,11 @@ describe("createOpenSession answers", () => {
     expect(await outcome(s.send(READ, node(read).post))).toBe(expected);
   });
 
-  test("an unsigned non-2xx answer is the httpError result with no bootstrap or attestation", async () => {
-    const n = node({ status: 502, unsigned: true });
-    const { s, attests } = session();
-    expect(await outcome(s.send(READ, n.post))).toBe("httpError");
-    expect(n.stats.bootstraps).toBe(0);
+  test("an unsigned non-2xx answer is the httpError result with no attestation", async () => {
+    const { s, attests } = session(CHAIN_ID);
+    expect(await outcome(s.send(READ, node({ status: 502, unsigned: true }).post))).toBe(
+      "httpError",
+    );
     expect(attests).toHaveLength(0);
   });
 
