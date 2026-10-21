@@ -14,7 +14,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: ["src/index.ts", "src/errors.ts", "src/confidential.ts"],
   format: ["esm"],
-  target: "node22",
+  target: ["node22", "chrome116", "firefox124", "safari17.4"],
   dts: true,
   clean: true,
   splitting: true,

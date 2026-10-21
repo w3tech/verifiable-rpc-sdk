@@ -259,11 +259,13 @@ try {
 Each entry is a change for code written against 0.3.2. Ankr Confidential RPC
 was not part of 0.3.2; it is listed under [New in 0.4](#new-in-04).
 
-### Node versions
+### Runtimes
 
 - SDK (`vrpc-core`, `vrpc-ethers`, `vrpc-viem`, `dstack-verify`): Node 22.16 or
   later on 22, or Node 24 or later (0.3.2 documented Node 18).
 - `@w3tech.io/vrpc-proxy`: Node 24 or later (was 22.19).
+- Browsers: Chrome 116, Firefox 124, Safari 17.4 or later (0.3.2 documented
+  "modern browsers").
 
 ### @w3tech.io/vrpc-core
 
