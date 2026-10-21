@@ -39,8 +39,8 @@ export interface MockSidecarOptions {
   plaintext?: Buffer | string;
   /** HTTP status of the response. Default: 200. */
   status?: number;
-  /** Delay before responding, for upstream-timeout tests. */
-  delayMs?: number;
+  /** Never responds, for upstream-timeout tests. */
+  stall?: boolean;
   /** Extra response headers (e.g. an upstream gateway trace id). */
   extraHeaders?: Record<string, string | string[]>;
 }
@@ -122,16 +122,9 @@ export async function startMockSidecar(opts: MockSidecarOptions = {}): Promise<M
       Object.assign(headers, opts.extraHeaders ?? {});
       state.lastCompressedBody = wire;
 
-      const respond = () => {
-        if (res.destroyed || res.writableEnded) return;
-        res.writeHead(status, headers);
-        res.end(wire);
-      };
-      if (opts.delayMs !== undefined) {
-        setTimeout(respond, opts.delayMs).unref();
-      } else {
-        respond();
-      }
+      if (opts.stall) return;
+      res.writeHead(status, headers);
+      res.end(wire);
     })();
   });
 

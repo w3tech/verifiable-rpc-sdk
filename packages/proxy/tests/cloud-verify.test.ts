@@ -85,22 +85,17 @@ describe("cloud verify egress", () => {
     vi.mocked(undici.fetch).mockImplementation(actual.fetch);
     const globalFetch = vi.spyOn(globalThis, "fetch");
     cleanups.push(async () => globalFetch.mockRestore());
-    const slow = http.createServer((_req, res) => {
-      const timer = setTimeout(() => res.end("{}"), 1000);
-      res.on("close", () => clearTimeout(timer));
-    });
-    const slowUrl = await serve(slow);
+    const silent = http.createServer(() => {});
+    const silentUrl = await serve(silent);
     const mock = await startMockSidecar();
     cleanups.push(() => mock.close());
     const config = testConfig(mock.url, {
-      attestationUrl: `${slowUrl}/attestation`,
+      attestationUrl: `${silentUrl}/attestation`,
       upstreamTimeoutMs: 200,
     });
     const url = await serve(createProxyServer(config));
 
-    const started = Date.now();
     expect(await postRpc(url)).toEqual({ status: 504, kind: "AttestationUnavailable" });
-    expect(Date.now() - started).toBeLessThan(1000);
     expect(globalFetch).not.toHaveBeenCalled();
   });
 

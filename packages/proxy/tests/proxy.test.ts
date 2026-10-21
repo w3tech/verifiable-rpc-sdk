@@ -337,7 +337,7 @@ describe("proxy pipeline", () => {
   });
 
   test("upstreamTimeoutMapsTo504", async () => {
-    const { url } = await startProxy({ delayMs: 1000 }, { upstreamTimeoutMs: 200 });
+    const { url } = await startProxy({ stall: true }, { upstreamTimeoutMs: 200 });
     const res = await post(url, RPC_REQUEST);
     await expectErrorKind(res, 504, "UpstreamTimeout");
   });
