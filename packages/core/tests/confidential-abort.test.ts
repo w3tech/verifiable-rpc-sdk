@@ -9,7 +9,7 @@ import {
   type TestOuterRequest,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { ConfidentialClient, type ConfidentialClientOptions } from "../src/confidential-client";
 import { AttestationUnavailable } from "../src/errors";
 import type { ConfidentialTransport } from "../src/transport";
@@ -33,10 +33,7 @@ function plain(status: number): TestOuterResponse {
   return { status, headers: { "content-type": "text/plain" }, body: new Uint8Array(0) };
 }
 
-const cleanups: Array<() => void> = [];
-
 afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
   vi.useRealTimers();
 });
 
@@ -46,7 +43,7 @@ function recordProcessEvent(event: "warning" | "unhandledRejection"): unknown[] 
     seen.push(value);
   };
   process.on(event, listener);
-  cleanups.push(() => {
+  onTestFinished(() => {
     process.off(event, listener);
   });
   return seen;

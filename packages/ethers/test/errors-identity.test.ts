@@ -7,13 +7,7 @@ import * as errors from "@w3tech.io/vrpc-core/errors";
 import * as adapter from "@w3tech.io/vrpc-ethers";
 import { isPost, KEY, mockHardwareVerifier, rejectionOf } from "@w3tech.io/vrpc-test-support";
 import { describeAdapterErrors, serveRpcNode } from "@w3tech.io/vrpc-test-support/adapter";
-import { afterEach, describe, expect, test } from "vitest";
-
-const cleanups: Array<() => unknown> = [];
-
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-});
+import { describe, expect, onTestFinished, test } from "vitest";
 
 describeAdapterErrors("ethers", { adapter, core, errors, confidential: conf });
 
@@ -30,7 +24,7 @@ describe("an error from a live call", () => {
       hardwareVerifier: mockHardwareVerifier(),
       cacheTimeout: -1,
     });
-    cleanups.push(() => provider.destroy());
+    onTestFinished(() => provider.destroy());
 
     const err = await rejectionOf(provider.getBlockNumber());
 

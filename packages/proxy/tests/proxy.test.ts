@@ -19,7 +19,7 @@ import {
 } from "@w3tech.io/vrpc-test-support";
 import { closeServer, listen } from "@w3tech.io/vrpc-test-support/server";
 import { request } from "undici";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { createServerWith } from "../src/server";
 import {
   type MockSidecar,
@@ -58,13 +58,7 @@ async function unboundPort(): Promise<number> {
   return port;
 }
 
-let cleanups: (() => Promise<void>)[] = [];
-
-afterEach(async () => {
-  for (const fn of cleanups.reverse()) {
-    await fn();
-  }
-  cleanups = [];
+afterEach(() => {
   vi.restoreAllMocks();
 });
 
@@ -74,10 +68,10 @@ async function startProxy(
   configOverrides: Parameters<typeof testConfig>[1] = {},
 ): Promise<{ mock: MockSidecar; url: string }> {
   const mock = await startMockSidecar(mockOpts);
-  cleanups.push(() => mock.close());
+  onTestFinished(() => mock.close());
   const server = createServerWith(testConfig(mock.url, configOverrides), testOverrides());
   const url = await listen(server);
-  cleanups.push(() => closeServer(server));
+  onTestFinished(() => closeServer(server));
   return { mock, url };
 }
 
@@ -346,7 +340,7 @@ describe("proxy pipeline", () => {
     const port = await unboundPort();
     const server = createServerWith(testConfig(`http://127.0.0.1:${port}`), testOverrides());
     const url = await listen(server);
-    cleanups.push(() => closeServer(server));
+    onTestFinished(() => closeServer(server));
 
     const res = await post(url, RPC_REQUEST);
 
@@ -357,11 +351,11 @@ describe("proxy pipeline", () => {
     const sockets: Socket[] = [];
     const upstream = createServer((req) => sockets.push(req.socket));
     const upstreamUrl = await listen(upstream);
-    cleanups.push(() => closeServer(upstream));
+    onTestFinished(() => closeServer(upstream));
     const config = testConfig(upstreamUrl, { upstreamTimeoutMs: 60_000 });
     const server = createServerWith(config, testOverrides());
     const url = await listen(server);
-    cleanups.push(() => closeServer(server));
+    onTestFinished(() => closeServer(server));
     const req = httpRequest(url, { method: "POST" });
     req.on("error", () => {});
     req.end(RPC_REQUEST);
@@ -396,7 +390,7 @@ describe("proxy pipeline", () => {
       return true;
     });
     const mock = await startMockSidecar();
-    cleanups.push(() => mock.close());
+    onTestFinished(() => mock.close());
     const stub = attestationStub();
     // Answers once every request has reached the upstream.
     const fetch = (async (input: string) => {
@@ -406,7 +400,7 @@ describe("proxy pipeline", () => {
     const overrides = { fetch, hardwareVerifier: mockHardwareVerifier() };
     const server = createServerWith(testConfig(mock.url, { logLevel }), overrides);
     const url = await listen(server);
-    cleanups.push(() => closeServer(server));
+    onTestFinished(() => closeServer(server));
 
     const sends = Array.from({ length: 10 }, () =>
       post(`${url}/sentinel-path?key=sentinel-query`, RPC_REQUEST, {

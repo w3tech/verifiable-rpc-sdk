@@ -14,7 +14,7 @@ import {
   type TestNode,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { ConfidentialClient } from "../src/confidential-client";
 import {
   AttestationUnavailable,
@@ -69,10 +69,7 @@ function flatten(headers: IncomingHttpHeaders): Record<string, string> {
   return out;
 }
 
-const cleanups: Array<() => Promise<void> | void> = [];
-
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0)) await cleanup();
+afterEach(() => {
   vi.unstubAllGlobals();
 });
 
@@ -184,7 +181,7 @@ async function harness(): Promise<Harness> {
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  cleanups.push(async () => {
+  onTestFinished(async () => {
     for (const socket of sockets) socket.destroy();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));

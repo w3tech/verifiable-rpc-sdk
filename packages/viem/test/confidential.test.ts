@@ -31,7 +31,7 @@ import {
   HttpRequestError,
   RpcRequestError,
 } from "viem";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, onTestFinished, test, vi } from "vitest";
 import { APP_COMPOSE, WIDE_WINDOW } from "./fixtures";
 
 const arbitrum = defineChain({
@@ -39,12 +39,6 @@ const arbitrum = defineChain({
   name: "Arbitrum One",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
   rpcUrls: { default: { http: ["http://127.0.0.1"] } },
-});
-
-const cleanups: Array<() => unknown> = [];
-
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
 function rpcError(code: number, message: string, status = 200): TestUpstream {
@@ -429,7 +423,9 @@ describe("signals", () => {
     const warnings: unknown[] = [];
     const onWarning = (warning: unknown) => warnings.push(warning);
     process.on("warning", onWarning);
-    cleanups.push(() => process.off("warning", onWarning));
+    onTestFinished(() => {
+      process.off("warning", onWarning);
+    });
     const controller = new AbortController();
     let peak = 0;
     server.answer((r) => {
@@ -456,7 +452,7 @@ describe("configuration errors", () => {
 
   function spyConsole() {
     const spies = methods.map((m) => vi.spyOn(console, m));
-    cleanups.push(() => {
+    onTestFinished(() => {
       for (const spy of spies) spy.mockRestore();
     });
     return () => spies.reduce((n, spy) => n + spy.mock.calls.length, 0);

@@ -10,7 +10,7 @@ import {
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
 import { holdPosts, serveTestNode } from "@w3tech.io/vrpc-test-support/server";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import type { LogLevel } from "../src/logger";
 import { type RawResponse, rawRequest, startConfidentialProxy } from "./support/proxy";
 import { TEST_CHAIN_ID } from "./support/test-overrides";
@@ -53,11 +53,8 @@ interface Capture {
   errorBodies: string[];
 }
 
-const cleanups: (() => Promise<void>)[] = [];
-
-afterEach(async () => {
+afterEach(() => {
   vi.restoreAllMocks();
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
 function stringify(value: unknown): string {
@@ -105,7 +102,7 @@ async function drive(logLevel: LogLevel): Promise<Capture> {
       }),
     }),
   );
-  cleanups.push(() => node.close());
+  onTestFinished(() => node.close());
   const out = capture();
   const config = { logLevel, upstreamTimeoutMs: TIMEOUT_MS };
 
@@ -113,7 +110,7 @@ async function drive(logLevel: LogLevel): Promise<Capture> {
     ...config,
     upstreamUrl: `${node.url}/${API_KEY}`,
   });
-  cleanups.push(() => proxy.close());
+  onTestFinished(() => proxy.close());
   await vi.waitFor(() => expect(node.node.attestations()).toBe(1));
 
   const send = async (method: string, path: string, body?: string, contentType?: string) =>
@@ -167,7 +164,7 @@ async function drive(logLevel: LogLevel): Promise<Capture> {
     ...config,
     upstreamUrl: `http://127.0.0.1:9/${API_KEY}`,
   });
-  cleanups.push(() => unreachable.close());
+  onTestFinished(() => unreachable.close());
   const unverified = await startConfidentialProxy(
     node,
     { ...config, upstreamUrl: `${node.url}/${API_KEY}` },
@@ -177,7 +174,7 @@ async function drive(logLevel: LogLevel): Promise<Capture> {
       }),
     },
   );
-  cleanups.push(() => unverified.close());
+  onTestFinished(() => unverified.close());
   for (const target of [unreachable, unverified]) {
     const res = keep(
       out,

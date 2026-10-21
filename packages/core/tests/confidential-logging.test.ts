@@ -15,7 +15,7 @@ import {
   type TestOuterResponse,
   x25519SecretFromSeed,
 } from "@w3tech.io/vrpc-test-support";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
 import {
@@ -329,7 +329,7 @@ function watchOutput(): { consoleCalls(): number; warnings: unknown[] } {
     warnings.push(warning);
   };
   process.on("warning", listener);
-  cleanups.push(() => {
+  onTestFinished(() => {
     process.off("warning", listener);
   });
   return {
@@ -338,10 +338,7 @@ function watchOutput(): { consoleCalls(): number; warnings: unknown[] } {
   };
 }
 
-const cleanups: Array<() => void> = [];
-
 afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
   vi.restoreAllMocks();
 });
 
@@ -433,7 +430,7 @@ async function droppingEveryConnection(): Promise<string> {
   const server = createServer();
   server.on("connection", (socket) => socket.destroy());
   const origin = await listen(server);
-  cleanups.push(() => {
+  onTestFinished(() => {
     server.close();
   });
   return origin;
@@ -459,7 +456,7 @@ async function droppingOrigin(node: TestNode): Promise<string> {
     });
   });
   origin = await listen(server);
-  cleanups.push(() => {
+  onTestFinished(() => {
     server.closeAllConnections();
     server.close();
   });

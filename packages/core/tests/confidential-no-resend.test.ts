@@ -19,22 +19,16 @@ import {
   type TestNodeServer,
   type TestNodeServerOptions,
 } from "@w3tech.io/vrpc-test-support/server";
-import { afterEach, describe, expect, test } from "vitest";
+import { describe, expect, onTestFinished, test } from "vitest";
 import { ConfidentialClient } from "../src/confidential-client";
 import { AttestationUnavailable, RequestRejected, UnexpectedResponse } from "../src/errors";
 
 const UPSTREAM_BODY = '{"jsonrpc":"2.0","id":1,"result":"0x10"}';
 const text = new TextDecoder();
 
-const cleanups: Array<() => unknown> = [];
-
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-});
-
 async function serve(options: TestNodeServerOptions = {}): Promise<TestNodeServer> {
   const server = await serveTestNode(createTestNode(), options);
-  cleanups.push(() => server.close());
+  onTestFinished(() => server.close());
   return server;
 }
 

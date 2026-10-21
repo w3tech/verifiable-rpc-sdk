@@ -32,7 +32,7 @@ import {
 } from "@w3tech.io/vrpc-test-support/server";
 import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 import { BaseError, createPublicClient, defineChain, fallback } from "viem";
-import { afterEach, describe, expect, test } from "vitest";
+import { describe, expect, onTestFinished, test } from "vitest";
 
 const SENTINEL = "5e17e1a1";
 
@@ -45,18 +45,12 @@ const arbitrum = defineChain({
 
 type Mode = "client" | "fallback";
 
-const cleanups: Array<() => unknown> = [];
-
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-});
-
 async function serve(
   options: TestNodeServerOptions = {},
   upstream: TestUpstream = rpcUpstream(() => "0x10"),
 ): Promise<TestNodeServer> {
   const server = await serveUpstream(upstream, options);
-  cleanups.push(() => server.close());
+  onTestFinished(() => server.close());
   return server;
 }
 

@@ -17,7 +17,7 @@ import {
   type TestNodeServerOptions,
 } from "@w3tech.io/vrpc-test-support/server";
 import { Contract, FetchRequest, FetchResponse, Interface, isError, toBeHex } from "ethers";
-import { afterEach, describe, expect, test } from "vitest";
+import { describe, expect, onTestFinished, test } from "vitest";
 import { jsonResult, SINGLE_RESULT_BALANCE_HEX, WIDE_WINDOW } from "./fixtures";
 import { flipFirstDigit, type SigningRequestOptions, signingRequest } from "./helpers";
 
@@ -284,15 +284,9 @@ describe("VrpcProvider._send wiring", () => {
   });
 });
 
-const cleanups: Array<() => unknown> = [];
-
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-});
-
 function provide(url: string | FetchRequest): VrpcProvider {
   const provider = new VrpcProvider(url, CHAIN_ID_NUMBER, WIDE_OPTIONS);
-  cleanups.push(() => provider.destroy());
+  onTestFinished(() => provider.destroy());
   return provider;
 }
 
@@ -313,7 +307,7 @@ function signed(request: ServedRequest): ServedAnswer {
 
 async function serve(options?: TestNodeServerOptions) {
   const server = await serveUpstream(() => ({ status: 500 }), options);
-  cleanups.push(() => server.close());
+  onTestFinished(() => server.close());
   return server;
 }
 

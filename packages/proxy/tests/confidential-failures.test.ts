@@ -26,7 +26,7 @@ import {
   type TestNodeServer,
 } from "@w3tech.io/vrpc-test-support/server";
 import { getGlobalDispatcher } from "undici";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { createConfidentialTransport } from "../src/confidential";
 import type { ProxyConfig } from "../src/config";
 import {
@@ -72,10 +72,8 @@ const jsonAnswer = (): TestUpstreamResponse => ({
 
 let answer: () => TestUpstreamResponse = jsonAnswer;
 let events: string[] = [];
-const cleanups: (() => Promise<void>)[] = [];
 
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+beforeEach(() => {
   answer = jsonAnswer;
   events = [];
 });
@@ -119,7 +117,7 @@ async function startHarness(options: {
       upstream: () => answer(),
     }),
   );
-  cleanups.push(() => node.close());
+  onTestFinished(() => node.close());
   const verifier: TogglingVerifier = {
     failing: false,
     async verifyHardware() {
@@ -131,7 +129,7 @@ async function startHarness(options: {
     hardwareVerifier: verifier,
     logger: { debug: (event) => void events.push(event) },
   });
-  cleanups.push(() => proxy.close());
+  onTestFinished(() => proxy.close());
   const event = options.startup === "ok" ? "confidential.attest.ok" : "confidential.attest.fail";
   // The failing startup attestation takes the upstream timeout; leave headroom under full load.
   await vi.waitFor(() => expect(events).toContain(event), { timeout: 3000 });
@@ -442,7 +440,7 @@ describe("sealed request failures", () => {
       res.end();
     });
     await new Promise<void>((resolve) => target.listen(0, "127.0.0.1", resolve));
-    cleanups.push(
+    onTestFinished(
       () =>
         new Promise<void>((resolve) => {
           target.closeAllConnections();
@@ -474,7 +472,7 @@ describe("outer read cap", () => {
       res.writeHead(200, { "content-encoding": encoding }).end(body);
     });
     const url = await listen(server);
-    cleanups.push(() => closeServer(server));
+    onTestFinished(() => closeServer(server));
     const transport = createConfidentialTransport(testConfig(url), getGlobalDispatcher());
 
     const err = await rejectionOf(transport({ method: "GET", url, headers: {}, maxBytes: 64 }));
@@ -493,12 +491,12 @@ describe("concurrent and interrupted requests", () => {
         upstream: () => answer(),
       }),
     );
-    cleanups.push(() => node.close());
+    onTestFinished(() => node.close());
     node.node.setAttestation(() => gate);
     const proxy = await startConfidentialProxy(node);
-    cleanups.push(() => proxy.close());
+    onTestFinished(() => proxy.close());
     const requested = vi.spyOn(ConfidentialClient.prototype, "request");
-    cleanups.push(async () => requested.mockRestore());
+    onTestFinished(async () => requested.mockRestore());
 
     const pending = Array.from({ length: 20 }, () => post(proxy.url));
     await vi.waitFor(() => expect(requested).toHaveBeenCalledTimes(20));
@@ -523,7 +521,7 @@ describe("concurrent and interrupted requests", () => {
       stderr.push(String(chunk));
       return true;
     });
-    cleanups.push(async () => write.mockRestore());
+    onTestFinished(async () => write.mockRestore());
     const h = await startHarness({ startup: "ok", config: { logLevel: "debug" } });
     h.node.answer(stalled("POST"));
     const target = new URL(h.proxy.url);

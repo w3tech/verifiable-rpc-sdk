@@ -25,13 +25,7 @@ import {
 import { serveRpcNode } from "@w3tech.io/vrpc-test-support/adapter";
 import type { TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
 import { AbiCoder, EnsResolver, FetchRequest, isError, toUtf8String } from "ethers";
-import { afterEach, describe, expect, test, vi } from "vitest";
-
-const cleanups: Array<() => unknown> = [];
-
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-});
+import { describe, expect, onTestFinished, test, vi } from "vitest";
 
 function keyedRequest(server: TestNodeServer): FetchRequest {
   const req = new FetchRequest(`${server.url}/eth_vrpc`);
@@ -46,7 +40,7 @@ function confidentialProvider(url: string | FetchRequest, options: VrpcOptions =
     cacheTimeout: -1,
     ...options,
   });
-  cleanups.push(() => provider.destroy());
+  onTestFinished(() => provider.destroy());
   return provider;
 }
 
@@ -154,7 +148,7 @@ function openProvider(upstream: TestUpstream): VrpcProvider {
     hardwareVerifier: mockHardwareVerifier(),
     cacheTimeout: -1,
   });
-  cleanups.push(() => provider.destroy());
+  onTestFinished(() => provider.destroy());
   return provider;
 }
 
@@ -359,7 +353,7 @@ describe("configuration errors", () => {
     const spies = (["log", "info", "warn", "error", "debug"] as const).map((level) =>
       vi.spyOn(console, level).mockImplementation(() => {}),
     );
-    cleanups.push(() => {
+    onTestFinished(() => {
       for (const spy of spies) spy.mockRestore();
     });
     const url = `${server.url}/eth_vrpc/${KEY}`;
@@ -386,7 +380,7 @@ describe("configuration errors", () => {
       confidential: false,
       hardwareVerifier: mockHardwareVerifier(),
     });
-    cleanups.push(() => provider.destroy());
+    onTestFinished(() => provider.destroy());
 
     await expect(provider.getBlockNumber()).rejects.toThrow();
 
@@ -454,7 +448,7 @@ describe("CCIP-Read", () => {
       res.end('{"data":"0x"}');
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
+    onTestFinished(() => new Promise<void>((resolve) => server.close(() => resolve())));
     const { port } = server.address() as AddressInfo;
     return { url: `http://127.0.0.1:${port}`, hits };
   }

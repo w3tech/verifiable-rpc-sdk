@@ -25,7 +25,7 @@ import {
   type TestNodeServerOptions,
 } from "@w3tech.io/vrpc-test-support/server";
 import { FetchRequest } from "ethers";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 
 const SENTINEL = "5e17e1a1";
 
@@ -44,10 +44,7 @@ interface Built {
   fetches: { n: number };
 }
 
-const cleanups: Array<() => unknown> = [];
-
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+afterEach(() => {
   vi.restoreAllMocks();
 });
 
@@ -56,7 +53,7 @@ async function serve(
   result: (call: RpcCall) => unknown = () => "0x10",
 ): Promise<TestNodeServer> {
   const server = await serveUpstream(rpcUpstream(result), options);
-  cleanups.push(() => server.close());
+  onTestFinished(() => server.close());
   return server;
 }
 
@@ -83,7 +80,7 @@ function build(flavour: Flavour, origin: string, options: VrpcOptions = {}): Bui
     cacheTimeout: -1,
     ...options,
   });
-  cleanups.push(() => provider.destroy());
+  onTestFinished(() => provider.destroy());
   return { provider, fetches };
 }
 
@@ -138,7 +135,7 @@ describe("base fetcher", () => {
       registered.n += 1;
       return base(sent, signal);
     });
-    cleanups.push(() => FetchRequest.registerGetUrl(stock));
+    onTestFinished(() => FetchRequest.registerGetUrl(stock));
     const { provider } = build("string URL", server.url);
 
     await provider.getBlockNumber();
@@ -215,7 +212,7 @@ describe("transport errors carry neither the key nor body bytes", () => {
       hardwareVerifier: mockHardwareVerifier(),
       cacheTimeout: -1,
     });
-    cleanups.push(() => provider.destroy());
+    onTestFinished(() => provider.destroy());
     await provider.confidentialReady();
     const sent = holdPosts(server);
 
@@ -276,7 +273,7 @@ describe("the fetch option", () => {
       cacheTimeout: -1,
       fetch,
     });
-    cleanups.push(() => provider.destroy());
+    onTestFinished(() => provider.destroy());
 
     await rejectionOf(provider.getBlockNumber());
 

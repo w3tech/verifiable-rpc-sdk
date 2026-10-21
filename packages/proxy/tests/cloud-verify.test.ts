@@ -9,7 +9,7 @@ import { DEFAULT_PHALA_VERIFY_ENDPOINT } from "@w3tech.io/vrpc-core";
 import { attestationBody, createTestNode } from "@w3tech.io/vrpc-test-support";
 import { closeServer, listen, serveTestNode } from "@w3tech.io/vrpc-test-support/server";
 import * as undici from "undici";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, onTestFinished, test, vi } from "vitest";
 import { createProxyServer } from "../src/index";
 import { startMockSidecar } from "./support/mock-sidecar";
 import { rawRequest } from "./support/proxy";
@@ -22,16 +22,10 @@ vi.mock("undici", async (importOriginal) => {
 
 const RPC_BODY = '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}';
 
-const cleanups: (() => Promise<void>)[] = [];
-
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-});
-
 /** Mock the network: global fetch fails, undici fetch answers attestation and refuses Phala. */
 function mockNetwork() {
   const globalFetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("global fetch"));
-  cleanups.push(async () => globalFetch.mockRestore());
+  onTestFinished(async () => globalFetch.mockRestore());
   const calls: { url: string; dispatcher: unknown }[] = [];
   vi.mocked(undici.fetch).mockImplementation(async (input, init) => {
     const url = String(input);
@@ -49,7 +43,7 @@ function mockNetwork() {
 
 async function serve(server: http.Server): Promise<string> {
   const url = await listen(server);
-  cleanups.push(() => closeServer(server));
+  onTestFinished(() => closeServer(server));
   return url;
 }
 
@@ -68,7 +62,7 @@ describe("cloud verify egress", () => {
   test("open mode verifies the attestation through the proxy Agent", async () => {
     const { globalFetch, calls } = mockNetwork();
     const mock = await startMockSidecar();
-    cleanups.push(() => mock.close());
+    onTestFinished(() => mock.close());
     const url = await serve(createProxyServer(testConfig(mock.url)));
 
     const { status, kind } = await postRpc(url);
@@ -84,11 +78,11 @@ describe("cloud verify egress", () => {
     const actual = await vi.importActual<typeof import("undici")>("undici");
     vi.mocked(undici.fetch).mockImplementation(actual.fetch);
     const globalFetch = vi.spyOn(globalThis, "fetch");
-    cleanups.push(async () => globalFetch.mockRestore());
+    onTestFinished(async () => globalFetch.mockRestore());
     const silent = http.createServer(() => {});
     const silentUrl = await serve(silent);
     const mock = await startMockSidecar();
-    cleanups.push(() => mock.close());
+    onTestFinished(() => mock.close());
     const config = testConfig(mock.url, {
       attestationUrl: `${silentUrl}/attestation`,
       upstreamTimeoutMs: 200,
@@ -102,7 +96,7 @@ describe("cloud verify egress", () => {
   test("Ankr Confidential RPC verifies the attestation through the proxy Agent", async () => {
     const { globalFetch, calls } = mockNetwork();
     const node = await serveTestNode(createTestNode({ chainId: TEST_CHAIN_ID }));
-    cleanups.push(() => node.close());
+    onTestFinished(() => node.close());
     const config = testConfig(`${node.url}/test_vrpc`, { confidential: true });
     const url = await serve(createProxyServer(config));
 
