@@ -13,8 +13,11 @@ import {
   verifyResponse,
 } from "@w3tech.io/vrpc-core";
 
-const URL = "https://rpc.ankr.com/arbitrum_vrpc/123456";
+const URL = "https://rpc.ankr.com/arbitrum_vrpc";
 const CHAIN_ID = "42161";
+// Set ANKR_API_KEY to send it as `x-api-key` on every request below.
+const API_KEY = process.env.ANKR_API_KEY;
+const HEADERS: Record<string, string> = API_KEY ? { "x-api-key": API_KEY } : {};
 
 async function main() {
   // 1 — make a request; the node attaches vRPC-Signature/Timestamp/Pubkey headers
@@ -29,7 +32,7 @@ async function main() {
   );
   const res = await fetch(URL, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { ...HEADERS, "content-type": "application/json" },
     body: requestBytes,
   });
   const responseBytes = new Uint8Array(await res.arrayBuffer());
@@ -53,10 +56,13 @@ async function main() {
   );
 
   // 4 — anchor the signing key to the TEE: the attestation pubkey must equal the
-  // key that signed our response.
+  // key that signed our response. Behind the gateway, `nodeId` routes the fetch to
+  // the node that signed it.
   const attestation = await fetchAttestation({
     attestationUrl: `${URL}/attestation`,
     nonce: crypto.randomBytes(32),
+    ...(verified.nodeId === undefined ? {} : { nodeId: verified.nodeId }),
+    headers: HEADERS,
   });
   // TrustedVerifier does this automatically.
   if (attestation.pubkey.toLowerCase() !== verified.verification.pubkeyHex) {
@@ -67,7 +73,7 @@ async function main() {
   // signature + replay + lazy attestation + mandatory hardware verify,
   // cached per pubkey. Reuses the step-1 bytes — no extra fetch.
   const { attestationUrl } = deriveVrpcUrls(URL);
-  const tv = new TrustedVerifier({ chainId: CHAIN_ID, attestationUrl });
+  const tv = new TrustedVerifier({ chainId: CHAIN_ID, attestationUrl, headers: HEADERS });
   const pair = await tv.verify(requestBytes, responseBytes, res.headers);
 
   console.log({

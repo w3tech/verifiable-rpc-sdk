@@ -89,7 +89,8 @@ than a day old at review time. `@vitest/coverage-v8` must equal the repository's
   new SDK release when one applies.
 - Ranges outside the bundled set: `@w3tech.io/vrpc-core` also depends on
   `@noble/ed25519` (`^3.1.0`) and `lru-cache` (`^11.5.2`), which your package
-  manager resolves within those ranges. `@w3tech.io/dstack-verify` depends on
+  manager resolves within those ranges. `@w3tech.io/vrpc-proxy` depends on
+  `undici` (`^8.7.0`), resolved the same way. `@w3tech.io/dstack-verify` depends on
   `@noble/hashes` at an exact version.
 - Duplicate copies: if your application also installs `@hpke/*`, `@noble/curves` or
   `bhttp-ts`, it carries its own copy next to the bundled one. The SDK exposes none

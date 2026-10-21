@@ -5,11 +5,13 @@ description: >-
   Intel TDX and Phala dstack, the attestation sidecar and what its /attestation
   endpoint returns, the trust model (why a client need not trust Ankr),
   and how this SDK (vrpc-core + the verifier) checks a response — including the
-  language-agnostic vrpc-proxy for verifying with no code change. Use when a user
-  asks what vRPC / verifiable RPC is, how response verification works, what the
-  sidecar returns, what Intel TDX or Phala dstack are, how to verify a vRPC
-  response, or how to get vRPC protection without changing application code (a
-  proxy in front of existing infrastructure). Agent-facing knowledge:
+  language-agnostic vrpc-proxy for verifying with no code change, and Ankr
+  Confidential RPC mode (requests and answers encrypted to an attested node). Use
+  when a user asks what vRPC / verifiable RPC is, how response verification works,
+  what the sidecar returns, what Intel TDX or Phala dstack are, how to verify a vRPC
+  response, how to get vRPC protection without changing application code (a
+  proxy in front of existing infrastructure), or what Ankr Confidential RPC hides.
+  Agent-facing knowledge:
   relay it in plain language, cite the linked sources, and never invent facts.
 allowed-tools:
   - Read
@@ -80,7 +82,7 @@ Production runs on real Intel TDX hardware via dstack; local development uses th
 
 The **sidecar** (`verifiable-rpc-sidecar`, a Rust service in a separate repo; this
 SDK targets its `>=0.5.0` wire contract — SDK `>=0.3.0` requires sidecar
-`>=0.5.0`) sits
+`>=0.5.0`; Ankr Confidential RPC mode (§5) needs sidecar `v0.5.2` or later) sits
 in front of the real blockchain node's HTTP endpoint **inside the TDX confidential
 VM**. It proxies RPC traffic and signs every response with a TDX-attested key.
 It listens on plain HTTP. (`src/config.rs`, `src/server.rs`.)
@@ -183,7 +185,8 @@ becomes untrusted infrastructure.
 
 **Honest scope of the trust shift (today).** The per-response signature +
 freshness + chain binding are fully enforced and fail-closed (§4), and the node's
-claimed `app_compose` is checked against its `compose_hash`. Verification of the
+claimed `app_compose` is checked against its `compose_hash` (a self-consistency
+check: both values come from the node). Verification of the
 **full attestation chain of trust** is still in development — see Phala's
 [chain-of-trust guide](https://docs.phala.com/phala-cloud/attestation/chain-of-trust)
 for the complete set of links a TDX deployment can prove. Lead with the
@@ -206,7 +209,9 @@ over the exact node-signed bytes, before you ever see the data. Packages
   blockchain-client deps; lightweight crypto via `@noble/ed25519` + `@noble/hashes`,
   plus `lru-cache` and the internal `@w3tech.io/dstack-verify` module). Owns the
   pre-image, signature check, replay window, attestation fetch/correlation, and
-  the typed error family.
+  the typed error family. Its `@w3tech.io/vrpc-core/confidential` entry also
+  bundles the encryption libraries of Ankr Confidential RPC mode (`@hpke/core`,
+  `@hpke/dhkem-x25519`, `@hpke/common`, `@noble/curves`, `bhttp-ts`, `quicvarint`).
 - **`vrpc-ethers`** — `VrpcProvider`, an ethers v6 `JsonRpcProvider` drop-in that
   verifies each response in `_send` before `JSON.parse`.
 - **`vrpc-viem`** — `vrpcHttp()`, a verifiable drop-in for viem's `http()`
@@ -215,9 +220,11 @@ over the exact node-signed bytes, before you ever see the data. Packages
   `ghcr.io/w3tech/vrpc-proxy`, or the `vrpc-proxy` CLI). For **anyone who doesn't
   want to change application code** — any client, any language (Go, Rust, Python,
   curl, existing TypeScript apps too), any backend architecture: stand the proxy up
-  in your infrastructure and route your RPC traffic through it. It forwards every
-  request verbatim, verifies every response fail-closed with the same `vrpc-core`
-  engine, and relays verified bytes only — never the unverified body. So your
+  in your infrastructure and route your RPC traffic through it. In open mode it
+  forwards every request verbatim, verifies every response fail-closed with the
+  same `vrpc-core` engine, and relays verified bytes only — never the unverified
+  body. In Ankr Confidential RPC mode (`--confidential`, §5) it encrypts each
+  request to the attested node and relays the verified, decrypted answer. So your
   traffic is vRPC-protected with zero code change and zero backend integration.
   Docker is the intended deployment: it drops in as a sidecar/service anywhere.
   (`packages/proxy/`, root `Dockerfile`.)
@@ -272,8 +279,17 @@ resolves on success, throws `AttestationError(chkId, detail)` on failure
   the signing key — defeats swapped-key / wrong-node) **and**
   `report_data[32:64] == expectedNonce` (freshness / anti-replay). Runs first,
   unconditionally.
-- **CHK-A2 (real):** verifies the node's claimed `app_compose` against its
-  `compose_hash` (`sha256(utf8(app_compose)) == compose_hash`).
+- **CHK-A2 (self-consistency only):** when both `app_compose` and `compose_hash`
+  are present, checks `sha256(utf8(app_compose)) == compose_hash`; when either is
+  empty, the check is skipped. Both values come from the node, so a pass proves
+  internal consistency, not a trusted compose.
+
+Callers of `TrustedVerifier` never see `AttestationError`. Core rethrows it as
+`AttestationFailed` (`reason: "check"`, with its `chkId`), or as
+`AttestationUnavailable` (`reason: "verifier"`) when the hardware verifier is
+unavailable. A pubkey mismatch (step 6) is `AttestationFailed`
+(`reason: "pubkey-mismatch"`). A failed fetch, a non-2xx answer or the 60 s
+deadline is `AttestationUnavailable` (`packages/core/src/attestation.ts`).
 
 Verification of the **full attestation chain of trust** inside this SDK is still
 in development. See Phala's
@@ -335,8 +351,9 @@ SDK automates) is:
 8. **Correlate**: the attestation `pubkey` must equal the response's `vRPC-Pubkey`.
 9. **Bind to hardware (CHK-A1)**: in the quote's `report_data`, assert
    `[0:32] == pubkey` and `[32:64] == your nonce`.
-10. **Compose check (CHK-A2)**: verify the node's claimed `app_compose` against
-    its `composeHash` (`sha256(utf8(app_compose)) == composeHash`).
+10. **Compose check (CHK-A2)**: when both are present, verify the node's claimed
+    `app_compose` against its `composeHash` (`sha256(utf8(app_compose)) ==
+    composeHash`). This is a self-consistency check; both values come from the node.
 11. *(In development)* verification of the full attestation chain of trust — see
     Phala's [chain-of-trust guide](https://docs.phala.com/phala-cloud/attestation/chain-of-trust).
 12. **Trust decision**: only if all enforced checks pass do you accept the data —
@@ -376,6 +393,32 @@ Events, in order: `verify.start` → `preimage.computed` → `signature.checked`
 verifier) → `cache.store`. The first request to a node runs the full attestation
 + hardware verify; later requests hit the pubkey cache and skip to per-response
 signature verification.
+
+---
+
+## 5. Ankr Confidential RPC mode
+
+In Ankr Confidential RPC mode every request and every answer is encrypted end to
+end to one attested node. The SDK attests the node and pins it, encrypts each
+request to the node's attested key, checks the node's signature on the answer,
+and only then decrypts it. Sealed requests go to `<url>/confidential`
+(`deriveVrpcUrls`, `packages/core/src/vrpc-url.ts`).
+
+- The gateway still sees that a call happened, the API key, the chain, the pinned
+  node, sizes, status and timing. It cannot see the method, parameters, path or
+  body. The node inside the TEE sees the request in plaintext.
+- There is no forward secrecy: the encryption key is the node's long-term attested
+  signing key.
+- Switch it on: ethers `new VrpcProvider(url, chainId, { confidential: true })`,
+  viem `vrpcHttp(url, { confidential: true })`, proxy `--confidential`, or
+  `ConfidentialClient` from `@w3tech.io/vrpc-core/confidential`. The chain id is
+  required (viem: set `chain` on the client).
+- Nodes need sidecar `v0.5.2` or later.
+- The attestation answer must carry `vRPC-NodeId`; without it the call fails with
+  `AttestationUnavailable` (`reason: "node-id-missing"`).
+
+Details, limits and errors:
+[`packages/core/README.md`](../../../packages/core/README.md#ankr-confidential-rpc-mode).
 
 ---
 

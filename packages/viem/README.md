@@ -32,7 +32,7 @@ pnpm add @w3tech.io/vrpc-viem viem
 
 > The `@w3tech.io/vrpc-*` packages are published to npm. Inside this monorepo
 > they resolve via `workspace:*`; the public install name is
-> `@w3tech.io/vrpc-viem` (`peerDependency: viem ^2.52.2`).
+> `@w3tech.io/vrpc-viem` (`peerDependency: viem ^2.55.1`).
 
 ---
 
@@ -86,17 +86,29 @@ fallback. Declaring `chain` catches a wrong-node / wrong-URL misconfig where
 auto-derive (which trusts the node's self-reported chain) would verify *genuine*
 data from the *wrong* chain.
 
+One `vrpcHttp()` instance serves one chain: the first client's `chain`, or the
+chain the bootstrap verified. A request from a client with another `chain.id`
+throws `InvalidOption("chainId")` and nothing is sent. Create one `vrpcHttp` per
+chain.
+
 ---
 
 ## Public API
 
 ```ts
+// Ankr Confidential RPC mode; ConfidentialValue adds ready() and getConfidentialInfo()
+// to client.transport (the type itself is not exported):
+export function vrpcHttp(
+  url: string,
+  opts: VrpcHttpOptions & { confidential: true },
+): Transport<"vrpc-http", ConfidentialValue>;
 export function vrpcHttp(url: string, opts?: VrpcHttpOptions): Transport<"vrpc-http">;
 
 export interface VrpcHttpOptions { /* see table below */ }
 
 // Shared vrpc-core error family — re-exported (SAME identity as @w3tech.io/vrpc-ethers):
-export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleTimestamp };
+export * from "@w3tech.io/vrpc-core/errors";
+export type { ConfidentialInfo } from "@w3tech.io/vrpc-core/confidential";
 ```
 
 ### `VrpcHttpOptions`
@@ -106,8 +118,8 @@ export { VerificationError, MissingHeader, MalformedHeader, BadSignature, StaleT
 
 | Option           | Type                                                          | Default                | Notes |
 |------------------|---------------------------------------------------------------|------------------------|-------|
-| `replayWindowMs` | `number`                                                      | vrpc-core default (60s)| Forwarded to `verifyResponse`. Omit in production. `0` only works in tests that inject `nowMs`; in production it always rejects on clock skew. |
-| `headers`        | `Record<string, string>`                                      | —                      | Applied to BOTH the JSON-RPC POST and the internal attestation fetch (e.g. `x-api-key`, or the gateway `chain_vrpc` route header) — a single auth set here covers both legs. `content-type: application/json` is always set by the transport. |
+| `replayWindowMs` | `number`                                                      | vrpc-core default (60s)| Forwarded to `verifyResponse`. Omit in production. Must be a positive whole number of milliseconds; `0`, a negative, fractional or non-finite value throws `InvalidOption` from `vrpcHttp()`. |
+| `headers`        | `Record<string, string>`                                      | —                      | Applied to BOTH the JSON-RPC POST and the internal attestation fetch (e.g. `x-api-key`, or the gateway `chain_vrpc` route header) — a single auth set here covers both legs. The transport sets `content-type: application/json`. Do not set `content-type` here; in open mode it changes the header the RPC POST sends (Ankr Confidential RPC mode drops it). |
 | `timeout`        | `number`                                                      | client-injected, else `10_000` | Per-request HTTP timeout (ms), applied to the own `fetch` as `AbortSignal.timeout` (parity with viem `http()`). |
 | `fetchFn`        | `(url: string, init: RequestInit) => Promise<Response>`       | global `fetch`         | Injectable fetch seam (mirrors viem `http`'s `fetchFn`). Hook for a routing fetch wrapper or offline tests. |
 
@@ -142,8 +154,8 @@ which lazily fetches + correlates the serving node's TDX attestation on an
 default 1h). This is **always-on**: the attestation endpoint is **derived from
 the single URL** you pass (the SDK appends the `/attestation` sub-route), so
 there is **no** `attestationBaseUrl` / `chainSlug` to set and no opt-out —
-verification is fail-closed. The chainId bootstrap
-always stays on plain `verifyResponse`. The existing `headers` and `fetchFn` are
+verification is fail-closed. The `eth_chainId` bootstrap answer goes through
+the same `TrustedVerifier`, so its signer is attested too. The existing `headers` and `fetchFn` are
 **reused** for the attestation-leg fetch (one verifier per transport — never per
 call — so the pubkey cache lives for the transport lifetime).
 
@@ -194,7 +206,7 @@ signature:
 - **Correctly bound** — wrong/substituted chain id → different pre-image →
   `BadSignature`.
 
-The transport reads `res.text()`, which transparently decodes gzip/br — the
+The transport reads `res.arrayBuffer()`, which transparently decodes gzip/br — the
 sidecar signs the **content-decoded** body, so do not read `res.body` or pin
 `Accept-Encoding: identity`.
 
@@ -255,7 +267,8 @@ try {
 | Stripped `vRPC-*` headers (downgrade)     | `MissingHeader` (a `VerificationError`) — fail-closed. |
 | Wrong chain id (signed for another chain) | `BadSignature`. |
 | Signed JSON-RPC `{ error }` body          | viem's own `RpcRequestError` — **NOT** a `VerificationError` (verification passed; `buildRequest` maps it by code). |
-| Unsigned non-2xx (gateway 502 / timeout)  | viem's `HttpRequestError` **before** verify — reads as a network error, not a verify attack. |
+| Unsigned non-2xx (e.g. gateway 502)       | viem's `HttpRequestError` **before** verify — reads as a network error, not a verify attack. |
+| `timeout` elapsed                         | the `fetch` abort error (a `DOMException` named `TimeoutError`), not viem's `TimeoutError`; actions get it wrapped in `UnknownRpcError`. |
 | Signed non-2xx with `{ error }` body      | still flows into verify; its signed error surfaces as an ordinary `RpcRequestError`. |
 | Signed 2xx that is not a JSON-RPC object  | `HttpRequestError` (not JSON, not an object, or a non-object `error`). As with `http`, only a truthy `error` fails: `"error": null` returns the `result`. |
 
@@ -277,10 +290,10 @@ permissive / observe-but-not-block opt-in.
 
 ## Batching
 
-Batching is **OFF by default**. Every action issues a single non-batched
-`{ jsonrpc: "2.0", id: 1, method, params }` request that is verified as one
-unit. Batched-as-one-unit verification is a deferred opt-in — consistent with
-the ethers adapter's stance.
+`vrpcHttp` does not batch, and it has no batch option. Every action issues a
+single non-batched `{ jsonrpc: "2.0", id: 1, method, params }` request that is
+verified as one unit. The ethers adapter differs: it keeps ethers' native
+batching and verifies each batch body once.
 
 ---
 

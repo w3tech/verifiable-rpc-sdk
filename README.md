@@ -19,11 +19,11 @@ Everything downstream — `getBalance`, `eth_call`, contract reads, `getLogs`, `
 
 **Start here:** the [Quickstart and how-it-works guide](./docs/quickstart.md) covers what vRPC proves, the attestation flow, and running the SDK. Building an AI agent? Point it at the [`explain-vrpc` skill](./.claude/skills/explain-vrpc/SKILL.md).
 
-You pass **one** URL — the explicit vRPC route (e.g. `https://rpc.ankr.com/arbitrum_vrpc`). The SDK uses it verbatim for the RPC leg and derives only the `/attestation` sub-route for the attestation leg. There is **no** separate `attestationBaseUrl` / `chainSlug` to configure, and attestation correlation is **always-on**: the verifier is always used. The serving node id (`vRPC-NodeId`) is **optional** — it is included in the attestation fetch when the response carries it and omitted when absent (a gateway route that needs a `node_id` but receives none fails to route — fail-closed, never a silent pass).
+You pass **one** URL — the explicit vRPC route (e.g. `https://rpc.ankr.com/arbitrum_vrpc`). The SDK uses it verbatim for the RPC leg and derives only the `/attestation` sub-route for the attestation leg (and `/confidential` in [Ankr Confidential RPC mode](#ankr-confidential-rpc-mode)). There is **no** separate `attestationBaseUrl` / `chainSlug` to configure, and attestation correlation is **always-on**: the verifier is always used. The serving node id (`vRPC-NodeId`) is **optional** — it is included in the attestation fetch when the response carries it and omitted when absent (a gateway route that needs a `node_id` but receives none fails to route — fail-closed, never a silent pass).
 
-> `chainId` is **optional** — omit it (`new VrpcProvider(url)` / `vrpcHttp(url)`) and the SDK derives it from a **signed** `eth_chainId` response on first use and **verifies that signature** self-consistently: the response's own `result` IS the chainId, so it only verifies if the node really signed for that chain — the derived chainId is cryptographically attested by the node. A tampered/forged/unsigned `eth_chainId` **fails fast** with a `VerificationError` (no unverified fallback). Passing `chainId` explicitly is still **strongly recommended**: it pins to **your expected chain**, catching a wrong-node / wrong-URL misconfig where you'd otherwise verify genuine data from the *wrong* chain (auto-derive trusts the node's self-reported chain), and it skips the bootstrap round-trip. See the [ethers](./packages/ethers/README.md) and [viem](./packages/viem/README.md) package docs.
+> `chainId` is **optional** in open mode (required in [Ankr Confidential RPC mode](#ankr-confidential-rpc-mode)) — omit it (`new VrpcProvider(url)` / `vrpcHttp(url)`) and the SDK derives it from a **signed** `eth_chainId` response on first use and **verifies that signature** self-consistently: the response's own `result` IS the chainId, so it only verifies if the node really signed for that chain — the derived chainId is cryptographically attested by the node. A tampered/forged/unsigned `eth_chainId` **fails fast** with a `VerificationError` (no unverified fallback). Passing `chainId` explicitly is still **strongly recommended**: it pins to **your expected chain**, catching a wrong-node / wrong-URL misconfig where you'd otherwise verify genuine data from the *wrong* chain (auto-derive trusts the node's self-reported chain), and it skips the bootstrap round-trip. See the [ethers](./packages/ethers/README.md) and [viem](./packages/viem/README.md) package docs.
 
-The chain id bound into every signature is a **string** — the exact value the sidecar is configured with. The adapters accept `number | bigint | string` for ergonomics and normalize `number`/`bigint` args to the decimal string immediately (`42161` → `"42161"`); non-EVM chains pass the exact configured string (e.g. TON's global id `"-239"`, or Stellar's network id — the sha256 of its mainnet passphrase, a 64-char hex string). vRPC is not JSON-RPC-only: responses from path-based REST chains (e.g. TON's REST API, Stellar Horizon) reached via `https://rpc.ankr.com/rest/<chain>/<path>` carry the same `vRPC-*` headers signed over the same 104-byte pre-image, and are verifiable with `@w3tech.io/vrpc-core`'s transport-agnostic `verifyResponse` (hand it the exact request-body bytes — empty for a `GET`); the ethers/viem drop-ins remain JSON-RPC adapters. **Version gate:** SDK `>=0.3.0` pairs with sidecar `>=0.5.0` (string chain id, 104-byte pre-image); older sidecars sign the legacy format and verification fails closed.
+The chain id bound into every signature is a **string** — the exact value the sidecar is configured with. The ethers adapter accepts `number | bigint | string` and normalizes `number`/`bigint` args to the decimal string immediately (`42161` → `"42161"`); a string must be an integer `BigInt()` parses (e.g. TON's global id `"-239"`), anything else throws `InvalidOption`. The viem adapter takes the chain id from the client's `chain.id`. A chain whose configured id is not an integer (e.g. Stellar's network id — the sha256 of its mainnet passphrase, a 64-char hex string) is verified with `@w3tech.io/vrpc-core` or the proxy, which take the exact configured string. vRPC is not JSON-RPC-only: responses from path-based REST chains (e.g. TON's REST API, Stellar Horizon) reached via `https://rpc.ankr.com/rest/<chain>/<path>` carry the same `vRPC-*` headers signed over the same 104-byte pre-image, and are verifiable with `@w3tech.io/vrpc-core`'s transport-agnostic `verifyResponse` (hand it the exact request-body bytes — empty for a `GET`); the ethers/viem drop-ins remain JSON-RPC adapters. **Version gate:** SDK `>=0.3.0` pairs with sidecar `>=0.5.0` (string chain id, 104-byte pre-image); older sidecars sign the legacy format and verification fails closed. Ankr Confidential RPC mode needs sidecar `>=0.5.2`.
 
 ## Packages
 
@@ -32,6 +32,7 @@ The chain id bound into every signature is a **string** — the exact value the 
 | **`@w3tech.io/vrpc-ethers`** | ethers v6 drop-in `JsonRpcProvider` that verifies every HTTP response in `_send`, fail-closed. | [packages/ethers/README.md](./packages/ethers/README.md) |
 | **`@w3tech.io/vrpc-viem`** | Verifiable drop-in for viem's `http()` transport — verifies every response before parse. | [packages/viem/README.md](./packages/viem/README.md) |
 | **`@w3tech.io/vrpc-core`** | Transport-agnostic Ed25519 verification engine both adapters build on (zero client-lib deps). | [packages/core/README.md](./packages/core/README.md) |
+| **`@w3tech.io/dstack-verify`** | dstack / Intel TDX attestation checks `vrpc-core` runs for each new signing key: report-data binding, compose-hash self-consistency, pluggable hardware verifier. | [packages/dstack-verify/README.md](./packages/dstack-verify/README.md) |
 | **`@w3tech.io/vrpc-proxy`** | Local verifying reverse proxy — point any plain HTTP client at it; every response verified fail-closed. Runs standalone via `npx @w3tech.io/vrpc-proxy` or `docker run ghcr.io/w3tech/vrpc-proxy` (see the package README). | [packages/proxy/README.md](./packages/proxy/README.md) |
 
 Install only what you use — the adapters declare `ethers` / `viem` as **peer dependencies**, so installing one never pulls the other:
@@ -41,9 +42,21 @@ pnpm add @w3tech.io/vrpc-ethers ethers     # ethers users
 pnpm add @w3tech.io/vrpc-viem viem         # viem users
 ```
 
+Runtimes: Node 22.16 or later on 22, or Node 24 or later; `@w3tech.io/vrpc-proxy` (including `npx`) needs Node 24 or later. Browsers: Chrome 116, Firefox 124, Safari 17.4 or later.
+
 Upgrading from 0.3? See [Upgrading from 0.3 to 0.4](./MIGRATION.md#upgrading-from-03-to-04).
 
 New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line swap, the optional (but strongly recommended) `chainId`, and the caveats for both adapters. Runnable examples live in [`examples/`](./examples/): `01-ethers-client.ts`, `02-viem-client.ts`, `03-vrpc-core-walkthrough.ts`, `04-proxy.ts`. Run them with `pnpm example:01-ethers-client` (and `:02-viem-client`, `:03-vrpc-core-walkthrough`, `:04-proxy`).
+
+## Ankr Confidential RPC mode
+
+Every request and answer is encrypted end to end to one attested node; the gateway does not see the method, the parameters or the body. Turn it on per client:
+
+- ethers: `new VrpcProvider(url, chainId, { confidential: true })`
+- viem: `createPublicClient({ chain, transport: vrpcHttp(url, { confidential: true }) })`
+- proxy: `--confidential` (env `VRPC_PROXY_CONFIDENTIAL`)
+
+The chain id is required (ethers: the `chainId` argument; viem: `chain` on the client); it is never derived from `eth_chainId`. Nodes need `verifiable-rpc-sidecar` `v0.5.2` or later. What the gateway and the node can see, the limits and the errors: [packages/core/README.md](./packages/core/README.md#ankr-confidential-rpc-mode).
 
 ## What is verified — and what is not
 

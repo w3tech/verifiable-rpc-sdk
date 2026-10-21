@@ -75,7 +75,7 @@ The SDK is in **alpha**. The design is the full four-step chain above; here is w
 - ✅ **Freshness + chain binding** - replay window (default 60s) and the chain you pinned
 - ✅ **Pubkey correlation** - the attestation's pubkey equals the response signer
 - ✅ **Nonce + pubkey hardware binding** (Step 4) - the quote's `report_data` carries your nonce and the signing key, checked first and unconditionally
-- ✅ **Hardware-signature verification** (Step 2) - **mandatory**. The quote is verified by Phala's cloud verifier by default (overridable / self-hostable); with no verifier configured the call fails closed.
+- ✅ **Hardware-signature verification** (Step 2) - **mandatory**. The quote is verified by Phala's cloud verifier by default (overridable / self-hostable); it cannot be turned off, and a quote that does not verify fails the call.
 - ⚠️ **Compose-hash check** (part of Step 3) - `sha256(app_compose) == compose_hash` is enforced when the node reports both, but today it is **self-consistency only**: both values come from the same node, so it catches drift, not a malicious node. A real anchor needs an independent compose source plus RTMR3 replay.
 - 🚧 **Still landing:** local DCAP / Intel-root quote verification (so you don't have to trust the cloud verifier), RTMR3 event-log replay, and an independent compose/image **registry** for Step 3. You can run Phala's [dstack-verifier](https://github.com/Dstack-TEE/dstack/tree/master/verifier) yourself for the full local chain today.
 
@@ -84,6 +84,8 @@ The SDK is in **alpha**. The design is the full four-step chain above; here is w
 ---
 
 ## Quickstart - run the SDK
+
+Runtimes: Node 22.16 or later on 22, or Node 24 or later; the proxy needs Node 24 or later. Browsers: Chrome 116, Firefox 124, Safari 17.4 or later.
 
 ### ethers
 
@@ -119,7 +121,11 @@ Then point your client at `http://127.0.0.1:8969`. Docker: `docker run -p 8969:8
 
 That is all: every response is verified fail-closed before your code sees it, and everything downstream - `getBalance`, `eth_call`, `getLogs`, contract reads, `estimateGas` - works as before.
 
-You pass **one** URL — the explicit vRPC route. The SDK uses it verbatim for RPC and derives the `/attestation` route itself. The chain id is optional (the SDK can derive it from a *signed* `eth_chainId`), but passing it pins your expected chain and skips a round-trip. Auth headers, options and error handling: the [ethers](../packages/ethers/README.md), [viem](../packages/viem/README.md) and [proxy](../packages/proxy/README.md) READMEs. Upgrading from 0.3: [MIGRATION.md](../MIGRATION.md#upgrading-from-03-to-04).
+You pass **one** URL — the explicit vRPC route. The SDK uses it verbatim for RPC and derives the `/attestation` route itself (and `/confidential` in Ankr Confidential RPC mode). Outside that mode the chain id is optional (the SDK can derive it from a *signed* `eth_chainId`), but passing it pins your expected chain and skips a round-trip. Auth headers, options and error handling: the [ethers](../packages/ethers/README.md), [viem](../packages/viem/README.md) and [proxy](../packages/proxy/README.md) READMEs. Upgrading from 0.3: [MIGRATION.md](../MIGRATION.md#upgrading-from-03-to-04).
+
+### Ankr Confidential RPC mode
+
+Every request and answer is encrypted end to end to one attested node. Turn it on with `new VrpcProvider(url, chainId, { confidential: true })` (ethers), `vrpcHttp(url, { confidential: true })` with `chain` set on the client (viem), or `--confidential` (proxy). The chain id is required in this mode. Nodes need `verifiable-rpc-sidecar` `v0.5.2` or later. Details: [packages/core/README.md](../packages/core/README.md#ankr-confidential-rpc-mode).
 
 ### Run the examples
 

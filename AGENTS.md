@@ -5,11 +5,12 @@ TypeScript verifier client for Ankr's verifiable RPC sidecar
 fetches TDX attestation quotes from the sidecar. Pairs with sidecar `v0.5.0`
 wire contract — string chain id hashed into a 104-byte pre-image; the signature
 covers the content-DECODED body, so it verifies on either transport encoding
-(gzip or identity). ESM-first, vitest-tested, chain-agnostic.
+(gzip or identity). Ankr Confidential RPC mode also encrypts every request and
+answer to one attested node. ESM-first, vitest-tested, chain-agnostic.
 
 **Version gate:** SDK `>=0.3.0` requires sidecar `>=0.5.0` (string chain id,
 104-byte pre-image). Older sidecars sign the legacy format and verification
-fails closed.
+fails closed. Ankr Confidential RPC mode requires sidecar `>=0.5.2`.
 
 ## Commands
 
@@ -107,6 +108,8 @@ variables set.
   the verification primitives), `ethers` (`@w3tech.io/vrpc-ethers`), `viem`
   (`@w3tech.io/vrpc-viem`), `dstack-verify` (`@w3tech.io/dstack-verify`), and
   `proxy` (`@w3tech.io/vrpc-proxy`, local verifying reverse proxy + `vrpc-proxy` CLI).
+  Private, not published: `packages/test-support` (`@w3tech.io/vrpc-test-support`)
+  and the `examples` workspace (`@w3tech.io/vrpc-examples`).
 - Public surface re-exported through `packages/core/src/index.ts`; implementation
   lives in `packages/core/src/trusted-verifier.ts`, `packages/core/src/verify.ts`,
   `packages/core/src/attestation.ts`,
@@ -118,14 +121,16 @@ variables set.
   logic lives outside core: `computeComposeHash` is in
   `packages/dstack-verify/src/verify-steps.ts` (exported via
   `@w3tech.io/dstack-verify`).
-- SDK is a thin verifier wrapping `fetch` — no JSON-RPC re-implementation, no
-  batching, no method-specific decoders.
+- Open mode is a thin verifier wrapping `fetch` — no JSON-RPC re-implementation, no
+  batching, no method-specific decoders. Ankr Confidential RPC mode seals each
+  request to the attested node (Oblivious HTTP + Binary HTTP) and opens the answer
+  after its signature verifies.
 - Pairs with `verifiable-rpc-sidecar` `v0.5.0`. Wire contract = the 104-byte
   canonical pre-image (`sha256(utf8(chain_id))` ‖ `sha256(req)` ‖ `sha256(resp)`
   ‖ `timestamp_ms` u64 LE) + `vRPC-Signature` / `vRPC-Timestamp` / `vRPC-Pubkey`
   headers + `/attestation?nonce=<hex>` JSON shape. Version gate: SDK `>=0.3.0`
   requires sidecar `>=0.5.0` — older sidecars sign the legacy pre-image and
-  verification fails closed.
+  verification fails closed. Ankr Confidential RPC mode requires sidecar `>=0.5.2`.
 - **Content encoding is not a correctness concern.** The sidecar signs the
   content-decoded body, so a standard auto-decoding `fetch` (which gunzips a
   `content-encoding: gzip` response before `arrayBuffer()`) hashes the same bytes
@@ -145,7 +150,7 @@ variables set.
 | `.github/workflows/ci.yml`    | CI workflow — the pre-push gate on push/PR, plus the per-package node-floor tests and the core browser suite. |
 | `Dockerfile`                  | Root multi-stage image (node:24-slim builder → distroless nodejs24 runtime, amd64, single self-contained `cli.js`). Publishes to GHCR (GitHub Container Registry) as `ghcr.io/w3tech/vrpc-proxy`.                               |
 | `packages/proxy/tsup.docker.config.ts` | Docker-only tsup config — bundles everything (`noExternal`) into one `cli.js` for the distroless stage. Kept out of the npm package (not in the `files` whitelist).                        |
-| `.github/workflows/docker-test-build.yml` | On push: build + in-container smoke, gha layer cache, no registry push. Pre-tag validation.                                                                                     |
+| `.github/workflows/docker-test-build.yml` | On push and PR (path-filtered): build + in-container smoke, gha layer cache, no registry push. Pre-tag validation.                                                             |
 | `.github/workflows/publish.yml` (`docker` job) | On `v*` tag: hermetic (`no-cache`) build + GHCR push, cosign keyless sign, double `attest-build-provenance` (image digest + bundle file). Parallel to the `npm` job. |
 
 ## Where to look first
@@ -177,14 +182,19 @@ variables set.
   `VerifiedPair`. Consumers handle batching, retries.
 - **Byte-exact 104-byte pre-image** — pinned by a unit test mirroring
   `pre_image_layout_is_byte_exact` from the sidecar; any drift is a hard bug.
-- **Typed errors at every boundary** — every SDK error is a `VrpcError`
+- **Typed errors at every boundary** — every error class in
+  `packages/core/src/errors.ts` (re-exported by ethers and viem) is a `VrpcError`
   (`executed` says whether the call may have run; `mayHaveExecuted(err)` reads
   it through `.cause`). Checks fail as `VerificationError` subclasses for
   `MissingHeader`, `MalformedHeader`, `BadSignature`, `StaleTimestamp`,
-  `InvalidNonce`, `InvalidChainId`, `AttestationFailed`. Attestation evidence
+  `InvalidNonce`, `InvalidChainId`, `AttestationFailed`, and in Ankr Confidential
+  RPC mode `ConfidentialSignerMismatch`, `ConfidentialDecryptFailed`,
+  `MalformedConfidentialResponse`. Attestation evidence
   that could not be fetched or checked is `AttestationUnavailable` (an
   `UnavailableError`). A bad option, including a configured chain id, is
-  `InvalidOption`.
+  `InvalidOption`; a bad confidential inner request is `InvalidInnerRequest`.
+  Not `VrpcError`s: the proxy's `ProxyError` family and dstack-verify's
+  `AttestationError`.
 - **No throw-from-async-constructor** — synchronous fail-fast for config errors
   (e.g. `new TrustedVerifier(opts)` / `validateChainId`); runtime verification
   errors from call sites only.

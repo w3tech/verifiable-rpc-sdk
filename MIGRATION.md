@@ -11,7 +11,8 @@ Upgrading from 0.3.2? See [Upgrading from 0.3 to 0.4](#upgrading-from-03-to-04).
 Before you rely on the signature, read the README's
 [What is verified / What is NOT verified](./README.md#what-is-verified--and-what-is-not)
 section — the trust boundary is **signed + untampered + fresh + correctly bound**,
-NOT full TDX quote attestation.
+with the TDX quote checked by the hardware verifier (Phala's cloud service by
+default); it is NOT yet full *local* TDX attestation.
 
 ---
 
@@ -86,7 +87,7 @@ response carries it and omitted when absent. A gateway route that requires a
 (fail-closed), never a silent pass.
 
 The standalone attestation fetch is a **single** `fetchAttestation(opts)` —
-`fetchAttestation({ attestationUrl, nonce, nodeId?, headers? })`. There
+`fetchAttestation({ attestationUrl, nonce, nodeId?, headers?, fetch? })`. There
 is no former via-gateway helper; the same helper covers the via-gateway path (pass
 the gateway-derived `attestationUrl` and the captured `nodeId`).
 
@@ -192,16 +193,19 @@ non-`VerificationError` (network error, ethers `SERVER_ERROR`, viem
 `HttpRequestError`/`RpcRequestError`) propagates too.
 
 Other shared knobs: `replayWindowMs` (forwarded to `verifyResponse`; omit →
-vrpc-core default 60s). viem additionally accepts `headers`, `fetchFn`, and
-`timeout`.
+vrpc-core default 60s), `pubkeyCacheTtlMs` (default 1 hour), `hardwareVerifier`,
+`logger`, and `confidential` (Ankr Confidential RPC mode). ethers additionally
+accepts `fetch`; viem additionally accepts `headers`, `fetchFn`, and `timeout`.
 
 ---
 
 ## 5. How a verification failure surfaces
 
 The failure type is the **same shared `VerificationError` family** across both
-adapters (`MissingHeader`, `MalformedHeader`, `BadSignature`, `StaleTimestamp`,
-`InvalidNonce`, `AttestationFailed` — each carries a discriminator `kind`).
+adapters (`MissingHeader`, `MalformedHeader`, `InvalidChainId`, `BadSignature`,
+`StaleTimestamp`, `InvalidNonce`, `AttestationFailed`, and in Ankr Confidential
+RPC mode `ConfidentialSignerMismatch`, `ConfidentialDecryptFailed`,
+`MalformedConfidentialResponse` — each carries a discriminator `kind`).
 Attestation that cannot be fetched right now is `AttestationUnavailable`, an
 `UnavailableError`. Every error carries `executed`; a retry is safe only when
 `mayHaveExecuted(err)` returns `false`. What differs is only how you reach it
@@ -430,8 +434,9 @@ viem:
 ## Runnable examples
 
 Runnable scripts live in `examples/`. All target Ankr's public Arbitrum
-vRPC endpoint and need no API key (every response is verified before it is
-returned):
+vRPC endpoint (every response is verified before it is returned). 01–03 need no
+API key; 04 needs `ANKR_API_KEY` for a verified-success run, and without it the
+proxy fails closed:
 
 - [`examples/01-ethers-client.ts`](./examples/01-ethers-client.ts) — drop-in ethers `VrpcProvider`
 - [`examples/02-viem-client.ts`](./examples/02-viem-client.ts) — viem `vrpcHttp` transport + `createPublicClient`

@@ -5,8 +5,9 @@ Verification of dstack / Intel TDX attestation evidence.
 > ## Attestation verification: mandatory hardware verifier
 >
 > `verifyDstackAttestation` enforces a **mandatory** step-4 hardware-signature
-> verifier as its root of trust. If `policy.hardwareVerifier` is absent the call
-> fails closed with `AttestationError("CHK-P1")`. The live SDK path (vrpc-core's
+> verifier as its root of trust. `VerifyPolicy.hardwareVerifier` is a required
+> field; a caller that omits it anyway (untyped JavaScript) gets a fail-closed
+> `AttestationError("CHK-P1")`. The live SDK path (vrpc-core's
 > `TrustedVerifier`) always wires the **Phala
 > CloudVerifier**, which POSTs the DCAP quote to a hosted verify endpoint,
 > asserts the verdict, and binds report_data → pubkey‖nonce and compose_hash →
@@ -37,9 +38,9 @@ Callers never inspect a boolean — they catch `AttestationError`.
 
 Fail-closed gate:
 
-- After CHK-A1/CHK-A2, the **mandatory** step-4 `hardwareVerifier` runs.
-  `policy.hardwareVerifier` absent → **throws** `AttestationError("CHK-P1", ...)`
-  (an unattested response never passes).
+- After CHK-A1/CHK-A2, the **mandatory** step-4 `hardwareVerifier` runs. The
+  type requires it; `policy.hardwareVerifier` absent at runtime → **throws**
+  `AttestationError("CHK-P1", ...)` (an unattested response never passes).
 - A configured verifier **resolves `void`** on success and **throws** on
   failure. The live SDK path always wires the Phala CloudVerifier by default.
 
@@ -56,7 +57,7 @@ Fail-closed gate:
 ### `AttestationError`
 
 A standalone `Error` — it deliberately does NOT extend core's `VerificationError`,
-keeping this package a dependency-free leaf. Carries `chkId: ChkId` (which `CHK-*`
+keeping this package a leaf with no dependency on `@w3tech.io/vrpc-core`. Carries `chkId: ChkId` (which `CHK-*`
 failed) + `detail: string`. Discriminant `kind === "Attestation"`. Narrow via
 `instanceof AttestationError`. `@w3tech.io/vrpc-core` catches it at the
 `verifyDstackAttestation` boundary and re-wraps it as `AttestationFailed` (kind
@@ -100,6 +101,8 @@ event-log replay remain deferred to a future release.
   (it runs before the step-4 hardware verifier). When
   either side is empty/absent (nodes that don't yet serve `app_compose`, or the
   dstack simulator's empty `compose_hash`) it **skips silently — not an error**.
+  The CloudVerifier still needs `composeHash`: an empty or malformed one fails
+  its `mr_config_id` binding with `AttestationError("CHK-P1")`.
 
   > ⚠️ **CHK-A2 is self-consistency ONLY — it is NOT a trust anchor.**
   > `app_compose` and `compose_hash` both come from the **same node** (its own
@@ -125,8 +128,9 @@ await verifyDstackAttestation(bundle, {
 });
 ```
 
-- **Required (fail-closed).** A hardware verifier is mandatory. When
-  `policy.hardwareVerifier` is **unset**, `verifyDstackAttestation` throws
+- **Required (fail-closed).** A hardware verifier is mandatory: `VerifyPolicy`
+  types `hardwareVerifier` as required, and when it is **unset** at runtime
+  `verifyDstackAttestation` throws
   `AttestationError("CHK-P1", …)` after CHK-A1/A2 — an unattested response never
   passes. In the live SDK path, core's
   `TrustedVerifier` always wires the Phala `CloudVerifier` by default, so the

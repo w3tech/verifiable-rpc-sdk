@@ -3,8 +3,8 @@
 Verifying reverse proxy for vRPC endpoints — get vRPC protection with **zero code
 change**. Stand the proxy up in your infrastructure and route your RPC traffic
 through it: any client, any language (Go, Rust, Python, curl, existing TypeScript
-apps), any backend architecture. It forwards every request verbatim to the
-configured upstream vRPC endpoint, verifies every response with
+apps), any backend architecture. By default (open mode) it forwards each request
+body verbatim to the configured upstream vRPC endpoint, verifies every response with
 `@w3tech.io/vrpc-core` (Ed25519 signature + attestation, fail-closed), and relays
 verified bytes back unchanged. An unverified body is never returned to the client.
 
@@ -32,14 +32,18 @@ mapping works; `--listen` or the env var still override it. The image is
 amd64-only and has no `HEALTHCHECK` (distroless runtime, no health endpoint);
 `docker run --init` is optional — SIGTERM is already handled.
 
-The image is published to GHCR on each release tag; until the package is made
-public, `docker login ghcr.io` is required to pull.
+The image is published to GHCR on each release tag, tagged with the bare version
+(`<version>` below, e.g. `0.4.0`, no `v`) and, for a non-prerelease version,
+`latest`. Until the package is made public, `docker login ghcr.io` is required to
+pull.
 
 ## Run with npx (local)
 
 ```sh
 npx @w3tech.io/vrpc-proxy --upstream <url> --chain-id <id>
 ```
+
+Requires Node.js 24 or later (npx and repo runs); the image ships its own Node 24.
 
 ### Verify the image
 
@@ -73,7 +77,12 @@ gh attestation verify ./cli.js -R w3tech/verifiable-rpc-sdk
 
 ## Usage (repo run)
 
+The proxy imports the built `dist` of `@w3tech.io/vrpc-core` and
+`@w3tech.io/dstack-verify`, so build the workspace first:
+
 ```sh
+pnpm install
+pnpm -r build
 pnpm run proxy -- --upstream https://rpc.ankr.com/arbitrum_vrpc --chain-id 42161 --api-key <key>
 ```
 
@@ -82,20 +91,27 @@ Inside the package:
 
 ## Flags and environment variables
 
-CLI flag wins over env var, env var wins over the default.
+CLI flag wins over env var, env var wins over the default. An empty
+`VRPC_PROXY_API_KEY` or `VRPC_PROXY_CONFIDENTIAL` counts as unset. Any other env
+var set to an empty string is not unset: it is validated as given and stops the
+proxy at startup.
 
 | Flag | Env var | Default | Description |
 | ---- | ------- | ------- | ----------- |
-| `--upstream` (required) | `VRPC_PROXY_UPSTREAM` | — | vRPC endpoint URL (e.g. `https://rpc.ankr.com/arbitrum_vrpc`), used verbatim for RPC; the attestation sub-route is derived from it (same single-URL model as the SDK) |
+| `--upstream` (required) | `VRPC_PROXY_UPSTREAM` | — | vRPC endpoint URL (e.g. `https://rpc.ankr.com/arbitrum_vrpc`), the target of RPC requests (in open mode the client path and query are appended, see [Failure semantics](#failure-semantics)); the attestation sub-route is derived from it (same single-URL model as the SDK) |
 | `--chain-id` (required) | `VRPC_PROXY_CHAIN_ID` | — | Chain id (opaque string, validated at startup) |
-| `--api-key` | `VRPC_PROXY_API_KEY` | — | Optional API key sent as `x-api-key` to both the upstream and the attestation endpoint; a client-supplied `x-api-key` header takes precedence. In Ankr Confidential RPC mode a client-supplied `x-api-key` is ignored and only this key (or the key in the `--upstream` path) is used |
+| `--api-key` | `VRPC_PROXY_API_KEY` | — | Optional API key sent as `x-api-key` to both the upstream and the attestation endpoint. On open-mode RPC requests a client-supplied `x-api-key` header takes precedence; the attestation fetch always sends only this key. In Ankr Confidential RPC mode a client-supplied `x-api-key` is ignored and only this key (or the key in the `--upstream` path) is used |
 | `--listen` | `VRPC_PROXY_LISTEN` | `127.0.0.1:8969` | Listen `host:port` |
-| `--timeout` | `VRPC_PROXY_TIMEOUT` | `30000` | Timeout of each upstream request, attestation fetch and cloud (Phala) attestation verify call, ms |
+| `--timeout` | `VRPC_PROXY_TIMEOUT` | `30000` | Timeout of each upstream request, attestation fetch and cloud (Phala) attestation verify call, ms. It bounds connecting, waiting for the response headers and each pause in the body; it is not a total deadline. The Phala verify call also has a fixed 10 s limit and a whole attestation a fixed 60 s limit; a larger value does not extend them |
 | `--replay-window` | `VRPC_PROXY_REPLAY_WINDOW` | core default (`60000`) | Replay window, ms |
 | `--attestation-cache-ttl` | `VRPC_PROXY_ATTESTATION_CACHE_TTL` | core default (`3600000`) | How long a verified attestation (per signing pubkey) is reused before re-attestation, ms. In Ankr Confidential RPC mode: how long the pinned node is kept |
-| `--log-level` | `VRPC_PROXY_LOG_LEVEL` | `error` | `silent` (nothing), `error` (fail-closed reasons only), or `debug` (per-request forward/verify trace) |
+| `--log-level` | `VRPC_PROXY_LOG_LEVEL` | `error` | `silent` (no log lines), `error` (every error response as `proxy.error`, and a failed startup attestation in Ankr Confidential RPC mode as `proxy.attestFailed`), or `debug` (adds a per-request trace and core's events). Log lines go to stderr as `[vrpc-proxy] <level> <event> {json}`; the startup banner and warnings go to stderr at every level |
 | `--max-body-bytes` | `VRPC_PROXY_MAX_BODY_BYTES` | `33554432` (32 MiB) | Request/response body cap |
-| `--confidential` | `VRPC_PROXY_CONFIDENTIAL` | off | Ankr Confidential RPC mode (see below). The env var accepts `1`, `true`, `0`, `false` (any case); any other value stops the proxy at startup |
+| `--confidential` | `VRPC_PROXY_CONFIDENTIAL` | off | Ankr Confidential RPC mode (see below). The flag takes no value, so it cannot turn off a mode the env var turned on. The env var accepts `1`, `true`, `0`, `false` (any case); any other value stops the proxy at startup unless `--confidential` is also passed |
+
+A query on `--upstream` reaches only open-mode RPC requests: the attestation URL,
+and in Ankr Confidential RPC mode both URLs, drop it, and the proxy prints a
+startup warning. Pass the key with `--api-key` or in the `--upstream` path instead.
 
 ## Failure semantics
 
@@ -104,18 +120,24 @@ zero upstream body bytes reach the client. Every error path responds with a
 typed JSON body:
 
 ```json
-{ "error": { "kind": "...", "message": "...", "traceId": "..." } }
+{ "error": { "kind": "...", "message": "...", "traceId": "...", "executed": "unknown" } }
 ```
+
+If the client has disconnected, or the status line is already sent, the proxy
+closes the connection instead.
 
 `traceId` is present only when the upstream answered with an `x-shark-trace-id`
 header (the same value also appears as a `traceId` field in the `proxy.error`
 log line) — use it to correlate a fail-closed error with the upstream's logs.
+`executed` is present only on errors from core (see below the table).
 
-One row per `ProxyError` kind (source of truth: `src/errors.ts`):
+One row per `ProxyError` kind used in open mode (source of truth:
+`src/errors.ts`); `UnsupportedMediaType` is used only in
+[Ankr Confidential RPC mode](#ankr-confidential-rpc-mode):
 
 | Error kind | HTTP status | Thrown when |
 | ---------- | ----------- | ----------- |
-| `Config` | — (startup: message on stderr, exit 1 before the socket binds) | Invalid or missing startup configuration |
+| `Config` | — (startup: message on stderr, exit 1 before the socket binds) | Invalid or missing startup configuration. Core's `InvalidOption` (e.g. a bad `--chain-id`) exits the same way; a failed bind (e.g. `EADDRINUSE`) also exits 1 |
 | `BodyTooLarge` | `413` | Inbound request body exceeds the configured cap |
 | `UpstreamTimeout` | `504` | Upstream did not answer within the configured timeout |
 | `UpstreamConnect` | `502` | Upstream connection or dispatch failed (DNS, refused, reset, TLS, …) |
@@ -124,11 +146,22 @@ One row per `ProxyError` kind (source of truth: `src/errors.ts`):
 | `DecodeFailed` | `502` | Upstream body failed to decode under its declared `Content-Encoding` (unknown coding or corrupt stream) — cannot verify |
 | `Internal` | `502` | Unexpected internal failure — generic message, no details leaked |
 
-Verification failures from core (`BadSignature`, `StaleTimestamp`, …) also
-respond `502` with the same JSON shape, carrying core's `kind` discriminator.
+Errors from core respond with the same JSON shape, carrying core's `kind`
+discriminator and `executed`, which in open mode is always `"unknown"` (the
+request already reached the upstream). Verification failures (`BadSignature`,
+`StaleTimestamp`, `AttestationFailed`, …) and any other core error respond `502`;
+`AttestationUnavailable` (the attestation could not be fetched or checked)
+responds `503`, `504` on timeout, or `429` when the attestation endpoint answered
+`429`.
 
 In open mode, verified responses are relayed verbatim — body bytes, `Content-Encoding`, and
 `vRPC-*` headers untouched.
+
+In open mode, the request goes upstream with its method, body bytes and headers, except
+hop-by-hop headers, `host` and `content-length`. The client path is appended to
+the `--upstream` path after dot segments are resolved, so it cannot climb above
+it; the `--upstream` query goes before the client's query. A request to `/` goes
+to the `--upstream` URL as is.
 
 ## Ankr Confidential RPC mode
 
@@ -137,10 +170,13 @@ the [core Ankr Confidential RPC mode section](../core/README.md#ankr-confidentia
 
 With `--confidential`, the proxy attests one node at startup through the
 upstream's `/attestation` route and pins it. The pin is kept until
-`--attestation-cache-ttl` expires or a request fails; the next request then
+`--attestation-cache-ttl` expires or the answer to a sealed request blames the
+node, for example a failed verification or decryption, an unexpected response,
+or a gateway refusal other than `413`/`429`. A transport failure, a stale timestamp and a
+`413`/`429` refusal keep the pin. Once the pin is dropped, the next request
 attests again and may pin a different node. Every client request — JSON-RPC,
 batch or any REST path — is sealed to that node and sent to
-`<upstream>/confidential`. The answer is verified against the pinned
+`<upstream>/confidential?node_id=<pinned node id>`. The answer is verified against the pinned
 node and decrypted before it is relayed. One proxy pins one node; run more
 proxies to scale.
 
@@ -150,8 +186,10 @@ plaintext. Protecting it is your responsibility.** The bind defaults are
 unchanged (`127.0.0.1:8969` with npx, `0.0.0.0:8969` in the image) and the
 proxy prints no warning.
 
-Sent upstream: only the configured API key, `content-type: message/ohttp-req`
-and `accept-encoding: identity`. No client header is sent to the gateway. Only
+Sent upstream: only the configured API key, `content-type: message/ohttp-req`,
+`accept-encoding: identity` and the pinned node id in the `node_id` query
+parameter. A query on `--upstream` is dropped. No client header is sent to the
+gateway. Only
 the request's `content-type` and `accept`, with its method, path, query and
 body, travel inside the encrypted request to the node.
 
@@ -178,7 +216,8 @@ Refused locally, with nothing sent upstream:
 A failed startup attestation does not stop the proxy; the next request attests
 again. The proxy never retries a failed request.
 
-Errors use the same JSON shape plus `executed`, and carry no `traceId`:
+Errors use the same JSON shape and carry no `traceId`; `executed` is present
+where the table below gives a value:
 
 ```json
 { "error": { "kind": "AttestationUnavailable", "message": "...", "executed": "no" } }
@@ -204,6 +243,25 @@ Errors use the same JSON shape plus `executed`, and carry no `traceId`:
 | `AttestationFailed` | `502` | `no` | The attestation failed verification; the sealed request was not sent |
 | `InternalError` | `502` | `no` / `unknown` | Unexpected failure in the client (`no` before the sealed request was sent) |
 | `Internal` | `502` | — | Unexpected internal failure |
+
+## Programmatic use
+
+```ts
+import { createProxyServer, parseConfig } from "@w3tech.io/vrpc-proxy";
+
+const config = parseConfig(
+  ["--upstream", "https://rpc.ankr.com/arbitrum_vrpc", "--chain-id", "42161"],
+  process.env,
+);
+const server = createProxyServer(config);
+server.listen(config.listenPort, config.listenHost);
+```
+
+`parseConfig(argv, env)` applies the same flags, env vars and checks as the CLI.
+It throws `ConfigError` or core's `InvalidOption`, and leaves `config.warnings`
+for you to print. `createProxyServer(config)` returns an `http.Server` that is not
+listening yet; call `listen()` yourself. The `ProxyError` classes are exported
+for `instanceof` checks.
 
 ## Example
 
