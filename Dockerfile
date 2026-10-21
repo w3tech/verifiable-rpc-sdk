@@ -2,9 +2,8 @@
 FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS builder
 WORKDIR /build
 RUN npm i -g pnpm@11.8.0
-# Layer-cache friendly: manifests first, then sources. ALL FIVE workspace package
-# manifests are required — the lockfile has five importers and the
-# --frozen-lockfile check validates the whole workspace.
+# Layer-cache friendly: manifests first, then sources. The five published package manifests
+# are enough: --frozen-lockfile accepts the uncopied test-support and examples importers.
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json tsconfig.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/dstack-verify/package.json packages/dstack-verify/
