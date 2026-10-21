@@ -86,27 +86,30 @@ export function describeConfidentialError(err: unknown): {
   if (!(err instanceof VrpcError)) {
     return { status: 502, kind: "Internal", message: "Internal proxy error" };
   }
-  const { executed } = err;
   const code = (err.cause as { code?: unknown } | undefined)?.code;
-  const withCode = typeof code === "string" ? { executed, code } : { executed };
+  const coded = { executed: err.executed, ...(typeof code === "string" ? { code } : {}) };
   if (err instanceof TransportFailed && err.reason === "network") {
-    const [status, kind, message] = upstreamFailure(err.cause, code);
-    return { status, kind, message, ...withCode };
+    const [status, kind, message] = upstreamFailure(code);
+    return { status, kind, message, ...coded };
   }
-  return { status: statusOf(err), kind: err.kind, message: err.message, ...withCode };
+  return { status: statusOf(err), kind: err.kind, message: err.message, ...coded };
 }
 
-function upstreamFailure(cause: unknown, code: unknown): [number, string, string] {
-  if (isUndiciTimeout(cause)) {
+type Rendered = [status: number, kind: string, message: string];
+
+const UPSTREAM_FAILURES = new Map<unknown, Rendered>([
+  [
+    "UPSTREAM_BODY_TOO_LARGE",
+    [502, "UpstreamBodyTooLarge", "Upstream response body exceeds the size limit"],
+  ],
+  ["DECODE_FAILED", [502, "DecodeFailed", "Upstream response could not be decoded"]],
+]);
+
+function upstreamFailure(code: unknown): Rendered {
+  if (isUndiciTimeout({ code })) {
     return [504, "UpstreamTimeout", "Upstream did not respond within the configured timeout"];
   }
-  if (code === "UPSTREAM_BODY_TOO_LARGE") {
-    return [502, "UpstreamBodyTooLarge", "Upstream response body exceeds the size limit"];
-  }
-  if (code === "DECODE_FAILED") {
-    return [502, "DecodeFailed", "Upstream response could not be decoded"];
-  }
-  return [502, "UpstreamConnect", "Upstream request failed"];
+  return UPSTREAM_FAILURES.get(code) ?? [502, "UpstreamConnect", "Upstream request failed"];
 }
 
 function statusOf(err: VrpcError): number {
