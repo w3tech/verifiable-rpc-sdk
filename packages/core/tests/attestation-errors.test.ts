@@ -240,6 +240,11 @@ const ROWS: Row[] = [
   {
     name: "a non-JSON answer without vRPC-NodeId",
     answer: () => reply("not json", 200, {}),
+    error: failed("malformed", NOT_JSON),
+  },
+  {
+    name: "a valid answer without vRPC-NodeId",
+    answer: (nonceHex) => reply(attestationBody(nonceHex), 200, {}),
     error: unavailable("node-id-missing", 200),
     modes: ["confidential"],
   },

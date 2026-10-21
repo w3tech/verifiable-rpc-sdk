@@ -80,7 +80,6 @@ export async function fetchAttestation(opts: FetchAttestationOptions): Promise<A
     nonce: opts.nonce,
     nodeId: opts.nodeId,
     headers: opts.headers ?? {},
-    requireNodeId: false,
   });
   return attestation;
 }
@@ -94,13 +93,12 @@ interface GetAttestationOptions {
   headers: Record<string, string>;
   nodeId?: string | undefined;
   signal?: AbortSignal | undefined;
-  requireNodeId: boolean;
 }
 
 async function getAttestation(
   transport: ConfidentialTransport,
   opts: GetAttestationOptions,
-): Promise<{ attestation: Attestation; nodeId: string | undefined }> {
+): Promise<{ attestation: Attestation; nodeId: string | undefined; status: number }> {
   const response = await guardedSend(
     transport,
     {
@@ -124,10 +122,7 @@ async function getAttestation(
   if (nodeId !== undefined && !NODE_ID_RE.test(nodeId)) {
     throw new AttestationFailed("malformed", "vRPC-NodeId must be a single node id");
   }
-  if (opts.requireNodeId && nodeId === undefined) {
-    throw new AttestationUnavailable("node-id-missing", { status: response.status });
-  }
-  return { attestation: parseAttestationBody(response.body), nodeId };
+  return { attestation: parseAttestationBody(response.body), nodeId, status: response.status };
 }
 
 // Above the gateway's attestation timeout plus the hardware verifier's.
@@ -189,14 +184,16 @@ async function attest(opts: AttestNodeOptions, signal: AbortSignal): Promise<Nod
     ...(opts.nodeId === undefined ? {} : { nodeId: opts.nodeId }),
     nonce: bytesToHex(nonce),
   });
-  const { attestation, nodeId } = await getAttestation(opts.transport, {
+  const { attestation, nodeId, status } = await getAttestation(opts.transport, {
     attestationUrl: opts.attestationUrl,
     nonce,
     headers: opts.headers,
     nodeId: opts.nodeId,
     signal,
-    requireNodeId: expectPubkey === undefined,
   });
+  if (expectPubkey === undefined && nodeId === undefined) {
+    throw new AttestationUnavailable("node-id-missing", { status });
+  }
   if (!ATTESTED_PUBKEY_RE.test(attestation.pubkey)) {
     throw new AttestationFailed("malformed", "pubkey must be 0x + 64 hex chars");
   }

@@ -391,6 +391,10 @@ viem:
   (`ConfidentialClient`, `ConfidentialInfo`), `LazyConfidentialClient` in the main
   entry. Their `fetch` option carries the attestation GET and the sealed requests
   too, not only the default hardware verifier's call.
+- Ankr Confidential RPC: an attestation answer without `vRPC-NodeId` is
+  `AttestationUnavailable` with `reason: "node-id-missing"` and its `status`
+  (proxy 503); a body that is not JSON or misses a field is `AttestationFailed`
+  with `reason: "malformed"` (proxy 502) first, as in open mode.
 - ethers: `new VrpcProvider(url, chainId, { confidential: true })`,
   `confidentialReady()`, `getConfidentialInfo()`.
 - viem: `vrpcHttp(url, { confidential: true })`.
