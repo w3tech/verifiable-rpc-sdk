@@ -41,6 +41,8 @@ pnpm add @w3tech.io/vrpc-ethers ethers     # ethers users
 pnpm add @w3tech.io/vrpc-viem viem         # viem users
 ```
 
+Upgrading from 0.3? See [Upgrading from 0.3 to 0.4](./MIGRATION.md#upgrading-from-03-to-04).
+
 New to it? Start with the [**Migration guide**](./MIGRATION.md) — the one-line swap, the optional (but strongly recommended) `chainId`, and the caveats for both adapters. Runnable examples live in [`examples/`](./examples/): `01-ethers-client.ts`, `02-viem-client.ts`, `03-vrpc-core-walkthrough.ts`, `04-proxy.ts`. Run them with `pnpm example:01-ethers-client` (and `:02-viem-client`, `:03-vrpc-core-walkthrough`, `:04-proxy`).
 
 ## What is verified — and what is not
