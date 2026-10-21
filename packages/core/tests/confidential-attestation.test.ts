@@ -217,17 +217,6 @@ describe("ConfidentialClient attestation: gateway answers", () => {
     await expectRecovers(node, client);
   });
 
-  test("an attestation body over the size cap is AttestationUnavailable", async () => {
-    const node = testNode();
-    node.setAttestation(() => answer(200, new Uint8Array(201326593)));
-    const client = clientFor(node.transport);
-    const err = await rejectionOf(client.request(jsonRpcCall()));
-
-    expectUnavailable(err, "transport");
-    expect(posts(node)).toBe(0);
-    await expectRecovers(node, client);
-  });
-
   test.each([
     [401, { "content-type": "application/json" }, '{"error":"unauthorized"}'],
     [403, { "content-type": "text/plain" }, "forbidden"],

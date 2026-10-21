@@ -324,7 +324,12 @@ export abstract class UnavailableError extends VrpcError {
   abstract override readonly kind: UnavailableErrorKind;
 }
 
-export type AttestationUnavailableReason = "status" | "transport" | "node-id-missing" | "timeout";
+export type AttestationUnavailableReason =
+  | "status"
+  | "transport"
+  | "too-large"
+  | "node-id-missing"
+  | "timeout";
 
 /**
  * The node could not be attested, so the call was not sent.

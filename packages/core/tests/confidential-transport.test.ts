@@ -293,7 +293,7 @@ describe("default transport over HTTP", () => {
     const err = await rejectionOf(clientAt(h).request(jsonRpcCall()));
 
     expect(err).toBeInstanceOf(AttestationUnavailable);
-    expect((err as AttestationUnavailable).reason).toBe("transport");
+    expect((err as AttestationUnavailable).reason).toBe("too-large");
     expect(posts(h)).toHaveLength(0);
   });
 

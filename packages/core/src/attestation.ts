@@ -25,7 +25,6 @@ import { defaultLogger, type Logger } from "./logger";
 import {
   type ConfidentialTransport,
   fetchTransport,
-  MAX_RESPONSE_BYTES,
   type OuterResponse,
   ResponseTooLarge,
 } from "./transport";
@@ -97,6 +96,9 @@ export async function fetchAttestation(opts: FetchAttestationOptions): Promise<A
   return attestation;
 }
 
+// Real answers are about 20 KB; the gateway caps at 4 MiB.
+const MAX_ATTESTATION_BYTES = 1_048_576;
+
 interface GetAttestationOptions {
   attestationUrl: string;
   nonce: Uint8Array;
@@ -122,11 +124,11 @@ async function getAttestation(
     });
   } catch (cause) {
     if (opts.signal?.aborted) throw opts.signal.reason;
-    if (cause instanceof ResponseTooLarge) throw new AttestationUnavailable("transport");
+    if (cause instanceof ResponseTooLarge) throw new AttestationUnavailable("too-large");
     throw new AttestationUnavailable("transport", { cause });
   }
-  if (response.body.byteLength > MAX_RESPONSE_BYTES) {
-    throw new AttestationUnavailable("transport");
+  if (response.body.byteLength > MAX_ATTESTATION_BYTES) {
+    throw new AttestationUnavailable("too-large");
   }
   if (response.status < 200 || response.status > 299) {
     throw new AttestationUnavailable("status", { status: response.status });

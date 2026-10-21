@@ -34,7 +34,7 @@ export class AttestationUnavailable extends UnavailableError {
 }
 
 // @public (undocumented)
-export type AttestationUnavailableReason = "status" | "transport" | "node-id-missing" | "timeout";
+export type AttestationUnavailableReason = "status" | "transport" | "too-large" | "node-id-missing" | "timeout";
 
 // @public
 export class BadSignature extends VerificationError {
