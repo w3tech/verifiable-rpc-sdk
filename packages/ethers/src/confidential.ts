@@ -2,13 +2,12 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode for VrpcProvider: FetchRequest transport, lazy client, answer mapping.
 
-import { ResponseTooLarge, readCappedBody } from "@w3tech.io/vrpc-core";
-import type {
-  ConfidentialClient,
-  ConfidentialClientOptions,
-  ConfidentialInfo,
-  ConfidentialTransport,
-} from "@w3tech.io/vrpc-core/confidential";
+import {
+  type LazyConfidentialClient,
+  ResponseTooLarge,
+  readCappedBody,
+} from "@w3tech.io/vrpc-core";
+import type { ConfidentialTransport } from "@w3tech.io/vrpc-core/confidential";
 import {
   assert,
   type FetchGetUrlFunc,
@@ -133,52 +132,10 @@ export function fetchRequestTransport(connection: () => FetchRequest): Confident
   };
 }
 
-/** The core client's check, run in the constructor so a bad value throws before any call. */
-export function requirePositiveMs(name: string, value: number | undefined): void {
-  if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0)) {
-    throw new RangeError(`${name} must be a positive integer number of milliseconds`);
-  }
-}
-
-/** One lazily loaded client per provider; a failed load or construction is retried on next use. */
-export class ConfidentialHolder {
-  readonly #options: ConfidentialClientOptions;
-  #client: ConfidentialClient | undefined;
-  #pending: Promise<ConfidentialClient> | undefined;
-
-  constructor(options: ConfidentialClientOptions) {
-    this.#options = options;
-  }
-
-  client(): Promise<ConfidentialClient> {
-    if (this.#client !== undefined) return Promise.resolve(this.#client);
-    this.#pending ??= (async () => {
-      try {
-        const { ConfidentialClient } = await import("@w3tech.io/vrpc-core/confidential");
-        this.#client = new ConfidentialClient(this.#options);
-        return this.#client;
-      } catch (err) {
-        this.#pending = undefined;
-        throw err;
-      }
-    })();
-    return this.#pending;
-  }
-
-  async ready(options?: { signal?: AbortSignal }): Promise<ConfidentialInfo> {
-    return (await this.client()).ready(options);
-  }
-
-  info(): ConfidentialInfo | undefined {
-    return this.#client?.getConfidentialInfo();
-  }
-}
-
 export async function sendConfidential(
-  holder: ConfidentialHolder,
+  client: LazyConfidentialClient,
   payload: JsonRpcPayload | Array<JsonRpcPayload>,
 ): Promise<Array<JsonRpcResult>> {
-  const client = await holder.client();
   const res = await client.request({
     method: "POST",
     path: "/",

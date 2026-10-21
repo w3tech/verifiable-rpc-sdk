@@ -7,19 +7,16 @@
 // unverified data is ever returned.
 
 import {
-  createCloudVerifier,
   deriveVrpcUrls,
   InvalidOption,
+  LazyConfidentialClient,
   parseChainId,
   TrustedVerifier,
   type TrustedVerifierOptions,
   type VrpcUrls,
   validateChainId,
 } from "@w3tech.io/vrpc-core";
-import type {
-  ConfidentialClientOptions,
-  ConfidentialInfo,
-} from "@w3tech.io/vrpc-core/confidential";
+import type { ConfidentialInfo } from "@w3tech.io/vrpc-core/confidential";
 import {
   type FetchRequest,
   type JsonRpcPayload,
@@ -30,12 +27,7 @@ import {
   toUtf8String,
 } from "ethers";
 
-import {
-  ConfidentialHolder,
-  fetchRequestTransport,
-  requirePositiveMs,
-  sendConfidential,
-} from "./confidential";
+import { fetchRequestTransport, sendConfidential } from "./confidential";
 import type { VrpcOptions } from "./options";
 
 // Drop `undefined`-valued keys: `exactOptionalPropertyTypes` forbids passing an
@@ -65,7 +57,7 @@ export class VrpcProvider extends JsonRpcProvider {
   readonly #makeVerifier: (chainId: string) => TrustedVerifier;
   // ONE TrustedVerifier per provider (lifetime cache); eager on pin, lazy on auto-derive.
   #trustedVerifier: TrustedVerifier | undefined;
-  readonly #confidential: ConfidentialHolder | undefined;
+  readonly #confidential: LazyConfidentialClient | undefined;
 
   constructor(
     url: string | FetchRequest,
@@ -135,8 +127,6 @@ export class VrpcProvider extends JsonRpcProvider {
           "Ankr Confidential RPC mode with ethers needs a decimal chain id",
         );
       }
-      requirePositiveMs("replayWindowMs", replayWindowMs);
-      requirePositiveMs("pubkeyCacheTtlMs", pubkeyCacheTtlMs);
     }
 
     // staticNetwork (pin only) skips ethers' startup eth_chainId probe without
@@ -166,21 +156,16 @@ export class VrpcProvider extends JsonRpcProvider {
     if (confidential === true && chainId !== undefined) {
       // CCIP-Read would send the call data in plaintext to a URL the contract names.
       this.disableCcipRead = true;
-      this.#confidential = new ConfidentialHolder(
-        pruneUndefined<ConfidentialClientOptions>({
-          url: urls.rpcUrl,
-          chainId,
-          replayWindowMs,
-          pubkeyCacheTtlMs,
-          logger,
-          hardwareVerifier:
-            hardwareVerifier ??
-            (attestationFetch === undefined
-              ? undefined
-              : createCloudVerifier({ fetch: attestationFetch })),
-          transport: fetchRequestTransport(() => this._getConnection()),
-        }),
-      );
+      this.#confidential = new LazyConfidentialClient({
+        url: urls.rpcUrl,
+        chainId,
+        replayWindowMs,
+        pubkeyCacheTtlMs,
+        logger,
+        hardwareVerifier,
+        fetch: attestationFetch,
+        transport: fetchRequestTransport(() => this._getConnection()),
+      });
     } else if (chainId != null) {
       // Build the verifier now if possible; auto-derive defers to the first _send.
       this.#trustedVerifier = this.#makeVerifier(chainId);
@@ -200,7 +185,7 @@ export class VrpcProvider extends JsonRpcProvider {
 
   /** The node pinned in Ankr Confidential RPC mode; `undefined` before attestation or in open mode. */
   getConfidentialInfo(): ConfidentialInfo | undefined {
-    return this.#confidential?.info();
+    return this.#confidential?.getConfidentialInfo();
   }
 
   // POST, verify the raw bytes, then parse. chainId resolved lazily if unset.

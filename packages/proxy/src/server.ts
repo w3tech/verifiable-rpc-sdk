@@ -10,7 +10,6 @@
 import http from "node:http";
 
 import {
-  createCloudVerifier,
   createConsoleLogger,
   defaultLogger,
   type Logger,
@@ -115,11 +114,11 @@ function createConfidentialServer(
     headers: config.attestationHeaders,
     transport: createConfidentialTransport(config, dispatcher),
     logger: verifierLogger,
-    hardwareVerifier:
-      overrides.hardwareVerifier ?? createCloudVerifier({ fetch: agentFetch(dispatcher) }),
+    hardwareVerifier: overrides.hardwareVerifier,
+    fetch: agentFetch(dispatcher),
+    replayWindowMs: config.replayWindowMs,
+    pubkeyCacheTtlMs: config.pubkeyCacheTtlMs,
   };
-  if (config.replayWindowMs !== undefined) options.replayWindowMs = config.replayWindowMs;
-  if (config.pubkeyCacheTtlMs !== undefined) options.pubkeyCacheTtlMs = config.pubkeyCacheTtlMs;
 
   let client: ConfidentialClient;
   try {
