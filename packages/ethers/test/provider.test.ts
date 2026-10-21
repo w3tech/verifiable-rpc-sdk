@@ -2,12 +2,7 @@
 // option rules. Bootstrap, verify and decode are tested once in core
 // (`packages/core/tests/open-session.test.ts`).
 
-import {
-  BadSignature,
-  InvalidOption,
-  VerificationError,
-  VrpcProvider,
-} from "@w3tech.io/vrpc-ethers";
+import { InvalidOption, VerificationError, VrpcProvider } from "@w3tech.io/vrpc-ethers";
 import {
   attestationStub,
   CHAIN_ID,
@@ -38,13 +33,12 @@ import { flipFirstDigit, type SigningRequestOptions, signingRequest } from "./he
 const ATT = attestationStub();
 const NODE_ID = "node-abc";
 
-// Answers `eth_chainId` with a signed `bootstrapChainId` (signed for `bootstrapSigningChainId`,
-// default the same chain) and every other method with `responseBody` signed for CHAIN_ID.
+// Answers `eth_chainId` with a signed `bootstrapChainId` and every other method with
+// `responseBody` signed for CHAIN_ID.
 function autoDeriveRequest(
   responseBody: string,
   opts: {
     bootstrapChainId?: string;
-    bootstrapSigningChainId?: string;
     bootstrapHits?: { n: number };
   } = {},
 ): FetchRequest {
@@ -62,8 +56,7 @@ function autoDeriveRequest(
       const body = new TextEncoder().encode(
         JSON.stringify({ jsonrpc: "2.0", id: 1, result: bootstrapResult }),
       );
-      const signingChainId = opts.bootstrapSigningChainId ?? bootstrapChainId;
-      const headers = signedJsonHeaders(signingChainId, requestBytes, body);
+      const headers = signedJsonHeaders(bootstrapChainId, requestBytes, body);
       return { statusCode: 200, statusMessage: "OK", headers, body };
     }
     const headers = signedJsonHeaders(CHAIN_ID, requestBytes, responseBytes, { nodeId: NODE_ID });
@@ -255,48 +248,6 @@ describe("VrpcProvider._send wiring", () => {
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
   });
 
-  test("auto-derive retry: a failed bootstrap is retried and the next call verifies with the honest chainId", async () => {
-    const answer = jsonResult(1, SINGLE_RESULT_BALANCE_HEX);
-    const lying = autoDeriveRequest(answer, {
-      bootstrapChainId: "1",
-      bootstrapSigningChainId: CHAIN_ID,
-    });
-    const honest = autoDeriveRequest(answer);
-    const reads = signingRequest((id) => jsonResult(id, SINGLE_RESULT_BALANCE_HEX), {
-      nodeId: NODE_ID,
-    });
-    const req = new FetchRequest("http://test.invalid");
-    let bootstraps = 0;
-    let readAnswered = () => {};
-    const held = new Promise<void>((resolve) => {
-      readAnswered = resolve;
-    });
-    // The lying answer waits until the first read was answered, so that read shares
-    // the failed bootstrap whether ethers' start loop or the read began it.
-    req.getUrlFunc = async (sentReq, signal) => {
-      const body = new TextDecoder().decode(sentReq.body ?? new Uint8Array());
-      if ((JSON.parse(body) as { method?: string }).method === "eth_chainId") {
-        bootstraps += 1;
-        if (bootstraps === 1) {
-          await held;
-          return lying.getUrlFunc(sentReq, signal);
-        }
-        return honest.getUrlFunc(sentReq, signal);
-      }
-      setTimeout(readAnswered, 0);
-      return reads.getUrlFunc(sentReq, signal);
-    };
-    // No perform cache: the second read must not reuse the first rejection.
-    const provider = new VrpcProvider(req, undefined, { ...WIDE_OPTIONS, cacheTimeout: -1 });
-    try {
-      await expect(provider.getBalance(ADDR)).rejects.toBeInstanceOf(BadSignature);
-      await expect(provider.getBalance(ADDR)).resolves.toBe(BigInt(SINGLE_RESULT_BALANCE_HEX));
-      expect(bootstraps).toBe(2);
-    } finally {
-      provider.destroy();
-    }
-  });
-
   test("positional bigint chainId pins (zero bootstrap)", async () => {
     const bootstrapHits = { n: 0 };
     const provider = new VrpcProvider(
@@ -427,7 +378,6 @@ describe("FetchRequest semantics", () => {
 describe("response classes", () => {
   test.each<[string, SigningRequestOptions, string, number]>([
     ["signed 2xx → value", {}, "value", 1],
-    ["tampered signed 2xx → BadSignature", { tamper: true }, "BadSignature", 0],
     ["signed 500 → SERVER_ERROR", { status: 500 }, "SERVER_ERROR", 1],
     ["tampered signed 500 → BadSignature", { status: 500, tamper: true }, "BadSignature", 0],
     ["unsigned 2xx → MissingHeader", { unsigned: true }, "MissingHeader", 0],

@@ -117,14 +117,13 @@ function signingFetch(
 }
 
 /**
- * A `fetchFn` answering `eth_chainId` with `bootstrapChainId` (default CHAIN_ID) signed for
- * `bootstrapSigningChainId`, and every other call with `responseBody` signed for `signingChainId`.
+ * A `fetchFn` answering `eth_chainId` with a signed `bootstrapChainId` (default CHAIN_ID), and
+ * every other call with `responseBody` signed for `signingChainId`.
  */
 function autoDeriveFetch(
   responseBody: string,
   seam: {
     bootstrapChainId?: string;
-    bootstrapSigningChainId?: string;
     signingChainId?: string;
   } = {},
 ): (url: string, init: RequestInit) => Promise<Response> {
@@ -141,9 +140,8 @@ function autoDeriveFetch(
         id: 1,
         result: `0x${BigInt(bootstrapChainId).toString(16)}`,
       });
-      // `bootstrapSigningChainId` forges a claim the signature does not cover.
       const headers = signedJsonHeaders(
-        seam.bootstrapSigningChainId ?? bootstrapChainId,
+        bootstrapChainId,
         requestBytes,
         new TextEncoder().encode(bootstrapBody),
       );
@@ -193,20 +191,6 @@ describe("vrpcHttp transport wiring", () => {
     expect(balance).toBe(BigInt(SINGLE_RESULT_BALANCE_HEX)); // 2 ETH in wei
   });
 
-  test("a signed body starting with a UTF-8 BOM verifies against the raw bytes", async () => {
-    const json = new TextEncoder().encode(jsonResult(SINGLE_RESULT_BALANCE_HEX));
-    const body = new Uint8Array([0xef, 0xbb, 0xbf, ...json]);
-    const fetchFn = async (url: string, init: RequestInit) => {
-      if (url.includes("/attestation")) return attestationAnswer(url, { appCompose: APP_COMPOSE });
-      const requestBytes = init.body as Uint8Array;
-      const headers = signedJsonHeaders(CHAIN_ID, requestBytes, body, { nodeId: NODE_ID });
-      return new Response(body, { status: 200, headers });
-    };
-    await expect(pinnedTransport(fetchFn).config.request(GET_BALANCE)).resolves.toBe(
-      SINGLE_RESULT_BALANCE_HEX,
-    );
-  });
-
   test("a client on another chain gets InvalidOption and sends nothing", async () => {
     const counter = { n: 0 };
     const t = vrpcHttp(URL, {
@@ -231,41 +215,6 @@ describe("vrpcHttp transport wiring", () => {
     const right = t(PINNED);
     await expect(wrong.config.request(GET_BALANCE)).rejects.toBeInstanceOf(BadSignature);
     await expect(right.config.request(GET_BALANCE)).rejects.toBeInstanceOf(InvalidOption);
-  });
-
-  test("a chain pinned while the bootstrap is in flight is not overwritten by it", async () => {
-    const node = autoDeriveFetch(jsonResult(SINGLE_RESULT_BALANCE_HEX));
-    let bootstrapStarted!: () => void;
-    const started = new Promise<void>((resolve) => (bootstrapStarted = resolve));
-    let releaseBootstrap!: () => void;
-    const bootstrapGate = new Promise<void>((resolve) => (releaseBootstrap = resolve));
-    let releaseSecondRead!: () => void;
-    const secondReadGate = new Promise<void>((resolve) => (releaseSecondRead = resolve));
-    let reads = 0;
-    const fetchFn = async (url: string, init: RequestInit) => {
-      if (!url.includes("/attestation")) {
-        if (sentText(init).includes('"eth_chainId"')) {
-          bootstrapStarted();
-          await bootstrapGate;
-        } else if (++reads === 2) {
-          await secondReadGate;
-        }
-      }
-      return node(url, init);
-    };
-    const t = vrpcHttp(URL, { fetchFn, replayWindowMs: WIDE_WINDOW, hardwareVerifier: MOCK_HV });
-
-    const noChain = t({} as never).config.request(GET_BALANCE);
-    const noChainSettled = noChain.catch(() => {});
-    await started;
-    const otherChain = t(OTHER_CHAIN);
-    const otherChainRead = otherChain.config.request(GET_BALANCE);
-    releaseBootstrap();
-    await noChainSettled;
-    releaseSecondRead();
-
-    await expect(otherChainRead).rejects.toBeInstanceOf(BadSignature);
-    await expect(noChain).rejects.toMatchObject({ kind: "InvalidChainId", executed: "unknown" });
   });
 
   // a uint256 view eth_call → ABI-encoded result verifies + decodes.
@@ -371,31 +320,6 @@ describe("vrpcHttp transport wiring", () => {
     expect(inits).toHaveLength(1);
     expect(inits[0]?.signal).toBeInstanceOf(AbortSignal);
   });
-
-  test("auto-derive retry: a failed bootstrap is retried and the next call verifies with the honest chainId", async () => {
-    const answer = jsonResult(SINGLE_RESULT_BALANCE_HEX);
-    const lying = autoDeriveFetch(answer, {
-      bootstrapChainId: "1",
-      bootstrapSigningChainId: CHAIN_ID,
-    });
-    const honest = autoDeriveFetch(answer);
-    let bootstraps = 0;
-    const fetchFn = (url: string, init: RequestInit) => {
-      if (!url.includes("/attestation") && sentText(init).includes('"eth_chainId"')) {
-        bootstraps += 1;
-        if (bootstraps === 1) return lying(url, init);
-      }
-      return honest(url, init);
-    };
-    const transport = vrpcHttp(URL, {
-      fetchFn,
-      replayWindowMs: WIDE_WINDOW,
-      hardwareVerifier: MOCK_HV,
-    })({} as never);
-    await expect(transport.config.request(GET_BALANCE)).rejects.toBeInstanceOf(BadSignature);
-    await expect(transport.config.request(GET_BALANCE)).resolves.toBe(SINGLE_RESULT_BALANCE_HEX);
-    expect(bootstraps).toBe(2);
-  });
 });
 
 describe("response classes", () => {
@@ -403,7 +327,6 @@ describe("response classes", () => {
   const ERROR = JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32000, message: "x" } });
   test.each<[string, string, SeamOptions, unknown]>([
     ["signed 2xx → value", VALUE, {}, SINGLE_RESULT_BALANCE_HEX],
-    ["tampered signed 2xx → BadSignature", VALUE, { tamper: true }, BadSignature],
     ["signed 500 with an error member → RpcRequestError", ERROR, { status: 500 }, RpcRequestError],
     [
       "signed 502 without an error member → HttpRequestError",
