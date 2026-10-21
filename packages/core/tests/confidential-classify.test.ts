@@ -271,7 +271,7 @@ describe("content-type matching", () => {
 });
 
 describe("transport failures", () => {
-  test("a throwing transport is TransportFailed network with the thrown value as cause", async () => {
+  test("a throwing transport is TransportFailed network with a sanitised cause", async () => {
     const thrown = new TypeError("fetch failed");
     const err = await failedCallAfterWarmup(() => {
       throw thrown;
@@ -283,7 +283,8 @@ describe("transport failures", () => {
     expect(failed.kind).toBe("TransportFailed");
     expect(failed.reason).toBe("network");
     expect(failed.executed).toBe("unknown");
-    expect(failed.cause).toBe(thrown);
+    expect(failed.cause).not.toBe(thrown);
+    expect(failed.cause).toMatchObject({ message: "The request failed." });
     expect(failed.nodeId).toBe(NODE_ID);
   });
 

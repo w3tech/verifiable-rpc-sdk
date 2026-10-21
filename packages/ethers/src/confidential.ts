@@ -2,18 +2,13 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode for VrpcProvider: FetchRequest transport, lazy client, answer mapping.
 
-import {
-  type LazyConfidentialClient,
-  ResponseTooLarge,
-  readCappedBody,
-} from "@w3tech.io/vrpc-core";
+import { type LazyConfidentialClient, readCappedBody } from "@w3tech.io/vrpc-core";
 import type { ConfidentialTransport } from "@w3tech.io/vrpc-core/confidential";
 import {
   assert,
   type FetchGetUrlFunc,
   FetchRequest,
   FetchResponse,
-  isError,
   type JsonRpcPayload,
   type JsonRpcResult,
   makeError,
@@ -84,23 +79,6 @@ function noFollowIdentity(base: FetchGetUrlFunc): FetchGetUrlFunc {
   };
 }
 
-// A getUrlFunc error message may quote the keyed URL; only ethers' own timeout and cancel keep theirs.
-function sanitised(err: unknown): Error {
-  if (err instanceof ResponseTooLarge) return err;
-  const out = new Error(
-    isError(err, "TIMEOUT") || isError(err, "CANCELLED") ? err.shortMessage : "The request failed.",
-  );
-  const code = errorCode(err) ?? errorCode((err as { cause?: unknown } | null)?.cause);
-  if (code !== undefined) Object.assign(out, { code });
-  return out;
-}
-
-function errorCode(err: unknown): string | undefined {
-  const code =
-    typeof err === "object" && err !== null ? (err as { code?: unknown }).code : undefined;
-  return typeof code === "string" && /^[A-Z][A-Z0-9_]*$/.test(code) ? code : undefined;
-}
-
 /** Sends each outer request once through a clone of the provider's `FetchRequest`. */
 export function fetchRequestTransport(connection: () => FetchRequest): ConfidentialTransport {
   return async (outer) => {
@@ -116,16 +94,12 @@ export function fetchRequestTransport(connection: () => FetchRequest): Confident
     req.getUrlFunc = noFollowIdentity(base);
 
     const signal = outer.signal;
-    if (signal?.aborted) throw signal.reason;
     const pending = req.send();
     const cancel = () => req.cancel();
     signal?.addEventListener("abort", cancel, { once: true });
     try {
       const res = await pending;
       return { status: res.statusCode, headers: res.headers, body: res.body ?? new Uint8Array(0) };
-    } catch (err) {
-      if (signal?.aborted) throw signal.reason;
-      throw sanitised(err);
     } finally {
       signal?.removeEventListener("abort", cancel);
     }

@@ -102,31 +102,25 @@ export function fetchTransport(
 ): ConfidentialTransport {
   return async (request) => {
     const send = fetchFn ?? globalThis.fetch;
-    try {
-      const response = await send(request.url, {
-        method: request.method,
-        headers: request.headers,
-        redirect: "manual",
-        ...(request.body === undefined ? {} : { body: request.body }),
-        ...(request.signal === undefined ? {} : { signal: request.signal }),
-      });
-      if (response.type === "opaqueredirect") {
-        return { status: 0, headers: new Headers(), body: new Uint8Array(0) };
-      }
-      return {
-        status: response.status,
-        headers: response.headers,
-        body: await readCappedBody(response, request.maxBytes),
-      };
-    } catch (err) {
-      if (request.signal?.aborted) throw request.signal.reason;
-      if (err instanceof ResponseTooLarge) throw err;
-      throw sanitised(err);
+    const response = await send(request.url, {
+      method: request.method,
+      headers: request.headers,
+      redirect: "manual",
+      ...(request.body === undefined ? {} : { body: request.body }),
+      ...(request.signal === undefined ? {} : { signal: request.signal }),
+    });
+    if (response.type === "opaqueredirect") {
+      return { status: 0, headers: new Headers(), body: new Uint8Array(0) };
     }
+    return {
+      status: response.status,
+      headers: response.headers,
+      body: await readCappedBody(response, request.maxBytes),
+    };
   };
 }
 
-/** Sends one outer request through an injected transport, enforcing the signal and the size cap. */
+/** Sends one outer request through an injected transport, enforcing the signal, the size cap and sanitised errors. */
 export async function guardedSend(
   transport: ConfidentialTransport,
   request: OuterRequest,
@@ -140,7 +134,7 @@ export async function guardedSend(
     response = await raceAbort(transport({ ...request, maxBytes }), signal);
   } catch (err) {
     if (signal?.aborted) throw signal.reason;
-    throw err instanceof ResponseTooLarge ? fail("too-large") : fail("network", err);
+    throw err instanceof ResponseTooLarge ? fail("too-large") : fail("network", sanitised(err));
   }
   if (response.body.byteLength > maxBytes) throw fail("too-large");
   return response;

@@ -9,6 +9,7 @@ import {
 
 const MAX = 8;
 const reason = new Error("caller gave up");
+const KEYED = "https://rpc.example/eth_vrpc/k3y-secret";
 
 function answer(bytes: number): OuterResponse {
   return { status: 200, headers: new Headers(), body: new Uint8Array(bytes) };
@@ -26,6 +27,21 @@ interface Row {
 }
 
 const rejectsWithReason = (err: unknown) => expect(err).toBe(reason);
+
+function messages(err: unknown): string {
+  return err instanceof Error ? `${err.message} ${messages(err.cause)}` : "";
+}
+
+function sanitisedTo(code?: string): Row["expected"] {
+  return (err, sent) => {
+    const { failure, cause } = err as { failure: string; cause: Error };
+    expect(failure).toBe("network");
+    expect(cause).not.toBe(sent);
+    expect(cause.message).toBe("The request failed.");
+    expect((cause as { code?: string }).code).toBe(code);
+    expect(messages(err)).not.toMatch(/eth_vrpc|k3y-secret/);
+  };
+}
 
 const rows: Row[] = [
   {
@@ -74,12 +90,29 @@ const rows: Row[] = [
     expected: rejectsWithReason,
   },
   {
-    name: "a transport throwing synchronously fails network",
+    name: "a synchronous throw quoting the keyed URL keeps only its code",
     transport: () => () => {
-      throw new TypeError("bad url");
+      throw Object.assign(new TypeError(`bad ${KEYED}`), { code: "ERR_INVALID_URL" });
     },
     calls: 1,
-    expected: (err, sent) => expect(err).toMatchObject({ failure: "network", cause: sent }),
+    expected: sanitisedTo("ERR_INVALID_URL"),
+  },
+  {
+    name: "a rejection quoting the keyed URL keeps only the code of its cause",
+    transport: () => async () => {
+      const cause = Object.assign(new Error(`connect ${KEYED}`), { code: "ECONNRESET" });
+      throw Object.assign(new Error(`request to ${KEYED} failed`), { cause });
+    },
+    calls: 1,
+    expected: sanitisedTo("ECONNRESET"),
+  },
+  {
+    name: "a lower-case or non-string code is not copied",
+    transport: () => async () => {
+      throw Object.assign(new Error(KEYED), { code: "econnreset", cause: { code: 42 } });
+    },
+    calls: 1,
+    expected: sanitisedTo(undefined),
   },
 ];
 
@@ -92,11 +125,14 @@ describe("guardedSend", () => {
     const inner = row.transport(controller);
     const transport: ConfidentialTransport = (request) => {
       calls += 1;
-      try {
-        return inner(request);
-      } catch (err) {
+      const keep = (err: unknown) => {
         sent = err;
         throw err;
+      };
+      try {
+        return inner(request).catch(keep);
+      } catch (err) {
+        return keep(err);
       }
     };
     const request: OuterRequest = {

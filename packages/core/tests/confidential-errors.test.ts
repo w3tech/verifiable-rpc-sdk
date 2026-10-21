@@ -131,6 +131,8 @@ interface Extra {
   answer?: ConfidentialHandler;
   cause?: unknown;
   reason?: string;
+  /** The code kept on the fixed-message cause. */
+  sanitised?: string;
 }
 
 interface Row extends Extra {
@@ -177,13 +179,15 @@ const rows: Row[] = [
   ...[new OhttpError("seal-failed"), new TypeError("no subtle"), new RangeError("bad length")].map(
     (e) => row(`seal ${e.name}`, InternalError, "no", "keep", { seal: e, cause: e }),
   ),
-  ...[new TypeError("socket closed"), new RangeError("out of range")].map((e) =>
-    row(`transport ${e.name}`, TransportFailed, "unknown", "keep", {
-      onPost: throwing(e),
-      cause: e,
-      reason: "network",
-    }),
-  ),
+  row("transport error quoting the URL", TransportFailed, "unknown", "keep", {
+    onPost: throwing(
+      Object.assign(new TypeError("connect https://rpc.example/eth_vrpc/k3y"), {
+        code: "ECONNRESET",
+      }),
+    ),
+    reason: "network",
+    sanitised: "ECONNRESET",
+  }),
   row("transport ResponseTooLarge", TransportFailed, "unknown", "keep", {
     onPost: throwing(new ResponseTooLarge()),
     reason: "too-large",
@@ -243,6 +247,9 @@ describe("every failure of request()", () => {
     expect(h.posts - postsBefore).toBe(posted ? 1 : 0);
     if (row.cause !== undefined) expect(failure.cause).toBe(row.cause);
     if (row.reason !== undefined) expect(failure).toHaveProperty("reason", row.reason);
+    if (row.sanitised !== undefined) {
+      expect(failure.cause).toMatchObject({ message: "The request failed.", code: row.sanitised });
+    }
     if (row.pin === "cold") return;
 
     expect(h.client.getConfidentialInfo() === undefined).toBe(row.pin === "drop");
