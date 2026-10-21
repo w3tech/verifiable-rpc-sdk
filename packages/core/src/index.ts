@@ -27,41 +27,7 @@ export type {
   ConfidentialInfo,
   ConfidentialResponse,
 } from "./confidential-client";
-export type {
-  AttestationFailedReason,
-  AttestationUnavailableReason,
-  BadSignatureContext,
-  InvalidInnerRequestReason,
-  MalformedConfidentialResponseReason,
-  OptionName,
-  StaleTimestampContext,
-  TransportFailedReason,
-  UnavailableErrorKind,
-  VerificationErrorKind,
-} from "./errors";
-export {
-  AttestationFailed,
-  AttestationUnavailable,
-  BadSignature,
-  ConfidentialDecryptFailed,
-  ConfidentialSignerMismatch,
-  InternalError,
-  InvalidChainId,
-  InvalidInnerRequest,
-  InvalidNonce,
-  InvalidOption,
-  MalformedConfidentialResponse,
-  MalformedHeader,
-  MissingHeader,
-  mayHaveExecuted,
-  RequestRejected,
-  StaleTimestamp,
-  TransportFailed,
-  UnavailableError,
-  UnexpectedResponse,
-  VerificationError,
-  VrpcError,
-} from "./errors";
+export * from "./errors";
 export { LazyConfidentialClient } from "./lazy-confidential";
 export { byteLen, pickVrpcHeaders } from "./log-redact";
 export type { Logger } from "./logger";

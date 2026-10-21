@@ -44,7 +44,6 @@ export type AttestationUnavailableReason = "status" | "transport" | "too-large" 
 
 // @public
 export class BadSignature extends VerificationError {
-    // Warning: (ae-forgotten-export) The symbol "BadSignatureContext" needs to be exported by the entry point confidential.d.ts
     constructor(ctx: BadSignatureContext);
     // (undocumented)
     readonly kind: "BadSignature";
@@ -54,6 +53,13 @@ export class BadSignature extends VerificationError {
     readonly pubkeyHex: string;
     // (undocumented)
     readonly signatureHex: string;
+}
+
+// @public (undocumented)
+export interface BadSignatureContext {
+    preImageSha256: Uint8Array;
+    pubkeyHex: string;
+    signatureHex: string;
 }
 
 // @public
@@ -145,6 +151,17 @@ export class InternalError extends UnavailableError {
 }
 
 // @public
+export class InvalidChainId extends VerificationError {
+    constructor(chainId: string, reason: string);
+    // (undocumented)
+    readonly chainId: string;
+    // (undocumented)
+    readonly kind: "InvalidChainId";
+    // (undocumented)
+    readonly reason: string;
+}
+
+// @public
 export class InvalidInnerRequest extends VrpcError {
     constructor(reason: InvalidInnerRequestReason);
     // (undocumented)
@@ -155,6 +172,15 @@ export class InvalidInnerRequest extends VrpcError {
 
 // @public (undocumented)
 export type InvalidInnerRequestReason = "method" | "path" | "header" | "content-type-required" | "encode-failed";
+
+// @public
+export class InvalidNonce extends VerificationError {
+    constructor(reason: string);
+    // (undocumented)
+    readonly kind: "InvalidNonce";
+    // (undocumented)
+    readonly reason: string;
+}
 
 // @public
 export class InvalidOption extends VrpcError {
@@ -249,7 +275,6 @@ export class RequestRejected extends UnavailableError {
 
 // @public
 export class StaleTimestamp extends VerificationError {
-    // Warning: (ae-forgotten-export) The symbol "StaleTimestampContext" needs to be exported by the entry point confidential.d.ts
     constructor(ctx: StaleTimestampContext);
     // (undocumented)
     readonly allowedWindowMs: number;
@@ -261,6 +286,14 @@ export class StaleTimestamp extends VerificationError {
     readonly observedMs: bigint;
     // (undocumented)
     readonly skewMs: bigint;
+}
+
+// @public (undocumented)
+export interface StaleTimestampContext {
+    allowedWindowMs: number;
+    nowMs: bigint;
+    observedMs: bigint;
+    skewMs: bigint;
 }
 
 // @public
