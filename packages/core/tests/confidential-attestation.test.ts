@@ -90,19 +90,6 @@ function countingVerifier(): HardwareVerifier & { calls: number } {
 }
 
 describe("ConfidentialClient attestation: attested key", () => {
-  test("an uppercase-hex pubkey is pinned in lowercase and the signed answer is accepted", async () => {
-    const node = testNode();
-    node.setAttestation((context) =>
-      edited(context, (body) => {
-        body.pubkey = `0x${node.pubkeyHex.slice(2).toUpperCase()}`;
-      }),
-    );
-    const response = await clientFor(node.transport).request(jsonRpcCall());
-
-    expect(response.status).toBe(200);
-    expect(posts(node)).toBe(1);
-  });
-
   test.each(
     unusableKeys,
   )("an attested $reason key ($name) is rejected after the quote verifies", async ({
@@ -130,18 +117,6 @@ describe("ConfidentialClient attestation: attested key", () => {
   });
 });
 
-describe("ConfidentialClient attestation: gateway answers", () => {
-  test.each([0, 199])("status %i is AttestationUnavailable with that status", async (status) => {
-    const node = testNode();
-    node.setAttestation(() => answer(status, ""));
-    const err = await rejectionOf(clientFor(node.transport).request(jsonRpcCall()));
-
-    expect(err).toBeInstanceOf(AttestationUnavailable);
-    expect(err).toMatchObject({ reason: "status", status, executed: "no" });
-    expect(posts(node)).toBe(0);
-  });
-});
-
 describe("ConfidentialClient attestation: a transport that ignores the size cap", () => {
   test.each([
     [200, { reason: "too-large" }],
@@ -153,23 +128,6 @@ describe("ConfidentialClient attestation: a transport that ignores the size cap"
 
     expect(err).toBeInstanceOf(AttestationUnavailable);
     expect(err).toMatchObject(fields);
-  });
-});
-
-describe("ConfidentialClient attestation: quote binding and compose", () => {
-  test("an app_compose that does not hash to composeHash is AttestationFailed CHK-A2", async () => {
-    const node = testNode();
-    node.setAttestation((context) =>
-      edited(context, (body) => {
-        body.app_compose = "{}";
-        body.composeHash = "deadbeef";
-      }),
-    );
-    const err = await rejectionOf(clientFor(node.transport).request(jsonRpcCall()));
-
-    expect(err).toBeInstanceOf(AttestationFailed);
-    expect((err as AttestationFailed).chkId).toBe("CHK-A2");
-    expect(posts(node)).toBe(0);
   });
 });
 

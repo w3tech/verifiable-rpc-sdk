@@ -1,17 +1,14 @@
 import {
-  attestationAnswer,
   attestationStub,
   CHAIN_ID,
   collectingLogger,
   mockHardwareVerifier,
-  rejectionOf,
   signResponse,
   TEST_PUBKEY_HEX,
   TEST_SEED,
   thrownBy,
 } from "@w3tech.io/vrpc-test-support";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { ATTESTATION_TIMEOUT_MS } from "../src/attestation";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { AttestationUnavailable, InvalidOption } from "../src/errors";
 import type { Logger } from "../src/logger";
 import { DEFAULT_PUBKEY_CACHE_TTL_MS } from "../src/options";
@@ -102,28 +99,6 @@ describe("TrustedVerifier / trust seam", () => {
     ).not.toThrow();
   });
 
-  let savedFetch: typeof fetch;
-
-  beforeEach(() => {
-    savedFetch = globalThis.fetch;
-  });
-
-  afterEach(() => {
-    globalThis.fetch = savedFetch;
-  });
-
-  test("an uppercase attested pubkey equal to the signer is accepted", async () => {
-    const upper = (async (url: string) => {
-      const body = (await attestationAnswer(url).json()) as { pubkey: string };
-      return Response.json({ ...body, pubkey: `0x${body.pubkey.slice(2).toUpperCase()}` });
-    }) as typeof fetch;
-    const pair = await signedPair();
-    const tv = new TrustedVerifier(baseOpts({ fetch: upper }));
-
-    const verified = await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(verified.verification.pubkeyHex).toBe(TEST_PUBKEY_HEX);
-  });
-
   test("cacheMissFetchesAndVerifies", async () => {
     // Unknown pubkey → attestation fetched + verified → VerifiedPair.
     const mock = attestationStub();
@@ -173,25 +148,11 @@ describe("TrustedVerifier / trust seam", () => {
     expect(mock.urls.length).toBe(0);
   });
 
-  test("knownVsUnknown", async () => {
-    // First verify (unknown) attests (counter ++), second (known,
-    // within TTL) routes through the cache (counter unchanged).
-    const mock = attestationStub();
-    const pair = await signedPair();
-    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
-
-    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(mock.urls.length).toBe(1); // miss path
-
-    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(mock.urls.length).toBe(1); // hit path, no extra fetch
-  });
-
   test("expiredReVerifies", async () => {
     // A cached pubkey is NOT trusted forever (no stale-trust). Uses a
     // small REAL ttl + a real wait — vitest fake timers do not drive lru-cache's
-    // TTL clock (see `sleep` note). Companion `expiryTestIsClockDependent` proves
-    // that WITHOUT the wait the same 2nd verify is a hit (red without advancing).
+    // TTL clock (see `sleep` note). `cacheHit` proves that without the wait the
+    // second verify is a hit.
     const mock = attestationStub();
     const ttlMs = 100;
     const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, pubkeyCacheTtlMs: ttlMs }));
@@ -207,41 +168,8 @@ describe("TrustedVerifier / trust seam", () => {
     expect(mock.urls.length).toBe(2);
   });
 
-  test("expiryTestIsClockDependent", async () => {
-    // Proves expiredReVerifies is meaningful: with the SAME small ttl but WITHOUT
-    // waiting, the 2nd verify is a cache hit (no extra fetch). So the expiry test
-    // genuinely depends on the elapsed clock — it would be red without the wait.
-    const mock = attestationStub();
-    const ttlMs = 100;
-    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch, pubkeyCacheTtlMs: ttlMs }));
-
-    const pair = await signedPair();
-    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(mock.urls.length).toBe(1);
-
-    // No wait → still fresh → cache hit, NO second fetch.
-    await tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
-    expect(mock.urls.length).toBe(1);
-  });
-
-  test("ttlDefaultIsOneHour", async () => {
-    // Default TTL constant is 1h. With no override, a short real wait stays well
-    // within it → cache hit (no re-attest). The 1h boundary itself is asserted on
-    // the constant; we don't sleep an hour. The short-ttl `expiredReVerifies`
-    // test above proves the expiry branch.
+  test("ttlDefaultIsOneHour", () => {
     expect(DEFAULT_PUBKEY_CACHE_TTL_MS).toBe(3_600_000);
-
-    const mock = attestationStub();
-    const tv = new TrustedVerifier(baseOpts({ fetch: mock.fetch }));
-
-    const first = await signedPair();
-    await tv.verify(first.requestBytes, first.responseBytes, first.headers);
-    expect(mock.urls.length).toBe(1);
-
-    await sleep(40); // ≪ 1h → still fresh
-    const within = await signedPair();
-    await tv.verify(within.requestBytes, within.responseBytes, within.headers);
-    expect(mock.urls.length).toBe(1);
   });
 
   test("evictsOldestPastMax", async () => {
@@ -280,14 +208,7 @@ describe("TrustedVerifier / trust seam", () => {
 // the no-network mockHardwareVerifier so the dstack field-check / hardware
 // events fire offline. ───────────────────────────────────────────────────────
 describe("TrustedVerifier / opt-in logger narration", () => {
-  let savedFetch: typeof fetch;
-
-  beforeEach(() => {
-    savedFetch = globalThis.fetch;
-  });
-
   afterEach(() => {
-    globalThis.fetch = savedFetch;
     vi.restoreAllMocks();
   });
 
@@ -424,10 +345,6 @@ describe("TrustedVerifier / single attestation per pubkey", () => {
     "node-b": new Uint8Array(32).fill(0x07),
   };
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   test.each([
     { name: "ten calls with one cold pubkey", nodes: Array(10).fill("node-abc"), gets: 1 },
     { name: "two cold pubkeys", nodes: ["node-abc", "node-b"], gets: 2 },
@@ -472,60 +389,5 @@ describe("TrustedVerifier / single attestation per pubkey", () => {
     await verify(pairs[0] as (typeof pairs)[number]);
     await verify(pairs[0] as (typeof pairs)[number]);
     expect(stub.urls).toHaveLength(gets + 1);
-  });
-
-  const abortedBy = (signal: AbortSignal) =>
-    new Promise<never>((_, reject) =>
-      signal.addEventListener("abort", () => reject(signal.reason)),
-    );
-
-  test.each<[string, "fetch" | "hardware", (signal: AbortSignal) => Promise<unknown>]>([
-    ["a fetch that never answers", "fetch", abortedBy],
-    ["a hardware verifier that never settles", "hardware", () => new Promise(() => {})],
-    [
-      "a hardware verifier that succeeds after the deadline",
-      "hardware",
-      () => new Promise((resolve) => setTimeout(resolve, ATTESTATION_TIMEOUT_MS + 1_000)),
-    ],
-  ])("%s times out at the deadline and the next verify attests again", async (_, stage, stall) => {
-    vi.useFakeTimers();
-    const stub = attestationStub();
-    const signals: AbortSignal[] = [];
-    let stalled = () => {};
-    const stalling = new Promise<void>((resolve) => {
-      stalled = resolve;
-    });
-    const stallOnce = (signal: AbortSignal) => {
-      stalled();
-      return stall(signal);
-    };
-    const fetch = (async (url: string, init: RequestInit) => {
-      signals.push(init.signal as AbortSignal);
-      return stage === "fetch" && signals.length === 1
-        ? stallOnce(init.signal as AbortSignal)
-        : stub.fetch(url);
-    }) as typeof globalThis.fetch;
-    let hardwareCalls = 0;
-    const hardwareVerifier = {
-      async verifyHardware() {
-        hardwareCalls += 1;
-        if (stage === "hardware" && hardwareCalls === 1) await stallOnce(signals[0] as AbortSignal);
-      },
-    };
-    const tv = new TrustedVerifier(baseOpts({ fetch, hardwareVerifier }));
-    const first = await signedPair();
-
-    const pending = rejectionOf(tv.verify(first.requestBytes, first.responseBytes, first.headers));
-    await stalling;
-    await vi.advanceTimersByTimeAsync(ATTESTATION_TIMEOUT_MS);
-    const err = await pending;
-    expect(err).toBeInstanceOf(AttestationUnavailable);
-    expect(err).toMatchObject({ reason: "timeout" });
-    expect(signals[0]?.aborted).toBe(true);
-
-    await vi.advanceTimersByTimeAsync(1_000);
-    const again = await signedPair();
-    await tv.verify(again.requestBytes, again.responseBytes, again.headers);
-    expect(signals).toHaveLength(2);
   });
 });

@@ -1,4 +1,3 @@
-import { bytesToHex } from "@noble/hashes/utils.js";
 import { rejectionOf } from "@w3tech.io/vrpc-test-support";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
@@ -29,13 +28,15 @@ const GOLDEN_FIXTURE = {
 };
 
 interface MockState {
-  capturedUrl: string | undefined;
+  urls: string[];
+  headers: Array<Record<string, string> | undefined>;
 }
 
 function installMockFetch(body: unknown, extraHeaders: Record<string, string> = {}): MockState {
-  const state: MockState = { capturedUrl: undefined };
-  globalThis.fetch = (async (input: string | URL | Request) => {
-    state.capturedUrl = typeof input === "string" ? input : input.toString();
+  const state: MockState = { urls: [], headers: [] };
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    state.urls.push(String(input));
+    state.headers.push(init?.headers as Record<string, string> | undefined);
     return new Response(JSON.stringify(body), {
       status: 200,
       headers: { "content-type": "application/json", ...extraHeaders },
@@ -77,30 +78,25 @@ describe("fetchAttestation", () => {
     }
   });
 
-  test("nonceLength32Succeeds", async () => {
-    const state = installMockFetch(GOLDEN_FIXTURE);
-    const result = await fetchAttestation({
-      attestationUrl: TEST_ATTESTATION_URL,
-      nonce: new Uint8Array(32),
-    });
-    expect(state.capturedUrl).toBeDefined();
-    expect(result.quote.quote).toBe("00010203");
-  });
+  const NONCE = new Uint8Array(32);
+  NONCE.set([0xde, 0xad, 0xbe, 0xef]);
+  NONCE[31] = 0xff;
+  const NONCE_HEX = `deadbeef${"00".repeat(27)}ff`;
 
-  test("urlIsAttestationWithBareHexNonce", async () => {
+  test.each([
+    { nodeId: undefined, query: `?nonce=${NONCE_HEX}` },
+    { nodeId: "node-1", query: `?nonce=${NONCE_HEX}&node_id=node-1` },
+    { nodeId: "region/node 7", query: `?nonce=${NONCE_HEX}&node_id=region%2Fnode%207` },
+  ])("GETs $query with the caller's headers", async ({ nodeId, query }) => {
     const state = installMockFetch(GOLDEN_FIXTURE);
-    const nonce = new Uint8Array(32);
-    nonce[0] = 0xde;
-    nonce[1] = 0xad;
-    nonce[2] = 0xbe;
-    nonce[3] = 0xef;
-    await fetchAttestation({ attestationUrl: TEST_ATTESTATION_URL, nonce });
-    const expectedHex = bytesToHex(nonce);
-    expect(state.capturedUrl).toBe(`${TEST_URL}/attestation?nonce=${expectedHex}`);
-    // No 0x prefix in the URL.
-    expect(state.capturedUrl).not.toContain("nonce=0x");
-    // Lowercase, 64 hex chars.
-    expect(expectedHex).toMatch(/^[0-9a-f]{64}$/);
+    await fetchAttestation({
+      attestationUrl: TEST_ATTESTATION_URL,
+      nonce: NONCE,
+      headers: { "x-api-key": "from-headers" },
+      ...(nodeId === undefined ? {} : { nodeId }),
+    });
+    expect(state.urls).toEqual([`${TEST_ATTESTATION_URL}${query}`]);
+    expect(state.headers[0]?.["x-api-key"]).toBe("from-headers");
   });
 
   test("goldenFixtureParsesToAttestation", async () => {
@@ -185,111 +181,4 @@ describe("fetchAttestation", () => {
     expect(cancelled).toBe(true);
     expect(read).toBeLessThanOrEqual(max);
   });
-
-  // ── Gateway-routed attestation: the former via-gateway helper's describe,
-  // merged in. The helper's `{ rpcBaseUrl, chain, nodeId, nonce, ... }` args are
-  // now expressed as `{ attestationUrl: rpcBaseUrl + "/" + chain + "_vrpc/attestation",
-  // nodeId, nonce, ... }` — the SAME final URL the mock matches. ──────────────
-  describe("via gateway routing", () => {
-    const gatewayAttestationUrl = `${RPC_BASE}/eth_vrpc/attestation`;
-
-    test("nonceMustBe32Bytes", async () => {
-      globalThis.fetch = ((): Response => {
-        throw new Error("fetch called — synchronous validation failed");
-      }) as unknown as typeof fetch;
-      const caught = await rejectionOf(
-        fetchAttestation({
-          attestationUrl: gatewayAttestationUrl,
-          nodeId: "node-1",
-          nonce: new Uint8Array(31),
-        }),
-      );
-      expect(caught).toBeInstanceOf(InvalidNonce);
-    });
-
-    test("buildsExactContractUrl", async () => {
-      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
-      const nonce = new Uint8Array(32);
-      await fetchAttestation({
-        attestationUrl: gatewayAttestationUrl,
-        nodeId: "node-1",
-        nonce,
-      });
-      const expectedHex = bytesToHex(nonce);
-      expect(state.urls[0]).toBe(
-        `${RPC_BASE}/eth_vrpc/attestation?nonce=${expectedHex}&node_id=node-1`,
-      );
-      expect(state.urls[0]).not.toContain("nonce=0x");
-    });
-
-    test("nonceHexRoundTripsByteIntact", async () => {
-      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
-      const nonce = new Uint8Array(32);
-      nonce[0] = 0xde;
-      nonce[1] = 0xad;
-      nonce[2] = 0xbe;
-      nonce[3] = 0xef;
-      nonce[31] = 0xff;
-      await fetchAttestation({
-        attestationUrl: gatewayAttestationUrl,
-        nodeId: "node-1",
-        nonce,
-      });
-      const expectedHex = bytesToHex(nonce);
-      expect(expectedHex).toMatch(/^[0-9a-f]{64}$/);
-      expect(state.urls[0]).toContain(`nonce=${expectedHex}`);
-    });
-
-    test("nodeIdIsUrlEncoded", async () => {
-      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
-      await fetchAttestation({
-        attestationUrl: gatewayAttestationUrl,
-        nodeId: "region/node 7",
-        nonce: new Uint8Array(32),
-      });
-      expect(state.urls[0]).toContain("node_id=region%2Fnode%207");
-      expect(state.urls[0]).not.toContain("node_id=region/node 7");
-    });
-
-    test("nodeIdAbsentOmitsNodeIdParam", async () => {
-      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
-      await fetchAttestation({
-        attestationUrl: gatewayAttestationUrl,
-        nonce: new Uint8Array(32),
-      });
-      expect(state.urls[0]).toContain("?nonce=");
-      expect(state.urls[0]).not.toContain("node_id=");
-    });
-
-    test("headersSetXApiKeyOnAttestationLeg", async () => {
-      const state = installGatewayMockFetch(GOLDEN_FIXTURE);
-      await fetchAttestation({
-        attestationUrl: gatewayAttestationUrl,
-        nodeId: "node-1",
-        nonce: new Uint8Array(32),
-        headers: { "x-api-key": "from-headers" },
-      });
-      expect(state.headers[0]?.["x-api-key"]).toBe("from-headers");
-    });
-  });
 });
-
-const RPC_BASE = "https://rpc.ankr.com";
-
-interface GatewayMockState {
-  urls: string[];
-  headers: Array<Record<string, string> | undefined>;
-}
-
-function installGatewayMockFetch(body: unknown): GatewayMockState {
-  const state: GatewayMockState = { urls: [], headers: [] };
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    state.urls.push(typeof input === "string" ? input : input.toString());
-    state.headers.push(init?.headers as Record<string, string> | undefined);
-    return new Response(JSON.stringify(body), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  }) as typeof fetch;
-  return state;
-}

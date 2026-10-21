@@ -12,10 +12,11 @@ import {
   NODE_ID,
   rejectionOf,
   signResponse,
+  TEST_PUBKEY_HEX,
 } from "@w3tech.io/vrpc-test-support";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ATTESTATION_TIMEOUT_MS } from "../src/attestation";
-import { ConfidentialClient } from "../src/confidential-client";
+import { ConfidentialClient, type ConfidentialInfo } from "../src/confidential-client";
 import {
   AttestationFailed,
   AttestationUnavailable,
@@ -49,6 +50,8 @@ interface Row {
   hardwareCalls?: number;
   /** Thrown once by the hardware verifier; the error must carry it as `cause`. */
   hardwareError?: Error;
+  /** Run once in place of the hardware verifier. */
+  hardwareStall?: () => Promise<void>;
   /** Text of the answer that no part of the error may carry. */
   hidden?: string;
   modes?: ModeName[];
@@ -111,6 +114,16 @@ const ROWS: Row[] = [
     error: unavailable("status", 302),
   },
   {
+    name: "status 199",
+    answer: () => ({ status: 199, headers: new Headers(), body: null }) as unknown as Response,
+    error: unavailable("status", 199),
+  },
+  {
+    name: "a browser's opaque redirect, which reads as status 0",
+    answer: () => ({ type: "opaqueredirect" }) as Response,
+    error: unavailable("status", 0),
+  },
+  {
     name: "status 299 with a valid body",
     answer: (nonceHex) => reply(attestationBody(nonceHex), 299),
     hardwareCalls: 1,
@@ -164,6 +177,13 @@ const ROWS: Row[] = [
     error: failed("malformed", "quote must be an object"),
   },
   {
+    name: "an uppercase pubkey equal to the signer",
+    answer: edited((body) =>
+      Object.assign(body, { pubkey: `0x${String(body.pubkey).slice(2).toUpperCase()}` }),
+    ),
+    hardwareCalls: 1,
+  },
+  {
     name: "a pubkey of 63 hex characters",
     answer: edited((body) => Object.assign(body, { pubkey: String(body.pubkey).slice(0, -1) })),
     error: failed("malformed", BAD_PUBKEY),
@@ -184,6 +204,11 @@ const ROWS: Row[] = [
       body.quote.report_data = `${String(body.quote.report_data).slice(0, 64)}${"0".repeat(64)}`;
     }),
     error: failed("check", undefined, "CHK-A1"),
+  },
+  {
+    name: "an app_compose that does not hash to composeHash",
+    answer: edited((body) => Object.assign(body, { app_compose: "{}", composeHash: "deadbeef" })),
+    error: failed("check", undefined, "CHK-A2"),
   },
   {
     name: "a hardware verifier rejecting the quote",
@@ -223,6 +248,23 @@ const ROWS: Row[] = [
     answer: (_nonceHex, { signal }) =>
       new Promise((_, reject) => signal?.addEventListener("abort", () => reject(signal.reason))),
     error: unavailable("timeout"),
+    stalls: true,
+  },
+  {
+    name: "a hardware verifier that never settles",
+    answer: valid,
+    error: unavailable("timeout"),
+    hardwareCalls: 1,
+    hardwareStall: () => new Promise(() => {}),
+    stalls: true,
+  },
+  {
+    name: "a hardware verifier that succeeds after the deadline",
+    answer: valid,
+    error: unavailable("timeout"),
+    hardwareCalls: 1,
+    hardwareStall: () =>
+      new Promise((resolve) => setTimeout(resolve, ATTESTATION_TIMEOUT_MS + 1_000)),
     stalls: true,
   },
 ];
@@ -273,27 +315,45 @@ describe("attestation outcomes in both modes", () => {
   });
 
   test.each(CASES)("$name ($mode)", async (row) => {
-    const { answer, error, hardwareCalls = 0, hardwareError, hidden, mode, stalls } = row;
+    const {
+      answer,
+      error,
+      hardwareCalls = 0,
+      hardwareError,
+      hardwareStall,
+      hidden,
+      mode,
+      stalls,
+    } = row;
     if (stalls) vi.useFakeTimers();
     const globalFetch = vi.spyOn(globalThis, "fetch");
     const gets: string[] = [];
+    const signals: Array<AbortSignal | null | undefined> = [];
     let healthy = false;
     const fetch = (async (url: string, init: RequestInit) => {
       gets.push(url);
+      signals.push(init.signal);
       const nonceHex = new URL(url).searchParams.get("nonce") ?? "";
       return healthy ? valid(nonceHex) : answer(nonceHex, init);
     }) as typeof globalThis.fetch;
     const hardwareVerifier = mockHardwareVerifier();
     const verifyHardware = vi.spyOn(hardwareVerifier, "verifyHardware");
     if (hardwareError) verifyHardware.mockRejectedValueOnce(hardwareError);
+    if (hardwareStall) verifyHardware.mockImplementationOnce(hardwareStall);
     const attest = MODES[mode](fetch, hardwareVerifier);
 
     if (error === undefined) {
-      await attest();
+      const attested = await attest();
+      if (mode === "confidential") {
+        expect((attested as ConfidentialInfo).pubkey).toBe(TEST_PUBKEY_HEX);
+      }
     } else {
       const pending = rejectionOf(attest());
       if (stalls) {
-        await vi.waitFor(() => expect(gets).toHaveLength(1));
+        await vi.waitFor(() => {
+          expect(gets).toHaveLength(1);
+          expect(verifyHardware).toHaveBeenCalledTimes(hardwareCalls);
+        });
         await vi.advanceTimersByTimeAsync(ATTESTATION_TIMEOUT_MS);
       }
       const err = await pending;
@@ -308,6 +368,11 @@ describe("attestation outcomes in both modes", () => {
         for (const text of [String(e), e.stack, JSON.stringify(e), String(e.cause)]) {
           expect(text).not.toContain(hidden);
         }
+      }
+      if (stalls) {
+        expect(signals[0]?.aborted).toBe(true);
+        // A late answer settles here and must not be remembered.
+        await vi.advanceTimersByTimeAsync(1_000);
       }
     }
     expect(verifyHardware).toHaveBeenCalledTimes(hardwareCalls);
