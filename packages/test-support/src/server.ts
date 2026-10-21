@@ -173,8 +173,6 @@ export function holdPosts(server: TestNodeServer): Uint8Array[] {
 }
 
 export const isPost = (request: ServedRequest) => request.method === "POST";
-export const isGet = (request: ServedRequest) => request.method === "GET";
-export const isElsewhere = (request: ServedRequest) => request.path === "/elsewhere";
 
 export const countOf = (server: TestNodeServer, match: (request: ServedRequest) => boolean) =>
   server.requests.filter(match).length;
