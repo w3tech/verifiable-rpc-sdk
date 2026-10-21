@@ -62,14 +62,6 @@ interface Harness {
   partialWritten: Promise<void>;
 }
 
-function deferred(): { promise: Promise<void>; resolve: () => void } {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
-
 function flatten(headers: IncomingHttpHeaders): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [name, value] of Object.entries(headers)) {
@@ -156,7 +148,7 @@ function answerWith(mode: Mode, isPost: boolean, answer: TestOuterResponse, res:
 async function harness(): Promise<Harness> {
   const node = createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID });
   const log: Seen[] = [];
-  const partial = deferred();
+  const partial = Promise.withResolvers<void>();
   const sockets = new Set<Socket>();
   let mode: Mode = "plain";
   let origin = "";
@@ -350,8 +342,8 @@ describe("default transport over HTTP", () => {
     const controller = new AbortController();
     const calls = 50;
     let entered = 0;
-    const allEntered = deferred();
-    const gate = deferred();
+    const allEntered = Promise.withResolvers<void>();
+    const gate = Promise.withResolvers<void>();
     const transport: ConfidentialTransport = async (request) => {
       if (request.method === "POST") {
         entered += 1;

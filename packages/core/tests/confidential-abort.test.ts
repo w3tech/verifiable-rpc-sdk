@@ -34,14 +34,6 @@ function clientFor(
   });
 }
 
-function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => void } {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
-
 function plain(status: number): TestOuterResponse {
   return { status, headers: { "content-type": "text/plain" }, body: new Uint8Array(0) };
 }
@@ -82,8 +74,8 @@ describe("cancellation", () => {
 
   test("an abort while waiting for a shared attestation leaves the other waiters and the attestation alone", async () => {
     const node = testNode();
-    const entered = deferred();
-    const release = deferred();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     node.setAttestation(async (context) => {
       entered.resolve();
       await release.promise;
@@ -108,8 +100,8 @@ describe("cancellation", () => {
 
   test("ready rejects with the reason when aborted during the attestation", async () => {
     const node = testNode();
-    const entered = deferred();
-    const release = deferred();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     node.setAttestation(async (context) => {
       entered.resolve();
       await release.promise;
@@ -183,8 +175,8 @@ describe("cancellation", () => {
   test("a shared attestation failing after every waiter left is handled and not kept", async () => {
     const unhandled = recordProcessEvent("unhandledRejection");
     const node = testNode();
-    const entered = deferred();
-    const release = deferred();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     node.setAttestation(async () => {
       entered.resolve();
       await release.promise;

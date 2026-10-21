@@ -21,14 +21,6 @@ function testNode(overrides: Partial<TestNodeOptions> = {}) {
   return createTestNode({ seed: NODE_SEED, chainId: CHAIN_ID, nodeId: NODE_ID, ...overrides });
 }
 
-function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => void } {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
-
 function clientFor(
   transport: ConfidentialTransport,
   overrides: Partial<ConfidentialClientOptions> = {},
@@ -180,8 +172,8 @@ describe("eviction", () => {
     const client = clientFor(node.transport);
     await client.ready();
 
-    const entered = deferred();
-    const release = deferred();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     let calls = 0;
     node.setConfidential(async (context) => {
       calls += 1;

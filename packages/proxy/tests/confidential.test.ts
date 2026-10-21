@@ -187,10 +187,7 @@ describe("confidential mode startup", () => {
 
   test("requestDuringStartupAttestationJoinsIt", async () => {
     const node = await startNode();
-    let release: () => void = () => {};
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     node.node.setAttestation(async (context) => {
       await gate;
       return context.normal();

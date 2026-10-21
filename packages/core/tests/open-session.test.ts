@@ -145,8 +145,8 @@ describe("createOpenSession pin", () => {
 
   test("a pin during a bootstrap fails it with InvalidChainId and keeps the pin", async () => {
     const n = node();
-    let release!: () => void;
-    n.hold(new Promise<void>((resolve) => (release = resolve)));
+    const { promise: held, resolve: release } = Promise.withResolvers<void>();
+    n.hold(held);
     const { s } = session();
     const first = s.send(READ, n.post);
     await expect.poll(() => n.stats.bootstraps).toBe(1);

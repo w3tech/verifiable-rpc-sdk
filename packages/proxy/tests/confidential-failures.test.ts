@@ -485,10 +485,8 @@ describe("outer read cap", () => {
 
 describe("concurrent and interrupted requests", () => {
   test("twenty requests share one pending attestation and all fail with it", async () => {
-    let answerAttestation: (response: TestOuterResponse) => void = () => {};
-    const gate = new Promise<TestOuterResponse>((resolve) => {
-      answerAttestation = resolve;
-    });
+    const { promise: gate, resolve: answerAttestation } =
+      Promise.withResolvers<TestOuterResponse>();
     const node = await serveTestNode(
       createTestNode({
         seed: TEST_SEED,
