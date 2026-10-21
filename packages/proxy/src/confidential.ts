@@ -25,13 +25,14 @@ import {
   attestationUnavailableStatus,
   BodyTooLargeError,
   errorResponseBody,
+  isUndiciTimeout,
   ProxyError,
   UnsupportedMediaTypeError,
   UpstreamBodyTooLargeError,
   UpstreamConnectError,
 } from "./errors";
 import type { ProxyLogger } from "./logger";
-import { bufferStream, mapUndiciError } from "./pipeline";
+import { bufferStream } from "./pipeline";
 
 /** Per-process context shared by every confidential request. */
 export interface ConfidentialHandlerContext {
@@ -46,18 +47,13 @@ export function createConfidentialTransport(
   dispatcher: Dispatcher,
 ): ConfidentialTransport {
   return async (outer) => {
-    let res: Dispatcher.ResponseData;
-    try {
-      res = await request(outer.url, {
-        method: outer.method,
-        headers: { ...outer.headers, "accept-encoding": "identity" },
-        body: outer.body ?? null,
-        dispatcher,
-        ...(outer.signal === undefined ? {} : { signal: outer.signal }),
-      });
-    } catch (err) {
-      throw mapUndiciError(err);
-    }
+    const res = await request(outer.url, {
+      method: outer.method,
+      headers: { ...outer.headers, "accept-encoding": "identity" },
+      body: outer.body ?? null,
+      dispatcher,
+      ...(outer.signal === undefined ? {} : { signal: outer.signal }),
+    });
     // Every value is appended so core sees repeated fields and classifies them itself.
     const headers = new Headers();
     try {
@@ -69,16 +65,11 @@ export function createConfidentialTransport(
       res.body.destroy();
       throw new UpstreamConnectError("Upstream sent an invalid header");
     }
-    let raw: Buffer;
-    try {
-      raw = await bufferStream(
-        res.body,
-        config.maxBodyBytes,
-        () => new UpstreamBodyTooLargeError(config.maxBodyBytes),
-      );
-    } catch (err) {
-      throw err instanceof ProxyError ? err : mapUndiciError(err);
-    }
+    const raw = await bufferStream(
+      res.body,
+      config.maxBodyBytes,
+      () => new UpstreamBodyTooLargeError(config.maxBodyBytes),
+    );
     const body = await decodeBody(
       raw,
       headers.get("content-encoding") ?? undefined,
@@ -94,6 +85,7 @@ export function describeConfidentialError(err: unknown): {
   kind: string;
   message: string;
   executed?: "no" | "unknown";
+  code?: string;
 } {
   if (err instanceof ProxyError) {
     return { status: err.httpStatus, kind: err.kind, message: err.message };
@@ -102,11 +94,26 @@ export function describeConfidentialError(err: unknown): {
     return { status: 502, kind: "Internal", message: "Internal proxy error" };
   }
   const { executed } = err;
-  if (err instanceof TransportFailed && err.cause instanceof ProxyError) {
-    const { httpStatus, kind, message } = err.cause;
-    return { status: httpStatus, kind, message, executed };
+  const code = (err.cause as { code?: unknown } | undefined)?.code;
+  const withCode = typeof code === "string" ? { executed, code } : { executed };
+  if (err instanceof TransportFailed && err.reason === "network") {
+    const [status, kind, message] = upstreamFailure(err.cause, code);
+    return { status, kind, message, ...withCode };
   }
-  return { status: statusOf(err), kind: err.kind, message: err.message, executed };
+  return { status: statusOf(err), kind: err.kind, message: err.message, ...withCode };
+}
+
+function upstreamFailure(cause: unknown, code: unknown): [number, string, string] {
+  if (isUndiciTimeout(cause)) {
+    return [504, "UpstreamTimeout", "Upstream did not respond within the configured timeout"];
+  }
+  if (code === "UPSTREAM_BODY_TOO_LARGE") {
+    return [502, "UpstreamBodyTooLarge", "Upstream response body exceeds the size limit"];
+  }
+  if (code === "DECODE_FAILED") {
+    return [502, "DecodeFailed", "Upstream response could not be decoded"];
+  }
+  return [502, "UpstreamConnect", "Upstream request failed"];
 }
 
 function statusOf(err: VrpcError): number {
@@ -133,8 +140,14 @@ function relayHeaders(method: string, out: ConfidentialResponse): Record<string,
 }
 
 function renderError(res: http.ServerResponse, err: unknown, log: ProxyLogger): void {
-  const { status, kind, message, executed } = describeConfidentialError(err);
-  log.error("proxy.error", { kind, status, message, ...(executed ? { executed } : {}) });
+  const { status, kind, message, executed, code } = describeConfidentialError(err);
+  log.error("proxy.error", {
+    kind,
+    status,
+    message,
+    ...(executed ? { executed } : {}),
+    ...(code ? { code } : {}),
+  });
   if (res.headersSent) {
     res.destroy();
     return;

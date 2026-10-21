@@ -24,15 +24,10 @@ import {
 import { describe, expect, test } from "vitest";
 
 import { describeConfidentialError } from "../src/confidential";
-import {
-  BodyTooLargeError,
-  DecodeFailedError,
-  errorResponseBody,
-  UnsupportedMediaTypeError,
-  UpstreamBodyTooLargeError,
-  UpstreamConnectError,
-  UpstreamTimeoutError,
-} from "../src/errors";
+import { BodyTooLargeError, errorResponseBody, UnsupportedMediaTypeError } from "../src/errors";
+
+const coded = (code?: string) =>
+  Object.assign(new Error("The request failed."), code === undefined ? {} : { code });
 
 function expectRow(
   err: unknown,
@@ -78,7 +73,7 @@ describe("AttestationUnavailable", () => {
     ["timeout", new AttestationUnavailable("timeout"), 504],
     [
       "transport with an upstream timeout",
-      new AttestationUnavailable("transport", { cause: new UpstreamTimeoutError("t") }),
+      new AttestationUnavailable("transport", { cause: coded("UND_ERR_HEADERS_TIMEOUT") }),
       504,
     ],
     ["status 401", new AttestationUnavailable("status", { status: 401 }), 503],
@@ -90,7 +85,7 @@ describe("AttestationUnavailable", () => {
     ["node-id-missing", new AttestationUnavailable("node-id-missing"), 503],
     [
       "transport with a connect failure",
-      new AttestationUnavailable("transport", { cause: new UpstreamConnectError("c") }),
+      new AttestationUnavailable("transport", { cause: coded("ECONNREFUSED") }),
       503,
     ],
   ])("%s", (_name, err, status) => {
@@ -120,26 +115,28 @@ describe("UnexpectedResponse", () => {
 });
 
 describe("TransportFailed", () => {
-  test.each<[Error, number, string]>([
-    [new UpstreamTimeoutError("timed out"), 504, "UpstreamTimeout"],
-    [new UpstreamConnectError("refused"), 502, "UpstreamConnect"],
-    [new UpstreamBodyTooLargeError(5), 502, "UpstreamBodyTooLarge"],
-    [new DecodeFailedError("bad gzip"), 502, "DecodeFailed"],
-  ])("cause %s renders as the cause, executed unknown", (cause, status, kind) => {
-    const result = expectRow(
-      new TransportFailed("network", "n", { cause }),
-      status,
-      kind,
-      "unknown",
-    );
-    expect(result.message).toBe(cause.message);
+  const timeout = "Upstream did not respond within the configured timeout";
+  const failed = "Upstream request failed";
+  test.each<[string | undefined, number, string, string]>([
+    ["UND_ERR_HEADERS_TIMEOUT", 504, "UpstreamTimeout", timeout],
+    ["ECONNREFUSED", 502, "UpstreamConnect", failed],
+    [undefined, 502, "UpstreamConnect", failed],
+    [
+      "UPSTREAM_BODY_TOO_LARGE",
+      502,
+      "UpstreamBodyTooLarge",
+      "Upstream response body exceeds the size limit",
+    ],
+    ["DECODE_FAILED", 502, "DecodeFailed", "Upstream response could not be decoded"],
+  ])("network with code %s renders by the code, executed unknown", (code, status, kind, message) => {
+    const err = new TransportFailed("network", "n", { cause: coded(code) });
+    const result = expectRow(err, status, kind, "unknown");
+    expect(result.message).toBe(message);
+    expect(result.code).toBe(code);
   });
 
-  test.each<[string, TransportFailed]>([
-    ["too-large", new TransportFailed("too-large", "n")],
-    ["foreign cause", new TransportFailed("network", "n", { cause: new Error("x") })],
-  ])("%s is 502 TransportFailed executed unknown", (_name, err) => {
-    expectRow(err, 502, "TransportFailed", "unknown");
+  test("too-large is 502 TransportFailed executed unknown", () => {
+    expectRow(new TransportFailed("too-large", "n"), 502, "TransportFailed", "unknown");
   });
 });
 

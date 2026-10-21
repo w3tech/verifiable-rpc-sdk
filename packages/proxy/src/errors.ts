@@ -88,6 +88,7 @@ export class UpstreamConnectError extends ProxyError {
 /** Upstream response body exceeded the cap — cannot be safely verified. */
 export class UpstreamBodyTooLargeError extends ProxyError {
   readonly kind = "UpstreamBodyTooLarge" as const;
+  readonly code = "UPSTREAM_BODY_TOO_LARGE" as const;
 
   constructor(public readonly maxBodyBytes: number) {
     super(`Upstream response body exceeds the ${maxBodyBytes}-byte limit`, 502);
@@ -112,6 +113,7 @@ export class UnsignedUpstreamError extends ProxyError {
 /** Upstream body failed to decode under its declared Content-Encoding (unknown coding or corrupt stream). */
 export class DecodeFailedError extends ProxyError {
   readonly kind = "DecodeFailed" as const;
+  readonly code = "DECODE_FAILED" as const;
 
   constructor(message: string) {
     super(message, 502);
@@ -141,11 +143,7 @@ export function isUndiciTimeout(err: unknown): boolean {
 /** The HTTP status for an attestation that could not be obtained, in both proxy modes. */
 export function attestationUnavailableStatus(err: AttestationUnavailable): number {
   if (err.status === 429) return 429;
-  const timedOut =
-    err.reason === "timeout" ||
-    err.cause instanceof UpstreamTimeoutError ||
-    isUndiciTimeout(err.cause);
-  return timedOut ? 504 : 503;
+  return err.reason === "timeout" || isUndiciTimeout(err.cause) ? 504 : 503;
 }
 
 /**

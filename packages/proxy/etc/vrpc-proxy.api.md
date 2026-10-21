@@ -30,6 +30,8 @@ export function createProxyServer(config: ProxyConfig, overrides?: ProxyTestOver
 export class DecodeFailedError extends ProxyError {
     constructor(message: string);
     // (undocumented)
+    readonly code: "DECODE_FAILED";
+    // (undocumented)
     readonly kind: "DecodeFailed";
 }
 
@@ -110,6 +112,8 @@ export class UnsupportedMediaTypeError extends ProxyError {
 // @public
 export class UpstreamBodyTooLargeError extends ProxyError {
     constructor(maxBodyBytes: number);
+    // (undocumented)
+    readonly code: "UPSTREAM_BODY_TOO_LARGE";
     // (undocumented)
     readonly kind: "UpstreamBodyTooLarge";
     // (undocumented)
