@@ -65,14 +65,14 @@ export async function verifyDstackAttestation(
     }
   }
 
-  // Narrate the field-check outcomes (point 9). Built only when a logger is
+  // Narrate the field-check outcomes. Built only when a logger is
   // injected (policy.logger is undefined on the silent path).
   policy.logger?.debug("attestation.fieldChecks", {
     chkA1: "reportData-binding ok",
     chkA2: composeChecked ? "ok" : "dormant-skip",
   });
 
-  // --- Step-4: hardware-signature verifier (→ CHK-P1) — MANDATORY ---
+  // --- Hardware-signature verifier (→ CHK-P1) — MANDATORY ---
   // policy.hardwareVerifier IS the hardware root of trust for this call. It is
   // REQUIRED: a policy without one cannot establish hardware trust, so fail
   // closed rather than return an unattested "pass". On success the function
@@ -84,7 +84,7 @@ export async function verifyDstackAttestation(
       "no hardware verifier configured: policy.hardwareVerifier is required (hardware-signature verification cannot be skipped)",
     );
   }
-  // Pre-call narration (point 10): the hardware verifier is about to run. The
+  // Pre-call narration: the hardware verifier is about to run. The
   // verifier itself (e.g. CloudVerifier) emits its own hardware.verify with the
   // verdict + binds; this records the invocation regardless of verifier kind.
   policy.logger?.debug("hardware.verify", { verifier: "hardware-verifier", invoking: true });
