@@ -2,13 +2,8 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Loopback HTTP server fronting an in-test node, with a request log and per-test answers.
 
-import {
-  createServer,
-  type IncomingHttpHeaders,
-  type Server,
-  type ServerResponse,
-} from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo, Socket } from "node:net";
 import { gzipSync } from "node:zlib";
 import { CHAIN_ID, NODE_ID } from "./fixtures";
 import {
@@ -26,13 +21,16 @@ export interface ServedRequest {
   path: string;
   /** Lowercase names; repeated values joined with ", ". */
   headers: Record<string, string>;
+  rawHeaders: string[];
   body: Uint8Array;
   gzipped: boolean;
+  socket: Socket;
 }
 
 export interface ServedAnswer {
   status: number;
-  headers?: Record<string, string>;
+  /** An array value is sent as repeated header lines. */
+  headers?: Record<string, string | string[]>;
   body?: Uint8Array | string;
   /** Declares the full length, writes this many body bytes, then destroys the socket. */
   cutAfter?: number;
@@ -51,16 +49,17 @@ export interface TestNodeServerOptions {
 
 export interface TestNodeServer {
   readonly url: string;
+  readonly node: TestNode;
   readonly requests: ServedRequest[];
   /** Sets the handler for later requests; no argument restores plain forwarding. */
   answer(handler?: ServedHandler): void;
   close(): Promise<void>;
 }
 
-function flatten(headers: IncomingHttpHeaders): Record<string, string> {
+function flatten(req: IncomingMessage): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [name, value] of Object.entries(headers)) {
-    if (value !== undefined) out[name] = Array.isArray(value) ? value.join(", ") : value;
+  for (const [name, values] of Object.entries(req.headersDistinct)) {
+    if (values !== undefined) out[name] = values.join(", ");
   }
   return out;
 }
@@ -130,9 +129,11 @@ export async function serveTestNode(
         method: req.method ?? "",
         url,
         path: url.split("?", 1)[0] ?? url,
-        headers: flatten(req.headers),
+        headers: flatten(req),
+        rawHeaders: [...req.rawHeaders],
         body: new Uint8Array(Buffer.concat(chunks)),
         gzipped: false,
+        socket: req.socket,
       };
       requests.push(entry);
       const forward = () =>
@@ -145,8 +146,11 @@ export async function serveTestNode(
       const current = handler;
       Promise.resolve()
         .then(() => current?.(entry, forward))
-        .then(async (answer) => answer ?? (await forward()))
-        .then((answer) => write(entry, answer, res))
+        .then(async (answer) => {
+          // A request whose client left during the handler never reaches the node.
+          if (req.socket.destroyed) return;
+          write(entry, answer ?? (await forward()), res);
+        })
         .catch(() => res.destroy());
     });
   });
@@ -154,6 +158,7 @@ export async function serveTestNode(
 
   return {
     url: origin,
+    node,
     requests,
     answer(next) {
       handler = next;
