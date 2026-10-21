@@ -150,11 +150,11 @@ client.getConfidentialInfo(); // { nodeId, pubkey, composeHash, attestedAt }, or
   node's TDX quote.
 - `logger`: an opt-in `Logger`, as in open mode.
 - `replayWindowMs`: the allowed clock skew of the node's signature timestamp
-  (default 60 s). Finite positive integer milliseconds; anything else throws a
-  `RangeError`.
+  (default 60 s). Finite positive integer milliseconds; anything else throws
+  `InvalidOption`.
 - `pubkeyCacheTtlMs`: how long a pin is kept (default 1 hour). Finite positive
-  integer milliseconds; anything else, `Infinity` included, throws a
-  `RangeError`.
+  integer milliseconds; anything else, `Infinity` included, throws
+  `InvalidOption`.
 - `transport`: replaces `fetch` for both outer requests. It must send the bytes
   as given, never follow a redirect, never retry, honour the signal and return
   the content-decoded body. `fetchTransport(fetchFn)` from

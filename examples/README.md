@@ -7,7 +7,7 @@ Arbitrum vRPC endpoint.
 | - | ------ | ------------- |
 | 01 | `01-ethers-client.ts` | Drop-in **ethers** provider (`VrpcProvider`) — `getBlock` / `getBalance`, every response verified before ethers returns it. |
 | 02 | `02-viem-client.ts` | Drop-in **viem** transport (`vrpcHttp`) wired into `createPublicClient` — the same calls, verified inside the transport. |
-| 03 | `03-vrpc-core-walkthrough.ts` | Step-by-step **`@w3tech.io/vrpc-core`**: signed wire → `verifyResponse` → tamper→`BadSignature` → `fetchAttestation` + correlation → `TrustedVerifier`. |
+| 03 | `03-vrpc-core-walkthrough.ts` | Step-by-step **`@w3tech.io/vrpc-core`**: signed wire → `verifyResponse` → tamper→`BadSignature` → `fetchAttestation` → `TrustedVerifier`. |
 | 04 | `04-proxy.ts` | Local verifying **proxy** (`@w3tech.io/vrpc-proxy`) spawned as a child process — a plain `fetch` client with zero SDK imports gets fail-closed-verified responses. |
 
 ## Run
@@ -30,8 +30,8 @@ for RPC; the adapters derive only the `/attestation` sub-route from it.
 - **Signing key ↔ TDX enclave correlation** — VERIFIED (attestation pubkey must
   equal the response signer).
 - **TDX DCAP quote verdict** — VERIFIED by default. The SDK runs an always-on
-  hardware verifier (`createCloudVerifier`, the Phala cloud verifier wired
-  mandatory by `buildVerifyPolicy`), which asserts the DCAP verdict
+  hardware verifier (`createCloudVerifier`, the Phala cloud verifier, wired by
+  default), which asserts the DCAP verdict
   (`quote.verified === true`) and binds the quote to the response signer
   (`report_data == pubkey‖nonce`). Fail-closed (`CHK-P1`); point it at a
   self-hosted endpoint to avoid the public Phala egress.

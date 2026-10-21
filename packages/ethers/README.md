@@ -146,8 +146,8 @@ Spread order is enforced so `staticNetwork` cannot be overridden away.
 
 > [!NOTE]
 > Hardware attestation is **always-on and fail-closed**. By default
-> `TrustedVerifier` wires the real Phala CloudVerifier (`createCloudVerifier()`,
-> via vrpc-core's `buildVerifyPolicy`); it **cannot be disabled**. Override the
+> `TrustedVerifier` wires the real Phala CloudVerifier (`createCloudVerifier()`);
+> it **cannot be disabled**. Override the
 > internal `hardwareVerifier` option only to point at a self-hosted endpoint, a
 > future local-DCAP verifier, or a no-network test mock. The `report_data →
 > pubkey/nonce` binding check (CHK-A1) runs unconditionally; the compose-hash
@@ -174,12 +174,13 @@ errors and propagates (fail-closed).
 | Field            | Type                         | Default          | Meaning |
 | ---------------- | ---------------------------- | ---------------- | ------- |
 | `pubkeyCacheTtlMs` | `number`                   | `3_600_000` (1h) | Verified-pubkey cache TTL (ms). A second read within TTL reuses the cache and skips the attestation fetch; past TTL the pubkey is re-attested (no stale trust). |
+| `hardwareVerifier` | `HardwareVerifier`         | Phala cloud verifier (vrpc-core) | Internal/advanced. Overrides the mandatory hardware-signature verifier; it cannot be disabled. |
+| `fetch`            | `typeof fetch`             | global `fetch`   | Used only by the default hardware verifier's call. |
+| `logger`           | `Logger`                   | no-op (silent)   | Opt-in debug logger for the verify flow (`createConsoleLogger()` from `@w3tech.io/vrpc-core`). |
 
 > Auth/headers: set them on the `FetchRequest` you pass as the URL
 > (`req.setHeader("x-api-key", …)`) — those cover BOTH the RPC POST and the
-> attestation fetch. (v6.0 removed the inert `allowlist`/`tcb`/`pccsUrl` options —
-> they were trust-anchor knobs the verifier does not yet consume — and the
-> redundant `headers` option.)
+> attestation fetch.
 
 ```ts
 // Auth the idiomatic ethers way: set it on the FetchRequest. The SDK reuses

@@ -7,7 +7,7 @@ Verification of dstack / Intel TDX attestation evidence.
 > `verifyDstackAttestation` enforces a **mandatory** step-4 hardware-signature
 > verifier as its root of trust. If `policy.hardwareVerifier` is absent the call
 > fails closed with `AttestationError("CHK-P1")`. The live SDK path (vrpc-core's
-> `buildVerifyPolicy` / `TrustedVerifier`) always wires the **Phala
+> `TrustedVerifier`) always wires the **Phala
 > CloudVerifier**, which POSTs the DCAP quote to a hosted verify endpoint,
 > asserts the verdict, and binds report_data → pubkey‖nonce and compose_hash →
 > `mr_config_id` (B+). It runs after the unconditional CHK-A1 (pubkey/nonce
@@ -127,7 +127,7 @@ await verifyDstackAttestation(bundle, {
 - **Required (fail-closed).** A hardware verifier is mandatory. When
   `policy.hardwareVerifier` is **unset**, `verifyDstackAttestation` throws
   `AttestationError("CHK-P1", …)` after CHK-A1/A2 — an unattested response never
-  passes. In the live SDK path, core's `buildVerifyPolicy` /
+  passes. In the live SDK path, core's
   `TrustedVerifier` always wires the Phala `CloudVerifier` by default, so the
   verifier is the hardware root of trust for every call; only its
   endpoint/implementation is overridable.

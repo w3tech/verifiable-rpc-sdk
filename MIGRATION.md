@@ -275,7 +275,7 @@ The error changes apply to the same classes re-exported by
 | `verifyAttestationCorrelation` | Removed; `TrustedVerifier` checks the correlation | Use `TrustedVerifier` |
 | `TrustedVerifierOptions.nonceSource`, `TrustedVerifierOptions.verifyAttestation` | Removed | Drop them; customise the attestation check with `hardwareVerifier` |
 | `DEFAULT_PUBKEY_CACHE_MAX` | Removed; the `pubkeyCacheMax` default is still 1024 | Use the literal |
-| `safeLogger`, `truncateHex` | Removed | Nothing; a `Logger` must not throw |
+| `safeLogger`, `truncateHex` | Removed | Nothing; core still wraps an injected `Logger` so it cannot throw |
 | `VrpcUrls` is `{ rpcUrl, attestationUrl }` | Also has `confidentialUrl` | Build it with `deriveVrpcUrls(url)` |
 
 ### @w3tech.io/dstack-verify
