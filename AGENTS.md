@@ -161,6 +161,7 @@ variables set.
 | Add or reuse a test helper shared by packages | `packages/test-support/src` (`@w3tech.io/vrpc-test-support`: private workspace package, imported by package name as a devDependency) |
 | Explain vRPC / the trust model to a user      | `.claude/skills/explain-vrpc/SKILL.md` |
 | Change how a node is attested                 | `packages/core/src/attestation.ts` (`attestNode`) |
+| Change what core enforces on an injected transport | `packages/core/src/transport.ts` (`guardedSend`) |
 
 ## Conventions
 
