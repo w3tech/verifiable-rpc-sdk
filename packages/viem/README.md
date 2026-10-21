@@ -12,7 +12,7 @@ change.
 **before `JSON.parse`**, and feeds them — with the exact request bytes it
 POSTed — into `@w3tech.io/vrpc-core`'s `verifyResponse`. Only after verification
 passes is the body parsed and the result returned. Verification is
-**fail-closed** by default (`strict`).
+**fail-closed**.
 
 All verification logic is reused from `@w3tech.io/vrpc-core` — none is copied
 here, and there is no `ethers` import (manifest isolation). The error family is
@@ -251,7 +251,7 @@ try {
 
 | Outcome                                   | What the transport throws |
 |-------------------------------------------|---------------------------|
-| Tampered / forged signature               | `BadSignature` (a `VerificationError`) — fail-closed in `strict`. |
+| Tampered / forged signature               | `BadSignature` (a `VerificationError`) — fail-closed. |
 | Stripped `vRPC-*` headers (downgrade)     | `MissingHeader` (a `VerificationError`) — fail-closed. |
 | Wrong chain id (signed for another chain) | `BadSignature`. |
 | Signed JSON-RPC `{ error }` body          | viem's own `RpcRequestError` — **NOT** a `VerificationError` (verification passed; `buildRequest` maps it by code). |
