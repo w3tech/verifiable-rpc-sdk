@@ -366,7 +366,18 @@ describe("proxy pipeline", () => {
     await expectErrorKind(res, 502, "DecodeFailed");
   });
 
-  test("concurrentColdRequestsShareOneAttestation", async () => {
+  test.each([
+    "silent",
+    "debug",
+  ] as const)("%s: parallel cold verifies share one attestation and write nothing to stdout or console", async (logLevel) => {
+    const methods = ["log", "info", "warn", "error", "debug"] as const;
+    const consoles = methods.map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderr: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
+      stderr.push(String(chunk));
+      return true;
+    });
     const mock = await startMockSidecar();
     cleanups.push(() => mock.close());
     const stub = attestationStub();
@@ -376,7 +387,7 @@ describe("proxy pipeline", () => {
       return stub.fetch(input);
     }) as typeof globalThis.fetch;
     const overrides = { fetch, hardwareVerifier: mockHardwareVerifier() };
-    const server = createProxyServer(testConfig(mock.url), overrides);
+    const server = createProxyServer(testConfig(mock.url, { logLevel }), overrides);
     const url = await listen(server);
     cleanups.push(() => closeServer(server));
 
@@ -387,24 +398,11 @@ describe("proxy pipeline", () => {
 
     expect(statuses).toEqual(Array(10).fill(200));
     expect(stub.urls).toHaveLength(1);
-  });
-
-  test("silentLevelProducesZeroConsoleOutput", async () => {
-    const spies = [
-      vi.spyOn(console, "log").mockImplementation(() => {}),
-      vi.spyOn(console, "info").mockImplementation(() => {}),
-      vi.spyOn(console, "warn").mockImplementation(() => {}),
-      vi.spyOn(console, "error").mockImplementation(() => {}),
-      vi.spyOn(console, "debug").mockImplementation(() => {}),
-    ];
-
-    const { url } = await startProxy();
-    const res = await post(url, RPC_REQUEST);
-    expect(res.status).toBe(200);
-
-    for (const spy of spies) {
-      expect(spy).not.toHaveBeenCalled();
-    }
+    for (const spy of consoles) expect(spy).not.toHaveBeenCalled();
+    expect(stdout).not.toHaveBeenCalled();
+    const starts = stderr.filter((l) => l.startsWith("[vrpc-proxy] debug verify.start "));
+    expect(starts).toHaveLength(logLevel === "debug" ? 10 : 0);
+    if (logLevel === "silent") expect(stderr).toEqual([]);
   });
 });
 

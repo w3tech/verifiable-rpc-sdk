@@ -226,25 +226,33 @@ describe("confidential logging", () => {
     const out = await drive("debug");
     expectNoSentinel(out);
     expect(out.errorBodies.length).toBeGreaterThanOrEqual(6);
-    expect(out.console.some((c) => c.method === "debug")).toBe(true);
+    expect(out.console).toEqual([]);
 
     const lines = out.stderr.filter((l) => l.startsWith("[vrpc-proxy] "));
     expect(lines).toHaveLength(out.stderr.length);
     const seen = new Set<string>();
     for (const line of lines) {
       const { event, fields } = parseLine(line);
-      const spec = EVENT_FIELDS[event];
-      expect(spec, event).toBeDefined();
       const keys = Object.keys(fields);
-      for (const key of spec?.required ?? []) expect(keys, event).toContain(key);
-      for (const key of keys) {
-        expect([...(spec?.required ?? []), ...(spec?.optional ?? [])], event).toContain(key);
+      if (event.startsWith("proxy.")) {
+        const spec = EVENT_FIELDS[event];
+        expect(spec, event).toBeDefined();
+        for (const key of spec?.required ?? []) expect(keys, event).toContain(key);
+        for (const key of keys) {
+          expect([...(spec?.required ?? []), ...(spec?.optional ?? [])], event).toContain(key);
+        }
       }
       expect(keys).not.toContain("url");
       expect(keys).not.toContain("method");
       seen.add(event);
     }
-    for (const event of ["proxy.attested", "proxy.relay", "proxy.error", "proxy.attestFailed"]) {
+    for (const event of [
+      "proxy.attested",
+      "proxy.relay",
+      "proxy.error",
+      "proxy.attestFailed",
+      "confidential.attest.ok",
+    ]) {
       expect(seen).toContain(event);
     }
   }, 20_000);

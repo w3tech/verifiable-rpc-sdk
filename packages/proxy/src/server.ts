@@ -5,13 +5,7 @@
 
 import http from "node:http";
 
-import {
-  createConsoleLogger,
-  defaultLogger,
-  type Logger,
-  TrustedVerifier,
-  type TrustedVerifierOptions,
-} from "@w3tech.io/vrpc-core";
+import { type Logger, TrustedVerifier, type TrustedVerifierOptions } from "@w3tech.io/vrpc-core";
 import {
   ConfidentialClient,
   type ConfidentialClientOptions,
@@ -72,11 +66,9 @@ export function createProxyServer(
   config: ProxyConfig,
   overrides: ProxyTestOverrides = {},
 ): http.Server {
-  // Core verifier logger (debug-only trace) — separate from the proxy's own
-  // leveled logger. Tests may inject `overrides.logger` to capture verify logs.
-  const verifierLogger =
-    overrides.logger ?? (config.logLevel === "debug" ? createConsoleLogger() : defaultLogger);
   const proxyLogger = createProxyLogger(config.logLevel);
+  // One sink: core events go to the proxy log at debug; below it core keeps its silent path.
+  const coreLogger = overrides.logger ?? (config.logLevel === "debug" ? proxyLogger : undefined);
 
   // One Agent bounds connect, headers and body of upstream requests and of the
   // attestation fetches by --timeout. Closed with the server.
@@ -87,24 +79,19 @@ export function createProxyServer(
   });
 
   if (config.confidential === true) {
-    return createConfidentialServer(config, overrides, verifierLogger, proxyLogger, dispatcher);
+    return createConfidentialServer(config, overrides, coreLogger, proxyLogger, dispatcher);
   }
 
-  // Optional keys are set conditionally rather than spread as `key: undefined`
-  // (exactOptionalPropertyTypes).
-  const options: TrustedVerifierOptions = {
+  const verifier = new TrustedVerifier({
     chainId: config.chainId,
     attestationUrl: config.attestationUrl,
     headers: config.attestationHeaders,
-    logger: verifierLogger,
+    logger: coreLogger,
     fetch: overrides.fetch ?? agentFetch(dispatcher),
-  };
-  if (config.replayWindowMs !== undefined) options.replayWindowMs = config.replayWindowMs;
-  if (config.pubkeyCacheTtlMs !== undefined) options.pubkeyCacheTtlMs = config.pubkeyCacheTtlMs;
-  if (overrides.hardwareVerifier !== undefined)
-    options.hardwareVerifier = overrides.hardwareVerifier;
-
-  const verifier = new TrustedVerifier(options);
+    hardwareVerifier: overrides.hardwareVerifier,
+    replayWindowMs: config.replayWindowMs,
+    pubkeyCacheTtlMs: config.pubkeyCacheTtlMs,
+  });
 
   const server = createServer(
     createRequestHandler({ config, verifier, logger: proxyLogger, dispatcher }),
@@ -119,7 +106,7 @@ export function createProxyServer(
 function createConfidentialServer(
   config: ProxyConfig,
   overrides: ProxyTestOverrides,
-  verifierLogger: Logger,
+  coreLogger: Logger | undefined,
   proxyLogger: ProxyLogger,
   dispatcher: Agent,
 ): http.Server {
@@ -128,7 +115,7 @@ function createConfidentialServer(
     chainId: config.chainId,
     headers: config.attestationHeaders,
     transport: createConfidentialTransport(config, dispatcher),
-    logger: verifierLogger,
+    logger: coreLogger,
     hardwareVerifier: overrides.hardwareVerifier,
     fetch: agentFetch(dispatcher),
     replayWindowMs: config.replayWindowMs,
