@@ -14,7 +14,8 @@ import { checkOptions } from "./options";
 
 /**
  * A `ConfidentialClient` whose code, crypto included, is loaded on the first `request` or `ready`.
- * Options are checked at construction; a failed load is `InternalError` with `executed: "no"` and is retried on the next call.
+ * Options are copied and checked at construction; a failed load or construction is `InternalError`
+ * with `executed: "no"` and is retried on the next call.
  */
 export class LazyConfidentialClient {
   readonly #options: ConfidentialClientOptions;
@@ -22,8 +23,8 @@ export class LazyConfidentialClient {
   #loading: Promise<ConfidentialClient> | undefined;
 
   constructor(options: ConfidentialClientOptions) {
-    checkOptions(options, ["url", "chainId"]);
-    this.#options = options;
+    this.#options = { ...options, ...(options.headers && { headers: { ...options.headers } }) };
+    checkOptions(this.#options, ["url", "chainId"]);
   }
 
   async request(
@@ -43,18 +44,14 @@ export class LazyConfidentialClient {
 
   #load(): Promise<ConfidentialClient> {
     if (this.#client !== undefined) return Promise.resolve(this.#client);
-    this.#loading ??= import("./confidential-client").then(
-      ({ ConfidentialClient }) => {
-        this.#client = new ConfidentialClient(this.#options);
-        return this.#client;
-      },
-      (cause: unknown) => {
+    this.#loading ??= import("./confidential-client")
+      .then(({ ConfidentialClient }) => (this.#client = new ConfidentialClient(this.#options)))
+      .catch((cause: unknown) => {
         this.#loading = undefined;
         const err = new InternalError({ cause });
         err.executed = "no";
         throw err;
-      },
-    );
+      });
     return this.#loading;
   }
 }

@@ -57,11 +57,21 @@ describe("LazyConfidentialClient", () => {
     expect(client.getConfidentialInfo()).toEqual(info);
   });
 
-  test("a failed load is InternalError with executed no and is retried", async () => {
+  test.each([
+    "load",
+    "construction",
+  ])("a failed %s is InternalError with executed no and is retried", async (stage) => {
     let failures = 1;
     vi.doMock("../src/confidential-client", async (importOriginal) => {
-      if (failures-- > 0) throw new Error("chunk load failed");
-      return importOriginal();
+      if (stage === "load" && failures-- > 0) throw new Error("boom");
+      const original = await importOriginal<typeof import("../src/confidential-client")>();
+      class ConfidentialClient extends original.ConfidentialClient {
+        constructor(options: ConfidentialClientOptions) {
+          if (failures-- > 0) throw new Error("boom");
+          super(options);
+        }
+      }
+      return { ...original, ConfidentialClient };
     });
     vi.resetModules();
     const { LazyConfidentialClient: Lazy } = await import("../src/lazy-confidential");
@@ -74,9 +84,19 @@ describe("LazyConfidentialClient", () => {
     expect(err).toBeInstanceOf(InternalError);
     expect(err).toMatchObject({ executed: "no" });
     const cause = (err as Error).cause as Error;
-    expect(cause).toBeInstanceOf(Error);
-    expect(cause.cause).toMatchObject({ message: "chunk load failed" });
+    expect([cause, cause.cause]).toContainEqual(expect.objectContaining({ message: "boom" }));
     expect(node.requests).toHaveLength(0);
     expect((await client.request(jsonRpcCall())).status).toBe(200);
+  });
+
+  test("later changes to the caller's options object are not used", async () => {
+    const node = testNode();
+    const options = { ...optionsFor(node), headers: { "x-api-key": KEY } };
+    const client = new LazyConfidentialClient(options);
+    options.url = "::not a url";
+    options.headers["x-api-key"] = "bad\nvalue";
+
+    expect((await client.request(jsonRpcCall())).status).toBe(200);
+    expect(node.requests[0]?.headers["x-api-key"]).toBe(KEY);
   });
 });
