@@ -426,10 +426,7 @@ describe("proxy pipeline", () => {
   });
 });
 
-// Gated by the SAME runtime detect the production decode layer uses — CI's
-// zstd landed in Node 23.8 — both the fixture compression and the decode side
-// need the native codec; older runtimes skip.
-describe.skipIf(typeof zlib.zstdDecompressSync !== "function")("proxy pipeline (zstd)", () => {
+describe("proxy pipeline (zstd)", () => {
   test("happyPathZstdRelaysExactCompressedBytes", async () => {
     const plaintext = '{"jsonrpc":"2.0","id":1,"result":"0xzstdbody"}';
     const { mock, url } = await startProxy({ encoding: "zstd", plaintext });
