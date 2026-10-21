@@ -31,8 +31,7 @@ import { type Attestation, fetchAttestation, verifyAttestationCorrelation } from
 import { AttestationFailed } from "./errors";
 import { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
 import { defaultLogger, type Logger, safeLogger } from "./logger";
-import { DEFAULT_PUBKEY_CACHE_TTL_MS } from "./options";
-import { validateChainId } from "./preimage";
+import { checkOptions } from "./options";
 import { type ResponseHeaders, type VerifiedPair, verifyResponse } from "./verify";
 
 /** Default max distinct verified pubkeys held in the cache before LRU eviction. */
@@ -50,8 +49,8 @@ export interface TrustedVerifierOptions {
    * Opaque chain id string bound into the canonical pre-image as
    * `sha256(utf8(chainId))` at bytes [0..32]. MUST match the chain id string
    * the sidecar was configured with — mismatch produces a `BadSignature` even
-   * on intact responses. Validated synchronously at construction
-   * (`validateChainId`); an invalid id throws `InvalidChainId`.
+   * on intact responses. Validated synchronously at construction; an invalid
+   * id, like any other bad option, throws `InvalidOption`.
    */
   chainId: string;
   /** Allowed skew between client clock and signed timestamp; default 60_000 ms. */
@@ -199,10 +198,16 @@ export class TrustedVerifier {
   private readonly ttlMs: number;
 
   constructor(opts: TrustedVerifierOptions) {
-    const ttlMs = opts.pubkeyCacheTtlMs ?? DEFAULT_PUBKEY_CACHE_TTL_MS;
-    if (ttlMs <= 0) {
-      throw new RangeError("pubkeyCacheTtlMs must be a positive number of milliseconds");
-    }
+    const {
+      chainId,
+      replayWindowMs,
+      pubkeyCacheTtlMs: ttlMs,
+    } = checkOptions({
+      chainId: opts.chainId,
+      headers: opts.headers,
+      replayWindowMs: opts.replayWindowMs,
+      pubkeyCacheTtlMs: opts.pubkeyCacheTtlMs,
+    });
     this.ttlMs = ttlMs;
     this.cache = new LRUCache<string, true>({
       max: opts.pubkeyCacheMax ?? DEFAULT_PUBKEY_CACHE_MAX,
@@ -212,10 +217,8 @@ export class TrustedVerifier {
     });
     this.nonceSource = opts.nonceSource ?? (() => crypto.getRandomValues(new Uint8Array(32)));
     this.verifyAttestationImpl = opts.verifyAttestation ?? verifyDstackAttestation;
-    // Synchronous fail-fast (no-throw-from-async convention): an invalid chain
-    // id throws InvalidChainId here, mirroring the sidecar's boot validation.
-    this.chainId = validateChainId(opts.chainId);
-    this.replayWindowMs = opts.replayWindowMs;
+    this.chainId = chainId;
+    this.replayWindowMs = replayWindowMs;
     this.attestationUrl = opts.attestationUrl;
     this.headers = opts.headers;
     this.fetchImpl = opts.fetch;

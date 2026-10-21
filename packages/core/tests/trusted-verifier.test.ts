@@ -12,8 +12,9 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   AttestationFailed,
-  InvalidChainId,
+  InvalidOption,
   MalformedAttestationResponse,
+  type OptionName,
   VerificationError,
 } from "../src/errors";
 import type { Logger } from "../src/logger";
@@ -93,10 +94,39 @@ function baseOpts(overrides: Partial<TrustedVerifierOptions> = {}): TrustedVerif
 }
 
 describe("TrustedVerifier / trust seam", () => {
-  test("constructorRejectsInvalidChainId", () => {
-    // Synchronous fail-fast, mirroring the sidecar's boot validation.
-    expect(() => new TrustedVerifier(baseOpts({ chainId: "" }))).toThrow(InvalidChainId);
-    expect(() => new TrustedVerifier(baseOpts({ chainId: "c\u00e9pas" }))).toThrow(InvalidChainId);
+  test.each<[Partial<TrustedVerifierOptions>, OptionName]>([
+    [{ chainId: "" }, "chainId"],
+    [{ chainId: "7".repeat(65) }, "chainId"],
+    [{ headers: { "x-api-key": "bad\nSECRETKEY42" } }, "headers"],
+    ...[0, -1, 1.5, Infinity].map((v): [Partial<TrustedVerifierOptions>, OptionName] => [
+      { replayWindowMs: v },
+      "replayWindowMs",
+    ]),
+    ...[0, -1, 1.5, Number.NaN, Infinity].map(
+      (v): [Partial<TrustedVerifierOptions>, OptionName] => [
+        { pubkeyCacheTtlMs: v },
+        "pubkeyCacheTtlMs",
+      ],
+    ),
+  ])("constructor rejects %o as InvalidOption %s", (bad, option) => {
+    let err: unknown;
+    try {
+      new TrustedVerifier(baseOpts(bad));
+    } catch (caught) {
+      err = caught;
+    }
+    expect(err).toBeInstanceOf(InvalidOption);
+    expect(err).toMatchObject({ option });
+    expect(String(err)).not.toContain("SECRETKEY42");
+  });
+
+  test("constructor accepts the largest replay window and a 1 ms TTL", () => {
+    expect(
+      () =>
+        new TrustedVerifier(
+          baseOpts({ replayWindowMs: Number.MAX_SAFE_INTEGER, pubkeyCacheTtlMs: 1 }),
+        ),
+    ).not.toThrow();
   });
 
   let savedFetch: typeof fetch;
@@ -320,11 +350,6 @@ describe("TrustedVerifier / trust seam", () => {
     await verifyWith(seedC);
     await verifyWith(seedB);
     expect(mock.urls.length).toBe(5); // B evicted when A re-entered; C still warm
-  });
-
-  test("nonPositiveTtlThrows", () => {
-    // A non-positive TTL is a config error — the ctor fails fast.
-    expect(() => new TrustedVerifier(baseOpts({ pubkeyCacheTtlMs: 0 }))).toThrow(RangeError);
   });
 });
 
