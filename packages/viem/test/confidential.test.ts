@@ -21,7 +21,7 @@ import {
   type TestUpstream,
   WIDE_WINDOW,
 } from "@w3tech.io/vrpc-test-support";
-import { serveRpcNode } from "@w3tech.io/vrpc-test-support/adapter";
+import { expectNoSecrets, serveRpcNode } from "@w3tech.io/vrpc-test-support/adapter";
 import { InvalidOption, mayHaveExecuted, vrpcHttp } from "@w3tech.io/vrpc-viem";
 import {
   BaseError,
@@ -117,27 +117,6 @@ function openFetch(upstream: TestUpstream) {
     const headers = signedJsonHeaders(CHAIN_ID, requestBytes, responseBytes, { nodeId: NODE_ID });
     return new Response(responseBody, { status: answer.status, headers });
   };
-}
-
-function unserialisable(value: unknown): string {
-  try {
-    return JSON.stringify(value, (_, v) => (typeof v === "bigint" ? v.toString() : v)) ?? "";
-  } catch {
-    return "unserialisable";
-  }
-}
-
-// message, String form, stack and JSON form of the error and every cause below it.
-function texts(err: unknown): string[] {
-  const out: string[] = [];
-  const seen = new Set<unknown>();
-  let current = err;
-  while (current instanceof Error && !seen.has(current)) {
-    seen.add(current);
-    out.push(current.message, String(current), current.stack ?? "", unserialisable(current));
-    current = current.cause;
-  }
-  return out;
 }
 
 async function until(predicate: () => boolean): Promise<void> {
@@ -267,12 +246,7 @@ describe("errors", () => {
   ];
 
   function expectClean(err: unknown): void {
-    for (const text of texts(err)) {
-      expect(text).not.toContain("sentinel-reply");
-      expect(text).not.toContain(SENTINEL_PARAM);
-      expect(text).not.toContain(KEY);
-      expect(text).not.toContain("/eth_vrpc");
-    }
+    expectNoSecrets([err], ["sentinel-reply", SENTINEL_PARAM, KEY, "/eth_vrpc"], []);
   }
 
   test.each(cases)("$name rejects from the transport with the viem class", async (row) => {

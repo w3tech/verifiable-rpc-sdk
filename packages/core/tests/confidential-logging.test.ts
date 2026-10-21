@@ -5,9 +5,9 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { AttestationError } from "@w3tech.io/dstack-verify";
 import {
   CHAIN_ID,
-  type CollectingLogger,
   collectingLogger,
   createTestNode,
+  errorTexts,
   mockHardwareVerifier,
   NODE_ID,
   NODE_SEED,
@@ -15,6 +15,7 @@ import {
   type TestOuterResponse,
   x25519SecretFromSeed,
 } from "@w3tech.io/vrpc-test-support";
+import { expectNoSecrets } from "@w3tech.io/vrpc-test-support/adapter";
 import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import type { InnerRequest } from "../src/bhttp";
 import { ConfidentialClient } from "../src/confidential-client";
@@ -76,8 +77,13 @@ interface Scenario {
   arrange?(node: TestNode): void;
 }
 
-interface Capture {
-  sentinels: Set<string>;
+// What the wire carried: the encapsulated keys among the sentinels, and every body.
+interface Seen {
+  sentinels: string[];
+  bodies: Uint8Array[];
+}
+
+interface Capture extends Seen {
   errors: unknown[];
 }
 
@@ -200,9 +206,9 @@ const SCENARIOS: Scenario[] = [
   { name: "attestation failed", expected: AttestationFailed, hardwareFail: true },
 ];
 
-function baseSentinels(): Set<string> {
+function baseSentinels(): string[] {
   const secret = x25519SecretFromSeed(NODE_SEED);
-  return new Set([
+  return [
     API_KEY,
     "Sentinelkey",
     "sentinel-path",
@@ -213,12 +219,7 @@ function baseSentinels(): Set<string> {
     bytesToHex(NODE_SEED),
     bytesToHex(secret),
     bytesToHex(x25519.getPublicKey(secret)),
-  ]);
-}
-
-function addWindows(sentinels: Set<string>, body: Uint8Array): void {
-  const hex = bytesToHex(body);
-  for (let i = 0; i + 32 <= hex.length; i += 32) sentinels.add(hex.slice(i, i + 32));
+  ];
 }
 
 function testNode(): TestNode {
@@ -232,19 +233,15 @@ function testNode(): TestNode {
 }
 
 // The client's signal handling is under test, not the in-test transport's listeners.
-function capturing(
-  node: TestNode,
-  sentinels: Set<string>,
-  failPost = false,
-): ConfidentialTransport {
+function capturing(node: TestNode, seen: Seen, failPost = false): ConfidentialTransport {
   return async ({ signal: _signal, ...request }) => {
     if (request.body !== undefined) {
-      sentinels.add(bytesToHex(request.body.subarray(7, 39)));
-      addWindows(sentinels, request.body);
+      seen.sentinels.push(bytesToHex(request.body.subarray(7, 39)));
+      seen.bodies.push(request.body.slice());
     }
     if (failPost && request.method === "POST") throw new TypeError("fetch failed");
     const response = await node.transport(request);
-    addWindows(sentinels, response.body);
+    seen.bodies.push(response.body.slice());
     return response;
   };
 }
@@ -268,12 +265,12 @@ function clientFor(
 }
 
 async function runSuite(logger: Logger | undefined): Promise<Capture> {
-  const capture: Capture = { sentinels: baseSentinels(), errors: [] };
+  const capture: Capture = { sentinels: baseSentinels(), bodies: [], errors: [] };
   for (const keyIn of ["path", "header"] as const) {
     for (const scenario of SCENARIOS) {
       const node = testNode();
       scenario.arrange?.(node);
-      const transport = capturing(node, capture.sentinels, scenario.failPost);
+      const transport = capturing(node, capture, scenario.failPost);
       const client = clientFor(keyIn, transport, logger, scenario.hardwareFail);
       let outcome: unknown;
       try {
@@ -291,33 +288,6 @@ async function runSuite(logger: Logger | undefined): Promise<Capture> {
     }
   }
   return capture;
-}
-
-function replacer(_key: string, value: unknown): unknown {
-  return typeof value === "bigint" ? value.toString() : value;
-}
-
-function errorTexts(err: unknown): string[] {
-  const out: string[] = [];
-  const seen = new Set<unknown>();
-  let current = err;
-  while (current !== undefined && current !== null && !seen.has(current)) {
-    seen.add(current);
-    if (current instanceof Error) out.push(current.message, String(current), current.stack ?? "");
-    else out.push(String(current));
-    out.push(JSON.stringify(current, replacer) ?? "");
-    current = (current as { cause?: unknown }).cause;
-  }
-  return out;
-}
-
-function leaks(haystack: string, sentinels: Set<string>): string[] {
-  const lower = haystack.toLowerCase();
-  return [...sentinels].filter((sentinel) => lower.includes(sentinel.toLowerCase()));
-}
-
-function logText(logger: CollectingLogger): string {
-  return logger.calls.map((entry) => JSON.stringify(entry, replacer)).join("\n");
 }
 
 function watchOutput(): { consoleCalls(): number; warnings: unknown[] } {
@@ -375,18 +345,17 @@ describe("logging", () => {
   test("no sentinel appears in any log event, error message, stack, JSON form or cause", async () => {
     const logger = collectingLogger();
     const capture = await runSuite(logger);
-    const errors = capture.errors.flatMap(errorTexts).join("\n");
 
     expect(capture.errors).toHaveLength((SCENARIOS.length - 1) * 2);
-    expect(leaks(logText(logger), capture.sentinels)).toEqual([]);
-    expect(leaks(errors, capture.sentinels)).toEqual([]);
+    expectNoSecrets(logger.calls, capture.sentinels, capture.bodies);
+    expectNoSecrets(capture.errors, capture.sentinels, capture.bodies);
   });
 
   test("50 concurrent calls sharing one signal log no sentinel", async () => {
     const logger = collectingLogger();
-    const sentinels = baseSentinels();
+    const seen: Seen = { sentinels: baseSentinels(), bodies: [] };
     const node = testNode();
-    const client = clientFor("path", capturing(node, sentinels), logger);
+    const client = clientFor("path", capturing(node, seen), logger);
     const controller = new AbortController();
 
     const responses = await Promise.all(
@@ -395,13 +364,13 @@ describe("logging", () => {
 
     expect(responses).toHaveLength(50);
     expect(logger.calls.filter(([event]) => event === "confidential.response")).toHaveLength(50);
-    expect(leaks(logText(logger), sentinels)).toEqual([]);
+    expectNoSecrets(logger.calls, seen.sentinels, seen.bodies);
   });
 
   test("50 concurrent calls sharing one signal print nothing without a logger", async () => {
     const output = watchOutput();
     const node = testNode();
-    const client = clientFor("header", capturing(node, new Set()), undefined);
+    const client = clientFor("header", capturing(node, { sentinels: [], bodies: [] }), undefined);
     const controller = new AbortController();
 
     await Promise.all(
@@ -488,9 +457,9 @@ describe("real network failures through the default transport", () => {
 
       expect(err, keyIn).toBeInstanceOf(expected);
       expect(((err as Error).cause as Error).message, keyIn).toBe("The request failed.");
-      expect(leaks(errorTexts(err).join("\n"), baseSentinels()), keyIn).toEqual([]);
+      expectNoSecrets([err], baseSentinels(), []);
     }
-    expect(leaks(logText(logger), baseSentinels())).toEqual([]);
+    expectNoSecrets(logger.calls, baseSentinels(), []);
   });
 
   test.each([
@@ -526,7 +495,7 @@ describe("real network failures through the default transport", () => {
       message: "The request failed.",
       code: "ECONNRESET",
     });
-    expect(leaks(errorTexts(err).join("\n"), baseSentinels())).toEqual([]);
+    expectNoSecrets([err], baseSentinels(), []);
   });
 });
 
@@ -539,7 +508,7 @@ describe("invalid caller headers", () => {
     } catch (err) {
       fetchError = err;
     }
-    expect(leaks(errorTexts(fetchError).join("\n"), baseSentinels())).toContain(API_KEY);
+    expect(errorTexts(fetchError).join("\n")).toContain(API_KEY);
 
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     let err: unknown;
@@ -555,7 +524,7 @@ describe("invalid caller headers", () => {
     }
     expect(err).toBeInstanceOf(InvalidOption);
     expect((err as InvalidOption).cause).toBeUndefined();
-    expect(leaks(errorTexts(err).join("\n"), baseSentinels())).toEqual([]);
+    expectNoSecrets([err], baseSentinels(), []);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

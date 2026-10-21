@@ -22,7 +22,7 @@ import {
   signedJsonHeaders,
   type TestUpstream,
 } from "@w3tech.io/vrpc-test-support";
-import { serveRpcNode } from "@w3tech.io/vrpc-test-support/adapter";
+import { expectNoSecrets, serveRpcNode } from "@w3tech.io/vrpc-test-support/adapter";
 import type { TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
 import { AbiCoder, EnsResolver, FetchRequest, isError, toUtf8String } from "ethers";
 import { describe, expect, onTestFinished, test, vi } from "vitest";
@@ -152,14 +152,6 @@ function openProvider(upstream: TestUpstream): VrpcProvider {
   return provider;
 }
 
-function textForms(err: unknown): string[] {
-  return [
-    (err as Error).message,
-    String(err),
-    JSON.stringify(err, (_key, value) => (typeof value === "bigint" ? value.toString() : value)),
-  ];
-}
-
 describe("results equal open mode", () => {
   test("single calls, a batch and a null result", async () => {
     const { server } = await serveRpcNode(chainUpstream);
@@ -279,10 +271,7 @@ describe("errors", () => {
     expect(err.shortMessage).toBe(`server response ${status} `);
     expect(err.info.responseStatus).toBe(`${status} `);
     expect(toUtf8String(err.response.body)).toContain(marker);
-    for (const form of textForms(err)) {
-      expect(form).not.toContain("sentinel-reply");
-      expect(form).not.toContain(KEY);
-    }
+    expectNoSecrets([err], ["sentinel-reply", KEY], []);
   });
 
   test("an answer missing a request id rejects every caller with one BAD_DATA", async () => {
@@ -307,11 +296,8 @@ describe("errors", () => {
     for (const err of [...batch, single, nullElement]) {
       expect(isError(err, "BAD_DATA")).toBe(true);
       expect((err as { shortMessage: string }).shortMessage).toBe("missing response for request");
-      for (const form of textForms(err)) {
-        expect(form).not.toContain("7e57ab1e");
-        expect(form).not.toContain("5e17e1a1");
-      }
     }
+    expectNoSecrets([...batch, single, nullElement], ["7e57ab1e", "5e17e1a1"], []);
   });
 
   test.each([
@@ -324,7 +310,7 @@ describe("errors", () => {
     const err = await rejectionOf(provider.getBlockNumber());
 
     expect(isError(err, "UNSUPPORTED_OPERATION")).toBe(true);
-    for (const form of textForms(err)) expect(form).not.toContain("sentinel-reply");
+    expectNoSecrets([err], ["sentinel-reply"], []);
   });
 
   test("a gateway error reaches every batch member as the same core error", async () => {

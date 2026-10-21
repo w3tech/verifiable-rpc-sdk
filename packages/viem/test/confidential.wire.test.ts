@@ -97,25 +97,8 @@ describe("wire invariant", () => {
   });
 });
 
-// The error, every cause below it and every error viem's walk visits.
-function chain(err: unknown): unknown[] {
-  const out: unknown[] = [];
-  let current: unknown = err;
-  while (current !== undefined && current !== null && !out.includes(current)) {
-    out.push(current);
-    current = (current as { cause?: unknown }).cause;
-  }
-  if (err instanceof BaseError) {
-    err.walk((e) => {
-      if (!out.includes(e)) out.push(e);
-      return false;
-    });
-  }
-  return out;
-}
-
 function expectSanitised(err: unknown, bodies: Uint8Array[]): void {
-  expectNoSecrets(chain(err), [KEY, "sentinel-param", "sentinel-reply"], bodies);
+  expectNoSecrets([err], [KEY, "sentinel-param", "sentinel-reply"], bodies);
 }
 
 const sweepRequest = { method: "eth_blockNumber", params: ["sentinel-param"] } as const;

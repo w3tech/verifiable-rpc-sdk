@@ -9,6 +9,7 @@ import {
   mockHardwareVerifier,
   type TestOuterResponse,
 } from "@w3tech.io/vrpc-test-support";
+import { expectNoSecrets } from "@w3tech.io/vrpc-test-support/adapter";
 import { holdPosts, serveTestNode } from "@w3tech.io/vrpc-test-support/server";
 import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import type { LogLevel } from "../src/logger";
@@ -49,21 +50,13 @@ const CONSOLE_METHODS = ["log", "info", "warn", "error", "debug"] as const;
 
 interface Capture {
   stderr: string[];
-  console: { method: string; text: string }[];
+  console: { method: string; args: unknown[] }[];
   errorBodies: string[];
 }
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
-
-function stringify(value: unknown): string {
-  if (typeof value === "string") return value;
-  return (
-    JSON.stringify(value, (_, v: unknown) => (typeof v === "bigint" ? v.toString() : v)) ??
-    String(value)
-  );
-}
 
 function plain(status: number, body: string): TestOuterResponse {
   return { status, headers: { "content-type": "application/json" }, body: Buffer.from(body) };
@@ -77,7 +70,7 @@ function capture(): Capture {
   });
   for (const method of CONSOLE_METHODS) {
     vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
-      out.console.push({ method, text: args.map(stringify).join(" ") });
+      out.console.push({ method, args });
     });
   }
   return out;
@@ -196,10 +189,8 @@ async function drive(logLevel: LogLevel): Promise<Capture> {
 }
 
 function expectNoSentinel(out: Capture): void {
-  const texts = [...out.stderr, ...out.console.map((c) => c.text), ...out.errorBodies];
-  for (const text of texts) {
-    for (const sentinel of SENTINELS) expect(text).not.toContain(sentinel);
-  }
+  const written = [...out.stderr, ...out.console.flatMap((c) => c.args), ...out.errorBodies];
+  expectNoSecrets(written, SENTINELS, []);
 }
 
 function parseLine(line: string): {

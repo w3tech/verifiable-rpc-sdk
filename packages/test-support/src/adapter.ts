@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Shared checks of the ethers and viem adapters.
+// Vitest checks shared by the suites: adapter wiring, the sealed wire and secret leaks.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, onTestFinished, test } from "vitest";
 import { rpcUpstream, type TestNode, type TestUpstream } from "./node";
-import { rejectionOf } from "./rejection";
+import { errorTexts, rejectionOf } from "./rejection";
 import { failureAnswer, type ServedRequest, serveUpstream, type TestNodeServer } from "./server";
 
 type Namespace = Record<string, unknown>;
@@ -167,20 +167,6 @@ export function expectSealedTrafficOnly(
   }
 }
 
-function textForms(err: unknown): string[] {
-  if (typeof err !== "object" || err === null) return [String(err)];
-  const e = err as Error;
-  let json: string;
-  try {
-    json =
-      JSON.stringify(e, (_key, value) => (typeof value === "bigint" ? value.toString() : value)) ??
-      "";
-  } catch {
-    json = "unserialisable";
-  }
-  return [String(e.message), String(e), String(e.stack ?? ""), json];
-}
-
 function windows(bytes: Uint8Array): string[] {
   const out: string[] = [];
   for (let offset = 0; offset + 16 <= bytes.byteLength; offset += 16) {
@@ -189,18 +175,15 @@ function windows(bytes: Uint8Array): string[] {
   return out;
 }
 
-/** No secret and no 16-byte hex window of a body in the message, string, stack or JSON of any error. */
+/** No secret and no 16-byte hex window of a body, in any letter case, in the errorTexts of any item. */
 export function expectNoSecrets(
-  errors: readonly unknown[],
+  items: readonly unknown[],
   secrets: readonly string[],
   bodies: readonly Uint8Array[],
 ): void {
+  const text = items.flatMap(errorTexts).join("\n").toLowerCase();
   const needles = [...secrets, ...bodies.flatMap(windows)];
-  for (const item of errors) {
-    for (const form of textForms(item)) {
-      for (const needle of needles) expect(form).not.toContain(needle);
-    }
-  }
+  expect(needles.filter((needle) => text.includes(needle.toLowerCase()))).toEqual([]);
 }
 
 interface OneRequestCase {
