@@ -55,37 +55,3 @@ export function raceAbort<T>(promise: Promise<T>, signal: AbortSignal | undefine
     );
   });
 }
-
-/**
- * One signal per call that aborts with the caller's reason, or with a `TimeoutError` after
- * `timeoutMs` (none when `timeoutMs` is not positive); `done()` releases it. However many calls
- * share a caller signal, it holds one abort listener.
- */
-export function linkSignal(
-  caller: AbortSignal | undefined,
-  timeoutMs: number,
-): { signal: AbortSignal | undefined; done(): void } {
-  if (caller === undefined) {
-    return { signal: timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined, done() {} };
-  }
-  const controller = new AbortController();
-  if (caller.aborted) {
-    controller.abort(caller.reason);
-    return { signal: controller.signal, done() {} };
-  }
-  const release = subscribe(caller, (reason) => controller.abort(reason));
-  const timer =
-    timeoutMs > 0
-      ? setTimeout(
-          () => controller.abort(new DOMException("The operation timed out.", "TimeoutError")),
-          timeoutMs,
-        )
-      : undefined;
-  return {
-    signal: controller.signal,
-    done() {
-      clearTimeout(timer);
-      release();
-    },
-  };
-}

@@ -8,7 +8,6 @@
 // test mock. The default is the Phala cloud verifier.
 export type { CloudVerifierConfig, HardwareVerifier } from "@w3tech.io/dstack-verify";
 export { createCloudVerifier, DEFAULT_PHALA_VERIFY_ENDPOINT } from "@w3tech.io/dstack-verify";
-export { linkSignal } from "./abort";
 export type {
   Attestation,
   FetchAttestationOptions,

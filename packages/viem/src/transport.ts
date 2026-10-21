@@ -8,7 +8,6 @@ import {
   createOpenSession,
   InvalidOption,
   LazyConfidentialClient,
-  linkSignal,
 } from "@w3tech.io/vrpc-core";
 import type { ConfidentialInfo } from "@w3tech.io/vrpc-core/confidential";
 import { createTransport, HttpRequestError, RpcRequestError, type Transport } from "viem";
@@ -134,6 +133,13 @@ function baseConfig(opts: VrpcHttpOptions, injectedTimeout: number | undefined) 
   } as const;
 }
 
+/** Aborts with the caller's reason, or with a `TimeoutError` after `timeoutMs` when positive. */
+function callSignal(caller: AbortSignal | undefined, timeoutMs: number): AbortSignal | undefined {
+  const timeout = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
+  if (caller === undefined || timeout === undefined) return caller ?? timeout;
+  return AbortSignal.any([caller, timeout]);
+}
+
 const utf8 = new TextEncoder();
 /** Members `vrpcHttp(url, { confidential: true })` adds to `client.transport`. */
 export interface ConfidentialValue {
@@ -179,21 +185,17 @@ function confidentialHttp(
       {
         ...config,
         async request({ method, params }, options) {
-          const { signal, done } = linkSignal(options?.signal, config.timeout);
-          try {
-            const res = await confidential.request(
-              {
-                method: "POST",
-                path: "/",
-                contentType: "application/json",
-                body: utf8.encode(JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })),
-              },
-              signal === undefined ? undefined : { signal },
-            );
-            return mapInnerResponse(res, origin);
-          } finally {
-            done();
-          }
+          const signal = callSignal(options?.signal, config.timeout);
+          const res = await confidential.request(
+            {
+              method: "POST",
+              path: "/",
+              contentType: "application/json",
+              body: utf8.encode(JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })),
+            },
+            signal === undefined ? undefined : { signal },
+          );
+          return mapInnerResponse(res, origin);
         },
       },
       {

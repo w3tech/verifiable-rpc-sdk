@@ -330,7 +330,7 @@ describe("headers", () => {
 });
 
 describe("signals", () => {
-  test("a timeout rejects the call with a TimeoutError cause", async () => {
+  test("a timeout rejects the call with a TimeoutError cause, with or without a caller signal", async () => {
     const { server } = await serveRpcNode();
     holdPosts(server);
     const client = createPublicClient({
@@ -340,6 +340,10 @@ describe("signals", () => {
 
     const err = await rejectionOf(client.getBlockNumber({ cacheTime: 0 }));
     expect(walkFind(err, DOMException)?.name).toBe("TimeoutError");
+    const withCaller = await rejectionOf(
+      client.request({ method: "eth_blockNumber" }, { signal: new AbortController().signal }),
+    );
+    expect(walkFind(withCaller, DOMException)?.name).toBe("TimeoutError");
   });
 
   test("a caller abort after the request was sent rejects the call with the caller's reason", async () => {
@@ -369,7 +373,7 @@ describe("signals", () => {
     expect(seen).toContain(reason);
   });
 
-  test("concurrent calls sharing one caller signal hold one listener and warn nothing", async () => {
+  test("calls sharing one long-lived caller signal leave no abort listener on it and warn nothing", async () => {
     const { server } = await serveRpcNode();
     const client = createPublicClient({ chain: arbitrum, transport: confidential(server) });
     await client.transport.ready();
@@ -380,13 +384,6 @@ describe("signals", () => {
       process.off("warning", onWarning);
     });
     const controller = new AbortController();
-    let peak = 0;
-    server.answer((r) => {
-      if (r.method === "POST") {
-        peak = Math.max(peak, getEventListeners(controller.signal, "abort").length);
-      }
-      return undefined;
-    });
 
     const calls = Array.from({ length: 20 }, () =>
       client.request({ method: "eth_blockNumber" }, { signal: controller.signal }),
@@ -394,7 +391,6 @@ describe("signals", () => {
     await expect(Promise.all(calls)).resolves.toEqual(Array(20).fill("0x10"));
     await new Promise((r) => setImmediate(r));
 
-    expect(peak).toBe(1);
     expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
     expect(warnings).toEqual([]);
   });
