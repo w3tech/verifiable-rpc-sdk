@@ -6,7 +6,8 @@ fetches TDX attestation quotes from the sidecar. Pairs with sidecar `v0.5.0`
 wire contract — string chain id hashed into a 104-byte pre-image; the signature
 covers the content-DECODED body, so it verifies on either transport encoding
 (gzip or identity). Ankr Confidential RPC mode also encrypts every request and
-answer to one attested node. ESM-first, vitest-tested, chain-agnostic.
+answer to one attested node. ESM-first (ECMAScript modules), vitest-tested,
+chain-agnostic.
 
 **Version gate:** SDK `>=0.3.0` requires sidecar `>=0.5.0` (string chain id,
 104-byte pre-image). Older sidecars sign the legacy format and verification
