@@ -2,7 +2,7 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Makes WebCrypto behave like a runtime without X25519 support.
 
-type SubtleMethod = (this: SubtleCrypto, ...args: unknown[]) => Promise<unknown>;
+type SubtleMethod = (...args: unknown[]) => Promise<unknown>;
 type HiddenMethod = "generateKey" | "importKey" | "deriveBits";
 
 const ALGORITHM_ARGUMENT: Record<HiddenMethod, number> = {
@@ -20,7 +20,7 @@ function algorithmName(algorithm: unknown): string | undefined {
 }
 
 export function hideX25519(): () => void {
-  const prototype = SubtleCrypto.prototype as unknown as Record<HiddenMethod, SubtleMethod>;
+  const prototype = Object.getPrototypeOf(crypto.subtle) as Record<HiddenMethod, SubtleMethod>;
   const saved: Record<HiddenMethod, SubtleMethod> = {
     generateKey: prototype.generateKey,
     importKey: prototype.importKey,
@@ -29,7 +29,7 @@ export function hideX25519(): () => void {
   for (const method of Object.keys(ALGORITHM_ARGUMENT) as HiddenMethod[]) {
     const original = saved[method];
     const index = ALGORITHM_ARGUMENT[method];
-    prototype[method] = function (this: SubtleCrypto, ...args: unknown[]) {
+    prototype[method] = function (this: unknown, ...args: unknown[]) {
       if (algorithmName(args[index])?.toUpperCase() === "X25519") {
         return Promise.reject(new DOMException("Unrecognized algorithm name", "NotSupportedError"));
       }

@@ -60,7 +60,7 @@
     "@noble/hashes": "2.4.0"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1",
+    "@types/node": "^22.13.0",
     "@w3tech.io/vrpc-test-support": "workspace:*"
   }
 }
