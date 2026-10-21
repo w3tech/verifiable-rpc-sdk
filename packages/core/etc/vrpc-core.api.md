@@ -79,9 +79,6 @@ export interface BadSignatureContext {
 // @public
 export function buildPreImage(chainId: string, requestBody: Uint8Array, responseBody: Uint8Array, timestampMs: bigint): Uint8Array;
 
-// @public
-export function byteLen(value: string | Uint8Array): string;
-
 // @public (undocumented)
 export interface CheckedOptions<T extends OptionsInput = OptionsInput> {
     chainId: T["chainId"] extends string | number | bigint ? string : string | undefined;
@@ -366,9 +363,6 @@ export interface OptionsInput {
 
 // @public
 export function parseChainId(rawResponseBytes: Uint8Array): string;
-
-// @public
-export function pickVrpcHeaders(headers: Record<string, string>): Record<string, string>;
 
 // @public
 export interface PostResponse {

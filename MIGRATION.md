@@ -277,6 +277,7 @@ The error changes apply to the same classes re-exported by
 | `DEFAULT_PUBKEY_CACHE_MAX` | Removed; the `pubkeyCacheMax` default is still 1024 | Use the literal |
 | `safeLogger`, `truncateHex` | Removed | Nothing; core still wraps an injected `Logger` so it cannot throw |
 | `defaultLogger` | Removed | Omit `logger`; the SDK stays silent without one |
+| `byteLen`, `pickVrpcHeaders` | Removed | Delete the references |
 | `VrpcUrls` is `{ rpcUrl, attestationUrl }` | Also has `confidentialUrl` | Build it with `deriveVrpcUrls(url)` |
 
 ### @w3tech.io/dstack-verify

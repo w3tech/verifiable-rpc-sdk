@@ -5,7 +5,7 @@
 
 import type http from "node:http";
 
-import { byteLen, isSignedVrpcResponse, type TrustedVerifier } from "@w3tech.io/vrpc-core";
+import { isSignedVrpcResponse, type TrustedVerifier } from "@w3tech.io/vrpc-core";
 import type { Dispatcher } from "undici";
 
 import type { ProxyConfig } from "./config";
@@ -116,7 +116,7 @@ export function createRequestHandler(
       await verifier.verify(requestBytes, decodedCopy, headers);
       log.debug("proxy.verified", {
         status: upstreamRes.status,
-        bodyBytes: byteLen(decodedCopy),
+        bodyBytes: decodedCopy.length,
       });
 
       res.writeHead(

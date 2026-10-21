@@ -29,7 +29,6 @@ export type {
 } from "./confidential-client";
 export * from "./errors";
 export { LazyConfidentialClient } from "./lazy-confidential";
-export { byteLen, pickVrpcHeaders } from "./log-redact";
 export type { Logger } from "./logger";
 export { createConsoleLogger } from "./logger";
 export type { OpenSession, OpenSessionOptions, PostResponse } from "./open-session";
