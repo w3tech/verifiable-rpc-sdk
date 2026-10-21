@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Typed transport errors thrown by the proxy pipeline.
-//
-// Mirrors the core `VerificationError` style: discriminated union via the
-// `kind` field plus a class hierarchy. Verification failures themselves are
-// core's `VerificationError` subclasses — this file adds only the transport
-// and config kinds the proxy itself produces.
+// The proxy's own error kinds, and the one error path of both modes: map, describe, render.
 
-import type { AttestationUnavailable } from "@w3tech.io/vrpc-core";
+import type http from "node:http";
+
+import {
+  AttestationUnavailable,
+  InvalidInnerRequest,
+  RequestRejected,
+  TransportFailed,
+  VrpcError,
+} from "@w3tech.io/vrpc-core";
+
+import type { ProxyLogger } from "./logger";
 
 export type ProxyErrorKind =
   | "Config"
@@ -90,8 +95,8 @@ export class UpstreamBodyTooLargeError extends ProxyError {
   readonly kind = "UpstreamBodyTooLarge" as const;
   readonly code = "UPSTREAM_BODY_TOO_LARGE" as const;
 
-  constructor(public readonly maxBodyBytes: number) {
-    super(`Upstream response body exceeds the ${maxBodyBytes}-byte limit`, 502);
+  constructor() {
+    super("Upstream response body exceeds the size limit", 502);
   }
 }
 
@@ -136,14 +141,98 @@ const UNDICI_TIMEOUT_CODES = new Set([
 ]);
 
 /** True for an undici connect, headers or body timeout. */
-export function isUndiciTimeout(err: unknown): boolean {
+function isUndiciTimeout(err: unknown): boolean {
   return UNDICI_TIMEOUT_CODES.has((err as { code?: string } | null | undefined)?.code ?? "");
 }
 
 /** The HTTP status for an attestation that could not be obtained, in both proxy modes. */
-export function attestationUnavailableStatus(err: AttestationUnavailable): number {
+function attestationUnavailableStatus(err: AttestationUnavailable): number {
   if (err.status === 429) return 429;
   return err.reason === "timeout" || isUndiciTimeout(err.cause) ? 504 : 503;
+}
+
+/** The one map of an upstream failure, by its `code`; the original error stays the `cause`. */
+export function upstreamError(cause: unknown): ProxyError {
+  const code = (cause as { code?: unknown } | null | undefined)?.code;
+  let err: ProxyError;
+  if (isUndiciTimeout(cause)) {
+    err = new UpstreamTimeoutError("Upstream did not respond within the configured timeout");
+  } else if (code === "UPSTREAM_BODY_TOO_LARGE") {
+    err = new UpstreamBodyTooLargeError();
+  } else if (code === "DECODE_FAILED") {
+    err = new DecodeFailedError("Upstream response could not be decoded");
+  } else {
+    err = new UpstreamConnectError("Upstream request failed");
+  }
+  err.cause = cause;
+  return err;
+}
+
+function statusOf(err: VrpcError): number {
+  if (err instanceof InvalidInnerRequest) return 400;
+  if (err instanceof AttestationUnavailable) return attestationUnavailableStatus(err);
+  // Other 4xx would collide with the node's own relayed statuses.
+  if (err instanceof RequestRejected && (err.status === 413 || err.status === 429)) {
+    return err.status;
+  }
+  return 502;
+}
+
+/** Status, kind and message of the JSON error for any failure in either mode; `code` is for the log only. */
+export function describeError(err: unknown): {
+  status: number;
+  kind: string;
+  message: string;
+  executed?: "no" | "unknown";
+  code?: string;
+  traceId?: string;
+} {
+  if (err instanceof TransportFailed && err.reason === "network") {
+    return { ...describeError(upstreamError(err.cause)), executed: err.executed };
+  }
+  let described: { status: number; kind: string; message: string; executed?: "no" | "unknown" };
+  if (err instanceof ProxyError) {
+    described = { status: err.httpStatus, kind: err.kind, message: err.message };
+  } else if (err instanceof VrpcError) {
+    described = {
+      status: statusOf(err),
+      kind: err.kind,
+      message: err.message,
+      executed: err.executed,
+    };
+  } else {
+    return { status: 502, kind: "Internal", message: "Internal proxy error" };
+  }
+  const code = (err.cause as { code?: unknown } | null | undefined)?.code;
+  const traceId = (err as { traceId?: unknown }).traceId;
+  return {
+    ...described,
+    ...(typeof code === "string" ? { code } : {}),
+    ...(typeof traceId === "string" && traceId !== "" ? { traceId } : {}),
+  };
+}
+
+/** Log the failure and answer with the JSON error, or drop the socket once the status line is out. */
+export function renderError(res: http.ServerResponse, err: unknown, log: ProxyLogger): void {
+  const { status, kind, message, executed, code, traceId } = describeError(err);
+  log.error("proxy.error", {
+    kind,
+    status,
+    message,
+    ...(executed ? { executed } : {}),
+    ...(code ? { code } : {}),
+    ...(traceId ? { traceId } : {}),
+  });
+  if (res.headersSent) {
+    res.destroy();
+    return;
+  }
+  const body = errorResponseBody(kind, message, traceId, executed);
+  res.writeHead(status, {
+    "content-type": "application/json",
+    "content-length": String(Buffer.byteLength(body)),
+  });
+  res.end(body);
 }
 
 /**

@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Server factory: builds the logger, constructs exactly ONE TrustedVerifier
-// for the process lifetime (its LRU pubkey cache makes verification
-// network-free on cache hits), or one ConfidentialClient in Ankr Confidential
-// RPC mode, and returns an http.Server. Both constructors are synchronous
-// fail-fast — an invalid option throws InvalidOption here, before any
-// listen socket binds.
+// Server factory: one Agent, one TrustedVerifier (or one ConfidentialClient) per process, one listener for every
+// request. Both constructors throw InvalidOption here, before any listen socket binds.
 
 import http from "node:http";
 
@@ -21,12 +17,9 @@ import {
   type ConfidentialClientOptions,
 } from "@w3tech.io/vrpc-core/confidential";
 import { Agent, type RequestInit, fetch as undiciFetch } from "undici";
-import {
-  createConfidentialHandler,
-  createConfidentialTransport,
-  describeConfidentialError,
-} from "./confidential";
+import { createConfidentialHandler, createConfidentialTransport } from "./confidential";
 import type { ProxyConfig } from "./config";
+import { BodyTooLargeError, describeError, renderError } from "./errors";
 import { createProxyLogger, type ProxyLogger } from "./logger";
 import { createRequestHandler } from "./pipeline";
 
@@ -36,16 +29,32 @@ export type ProxyTestOverrides = Pick<
   "fetch" | "hardwareVerifier" | "logger"
 >;
 
-type Handler = (req: http.IncomingMessage, res: http.ServerResponse, signal: AbortSignal) => void;
+type Handler = (
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  signal: AbortSignal,
+) => Promise<void>;
 
-// One abort signal per request: a client that leaves cancels the upstream request in both modes.
-function createServer(handler: Handler): http.Server {
+// One abort signal and one error path per request, for both modes.
+function createServer(handler: Handler, log: ProxyLogger): http.Server {
   return http.createServer((req, res) => {
     const disconnected = new AbortController();
     res.once("close", () => {
       if (!res.writableFinished) disconnected.abort();
     });
-    handler(req, res, disconnected.signal);
+    handler(req, res, disconnected.signal).catch((err: unknown) => {
+      if (res.destroyed || (err as { code?: string } | null | undefined)?.code === "ECONNRESET") {
+        log.debug("proxy.clientAborted");
+        res.destroy();
+        return;
+      }
+      renderError(res, err, log);
+      // Unread body bytes would otherwise be parsed as the next keep-alive request.
+      if (err instanceof BodyTooLargeError) {
+        if (res.writableFinished) req.destroy();
+        else res.once("finish", () => req.destroy());
+      }
+    });
   });
 }
 
@@ -99,6 +108,7 @@ export function createProxyServer(
 
   const server = createServer(
     createRequestHandler({ config, verifier, logger: proxyLogger, dispatcher }),
+    proxyLogger,
   );
   server.on("close", () => {
     void dispatcher.close();
@@ -133,7 +143,10 @@ function createConfidentialServer(
     throw err;
   }
 
-  const server = createServer(createConfidentialHandler({ config, client, logger: proxyLogger }));
+  const server = createServer(
+    createConfidentialHandler({ config, client, logger: proxyLogger }),
+    proxyLogger,
+  );
   // Attest after the port is open; a failure is logged and the next request attests again.
   server.once("listening", () => {
     const started = performance.now();
@@ -146,7 +159,7 @@ function createConfidentialServer(
             durationMs: Math.round(performance.now() - started),
           }),
         (err: unknown) => {
-          const { kind, message } = describeConfidentialError(err);
+          const { kind, message } = describeError(err);
           proxyLogger.error("proxy.attestFailed", { kind, message });
         },
       )

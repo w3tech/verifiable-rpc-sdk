@@ -1,34 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// The verifying proxy pipeline: buffer the inbound request, forward verbatim
-// via undici, buffer the upstream response, decode a throwaway copy for
-// verification, verify fail-closed, relay the ORIGINAL bytes on success.
+// Open mode: forward the request verbatim, verify the signed answer fail-closed, relay the original bytes.
 // Bodies are opaque Buffers end to end — no JSON parsing anywhere.
 
 import type http from "node:http";
 
 import {
-  AttestationUnavailable,
   byteLen,
   isSignedVrpcResponse,
   pickVrpcHeaders,
   type TrustedVerifier,
-  VerificationError,
 } from "@w3tech.io/vrpc-core";
 import type { Dispatcher } from "undici";
 
 import type { ProxyConfig } from "./config";
 import { decodeBody } from "./decode";
-import {
-  attestationUnavailableStatus,
-  BodyTooLargeError,
-  errorResponseBody,
-  isUndiciTimeout,
-  ProxyError,
-  UnsignedUpstreamError,
-  UpstreamConnectError,
-  UpstreamTimeoutError,
-} from "./errors";
+import { BodyTooLargeError, UnsignedUpstreamError, upstreamError } from "./errors";
 import { buildForwardHeaders, buildRelayHeaders, flattenForVerify } from "./headers";
 import type { ProxyLogger } from "./logger";
 import { bufferStream, sendUpstream, type UpstreamResponse } from "./upstream";
@@ -91,19 +78,6 @@ export function buildTargetUrl(upstreamUrl: string, clientUrl: string): string {
 }
 
 /**
- * Map an undici dispatch error onto the proxy's transport taxonomy. All three
- * timeout phases (connect, headers, body) are timeouts → 504; everything else
- * (DNS, refused, reset, TLS, ...) is a connect failure → 502.
- */
-export function mapUndiciError(err: unknown): ProxyError {
-  if (isUndiciTimeout(err)) {
-    return new UpstreamTimeoutError("Upstream did not respond within the configured timeout");
-  }
-  const detail = err instanceof Error ? err.message : String(err);
-  return new UpstreamConnectError(`Upstream request failed: ${detail}`);
-}
-
-/**
  * The upstream gateway (and any front returning it) tags every response with a trace id
  * header. Attach it to the error as a `traceId` property so a fail-closed 502
  * can be correlated with the upstream's own logs — surfaced as a separate key
@@ -117,46 +91,6 @@ function attachUpstreamTraceId(err: unknown, headers: Record<string, string>): u
     (err as { traceId?: string }).traceId = traceId;
   }
   return err;
-}
-
-/**
- * Render an error as the typed JSON error response. Only `kind` and `message`
- * are serialized; upstream body bytes and stack traces are never written —
- * unexpected errors collapse to a generic `Internal` kind.
- */
-function renderError(res: http.ServerResponse, err: unknown, log: ProxyLogger): void {
-  let status: number;
-  let kind: string;
-  let message: string;
-  if (err instanceof ProxyError) {
-    status = err.httpStatus;
-    kind = err.kind;
-    message = err.message;
-  } else if (err instanceof AttestationUnavailable) {
-    status = attestationUnavailableStatus(err);
-    kind = err.kind;
-    message = err.message;
-  } else if (err instanceof VerificationError) {
-    status = 502;
-    kind = err.kind;
-    message = err.message;
-  } else {
-    status = 502;
-    kind = "Internal";
-    message = "Internal proxy error";
-  }
-  const traceId = (err as { traceId?: string }).traceId;
-  log.error("proxy.error", { kind, status, message, ...(traceId ? { traceId } : {}) });
-  if (res.headersSent) {
-    res.destroy();
-    return;
-  }
-  const body = errorResponseBody(kind, message, traceId);
-  res.writeHead(status, {
-    "content-type": "application/json",
-    "content-length": String(Buffer.byteLength(body)),
-  });
-  res.end(body);
 }
 
 /**
@@ -174,7 +108,7 @@ function renderError(res: http.ServerResponse, err: unknown, log: ProxyLogger): 
  */
 export function createRequestHandler(
   ctx: RequestContext,
-): (req: http.IncomingMessage, res: http.ServerResponse, signal: AbortSignal) => void {
+): (req: http.IncomingMessage, res: http.ServerResponse, signal: AbortSignal) => Promise<void> {
   const log = ctx.logger;
   const { config, verifier } = ctx;
 
@@ -213,7 +147,7 @@ export function createRequestHandler(
         signal,
       });
     } catch (err) {
-      throw err instanceof ProxyError ? err : mapUndiciError(err);
+      throw upstreamError(err);
     }
 
     // From here the upstream has answered — any failure below carries its
@@ -250,26 +184,5 @@ export function createRequestHandler(
     }
   }
 
-  return (req, res, signal) => {
-    handle(req, res, signal).catch((err: unknown) => {
-      // A client that disconnected mid-request is baseline noise, not a proxy
-      // error: debug-log and drop the socket instead of rendering a 502.
-      if (res.destroyed || (err as { code?: string } | null | undefined)?.code === "ECONNRESET") {
-        log.debug("proxy.clientAborted", { url: req.url });
-        res.destroy();
-        return;
-      }
-      renderError(res, err, log);
-      // An over-cap inbound body leaves unread data on the socket; destroy the
-      // request once the error response has flushed so keep-alive reuse cannot
-      // see the tail as a new request.
-      if (err instanceof BodyTooLargeError) {
-        if (res.writableFinished) {
-          req.destroy();
-        } else {
-          res.once("finish", () => req.destroy());
-        }
-      }
-    });
-  };
+  return handle;
 }

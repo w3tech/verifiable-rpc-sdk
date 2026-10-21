@@ -111,13 +111,11 @@ export class UnsupportedMediaTypeError extends ProxyError {
 
 // @public
 export class UpstreamBodyTooLargeError extends ProxyError {
-    constructor(maxBodyBytes: number);
+    constructor();
     // (undocumented)
     readonly code: "UPSTREAM_BODY_TOO_LARGE";
     // (undocumented)
     readonly kind: "UpstreamBodyTooLarge";
-    // (undocumented)
-    readonly maxBodyBytes: number;
 }
 
 // @public

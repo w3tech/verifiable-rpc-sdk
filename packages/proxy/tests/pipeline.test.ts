@@ -1,54 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Unit tests for the pipeline's pure helpers: the undici error → transport
-// taxonomy map and the upstream target-URL merge (path join, query merge,
-// dot-segment traversal containment). No network, no server.
+// Unit tests for the pipeline's pure helpers: the upstream body cap and the
+// upstream target-URL merge (path join, query merge, dot-segment traversal
+// containment). No network, no server.
 
 import { Readable } from "node:stream";
 
 import { MalformedHeader } from "@w3tech.io/vrpc-core";
 import { describe, expect, test } from "vitest";
 
-import { UpstreamConnectError, UpstreamTimeoutError } from "../src/errors";
 import { flattenForVerify } from "../src/headers";
-import { buildTargetUrl, mapUndiciError } from "../src/pipeline";
+import { buildTargetUrl } from "../src/pipeline";
 import { bufferStream } from "../src/upstream";
-
-function undiciError(code: string, message = code): Error & { code: string } {
-  return Object.assign(new Error(message), { code });
-}
-
-describe("mapUndiciError", () => {
-  test("connectTimeoutMapsTo504UpstreamTimeout", () => {
-    const err = mapUndiciError(undiciError("UND_ERR_CONNECT_TIMEOUT"));
-    expect(err).toBeInstanceOf(UpstreamTimeoutError);
-    expect(err.httpStatus).toBe(504);
-  });
-
-  test("headersTimeoutMapsTo504UpstreamTimeout", () => {
-    const err = mapUndiciError(undiciError("UND_ERR_HEADERS_TIMEOUT"));
-    expect(err).toBeInstanceOf(UpstreamTimeoutError);
-    expect(err.httpStatus).toBe(504);
-  });
-
-  test("bodyTimeoutMapsTo504UpstreamTimeout", () => {
-    const err = mapUndiciError(undiciError("UND_ERR_BODY_TIMEOUT"));
-    expect(err).toBeInstanceOf(UpstreamTimeoutError);
-    expect(err.httpStatus).toBe(504);
-  });
-
-  test("connectionRefusedMapsTo502UpstreamConnect", () => {
-    const err = mapUndiciError(undiciError("ECONNREFUSED", "connect ECONNREFUSED 127.0.0.1:1"));
-    expect(err).toBeInstanceOf(UpstreamConnectError);
-    expect(err.httpStatus).toBe(502);
-  });
-
-  test("nonErrorInputMapsTo502UpstreamConnect", () => {
-    const err = mapUndiciError("socket hang up");
-    expect(err).toBeInstanceOf(UpstreamConnectError);
-    expect(err.httpStatus).toBe(502);
-  });
-});
 
 describe("bufferStream", () => {
   const overflow = () => new Error("over the cap");

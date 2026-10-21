@@ -4,13 +4,6 @@
 
 import type http from "node:http";
 
-import {
-  AttestationUnavailable,
-  InvalidInnerRequest,
-  RequestRejected,
-  TransportFailed,
-  VrpcError,
-} from "@w3tech.io/vrpc-core";
 import type {
   ConfidentialClient,
   ConfidentialResponse,
@@ -21,14 +14,7 @@ import type { Dispatcher } from "undici";
 
 import type { ProxyConfig } from "./config";
 import { decodeBody } from "./decode";
-import {
-  attestationUnavailableStatus,
-  BodyTooLargeError,
-  errorResponseBody,
-  isUndiciTimeout,
-  ProxyError,
-  UnsupportedMediaTypeError,
-} from "./errors";
+import { BodyTooLargeError, UnsupportedMediaTypeError } from "./errors";
 import type { ProxyLogger } from "./logger";
 import { bufferStream, sendUpstream } from "./upstream";
 
@@ -58,56 +44,6 @@ export function createConfidentialTransport(
   };
 }
 
-/** Status, kind and message of the typed JSON error for a failed confidential request. */
-export function describeConfidentialError(err: unknown): {
-  status: number;
-  kind: string;
-  message: string;
-  executed?: "no" | "unknown";
-  code?: string;
-} {
-  if (err instanceof ProxyError) {
-    return { status: err.httpStatus, kind: err.kind, message: err.message };
-  }
-  if (!(err instanceof VrpcError)) {
-    return { status: 502, kind: "Internal", message: "Internal proxy error" };
-  }
-  const code = (err.cause as { code?: unknown } | undefined)?.code;
-  const coded = { executed: err.executed, ...(typeof code === "string" ? { code } : {}) };
-  if (err instanceof TransportFailed && err.reason === "network") {
-    const [status, kind, message] = upstreamFailure(code);
-    return { status, kind, message, ...coded };
-  }
-  return { status: statusOf(err), kind: err.kind, message: err.message, ...coded };
-}
-
-type Rendered = [status: number, kind: string, message: string];
-
-const UPSTREAM_FAILURES = new Map<unknown, Rendered>([
-  [
-    "UPSTREAM_BODY_TOO_LARGE",
-    [502, "UpstreamBodyTooLarge", "Upstream response body exceeds the size limit"],
-  ],
-  ["DECODE_FAILED", [502, "DecodeFailed", "Upstream response could not be decoded"]],
-]);
-
-function upstreamFailure(code: unknown): Rendered {
-  if (isUndiciTimeout({ code })) {
-    return [504, "UpstreamTimeout", "Upstream did not respond within the configured timeout"];
-  }
-  return UPSTREAM_FAILURES.get(code) ?? [502, "UpstreamConnect", "Upstream request failed"];
-}
-
-function statusOf(err: VrpcError): number {
-  if (err instanceof InvalidInnerRequest) return 400;
-  if (err instanceof AttestationUnavailable) return attestationUnavailableStatus(err);
-  // Other 4xx would collide with the node's own relayed statuses.
-  if (err instanceof RequestRejected && (err.status === 413 || err.status === 429)) {
-    return err.status;
-  }
-  return 502;
-}
-
 // Built from scratch: nothing from the outer answer reaches the client.
 function relayHeaders(method: string, out: ConfidentialResponse): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -121,31 +57,10 @@ function relayHeaders(method: string, out: ConfidentialResponse): Record<string,
   return headers;
 }
 
-function renderError(res: http.ServerResponse, err: unknown, log: ProxyLogger): void {
-  const { status, kind, message, executed, code } = describeConfidentialError(err);
-  log.error("proxy.error", {
-    kind,
-    status,
-    message,
-    ...(executed ? { executed } : {}),
-    ...(code ? { code } : {}),
-  });
-  if (res.headersSent) {
-    res.destroy();
-    return;
-  }
-  const body = errorResponseBody(kind, message, undefined, executed);
-  res.writeHead(status, {
-    "content-type": "application/json",
-    "content-length": String(Buffer.byteLength(body)),
-  });
-  res.end(body);
-}
-
 /** Request listener for Ankr Confidential RPC mode; nothing reaches the upstream unsealed. */
 export function createConfidentialHandler(
   ctx: ConfidentialHandlerContext,
-): (req: http.IncomingMessage, res: http.ServerResponse, signal: AbortSignal) => void {
+): (req: http.IncomingMessage, res: http.ServerResponse, signal: AbortSignal) => Promise<void> {
   const { config, client, logger: log } = ctx;
 
   async function handle(
@@ -187,22 +102,5 @@ export function createConfidentialHandler(
     });
   }
 
-  return (req, res, signal) => {
-    handle(req, res, signal).catch((err: unknown) => {
-      if (res.destroyed || (err as { code?: string } | null | undefined)?.code === "ECONNRESET") {
-        log.debug("proxy.clientAborted");
-        res.destroy();
-        return;
-      }
-      renderError(res, err, log);
-      // Unread body bytes would otherwise be parsed as the next keep-alive request.
-      if (err instanceof BodyTooLargeError) {
-        if (res.writableFinished) {
-          req.destroy();
-        } else {
-          res.once("finish", () => req.destroy());
-        }
-      }
-    });
-  };
+  return handle;
 }

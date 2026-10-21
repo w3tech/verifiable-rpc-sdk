@@ -64,10 +64,6 @@ export async function sendUpstream(
     res.body.destroy();
     throw err;
   }
-  const body = await bufferStream(
-    res.body,
-    maxBytes,
-    () => new UpstreamBodyTooLargeError(maxBytes),
-  );
+  const body = await bufferStream(res.body, maxBytes, () => new UpstreamBodyTooLargeError());
   return { status: res.statusCode, headers, rawHeaders: res.headers, body };
 }

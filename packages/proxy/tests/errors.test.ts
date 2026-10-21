@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Web3 Technologies, Inc.
-// Status, kind and executed for every confidential failure, and the JSON error body. Pure.
+// Status, kind, message and executed for every proxy failure in both modes, and the JSON error body. Pure.
 
 import {
   AttestationFailed,
@@ -23,8 +23,14 @@ import {
 } from "@w3tech.io/vrpc-core";
 import { describe, expect, test } from "vitest";
 
-import { describeConfidentialError } from "../src/confidential";
-import { BodyTooLargeError, errorResponseBody, UnsupportedMediaTypeError } from "../src/errors";
+import {
+  BodyTooLargeError,
+  describeError,
+  errorResponseBody,
+  UnsignedUpstreamError,
+  UnsupportedMediaTypeError,
+  upstreamError,
+} from "../src/errors";
 
 const coded = (code?: string) =>
   Object.assign(new Error("The request failed."), code === undefined ? {} : { code });
@@ -34,8 +40,8 @@ function expectRow(
   status: number,
   kind: string,
   executed?: "no" | "unknown",
-): ReturnType<typeof describeConfidentialError> {
-  const result = describeConfidentialError(err);
+): ReturnType<typeof describeError> {
+  const result = describeError(err);
   expect(result.status).toBe(status);
   expect(result.kind).toBe(kind);
   expect("executed" in result).toBe(err instanceof VrpcError);
@@ -117,22 +123,35 @@ describe("UnexpectedResponse", () => {
 describe("TransportFailed", () => {
   const timeout = "Upstream did not respond within the configured timeout";
   const failed = "Upstream request failed";
-  test.each<[string | undefined, number, string, string]>([
-    ["UND_ERR_HEADERS_TIMEOUT", 504, "UpstreamTimeout", timeout],
-    ["ECONNREFUSED", 502, "UpstreamConnect", failed],
-    [undefined, 502, "UpstreamConnect", failed],
+  test.each<[string, unknown, number, string, string]>([
+    ["UND_ERR_CONNECT_TIMEOUT", coded("UND_ERR_CONNECT_TIMEOUT"), 504, "UpstreamTimeout", timeout],
+    ["UND_ERR_HEADERS_TIMEOUT", coded("UND_ERR_HEADERS_TIMEOUT"), 504, "UpstreamTimeout", timeout],
+    ["UND_ERR_BODY_TIMEOUT", coded("UND_ERR_BODY_TIMEOUT"), 504, "UpstreamTimeout", timeout],
+    ["ECONNREFUSED", coded("ECONNREFUSED"), 502, "UpstreamConnect", failed],
+    ["no code", coded(), 502, "UpstreamConnect", failed],
+    ["a non-Error value", "socket hang up", 502, "UpstreamConnect", failed],
     [
       "UPSTREAM_BODY_TOO_LARGE",
+      coded("UPSTREAM_BODY_TOO_LARGE"),
       502,
       "UpstreamBodyTooLarge",
       "Upstream response body exceeds the size limit",
     ],
-    ["DECODE_FAILED", 502, "DecodeFailed", "Upstream response could not be decoded"],
-  ])("network with code %s renders by the code, executed unknown", (code, status, kind, message) => {
-    const err = new TransportFailed("network", "n", { cause: coded(code) });
-    const result = expectRow(err, status, kind, "unknown");
-    expect(result.message).toBe(message);
-    expect(result.code).toBe(code);
+    [
+      "DECODE_FAILED",
+      coded("DECODE_FAILED"),
+      502,
+      "DecodeFailed",
+      "Upstream response could not be decoded",
+    ],
+  ])("upstream failure %s renders the same in both modes", (_name, cause, status, kind, message) => {
+    const open = expectRow(upstreamError(cause), status, kind);
+    const network = new TransportFailed("network", "n", { cause });
+    const confidential = expectRow(network, status, kind, "unknown");
+    for (const result of [open, confidential]) {
+      expect(result.message).toBe(message);
+      expect(result.code).toBe((cause as { code?: string }).code);
+    }
   });
 
   test("too-large is 502 TransportFailed executed unknown", () => {
@@ -193,6 +212,11 @@ describe("anything else", () => {
     const result = expectRow(err, 502, "Internal");
     expect(result.message).toBe("Internal proxy error");
   });
+});
+
+test("a traceId on the error is kept", () => {
+  const err = Object.assign(new UnsignedUpstreamError(200), { traceId: "t" });
+  expect(describeError(err).traceId).toBe("t");
 });
 
 describe("errorResponseBody", () => {
