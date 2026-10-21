@@ -66,6 +66,8 @@ export { LazyConfidentialClient } from "./lazy-confidential";
 export { byteLen, pickVrpcHeaders, truncateHex } from "./log-redact";
 export type { Logger } from "./logger";
 export { createConsoleLogger, defaultLogger, safeLogger } from "./logger";
+export type { OpenSession, OpenSessionOptions, PostResponse } from "./open-session";
+export { createOpenSession } from "./open-session";
 export type { CheckedOptions, OptionsInput } from "./options";
 export { checkOptions, DEFAULT_PUBKEY_CACHE_TTL_MS } from "./options";
 export { buildPreImage, validateChainId } from "./preimage";

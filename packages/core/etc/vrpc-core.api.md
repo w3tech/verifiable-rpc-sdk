@@ -154,6 +154,9 @@ export { createCloudVerifier }
 // @public
 export function createConsoleLogger(): Logger;
 
+// @public
+export function createOpenSession<R extends PostResponse>(options: OpenSessionOptions<R>): OpenSession<R>;
+
 export { DEFAULT_PHALA_VERIFY_ENDPOINT }
 
 // @public
@@ -335,6 +338,22 @@ export class MissingHeader extends VerificationError {
     readonly kind: "MissingHeader";
 }
 
+// @public
+export interface OpenSession<R extends PostResponse> {
+    chainId(post: (body: Uint8Array) => Promise<R>): Promise<string>;
+    pin(chainId: string): void;
+    send(payload: unknown, post: (body: Uint8Array) => Promise<R>): Promise<{
+        response: R;
+        json: unknown;
+    }>;
+}
+
+// @public
+export type OpenSessionOptions<R extends PostResponse> = Omit<TrustedVerifierOptions, "chainId"> & {
+    chainId?: string | undefined;
+    httpError(response: R, payload: unknown): unknown;
+};
+
 // @public (undocumented)
 export type OptionName = "url" | "chainId" | "headers" | "replayWindowMs" | "pubkeyCacheTtlMs" | "confidential";
 
@@ -359,6 +378,16 @@ export function parseChainId(rawResponseBytes: Uint8Array): string;
 
 // @public
 export function pickVrpcHeaders(headers: Record<string, string>): Record<string, string>;
+
+// @public
+export interface PostResponse {
+    // (undocumented)
+    body: Uint8Array;
+    // (undocumented)
+    headers: ResponseHeaders;
+    // (undocumented)
+    status: number;
+}
 
 // @public
 export function readCappedBody(response: Response, maxBytes?: number): Promise<Uint8Array>;
@@ -439,13 +468,13 @@ export class TrustedVerifier {
 export interface TrustedVerifierOptions {
     attestationUrl: string;
     chainId: string;
-    fetch?: typeof fetch;
-    hardwareVerifier?: HardwareVerifier;
-    headers?: Record<string, string>;
-    logger?: Logger;
-    pubkeyCacheMax?: number;
-    pubkeyCacheTtlMs?: number;
-    replayWindowMs?: number;
+    fetch?: typeof fetch | undefined;
+    hardwareVerifier?: HardwareVerifier | undefined;
+    headers?: Record<string, string> | undefined;
+    logger?: Logger | undefined;
+    pubkeyCacheMax?: number | undefined;
+    pubkeyCacheTtlMs?: number | undefined;
+    replayWindowMs?: number | undefined;
 }
 
 // @public

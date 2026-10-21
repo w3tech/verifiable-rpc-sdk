@@ -317,7 +317,7 @@ describe("vrpcHttp transport wiring", () => {
     releaseSecondRead();
 
     await expect(otherChainRead).rejects.toBeInstanceOf(BadSignature);
-    await expect(noChain).rejects.toBeInstanceOf(InvalidOption);
+    await expect(noChain).rejects.toMatchObject({ kind: "InvalidChainId", executed: "unknown" });
   });
 
   // a uint256 view eth_call → ABI-encoded result verifies + decodes.

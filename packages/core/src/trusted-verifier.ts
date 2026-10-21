@@ -30,17 +30,17 @@ export interface TrustedVerifierOptions {
    */
   chainId: string;
   /** Allowed skew between client clock and signed timestamp; default 60_000 ms. */
-  replayWindowMs?: number;
+  replayWindowMs?: number | undefined;
   /** Full attestation endpoint URL, e.g. `https://rpc.ankr.com/arbitrum_vrpc/attestation`. */
   attestationUrl: string;
   /** Extra request headers for the attestation fetch (e.g. `x-api-key`). */
-  headers?: Record<string, string>;
+  headers?: Record<string, string> | undefined;
   /** `fetch` override — defaults to `globalThis.fetch`. */
-  fetch?: typeof fetch;
+  fetch?: typeof fetch | undefined;
   /** Verified-pubkey cache TTL in ms; default {@link DEFAULT_PUBKEY_CACHE_TTL_MS}. */
-  pubkeyCacheTtlMs?: number;
+  pubkeyCacheTtlMs?: number | undefined;
   /** Max distinct verified pubkeys cached before LRU eviction; default {@link DEFAULT_PUBKEY_CACHE_MAX}. */
-  pubkeyCacheMax?: number;
+  pubkeyCacheMax?: number | undefined;
   // NOTE: the policy inputs `allowlist`/`tcb`/`pccsUrl` were removed — the
   // mock verifier ignores them, so exposing them on the published surface is
   // misleading. A future release re-introduces them (consumer-pinned anchors) when
@@ -51,13 +51,13 @@ export interface TrustedVerifierOptions {
    * — i.e. hardware verification is ALWAYS on. Override to point at a self-hosted
    * endpoint, a future local-DCAP verifier, or (in tests) a no-network mock.
    */
-  hardwareVerifier?: HardwareVerifier;
+  hardwareVerifier?: HardwareVerifier | undefined;
   /**
    * OPT-IN debug logger. Inject to narrate the verify flow; omit (the default)
    * and the SDK stays silent. Wrapped in {@link safeLogger} at construction so a
    * throwing `debug()` can never break verification.
    */
-  logger?: Logger;
+  logger?: Logger | undefined;
 }
 
 /** Verifies signed responses and attests each unknown signer once per cache TTL. */
