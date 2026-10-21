@@ -41,8 +41,9 @@ pnpm -r test            # all green
 pnpm --filter @w3tech.io/vrpc-core test:browser
 ```
 
-If the public API changed, run `pnpm run api:update` and commit
-`packages/*/etc/*.api.md`; `check:api` fails on a stale report.
+When you add, remove or change an export, run `pnpm run api:update` and commit
+the updated `packages/*/etc/*.api.md` files. CI runs `pnpm run check:api`,
+which fails when these files do not match the code.
 
 If `pnpm run format:check` fails: run `pnpm run format`, commit the diff as a
 SEPARATE commit, do not amend the offending commit.
@@ -171,7 +172,7 @@ variables set.
 - **Branch/PR:** work on `main` + short-lived feature branches; one PR per
   logical change. Never push to `main` directly, never self-merge.
 - **Atomic commits:** one logical chunk per commit.
-- **ESM-first, `type: "module"`** in `package.json`. No CJS entry.
+- **ESM-first, `type: "module"`** in `package.json`. No CommonJS entry.
 - **No JSON-RPC re-impl** — the verify seam is byte-level and returns a typed
   `VerifiedPair`. Consumers handle batching, retries.
 - **Byte-exact 104-byte pre-image** — pinned by a unit test mirroring
