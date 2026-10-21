@@ -19,9 +19,9 @@ import {
   rpcUpstream,
   signedJsonHeaders,
   type TestUpstream,
+  WIDE_WINDOW,
 } from "@w3tech.io/vrpc-test-support";
 import { serveRpcNode } from "@w3tech.io/vrpc-test-support/adapter";
-import type { TestNodeServer } from "@w3tech.io/vrpc-test-support/server";
 import { InvalidOption, mayHaveExecuted, vrpcHttp } from "@w3tech.io/vrpc-viem";
 import {
   BaseError,
@@ -32,29 +32,13 @@ import {
   RpcRequestError,
 } from "viem";
 import { describe, expect, onTestFinished, test, vi } from "vitest";
-import { APP_COMPOSE, WIDE_WINDOW } from "./fixtures";
-
-const arbitrum = defineChain({
-  id: 42161,
-  name: "Arbitrum One",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: ["http://127.0.0.1"] } },
-});
+import { APP_COMPOSE, arbitrum, confidential, walkFind } from "./fixtures";
 
 function rpcError(code: number, message: string, status = 200): TestUpstream {
   return async (request) => {
     const call = (await request.json()) as RpcCall;
     return jsonResponse({ jsonrpc: "2.0", id: call.id, error: { code, message } }, status);
   };
-}
-
-function confidential(server: TestNodeServer, options: Parameters<typeof vrpcHttp>[1] = {}) {
-  return vrpcHttp(`${server.url}/eth_vrpc`, {
-    headers: { "x-api-key": KEY },
-    hardwareVerifier: mockHardwareVerifier(),
-    ...options,
-    confidential: true,
-  });
 }
 
 describe("a single call", () => {
@@ -154,12 +138,6 @@ function texts(err: unknown): string[] {
     current = current.cause;
   }
   return out;
-}
-
-function walkFind<T>(err: unknown, type: abstract new (...args: never[]) => T): T | undefined {
-  if (err instanceof type) return err;
-  if (!(err instanceof BaseError)) return undefined;
-  return err.walk((e) => e instanceof type) as T | undefined;
 }
 
 async function until(predicate: () => boolean): Promise<void> {

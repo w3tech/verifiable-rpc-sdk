@@ -21,13 +21,15 @@ import {
   type AttestationStub,
   attestationStub,
   CHAIN_ID,
+  jsonResult,
   mockHardwareVerifier,
+  SINGLE_RESULT_BALANCE_HEX,
   signedAnswer,
+  WIDE_WINDOW,
 } from "@w3tech.io/vrpc-test-support";
 import { vrpcHttp } from "@w3tech.io/vrpc-viem";
 import { createPublicClient, defineChain } from "viem";
 import { describe, expect, test } from "vitest";
-import { jsonResult, SINGLE_RESULT_BALANCE_HEX, WIDE_WINDOW } from "./fixtures";
 
 // Path-ful URL (vRPC route): used verbatim as the rpc route; the attestation
 // leg is `${URL}/attestation`.

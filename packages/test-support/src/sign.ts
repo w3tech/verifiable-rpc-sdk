@@ -51,6 +51,8 @@ export function signResponse(
 
 // Long past: a response signed at it verifies only under a replay window wider than the default.
 export const FIXTURE_TIMESTAMP_MS = 1_700_000_000_000n;
+// Replay window wide enough for responses signed at FIXTURE_TIMESTAMP_MS.
+export const WIDE_WINDOW = Number.MAX_SAFE_INTEGER;
 
 // JSON content type plus signResponse headers, signed at FIXTURE_TIMESTAMP_MS by default.
 export function signedJsonHeaders(

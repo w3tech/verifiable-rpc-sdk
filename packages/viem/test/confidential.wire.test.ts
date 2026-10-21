@@ -13,7 +13,6 @@ import {
   isPost,
   jsonResponse,
   KEY,
-  mockHardwareVerifier,
   type RpcCall,
   rejectionOf,
   rpcUpstream,
@@ -31,17 +30,11 @@ import {
   type TestNodeServerOptions,
 } from "@w3tech.io/vrpc-test-support/server";
 import { vrpcHttp } from "@w3tech.io/vrpc-viem";
-import { BaseError, createPublicClient, defineChain, fallback } from "viem";
+import { BaseError, createPublicClient, fallback } from "viem";
 import { describe, expect, onTestFinished, test } from "vitest";
+import { arbitrum, confidential, walkFind } from "./fixtures";
 
 const SENTINEL = "5e17e1a1";
-
-const arbitrum = defineChain({
-  id: 42161,
-  name: "Arbitrum One",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: ["http://127.0.0.1"] } },
-});
 
 type Mode = "client" | "fallback";
 
@@ -52,15 +45,6 @@ async function serve(
   const server = await serveUpstream(upstream, options);
   onTestFinished(() => server.close());
   return server;
-}
-
-function confidential(url: string, options: Parameters<typeof vrpcHttp>[1] = {}) {
-  return vrpcHttp(url, {
-    headers: { "x-api-key": KEY },
-    hardwareVerifier: mockHardwareVerifier(),
-    ...options,
-    confidential: true,
-  });
 }
 
 function build(mode: Mode, url: string, options: Parameters<typeof vrpcHttp>[1] = {}) {
@@ -75,12 +59,6 @@ function build(mode: Mode, url: string, options: Parameters<typeof vrpcHttp>[1] 
   });
   const inner = client.transport.transports[0]?.value as { ready(): Promise<unknown> };
   return { client, ready: () => inner.ready() };
-}
-
-function walkFind<T>(err: unknown, type: abstract new (...args: never[]) => T): T | undefined {
-  if (err instanceof type) return err;
-  if (!(err instanceof BaseError)) return undefined;
-  return (err.walk((e) => e instanceof type) as T | null) ?? undefined;
 }
 
 // The client mode is the default transport, covered by the core suite.

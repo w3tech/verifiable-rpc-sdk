@@ -17,11 +17,14 @@
 import {
   attestationAnswer,
   CHAIN_ID,
+  jsonResult,
   mockHardwareVerifier,
+  SINGLE_RESULT_BALANCE_HEX,
   type SignedAnswerOptions,
   signedAnswer,
   signedJsonHeaders,
   thrownBy,
+  WIDE_WINDOW,
 } from "@w3tech.io/vrpc-test-support";
 import {
   BadSignature,
@@ -40,7 +43,7 @@ import {
   RpcRequestError,
 } from "viem";
 import { describe, expect, test } from "vitest";
-import { APP_COMPOSE, jsonResult, SINGLE_RESULT_BALANCE_HEX, WIDE_WINDOW } from "./fixtures";
+import { APP_COMPOSE } from "./fixtures";
 
 const URL = "http://test.invalid";
 const ADDR = "0x1111111111111111111111111111111111111111" as const;

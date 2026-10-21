@@ -7,11 +7,14 @@ import {
   attestationStub,
   CHAIN_ID,
   flipFirstDigit,
+  jsonResult,
   mockHardwareVerifier,
+  SINGLE_RESULT_BALANCE_HEX,
   type SignedAnswerOptions,
   signedAnswer,
   signedJsonHeaders,
   thrownBy,
+  WIDE_WINDOW,
 } from "@w3tech.io/vrpc-test-support";
 import {
   type ServedAnswer,
@@ -21,7 +24,6 @@ import {
 } from "@w3tech.io/vrpc-test-support/server";
 import { Contract, FetchRequest, FetchResponse, Interface, isError, toBeHex } from "ethers";
 import { describe, expect, onTestFinished, test } from "vitest";
-import { jsonResult, SINGLE_RESULT_BALANCE_HEX, WIDE_WINDOW } from "./fixtures";
 import { signingRequest } from "./helpers";
 
 // Always-on verify seam: the FIRST verified read per pubkey lazily fetches the
@@ -85,7 +87,7 @@ describe("VrpcProvider._send wiring", () => {
     // The id ethers assigns to the first call is 1; the request-aware signer
     // signs whatever ethers actually POSTs, so we only need the response shape.
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID }),
+      signingRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
       WIDE_OPTIONS,
     );
@@ -99,7 +101,7 @@ describe("VrpcProvider._send wiring", () => {
     const value = 123_456_789n;
     const encoded = iface.encodeFunctionResult("totalSupply", [value]);
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, encoded), { nodeId: NODE_ID }),
+      signingRequest(jsonResult(encoded), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
       WIDE_OPTIONS,
     );
@@ -133,7 +135,7 @@ describe("VrpcProvider._send wiring", () => {
 
   test("signed {result:null} returns null (getBlock of a missing block)", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, null), { nodeId: NODE_ID }),
+      signingRequest(jsonResult(null), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
       WIDE_OPTIONS,
     );
@@ -146,7 +148,7 @@ describe("VrpcProvider._send wiring", () => {
 
   test("verified broadcast — eth_sendRawTransaction returns the verified tx hash", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, TX_HASH), { nodeId: NODE_ID }),
+      signingRequest(jsonResult(TX_HASH), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
       WIDE_OPTIONS,
     );
@@ -168,7 +170,7 @@ describe("VrpcProvider._send wiring", () => {
 
   test("verified eth_getLogs — polling/event funnels through verified _send", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, [LOG_ENTRY]), { nodeId: NODE_ID }),
+      signingRequest(jsonResult([LOG_ENTRY]), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
       WIDE_OPTIONS,
     );
@@ -179,7 +181,7 @@ describe("VrpcProvider._send wiring", () => {
 
   test("verified eth_getFilterChanges — filter-subscription poll funnels through verified _send", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, [LOG_ENTRY]), { nodeId: NODE_ID }),
+      signingRequest(jsonResult([LOG_ENTRY]), { nodeId: NODE_ID }),
       CHAIN_ID_NUMBER,
       WIDE_OPTIONS,
     );
@@ -195,7 +197,7 @@ describe("VrpcProvider._send wiring", () => {
 
   test("large chainId > 2^53−1 round-trips exactly (bigint, no precision loss)", async () => {
     const provider = new VrpcProvider(
-      signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
+      signingRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), {
         signingChainId: LARGE_CHAIN_ID.toString(10),
         nodeId: NODE_ID,
       }),
@@ -243,7 +245,7 @@ describe("VrpcProvider._send wiring", () => {
 
   test("bare-url auto-derive: NO chainId → SIGNED bootstrap is verified, then a verified read succeeds", async () => {
     const provider = new VrpcProvider(
-      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX)),
+      autoDeriveRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX)),
       undefined,
       WIDE_OPTIONS,
     );
@@ -254,7 +256,7 @@ describe("VrpcProvider._send wiring", () => {
   test("positional bigint chainId pins (zero bootstrap)", async () => {
     const bootstrapHits = { n: 0 };
     const provider = new VrpcProvider(
-      autoDeriveRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
+      autoDeriveRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), { bootstrapHits }),
       BigInt(CHAIN_ID),
       WIDE_OPTIONS,
     );
@@ -270,7 +272,7 @@ describe("VrpcProvider._send wiring", () => {
   test("number, bigint and string chainId args all bind the same decimal string", async () => {
     for (const arg of [42_161, 42_161n, "42161"] as const) {
       const provider = new VrpcProvider(
-        signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID }),
+        signingRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID }),
         arg,
         WIDE_OPTIONS,
       );
@@ -304,7 +306,7 @@ async function outcome(provider: VrpcProvider): Promise<string> {
 
 function signed(request: ServedRequest): ServedAnswer {
   const { id } = JSON.parse(new TextDecoder().decode(request.body)) as { id: number };
-  return signedAnswer(request.body, jsonResult(id, SINGLE_RESULT_BALANCE_HEX));
+  return signedAnswer(request.body, jsonResult(SINGLE_RESULT_BALANCE_HEX, id));
 }
 
 async function serve(options?: TestNodeServerOptions) {
@@ -315,7 +317,7 @@ async function serve(options?: TestNodeServerOptions) {
 
 describe("FetchRequest semantics", () => {
   test("a 429 answer is retried and the retried answer verifies", async () => {
-    const req = signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID });
+    const req = signingRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID });
     const sign = req.getUrlFunc;
     let posts = 0;
     req.getUrlFunc = async (sentReq, signal) => {
@@ -351,7 +353,7 @@ describe("FetchRequest semantics", () => {
     ["throws a throttle error once, the retry verifies", false, "value"],
     ["changes the body, BadSignature", true, "BadSignature"],
   ])("processFunc %s", async (_, change, expected) => {
-    const req = signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID });
+    const req = signingRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID });
     let calls = 0;
     req.processFunc = async (request, response) => {
       calls += 1;
@@ -379,7 +381,7 @@ describe("response classes", () => {
     ["unsigned 2xx → MissingHeader", { unsigned: true }, "MissingHeader", 0],
     ["unsigned 502 → SERVER_ERROR", { status: 502, unsigned: true }, "SERVER_ERROR", 0],
   ])("%s", async (_, answer, expected, attestations) => {
-    const req = signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), {
+    const req = signingRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), {
       nodeId: NODE_ID,
       ...answer,
     });

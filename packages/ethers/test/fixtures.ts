@@ -1,13 +1,11 @@
 // Signed-response fixtures for the vrpc-ethers adapter tests.
 
-import { CHAIN_ID, FIXTURE_TIMESTAMP_MS, signedJsonHeaders } from "@w3tech.io/vrpc-test-support";
-
-// Replay window wide enough for responses signed at FIXTURE_TIMESTAMP_MS.
-export const WIDE_WINDOW = Number.MAX_SAFE_INTEGER;
-
-export function jsonResult(id: number, result: unknown): string {
-  return JSON.stringify({ jsonrpc: "2.0", id, result });
-}
+import {
+  CHAIN_ID,
+  FIXTURE_TIMESTAMP_MS,
+  SINGLE_RESULT_BALANCE_HEX,
+  signedJsonHeaders,
+} from "@w3tech.io/vrpc-test-support";
 
 export interface Fixture {
   /** Request body bytes, exactly as signed (= `buildPreImage` request input). */
@@ -24,9 +22,6 @@ export interface Fixture {
 // The static fixture. Signed with the fixed TEST_SEED, so the matching pubkey is
 // deterministic. Synthesized eagerly at module load.
 // ---------------------------------------------------------------------------
-
-/** Known decoded balance carried by SINGLE_RESULT. `0x1bc16d674ec80000` = 2 ETH (wei). */
-export const SINGLE_RESULT_BALANCE_HEX = "0x1bc16d674ec80000";
 
 const singleRequestBytes = new TextEncoder().encode(
   JSON.stringify({

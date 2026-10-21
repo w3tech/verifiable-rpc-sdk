@@ -5,9 +5,8 @@
 // already covers. The adapter WIRING proper is covered by the transport suite.
 
 import { BadSignature, MissingHeader, verifyResponse } from "@w3tech.io/vrpc-core";
-import { CHAIN_ID, signedJsonHeaders } from "@w3tech.io/vrpc-test-support";
+import { CHAIN_ID, signedJsonHeaders, WIDE_WINDOW } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
-import { WIDE_WINDOW } from "./fixtures";
 
 const REQUEST_BYTES = new TextEncoder().encode(
   JSON.stringify({

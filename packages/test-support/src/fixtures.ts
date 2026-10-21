@@ -13,8 +13,14 @@ export const NODE_ID = "alpha-vrpc-1";
 export const CHAIN_ID = "42161";
 // Fake key literal, never a real key.
 export const KEY = "0123456789abcdefghijABCDEFGHIJkl";
+// Balance in the signed `eth_getBalance` answers: 2 ETH in wei.
+export const SINGLE_RESULT_BALANCE_HEX = "0x1bc16d674ec80000";
 
 const utf8 = new TextEncoder();
+
+export function jsonResult(result: unknown, id = 1): string {
+  return JSON.stringify({ jsonrpc: "2.0", id, result });
+}
 
 // Inner `eth_blockNumber` request.
 export function jsonRpcCall() {

@@ -24,10 +24,12 @@ import {
   attestationAnswer,
   attestationStub,
   CHAIN_ID,
+  jsonResult,
   mockHardwareVerifier,
+  SINGLE_RESULT_BALANCE_HEX,
+  WIDE_WINDOW,
 } from "@w3tech.io/vrpc-test-support";
 import { describe, expect, test } from "vitest";
-import { jsonResult, SINGLE_RESULT_BALANCE_HEX, WIDE_WINDOW } from "./fixtures";
 import { signingRequest } from "./helpers";
 
 const CHAIN_ID_NUMBER = Number(CHAIN_ID); // 42161 (arbitrum)
@@ -37,7 +39,7 @@ const NODE_ID = "node-abc";
 /** Construct a VrpcProvider whose RPC leg is the signing mock + injected attestation fetch. */
 function vrpcProviderWith(mock: AttestationStub, signOpts: { nodeId?: string }): VrpcProvider {
   return new VrpcProvider(
-    signingRequest((id) => jsonResult(id, SINGLE_RESULT_BALANCE_HEX), signOpts),
+    signingRequest((id) => jsonResult(SINGLE_RESULT_BALANCE_HEX, id), signOpts),
     CHAIN_ID_NUMBER,
     {
       fetch: mock.fetch,
@@ -99,7 +101,7 @@ describe("VrpcProvider always-on attestation E2E", () => {
       throw new Error(`unexpected fetch: ${String(input)}`);
     }) as typeof fetch;
 
-    const req = signingRequest(jsonResult(1, SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID });
+    const req = signingRequest(jsonResult(SINGLE_RESULT_BALANCE_HEX), { nodeId: NODE_ID });
     req.setHeader("x-api-key", "regression-key");
     // No apiKey/headers option — auth comes ONLY from the FetchRequest, like a
     // consumer who sets x-api-key once on the connection.

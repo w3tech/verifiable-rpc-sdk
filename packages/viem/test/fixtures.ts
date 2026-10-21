@@ -1,17 +1,37 @@
-// Signed-response fixtures for the vrpc-viem adapter tests.
+// Fixtures and helpers shared by the vrpc-viem adapter tests.
 
-/**
- * Known decoded balance a signed `eth_getBalance` fixture carries —
- * `0x1bc16d674ec80000` = 2 ETH (wei).
- */
-export const SINGLE_RESULT_BALANCE_HEX = "0x1bc16d674ec80000";
-
-// Replay window wide enough for responses signed at FIXTURE_TIMESTAMP_MS.
-export const WIDE_WINDOW = Number.MAX_SAFE_INTEGER;
+import { KEY, mockHardwareVerifier } from "@w3tech.io/vrpc-test-support";
+import { vrpcHttp } from "@w3tech.io/vrpc-viem";
+import { BaseError, defineChain } from "viem";
 
 // Served verbatim in /attestation with its composeHash, so CHK-A2 activates and passes.
 export const APP_COMPOSE = '{"manifest_version":2,"name":"demo"}';
 
-export function jsonResult(result: unknown): string {
-  return JSON.stringify({ jsonrpc: "2.0", id: 1, result });
+export const arbitrum = defineChain({
+  id: 42161,
+  name: "Arbitrum One",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: ["http://127.0.0.1"] } },
+});
+
+// vrpcHttp in Ankr Confidential RPC mode sending the key header; a server is called at /eth_vrpc.
+export function confidential(
+  target: string | { url: string },
+  options: Parameters<typeof vrpcHttp>[1] = {},
+) {
+  return vrpcHttp(typeof target === "string" ? target : `${target.url}/eth_vrpc`, {
+    headers: { "x-api-key": KEY },
+    hardwareVerifier: mockHardwareVerifier(),
+    ...options,
+    confidential: true,
+  });
+}
+
+export function walkFind<T>(
+  err: unknown,
+  type: abstract new (...args: never[]) => T,
+): T | undefined {
+  if (err instanceof type) return err;
+  if (!(err instanceof BaseError)) return undefined;
+  return (err.walk((e) => e instanceof type) as T | null) ?? undefined;
 }
