@@ -2,8 +2,8 @@
 // Copyright 2026 Web3 Technologies, Inc.
 // Ankr Confidential RPC mode for VrpcProvider: FetchRequest transport, lazy client, answer mapping.
 
-import { type LazyConfidentialClient, readCappedBody } from "@w3tech.io/vrpc-core";
-import type { ConfidentialTransport } from "@w3tech.io/vrpc-core/confidential";
+import { fetchTransport, type LazyConfidentialClient } from "@w3tech.io/vrpc-core";
+import type { ConfidentialTransport, OuterRequest } from "@w3tech.io/vrpc-core/confidential";
 import {
   assert,
   type FetchGetUrlFunc,
@@ -17,6 +17,7 @@ import {
 
 // A FetchRequest.registerGetUrl() made before this module loads is taken for the stock fetcher.
 const stockGetUrl = new FetchRequest("http://localhost").getUrlFunc;
+const send = fetchTransport();
 
 // Replaces the ethers fetchers, which buffer the whole body (and gunzip it in Node) before returning.
 const cappedGetUrl =
@@ -47,19 +48,20 @@ const cappedGetUrl =
       controller.abort();
     });
     try {
-      const response = await fetch(req.url, {
-        method: req.method,
-        headers: new Headers(Array.from(req)),
-        redirect: "manual",
+      const response = await send({
+        method: req.method as OuterRequest["method"],
+        url: req.url,
+        headers: Object.fromEntries(req),
         signal: controller.signal,
         ...(req.body === null ? {} : { body: req.body }),
+        ...(maxBytes === undefined ? {} : { maxBytes }),
       });
-      const headers: Record<string, string> = {};
-      response.headers.forEach((value, name) => {
-        headers[name.toLowerCase()] = value;
-      });
-      const body = await readCappedBody(response, maxBytes);
-      return { statusCode: response.status, statusMessage: response.statusText, headers, body };
+      return {
+        statusCode: response.status,
+        statusMessage: "",
+        headers: Object.fromEntries(new Headers(response.headers)),
+        body: response.body,
+      };
     } catch (err) {
       throw reason ?? err;
     } finally {

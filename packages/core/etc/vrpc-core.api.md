@@ -375,9 +375,6 @@ export interface PostResponse {
 }
 
 // @public
-export function readCappedBody(response: Response, maxBytes?: number): Promise<Uint8Array>;
-
-// @public
 export class RequestRejected extends UnavailableError {
     constructor(status: number, nodeId: string, contentType?: string);
     // (undocumented)

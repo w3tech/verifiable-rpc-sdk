@@ -36,7 +36,7 @@ export { createOpenSession } from "./open-session";
 export type { CheckedOptions, OptionsInput } from "./options";
 export { checkOptions, DEFAULT_PUBKEY_CACHE_TTL_MS } from "./options";
 export { buildPreImage, validateChainId } from "./preimage";
-export { fetchTransport, readCappedBody } from "./transport";
+export { fetchTransport } from "./transport";
 export type { TrustedVerifierOptions } from "./trusted-verifier";
 export { TrustedVerifier } from "./trusted-verifier";
 export { parseChainId } from "./utils";
