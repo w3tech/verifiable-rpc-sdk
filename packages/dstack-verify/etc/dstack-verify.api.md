@@ -23,12 +23,9 @@ export class AttestationError extends Error {
     // (undocumented)
     readonly detail: string;
     // (undocumented)
-    readonly kind: AttestationErrorKind;
+    readonly kind: "Attestation";
     readonly unavailable?: true;
 }
-
-// @public
-export type AttestationErrorKind = "Attestation";
 
 // @public
 export type ChkId =

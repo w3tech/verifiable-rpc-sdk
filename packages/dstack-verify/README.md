@@ -59,9 +59,10 @@ A standalone `Error` — it deliberately does NOT extend core's `VerificationErr
 keeping this package a dependency-free leaf. Carries `chkId: ChkId` (which `CHK-*`
 failed) + `detail: string`. Discriminant `kind === "Attestation"`. Narrow via
 `instanceof AttestationError`. `@w3tech.io/vrpc-core` catches it at the
-`verifyDstackAttestation` boundary and re-wraps it into its `VerificationError`
-family (kind `"Attestation"`, original kept as `cause`), so SDK callers still
-catch a single `VerificationError`.
+`verifyDstackAttestation` boundary and re-wraps it as `AttestationFailed` (kind
+`"AttestationFailed"`, `reason: "check"`, same `chkId`), or as
+`AttestationUnavailable` when `unavailable` is set; the original is kept as
+`cause`.
 
 ### Verified-pubkey cache TTL (configurable)
 

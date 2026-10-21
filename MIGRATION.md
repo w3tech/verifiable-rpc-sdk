@@ -287,6 +287,7 @@ The error changes apply to the same classes re-exported by
 | `VerifyPolicy` has `allowlist`, `tcb`, `pccsUrl`, `allowInsecureMock`, optional `hardwareVerifier` | `{ binding, hardwareVerifier, logger? }`; `hardwareVerifier` is required | `{ binding, hardwareVerifier: createCloudVerifier() }` |
 | `AttestationBundle` is `{ quote: QuoteEnvelope, tcbInfo, pubkey, nonce, signature_chain, appId?, instanceId? }` | `{ quote, reportData, composeHash, appCompose }`, all strings, `""` means absent; pubkey and nonce come from `policy.binding` | In a custom `HardwareVerifier`, read `bundle.quote` and `bundle.composeHash` instead of `bundle.quote.quote` and `bundle.tcbInfo.compose_hash` |
 | `EventLogEntry`, `QuoteEnvelope`, `TcbInfo`, `PinnedAllowlist`, `TcbPolicy`, `KeyProvider`, `EMPTY_ALLOWLIST` | Removed | Delete the references |
+| `AttestationErrorKind` | Removed; `AttestationError.kind` is still `"Attestation"` | Use `AttestationError["kind"]` |
 | `CHK`, `ChkEntry`, `ChkDisposition`, `ChkId` `"CHK-MOCK"` | Removed; `ChkId` keeps `CHK-A1..G3`, each documented with its meaning | Delete the references |
 
 ### @w3tech.io/vrpc-proxy

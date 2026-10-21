@@ -13,9 +13,6 @@
 // callers catch `VerificationError` — is unchanged.
 import type { ChkId } from "./checklist";
 
-/** The discriminant literal this package's error reports. */
-export type AttestationErrorKind = "Attestation";
-
 /**
  * Thrown when dstack/TDX attestation verification fails (or is mock-denied in
  * the current release). Carries which `CHK-*` item failed plus a human-readable
@@ -24,7 +21,7 @@ export type AttestationErrorKind = "Attestation";
  * leaf; core re-wraps it into its `VerificationError` family at the call boundary.
  */
 export class AttestationError extends Error {
-  readonly kind: AttestationErrorKind = "Attestation";
+  readonly kind = "Attestation" as const;
   /** Set when the verify service itself failed transiently; a retry may succeed. */
   declare readonly unavailable?: true;
 
@@ -33,13 +30,13 @@ export class AttestationError extends Error {
     public readonly detail: string,
     options?: { cause?: unknown; unavailable?: true },
   ) {
-    super(`Attestation verification failed [${chkId}]: ${detail}`);
+    super(
+      `Attestation verification failed [${chkId}]: ${detail}`,
+      options?.cause === undefined ? undefined : { cause: options.cause },
+    );
     // The built-in Error base leaves `name` as "Error"; set it from the concrete
     // constructor so logs / serialisation report "AttestationError".
     this.name = this.constructor.name;
-    if (options?.cause !== undefined) {
-      (this as { cause?: unknown }).cause = options.cause;
-    }
     if (options?.unavailable) {
       this.unavailable = true;
     }

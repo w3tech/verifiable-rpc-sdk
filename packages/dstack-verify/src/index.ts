@@ -6,7 +6,6 @@
 export type { ChkId } from "./checklist";
 export type { CloudVerifierConfig } from "./cloud-verifier";
 export { createCloudVerifier, DEFAULT_PHALA_VERIFY_ENDPOINT } from "./cloud-verifier";
-export type { AttestationErrorKind } from "./errors";
 export { AttestationError } from "./errors";
 export type {
   AttestationBundle,
