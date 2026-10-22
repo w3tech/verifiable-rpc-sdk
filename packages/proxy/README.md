@@ -43,7 +43,7 @@ pull.
 npx @w3tech.io/vrpc-proxy --upstream <url> --chain-id <id>
 ```
 
-Requires Node.js 24 or later (npx and repo runs); the image ships its own Node 24.
+Requires Node.js 24 or later (npx and repo runs); the image ships its own Node 26.
 
 ### Verify the image
 
