@@ -1,5 +1,5 @@
 # --- builder -----------------------------------------------------------------
-FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS builder
+FROM node:24-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS builder
 WORKDIR /build
 RUN npm i -g pnpm@11.8.0
 # Layer-cache friendly: manifests first, then sources. The five published package manifests
@@ -23,7 +23,7 @@ RUN pnpm --filter "@w3tech.io/vrpc-proxy^..." run build
 RUN pnpm --filter @w3tech.io/vrpc-proxy run build:docker
 
 # --- runtime -----------------------------------------------------------------
-FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:af85d11ce7ef10172855a6e3649e3e8125b1b9e3ca41849ec2918036f05cb212
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:78f07ef1b5ea71ad7c055df15d0dd8997f2d288f9158623c4d4ae3d765b7d50d
 COPY --from=builder /build/packages/proxy/dist-docker/cli.js /app/cli.js
 # Container default: bind all interfaces (see header). CLI flags still override.
 ENV VRPC_PROXY_LISTEN=0.0.0.0:8969
