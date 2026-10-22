@@ -92,19 +92,22 @@ describe("ConfidentialClient", () => {
   test.each([
     ["absent", null],
     ["empty", ""],
-  ])("a %s vRPC-NodeId on the attestation answer is AttestationUnavailable and nothing is posted", async (_label, nodeId) => {
-    const node = createTestNode({ nodeId });
-    const err = await rejectionOf(clientFor(node.transport).request(jsonRpcCall()));
+  ])(
+    "a %s vRPC-NodeId on the attestation answer is AttestationUnavailable and nothing is posted",
+    async (_label, nodeId) => {
+      const node = createTestNode({ nodeId });
+      const err = await rejectionOf(clientFor(node.transport).request(jsonRpcCall()));
 
-    expect(err).toBeInstanceOf(AttestationUnavailable);
-    expect(err).toBeInstanceOf(UnavailableError);
-    expect(err).not.toBeInstanceOf(VerificationError);
-    const unavailable = err as AttestationUnavailable;
-    expect(unavailable.kind).toBe("AttestationUnavailable");
-    expect(unavailable.reason).toBe("node-id-missing");
-    expect(unavailable.executed).toBe("no");
-    expect(countOf(node, isPost)).toBe(0);
-  });
+      expect(err).toBeInstanceOf(AttestationUnavailable);
+      expect(err).toBeInstanceOf(UnavailableError);
+      expect(err).not.toBeInstanceOf(VerificationError);
+      const unavailable = err as AttestationUnavailable;
+      expect(unavailable.kind).toBe("AttestationUnavailable");
+      expect(unavailable.reason).toBe("node-id-missing");
+      expect(unavailable.executed).toBe("no");
+      expect(countOf(node, isPost)).toBe(0);
+    },
+  );
 
   test("a header object whose get returns undefined on a miss still reports a missing vRPC-NodeId", async () => {
     const node = createTestNode({ nodeId: null });
@@ -365,14 +368,14 @@ describe("ConfidentialClient call surface", () => {
     expect(node.attestations()).toBe(1);
   });
 
-  test.each([
-    "url",
-    "chainId",
-  ] as const)("a missing %s throws InvalidOption at construction and sends nothing", (option) => {
-    const node = createTestNode();
-    const err = thrownBy(() => clientFor(node.transport, { [option]: undefined }));
-    expect(err).toBeInstanceOf(InvalidOption);
-    expect(err).toMatchObject({ option, executed: "no" });
-    expect(node.requests).toHaveLength(0);
-  });
+  test.each(["url", "chainId"] as const)(
+    "a missing %s throws InvalidOption at construction and sends nothing",
+    (option) => {
+      const node = createTestNode();
+      const err = thrownBy(() => clientFor(node.transport, { [option]: undefined }));
+      expect(err).toBeInstanceOf(InvalidOption);
+      expect(err).toMatchObject({ option, executed: "no" });
+      expect(node.requests).toHaveLength(0);
+    },
+  );
 });

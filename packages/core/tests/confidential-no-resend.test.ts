@@ -55,18 +55,19 @@ describeOneRequestPerCall(
   },
 );
 
-test.each(
-  SEALED_POST_FAILURES,
-)("after the sealed POST answered %i the next call succeeds", async (status) => {
-  const server = await serve();
-  const client = clientAt(server);
-  server.answer((request) => (isPost(request) ? failureAnswer(server, status) : undefined));
-  await rejectionOf(client.request(jsonRpcCall()));
+test.each(SEALED_POST_FAILURES)(
+  "after the sealed POST answered %i the next call succeeds",
+  async (status) => {
+    const server = await serve();
+    const client = clientAt(server);
+    server.answer((request) => (isPost(request) ? failureAnswer(server, status) : undefined));
+    await rejectionOf(client.request(jsonRpcCall()));
 
-  server.answer();
-  const response = await client.request(jsonRpcCall());
-  expect(text.decode(response.body)).toBe(UPSTREAM_BODY);
-});
+    server.answer();
+    const response = await client.request(jsonRpcCall());
+    expect(text.decode(response.body)).toBe(UPSTREAM_BODY);
+  },
+);
 
 describe("encoding", () => {
   test("gzipped answers are decoded before verification", async () => {

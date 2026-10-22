@@ -143,30 +143,33 @@ describe("TransportFailed", () => {
       "DecodeFailed",
       "Upstream response could not be decoded",
     ],
-  ])("upstream failure %s renders the same in both modes", (_name, cause, status, kind, message) => {
-    const open = expectRow(upstreamError(cause), status, kind);
-    const network = new TransportFailed("network", "n", { cause });
-    const confidential = expectRow(network, status, kind, "unknown");
-    for (const result of [open, confidential]) {
-      expect(result.message).toBe(message);
-      expect(result.code).toBe((cause as { code?: string }).code);
-    }
-  });
+  ])(
+    "upstream failure %s renders the same in both modes",
+    (_name, cause, status, kind, message) => {
+      const open = expectRow(upstreamError(cause), status, kind);
+      const network = new TransportFailed("network", "n", { cause });
+      const confidential = expectRow(network, status, kind, "unknown");
+      for (const result of [open, confidential]) {
+        expect(result.message).toBe(message);
+        expect(result.code).toBe((cause as { code?: string }).code);
+      }
+    },
+  );
 
   test("too-large is 502 TransportFailed executed unknown", () => {
     expectRow(new TransportFailed("too-large", "n"), 502, "TransportFailed", "unknown");
   });
 });
 
-test.each([
-  "no",
-  "unknown",
-] as const)("InternalError is 502 executed %s without its cause", (executed) => {
-  const err = new InternalError({ cause: new Error("secret-detail") });
-  err.executed = executed;
-  const result = expectRow(err, 502, "InternalError", executed);
-  expect(result.message).not.toContain("secret-detail");
-});
+test.each(["no", "unknown"] as const)(
+  "InternalError is 502 executed %s without its cause",
+  (executed) => {
+    const err = new InternalError({ cause: new Error("secret-detail") });
+    err.executed = executed;
+    const result = expectRow(err, 502, "InternalError", executed);
+    expect(result.message).not.toContain("secret-detail");
+  },
+);
 
 describe("verification failures", () => {
   const sig = `0x${"ab".repeat(64)}`;

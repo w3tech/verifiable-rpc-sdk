@@ -243,21 +243,24 @@ describe("every failure of request()", () => {
         };
       },
     ],
-  ])("an abort %s rejects with the reason itself and keeps the pin", async (_label, posted, arrange) => {
-    const h = harness();
-    await h.client.request(jsonRpcCall());
-    const controller = new AbortController();
-    const reason = new Error("caller gave up");
-    arrange(h, () => controller.abort(reason));
-    const postsBefore = h.posts;
+  ])(
+    "an abort %s rejects with the reason itself and keeps the pin",
+    async (_label, posted, arrange) => {
+      const h = harness();
+      await h.client.request(jsonRpcCall());
+      const controller = new AbortController();
+      const reason = new Error("caller gave up");
+      arrange(h, () => controller.abort(reason));
+      const postsBefore = h.posts;
 
-    const err = await rejectionOf(h.client.request(jsonRpcCall(), { signal: controller.signal }));
-    expect(err).toBe(reason);
-    expect("executed" in reason).toBe(false);
-    expect(h.posts - postsBefore).toBe(posted);
-    expect(h.client.getConfidentialInfo()).toBeDefined();
-    h.onPost = undefined;
-    expect((await h.client.request(jsonRpcCall())).status).toBe(200);
-    expect(h.node.attestations()).toBe(1);
-  });
+      const err = await rejectionOf(h.client.request(jsonRpcCall(), { signal: controller.signal }));
+      expect(err).toBe(reason);
+      expect("executed" in reason).toBe(false);
+      expect(h.posts - postsBefore).toBe(posted);
+      expect(h.client.getConfidentialInfo()).toBeDefined();
+      h.onPost = undefined;
+      expect((await h.client.request(jsonRpcCall())).status).toBe(200);
+      expect(h.node.attestations()).toBe(1);
+    },
+  );
 });

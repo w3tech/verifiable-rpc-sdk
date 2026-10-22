@@ -450,21 +450,20 @@ describe("constructor options", () => {
         [0, -1, 1.5, Number.POSITIVE_INFINITY].map((value) => ({ confidential, option, value })),
       ),
     ),
-  )("confidential=$confidential $option=$value throws InvalidOption and sends nothing", ({
-    confidential,
-    option,
-    value,
-  }) => {
-    const url = new FetchRequest("http://test.invalid");
-    url.getUrlFunc = async (req) => {
-      sent.push(req.url);
-      throw new Error("nothing may be sent");
-    };
-    const make = () =>
-      new VrpcProvider(url, CHAIN_ID, { ...counting, confidential, [option]: value });
-    expect(invalidOption(make)).toMatchObject({ option, executed: "no" });
-    expect(sent).toEqual([]);
-  });
+  )(
+    "confidential=$confidential $option=$value throws InvalidOption and sends nothing",
+    ({ confidential, option, value }) => {
+      const url = new FetchRequest("http://test.invalid");
+      url.getUrlFunc = async (req) => {
+        sent.push(req.url);
+        throw new Error("nothing may be sent");
+      };
+      const make = () =>
+        new VrpcProvider(url, CHAIN_ID, { ...counting, confidential, [option]: value });
+      expect(invalidOption(make)).toMatchObject({ option, executed: "no" });
+      expect(sent).toEqual([]);
+    },
+  );
 
   test("confidentialReady in open mode still rejects with TypeError", async () => {
     const provider = new VrpcProvider("http://test.invalid", CHAIN_ID, WIDE_OPTIONS);

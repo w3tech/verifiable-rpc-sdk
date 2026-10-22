@@ -158,17 +158,18 @@ describe("relayed answers", () => {
 });
 
 describe("relay framing", () => {
-  test.each([
-    204, 304,
-  ])("an inner %i carries neither content-length nor transfer-encoding", async (status) => {
-    answer = () => ({ status });
-    const { url } = await setup();
-    const res = await postRpc(url);
-    expect(res.status).toBe(status);
-    expect(res.headers["content-length"]).toBeUndefined();
-    expect(res.headers["transfer-encoding"]).toBeUndefined();
-    expect(res.body).toHaveLength(0);
-  });
+  test.each([204, 304])(
+    "an inner %i carries neither content-length nor transfer-encoding",
+    async (status) => {
+      answer = () => ({ status });
+      const { url } = await setup();
+      const res = await postRpc(url);
+      expect(res.status).toBe(status);
+      expect(res.headers["content-length"]).toBeUndefined();
+      expect(res.headers["transfer-encoding"]).toBeUndefined();
+      expect(res.body).toHaveLength(0);
+    },
+  );
 
   test("an inner 205 carries content-length 0 and no transfer-encoding", async () => {
     answer = () => ({ status: 205 });

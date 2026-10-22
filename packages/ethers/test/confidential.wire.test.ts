@@ -145,22 +145,22 @@ describe("base fetcher", () => {
 });
 
 describe("encoding", () => {
-  test.each([
-    "string URL",
-    "FetchRequest with its own getUrlFunc",
-  ] as const)("%s asks for identity and gets no gzip from a gzip-capable gateway", async (flavour) => {
-    const server = await serve({ gzipWhenAccepted: true });
-    const { provider } = build(flavour, server.url);
+  test.each(["string URL", "FetchRequest with its own getUrlFunc"] as const)(
+    "%s asks for identity and gets no gzip from a gzip-capable gateway",
+    async (flavour) => {
+      const server = await serve({ gzipWhenAccepted: true });
+      const { provider } = build(flavour, server.url);
 
-    await expect(provider.getBlockNumber()).resolves.toBe(16);
-    await expect(provider.getBlockNumber()).resolves.toBe(16);
+      await expect(provider.getBlockNumber()).resolves.toBe(16);
+      await expect(provider.getBlockNumber()).resolves.toBe(16);
 
-    expect(server.requests).toHaveLength(3);
-    for (const request of server.requests) {
-      expect(request.headers["accept-encoding"]).toBe("identity");
-      expect(request.gzipped).toBe(false);
-    }
-  });
+      expect(server.requests).toHaveLength(3);
+      for (const request of server.requests) {
+        expect(request.headers["accept-encoding"]).toBe("identity");
+        expect(request.gzipped).toBe(false);
+      }
+    },
+  );
 });
 
 describe("wire invariant", () => {

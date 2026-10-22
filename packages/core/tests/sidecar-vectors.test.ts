@@ -94,63 +94,67 @@ describe("sidecar known-answer vectors", () => {
     expect((error as InvalidInnerRequest).reason).toBe("path");
   });
 
-  describe.each(
-    vectors.envelopes.map((vector) => [vector.name, vector] as const),
-  )("envelope %s", (_, vector) => {
-    test("opens at the recipient", async () => {
-      const opened = await createRecipient(hexToBytes(keys.seed)).openRequest(
-        hexToBytes(vector.encapsulated_request),
-      );
-      expect(bytesToHex(opened.bhttp)).toBe(vector.bhttp_request);
-    });
-
-    test("a request sealed by the SDK opens with the sidecar's info", async () => {
-      const sealed = await sealRequest(hexToBytes(vector.pkR), hexToBytes(vector.bhttp_request));
-      const hdrLength = HDR.length / 2;
-      expect(bytesToHex(sealed.body.subarray(0, hdrLength))).toBe(vector.hdr);
-      const suite = createSuite("js");
-      const enc = sealed.body.subarray(hdrLength, hdrLength + suite.kem.encSize);
-      const recipientKey = await suite.kem.importKey("raw", hexToBytes(vector.skR).buffer, false);
-      const context = await suite.createRecipientContext({
-        recipientKey,
-        enc,
-        info: hexToBytes(vector.info),
+  describe.each(vectors.envelopes.map((vector) => [vector.name, vector] as const))(
+    "envelope %s",
+    (_, vector) => {
+      test("opens at the recipient", async () => {
+        const opened = await createRecipient(hexToBytes(keys.seed)).openRequest(
+          hexToBytes(vector.encapsulated_request),
+        );
+        expect(bytesToHex(opened.bhttp)).toBe(vector.bhttp_request);
       });
-      const pt = await context.open(sealed.body.subarray(hdrLength + enc.length));
-      expect(bytesToHex(new Uint8Array(pt))).toBe(vector.bhttp_request);
-    });
 
-    test("derives the sidecar's response key and nonce", async () => {
-      expect(vector.encapsulated_response.startsWith(vector.response_nonce)).toBe(true);
-      const suite = createSuite("js");
-      const salt = concatBytes(hexToBytes(vector.enc), hexToBytes(vector.response_nonce));
-      const prk = extract(sha256, hexToBytes(vector.export_secret), salt);
-      const key = await suite.kdf.expand(prk, utf8.encode("key"), suite.aead.keySize);
-      const nonce = await suite.kdf.expand(prk, utf8.encode("nonce"), suite.aead.nonceSize);
-      expect(bytesToHex(new Uint8Array(key))).toBe(vector.aead_key);
-      expect(bytesToHex(new Uint8Array(nonce))).toBe(vector.aead_nonce);
-    });
+      test("a request sealed by the SDK opens with the sidecar's info", async () => {
+        const sealed = await sealRequest(hexToBytes(vector.pkR), hexToBytes(vector.bhttp_request));
+        const hdrLength = HDR.length / 2;
+        expect(bytesToHex(sealed.body.subarray(0, hdrLength))).toBe(vector.hdr);
+        const suite = createSuite("js");
+        const enc = sealed.body.subarray(hdrLength, hdrLength + suite.kem.encSize);
+        const recipientKey = await suite.kem.importKey("raw", hexToBytes(vector.skR).buffer, false);
+        const context = await suite.createRecipientContext({
+          recipientKey,
+          enc,
+          info: hexToBytes(vector.info),
+        });
+        const pt = await context.open(sealed.body.subarray(hdrLength + enc.length));
+        expect(bytesToHex(new Uint8Array(pt))).toBe(vector.bhttp_request);
+      });
 
-    test("exports the response secret and opens the response", async () => {
-      const responseOpener = await opener(vector);
-      const secret = await responseOpener.context.export(utf8.encode("message/bhttp response"), 32);
-      expect(bytesToHex(new Uint8Array(secret))).toBe(vector.export_secret);
+      test("derives the sidecar's response key and nonce", async () => {
+        expect(vector.encapsulated_response.startsWith(vector.response_nonce)).toBe(true);
+        const suite = createSuite("js");
+        const salt = concatBytes(hexToBytes(vector.enc), hexToBytes(vector.response_nonce));
+        const prk = extract(sha256, hexToBytes(vector.export_secret), salt);
+        const key = await suite.kdf.expand(prk, utf8.encode("key"), suite.aead.keySize);
+        const nonce = await suite.kdf.expand(prk, utf8.encode("nonce"), suite.aead.nonceSize);
+        expect(bytesToHex(new Uint8Array(key))).toBe(vector.aead_key);
+        expect(bytesToHex(new Uint8Array(nonce))).toBe(vector.aead_nonce);
+      });
 
-      const bhttp = await openResponse(responseOpener, hexToBytes(vector.encapsulated_response));
-      expect(bytesToHex(bhttp)).toBe(vector.bhttp_response);
+      test("exports the response secret and opens the response", async () => {
+        const responseOpener = await opener(vector);
+        const secret = await responseOpener.context.export(
+          utf8.encode("message/bhttp response"),
+          32,
+        );
+        expect(bytesToHex(new Uint8Array(secret))).toBe(vector.export_secret);
 
-      const response = await decodeInnerResponse(bhttp);
-      expect(response.status).toBe(vector.response.status);
-      expect(response.contentType).toBe(contentType(vector.response.fields));
-      expect(new TextDecoder().decode(response.body)).toBe(vector.response.body);
-    });
+        const bhttp = await openResponse(responseOpener, hexToBytes(vector.encapsulated_response));
+        expect(bytesToHex(bhttp)).toBe(vector.bhttp_response);
 
-    test("rejects a response with a flipped ciphertext byte", async () => {
-      const tampered = hexToBytes(vector.encapsulated_response);
-      tampered[32] = (tampered[32] ?? 0) ^ 0x01;
-      const [result] = await Promise.allSettled([openResponse(await opener(vector), tampered)]);
-      expect(result?.status).toBe("rejected");
-      expect((result as PromiseRejectedResult).reason).toBeInstanceOf(ConfidentialDecryptFailed);
-    });
-  });
+        const response = await decodeInnerResponse(bhttp);
+        expect(response.status).toBe(vector.response.status);
+        expect(response.contentType).toBe(contentType(vector.response.fields));
+        expect(new TextDecoder().decode(response.body)).toBe(vector.response.body);
+      });
+
+      test("rejects a response with a flipped ciphertext byte", async () => {
+        const tampered = hexToBytes(vector.encapsulated_response);
+        tampered[32] = (tampered[32] ?? 0) ^ 0x01;
+        const [result] = await Promise.allSettled([openResponse(await opener(vector), tampered)]);
+        expect(result?.status).toBe("rejected");
+        expect((result as PromiseRejectedResult).reason).toBeInstanceOf(ConfidentialDecryptFailed);
+      });
+    },
+  );
 });

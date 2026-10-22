@@ -242,36 +242,34 @@ describe("errors", () => {
       body: "upstream failed sentinel-reply",
       marker: "failed",
     },
-  ])("an inner $status rejects every batch member with one SERVER_ERROR without the body text", async ({
-    status,
-    contentType,
-    body,
-    marker,
-  }) => {
-    const { server } = await serveRpcNode(() => ({
-      status,
-      headers: { "content-type": contentType },
-      body,
-    }));
-    const provider = confidentialProvider(keyedRequest(server));
+  ])(
+    "an inner $status rejects every batch member with one SERVER_ERROR without the body text",
+    async ({ status, contentType, body, marker }) => {
+      const { server } = await serveRpcNode(() => ({
+        status,
+        headers: { "content-type": contentType },
+        body,
+      }));
+      const provider = confidentialProvider(keyedRequest(server));
 
-    const errors = await Promise.all(
-      [1, 2, 3].map((n) => provider.getBalance(address(n))).map(rejectionOf),
-    );
+      const errors = await Promise.all(
+        [1, 2, 3].map((n) => provider.getBalance(address(n))).map(rejectionOf),
+      );
 
-    const [first] = errors;
-    for (const err of errors) expect(err).toBe(first);
-    expect(isError(first, "SERVER_ERROR")).toBe(true);
-    const err = first as Error & {
-      shortMessage: string;
-      info: { responseStatus: string };
-      response: { body: Uint8Array };
-    };
-    expect(err.shortMessage).toBe(`server response ${status} `);
-    expect(err.info.responseStatus).toBe(`${status} `);
-    expect(toUtf8String(err.response.body)).toContain(marker);
-    expectNoSecrets([err], ["sentinel-reply", KEY], []);
-  });
+      const [first] = errors;
+      for (const err of errors) expect(err).toBe(first);
+      expect(isError(first, "SERVER_ERROR")).toBe(true);
+      const err = first as Error & {
+        shortMessage: string;
+        info: { responseStatus: string };
+        response: { body: Uint8Array };
+      };
+      expect(err.shortMessage).toBe(`server response ${status} `);
+      expect(err.info.responseStatus).toBe(`${status} `);
+      expect(toUtf8String(err.response.body)).toContain(marker);
+      expectNoSecrets([err], ["sentinel-reply", KEY], []);
+    },
+  );
 
   test("an answer missing a request id rejects every caller with one BAD_DATA", async () => {
     const sentinelAddress = "0x5e17e1a15e17e1a15e17e1a15e17e1a15e17e1a1";

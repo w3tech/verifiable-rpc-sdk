@@ -442,33 +442,36 @@ describe("real network failures through the default transport", () => {
   test.each([
     ["attestation", AttestationUnavailable],
     ["sealed request", TransportFailed],
-  ] as const)("a fetch error quoting the keyed URL on the %s keeps only its code", async (leg, expected) => {
-    const node = testNode();
-    const original = globalThis.fetch;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      const url = String(input);
-      if ((init?.method === "GET") === (leg === "attestation")) {
-        throw Object.assign(new Error(`request to ${url} failed, reason: socket hang up`), {
-          code: "ECONNRESET",
-        });
-      }
-      return original(input, init);
-    });
-    const origin = await droppingOrigin(node);
-    const client = new ConfidentialClient({
-      url: `${origin}/eth_vrpc/${API_KEY}`,
-      chainId: CHAIN_ID,
-      hardwareVerifier: mockHardwareVerifier(),
-    });
-    const err = await rejectionOf(client.request(call()));
+  ] as const)(
+    "a fetch error quoting the keyed URL on the %s keeps only its code",
+    async (leg, expected) => {
+      const node = testNode();
+      const original = globalThis.fetch;
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+        const url = String(input);
+        if ((init?.method === "GET") === (leg === "attestation")) {
+          throw Object.assign(new Error(`request to ${url} failed, reason: socket hang up`), {
+            code: "ECONNRESET",
+          });
+        }
+        return original(input, init);
+      });
+      const origin = await droppingOrigin(node);
+      const client = new ConfidentialClient({
+        url: `${origin}/eth_vrpc/${API_KEY}`,
+        chainId: CHAIN_ID,
+        hardwareVerifier: mockHardwareVerifier(),
+      });
+      const err = await rejectionOf(client.request(call()));
 
-    expect(err).toBeInstanceOf(expected);
-    expect((err as Error).cause).toMatchObject({
-      message: "The request failed.",
-      code: "ECONNRESET",
-    });
-    expectNoSecrets([err], baseSentinels(), []);
-  });
+      expect(err).toBeInstanceOf(expected);
+      expect((err as Error).cause).toMatchObject({
+        message: "The request failed.",
+        code: "ECONNRESET",
+      });
+      expectNoSecrets([err], baseSentinels(), []);
+    },
+  );
 });
 
 describe("invalid caller headers", () => {

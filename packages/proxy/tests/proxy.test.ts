@@ -347,50 +347,50 @@ describe("proxy pipeline", () => {
     expect(errorOf(res)).toMatchObject({ status: 502, kind: "DecodeFailed" });
   });
 
-  test.each([
-    "silent",
-    "debug",
-  ] as const)("%s: parallel cold verifies share one attestation and write nothing to stdout or console", async (logLevel) => {
-    const methods = ["log", "info", "warn", "error", "debug"] as const;
-    const consoles = methods.map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
-    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    const stderr: string[] = [];
-    vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
-      stderr.push(String(chunk));
-      return true;
-    });
-    const mock = await startMockSidecar();
-    onTestFinished(() => mock.close());
-    const stub = attestationStub();
-    // Answers once every request has reached the upstream.
-    const fetch = (async (input: string) => {
-      await vi.waitFor(() => expect(mock.received).toHaveLength(10), { interval: 1 });
-      return stub.fetch(input);
-    }) as typeof globalThis.fetch;
-    const overrides = { fetch, hardwareVerifier: mockHardwareVerifier() };
-    const server = createServerWith(testConfig(mock.url, { logLevel }), overrides);
-    const url = await listen(server);
-    onTestFinished(() => closeServer(server));
+  test.each(["silent", "debug"] as const)(
+    "%s: parallel cold verifies share one attestation and write nothing to stdout or console",
+    async (logLevel) => {
+      const methods = ["log", "info", "warn", "error", "debug"] as const;
+      const consoles = methods.map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
+      const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const stderr: string[] = [];
+      vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
+        stderr.push(String(chunk));
+        return true;
+      });
+      const mock = await startMockSidecar();
+      onTestFinished(() => mock.close());
+      const stub = attestationStub();
+      // Answers once every request has reached the upstream.
+      const fetch = (async (input: string) => {
+        await vi.waitFor(() => expect(mock.received).toHaveLength(10), { interval: 1 });
+        return stub.fetch(input);
+      }) as typeof globalThis.fetch;
+      const overrides = { fetch, hardwareVerifier: mockHardwareVerifier() };
+      const server = createServerWith(testConfig(mock.url, { logLevel }), overrides);
+      const url = await listen(server);
+      onTestFinished(() => closeServer(server));
 
-    const sends = Array.from({ length: 10 }, () =>
-      rawRequest(url, {
-        method: "POST",
-        path: "/sentinel-path?key=sentinel-query",
-        headers: { "content-type": "application/json" },
-        body: RPC_REQUEST,
-      }),
-    );
-    const statuses = (await Promise.all(sends)).map((res) => res.status);
+      const sends = Array.from({ length: 10 }, () =>
+        rawRequest(url, {
+          method: "POST",
+          path: "/sentinel-path?key=sentinel-query",
+          headers: { "content-type": "application/json" },
+          body: RPC_REQUEST,
+        }),
+      );
+      const statuses = (await Promise.all(sends)).map((res) => res.status);
 
-    expect(statuses).toEqual(Array(10).fill(200));
-    expect(stderr.join("")).not.toContain("sentinel");
-    expect(stub.urls).toHaveLength(1);
-    for (const spy of consoles) expect(spy).not.toHaveBeenCalled();
-    expect(stdout).not.toHaveBeenCalled();
-    const starts = stderr.filter((l) => l.startsWith("[vrpc-proxy] debug verify.start "));
-    expect(starts).toHaveLength(logLevel === "debug" ? 10 : 0);
-    if (logLevel === "silent") expect(stderr).toEqual([]);
-  });
+      expect(statuses).toEqual(Array(10).fill(200));
+      expect(stderr.join("")).not.toContain("sentinel");
+      expect(stub.urls).toHaveLength(1);
+      for (const spy of consoles) expect(spy).not.toHaveBeenCalled();
+      expect(stdout).not.toHaveBeenCalled();
+      const starts = stderr.filter((l) => l.startsWith("[vrpc-proxy] debug verify.start "));
+      expect(starts).toHaveLength(logLevel === "debug" ? 10 : 0);
+      if (logLevel === "silent") expect(stderr).toEqual([]);
+    },
+  );
 });
 
 describe("proxy pipeline (zstd)", () => {

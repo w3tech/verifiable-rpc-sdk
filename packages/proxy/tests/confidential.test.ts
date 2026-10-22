@@ -188,23 +188,23 @@ describe("confidential mode startup", () => {
     expect(countOf(node, isPost)).toBe(1);
   });
 
-  test.each([
-    true,
-    false,
-  ])("confidential %s: invalid options throw InvalidOption before listen and close the Agent", (confidential) => {
-    const close = vi.spyOn(Agent.prototype, "close");
-    const upstream = "http://127.0.0.1:1/test_vrpc";
-    const badKey = "bad\nkey";
-    const build = (overrides: Parameters<typeof testConfig>[1]) => () =>
-      createProxyServer(testConfig(upstream, { confidential, ...overrides }));
+  test.each([true, false])(
+    "confidential %s: invalid options throw InvalidOption before listen and close the Agent",
+    (confidential) => {
+      const close = vi.spyOn(Agent.prototype, "close");
+      const upstream = "http://127.0.0.1:1/test_vrpc";
+      const badKey = "bad\nkey";
+      const build = (overrides: Parameters<typeof testConfig>[1]) => () =>
+        createProxyServer(testConfig(upstream, { confidential, ...overrides }));
 
-    const badHeader = build({ attestationHeaders: { "x-api-key": badKey } });
-    expect(badHeader).toThrow(InvalidOption);
-    const { message } = thrownBy(badHeader) as Error;
-    expect(message).not.toBe("");
-    expect(message).not.toContain("bad");
-    expect(build({ replayWindowMs: 1.5 })).toThrow(InvalidOption);
-    expect(build({ pubkeyCacheTtlMs: Number.POSITIVE_INFINITY })).toThrow(InvalidOption);
-    expect(new Set(close.mock.contexts).size).toBe(4);
-  });
+      const badHeader = build({ attestationHeaders: { "x-api-key": badKey } });
+      expect(badHeader).toThrow(InvalidOption);
+      const { message } = thrownBy(badHeader) as Error;
+      expect(message).not.toBe("");
+      expect(message).not.toContain("bad");
+      expect(build({ replayWindowMs: 1.5 })).toThrow(InvalidOption);
+      expect(build({ pubkeyCacheTtlMs: Number.POSITIVE_INFINITY })).toThrow(InvalidOption);
+      expect(new Set(close.mock.contexts).size).toBe(4);
+    },
+  );
 });
