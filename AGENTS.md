@@ -25,7 +25,7 @@ fails closed. Ankr Confidential RPC mode requires sidecar `>=0.5.2`.
 | Format check     | `pnpm run format:check`                                                                              |
 | Format fix       | `pnpm run format`                                                                                    |
 | Typecheck        | `pnpm -r typecheck` (root fans out: `pnpm -r typecheck`; per-package leaf is `tsc --noEmit`) |
-| Static checks    | `pnpm run check` (runs every `check:*` script; after `pnpm -r build`; `check:deps` needs Node 22 or 24, dependency-cruiser does not run on Node 25); update the API reports: `pnpm run api:update`; coverage: `pnpm run test:coverage` |
+| Static checks    | `pnpm run check` (runs every `check:*` script; after `pnpm -r build`; `check:deps` needs Node 22, 24 or 26 and later, dependency-cruiser does not run on Node 25); update the API reports: `pnpm run api:update`; coverage: `pnpm run test:coverage` |
 | Docker build     | `docker build -t vrpc-proxy .` (root `Dockerfile`; amd64 production image). The docker-only bundle step alone: `pnpm --filter '@w3tech.io/vrpc-proxy' run build:docker` |
 
 ## Pre-push gate (mandatory)
