@@ -66,44 +66,44 @@ function countingVerifier(): HardwareVerifier & { calls: number } {
 }
 
 describe("ConfidentialClient attestation: attested key", () => {
-  test.each(
-    unusableKeys,
-  )("an attested $reason key ($name) is rejected after the quote verifies", async ({
-    ed25519PublicKey,
-  }) => {
-    const node = createTestNode();
-    node.setAttestation((context) =>
-      edited(context, (body) => {
-        body.pubkey = `0x${ed25519PublicKey}`;
-        body.quote.report_data = `${ed25519PublicKey}${context.nonceHex}`;
-      }),
-    );
-    const verifier = countingVerifier();
-    const err = await rejectionOf(
-      clientFor(node.transport, { hardwareVerifier: verifier }).request(jsonRpcCall()),
-    );
+  test.each(unusableKeys)(
+    "an attested $reason key ($name) is rejected after the quote verifies",
+    async ({ ed25519PublicKey }) => {
+      const node = createTestNode();
+      node.setAttestation((context) =>
+        edited(context, (body) => {
+          body.pubkey = `0x${ed25519PublicKey}`;
+          body.quote.report_data = `${ed25519PublicKey}${context.nonceHex}`;
+        }),
+      );
+      const verifier = countingVerifier();
+      const err = await rejectionOf(
+        clientFor(node.transport, { hardwareVerifier: verifier }).request(jsonRpcCall()),
+      );
 
-    expect(err).toBeInstanceOf(AttestationFailed);
-    expect((err as AttestationFailed).detail).toBe(
-      "attested pubkey is not a usable encryption key",
-    );
-    expect((err as Error).cause).toBeUndefined();
-    expect(verifier.calls).toBe(1);
-    expect(countOf(node, isPost)).toBe(0);
-  });
+      expect(err).toBeInstanceOf(AttestationFailed);
+      expect((err as AttestationFailed).detail).toBe(
+        "attested pubkey is not a usable encryption key",
+      );
+      expect((err as Error).cause).toBeUndefined();
+      expect(verifier.calls).toBe(1);
+      expect(countOf(node, isPost)).toBe(0);
+    },
+  );
 });
 
 describe("ConfidentialClient attestation: a transport that ignores the size cap", () => {
-  test.each([
-    200, 503,
-  ])("a %i answer over 1 MiB is AttestationUnavailable too-large", async (status) => {
-    const node = createTestNode();
-    node.setAttestation(() => answer(status, new Uint8Array(1_048_577)));
-    const err = await rejectionOf(clientFor(node.transport).ready());
+  test.each([200, 503])(
+    "a %i answer over 1 MiB is AttestationUnavailable too-large",
+    async (status) => {
+      const node = createTestNode();
+      node.setAttestation(() => answer(status, new Uint8Array(1_048_577)));
+      const err = await rejectionOf(clientFor(node.transport).ready());
 
-    expect(err).toBeInstanceOf(AttestationUnavailable);
-    expect(err).toMatchObject({ reason: "too-large" });
-  });
+      expect(err).toBeInstanceOf(AttestationUnavailable);
+      expect(err).toMatchObject({ reason: "too-large" });
+    },
+  );
 });
 
 describe("ConfidentialClient attestation: request", () => {

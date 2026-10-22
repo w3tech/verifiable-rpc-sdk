@@ -219,24 +219,26 @@ export function describeOneRequestPerCall(
   }
 
   describe(title, () => {
-    test.each(
-      SEALED_POST_FAILURES,
-    )("the sealed POST answered %i is sent once and no redirect is followed", async (status) => {
-      expect(await failedOnce("POST", status)).toMatchObject(
-        status === 429
-          ? { kind: "RequestRejected", status, executed: "no" }
-          : { kind: "UnexpectedResponse", status },
-      );
-    });
+    test.each(SEALED_POST_FAILURES)(
+      "the sealed POST answered %i is sent once and no redirect is followed",
+      async (status) => {
+        expect(await failedOnce("POST", status)).toMatchObject(
+          status === 429
+            ? { kind: "RequestRejected", status, executed: "no" }
+            : { kind: "UnexpectedResponse", status },
+        );
+      },
+    );
 
-    test.each([
-      429, 302, 307, 502,
-    ])("the cold attestation answered %i is sent once and nothing is sealed", async (status) => {
-      expect(await failedOnce("GET", status)).toMatchObject({
-        kind: "AttestationUnavailable",
-        reason: "status",
-        status,
-      });
-    });
+    test.each([429, 302, 307, 502])(
+      "the cold attestation answered %i is sent once and nothing is sealed",
+      async (status) => {
+        expect(await failedOnce("GET", status)).toMatchObject({
+          kind: "AttestationUnavailable",
+          reason: "status",
+          status,
+        });
+      },
+    );
   });
 }

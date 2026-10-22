@@ -354,40 +354,39 @@ describe("TrustedVerifier / single attestation per pubkey", () => {
       gets: 1,
       failNext: 500,
     },
-  ])("$name make $gets attestation GET(s); a failure is shared and not remembered", async ({
-    nodes,
-    gets,
-    failNext,
-  }) => {
-    const stub = attestationStub();
-    stub.failNext = failNext;
-    const log = collectingLogger();
-    const lookups = () => log.calls.filter(([event]) => event === "cache.lookup").length;
-    // Answers once every call has missed the cache, with the quote of the requested node.
-    const fetch = (async (url: string) => {
-      while (lookups() < nodes.length) await sleep(1);
-      stub.seed = SEEDS[new URL(url).searchParams.get("node_id") ?? ""] as Uint8Array;
-      return stub.fetch(url);
-    }) as typeof globalThis.fetch;
-    const hardwareVerifier = mockHardwareVerifier();
-    const verifyHardware = vi.spyOn(hardwareVerifier, "verifyHardware");
-    const tv = new TrustedVerifier(baseOpts({ fetch, hardwareVerifier, logger: log }));
-    const pairs = await Promise.all(nodes.map((node) => signedPair(SEEDS[node], node)));
-    const verify = (pair: (typeof pairs)[number]) =>
-      tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
+  ])(
+    "$name make $gets attestation GET(s); a failure is shared and not remembered",
+    async ({ nodes, gets, failNext }) => {
+      const stub = attestationStub();
+      stub.failNext = failNext;
+      const log = collectingLogger();
+      const lookups = () => log.calls.filter(([event]) => event === "cache.lookup").length;
+      // Answers once every call has missed the cache, with the quote of the requested node.
+      const fetch = (async (url: string) => {
+        while (lookups() < nodes.length) await sleep(1);
+        stub.seed = SEEDS[new URL(url).searchParams.get("node_id") ?? ""] as Uint8Array;
+        return stub.fetch(url);
+      }) as typeof globalThis.fetch;
+      const hardwareVerifier = mockHardwareVerifier();
+      const verifyHardware = vi.spyOn(hardwareVerifier, "verifyHardware");
+      const tv = new TrustedVerifier(baseOpts({ fetch, hardwareVerifier, logger: log }));
+      const pairs = await Promise.all(nodes.map((node) => signedPair(SEEDS[node], node)));
+      const verify = (pair: (typeof pairs)[number]) =>
+        tv.verify(pair.requestBytes, pair.responseBytes, pair.headers);
 
-    const results = await Promise.allSettled(pairs.map(verify));
-    expect(stub.urls).toHaveLength(gets);
-    if (failNext === undefined) {
-      expect(results.every((r) => r.status === "fulfilled")).toBe(true);
-      expect(verifyHardware).toHaveBeenCalledTimes(gets);
-      return;
-    }
-    const reasons = new Set(results.map((r) => (r.status === "rejected" ? r.reason : r)));
-    expect(reasons.size).toBe(1);
-    expect([...reasons][0]).toBeInstanceOf(AttestationUnavailable);
-    await verify(pairs[0] as (typeof pairs)[number]);
-    await verify(pairs[0] as (typeof pairs)[number]);
-    expect(stub.urls).toHaveLength(gets + 1);
-  });
+      const results = await Promise.allSettled(pairs.map(verify));
+      expect(stub.urls).toHaveLength(gets);
+      if (failNext === undefined) {
+        expect(results.every((r) => r.status === "fulfilled")).toBe(true);
+        expect(verifyHardware).toHaveBeenCalledTimes(gets);
+        return;
+      }
+      const reasons = new Set(results.map((r) => (r.status === "rejected" ? r.reason : r)));
+      expect(reasons.size).toBe(1);
+      expect([...reasons][0]).toBeInstanceOf(AttestationUnavailable);
+      await verify(pairs[0] as (typeof pairs)[number]);
+      await verify(pairs[0] as (typeof pairs)[number]);
+      expect(stub.urls).toHaveLength(gets + 1);
+    },
+  );
 });

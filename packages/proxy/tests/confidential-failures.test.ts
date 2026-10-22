@@ -448,18 +448,21 @@ describe("outer read cap", () => {
   test.each([
     ["identity", Buffer.alloc(128), "UPSTREAM_BODY_TOO_LARGE"],
     ["gzip", gzipSync(Buffer.alloc(4096)), "DECODE_FAILED"],
-  ])("an answer past the request's own maxBytes is cut at it (%s)", async (encoding, body, code) => {
-    const server = http.createServer((_req, res) => {
-      res.writeHead(200, { "content-encoding": encoding }).end(body);
-    });
-    const url = await listen(server);
-    onTestFinished(() => closeServer(server));
-    const transport = createConfidentialTransport(testConfig(url), getGlobalDispatcher());
+  ])(
+    "an answer past the request's own maxBytes is cut at it (%s)",
+    async (encoding, body, code) => {
+      const server = http.createServer((_req, res) => {
+        res.writeHead(200, { "content-encoding": encoding }).end(body);
+      });
+      const url = await listen(server);
+      onTestFinished(() => closeServer(server));
+      const transport = createConfidentialTransport(testConfig(url), getGlobalDispatcher());
 
-    const err = await rejectionOf(transport({ method: "GET", url, headers: {}, maxBytes: 64 }));
+      const err = await rejectionOf(transport({ method: "GET", url, headers: {}, maxBytes: 64 }));
 
-    expect(err).toMatchObject({ code });
-  });
+      expect(err).toMatchObject({ code });
+    },
+  );
 });
 
 describe("concurrent and interrupted requests", () => {

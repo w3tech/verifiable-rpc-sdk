@@ -184,12 +184,12 @@ describe("encodeInnerRequest", () => {
     expect(decodeVli(bytes, 24)?.value).toBe(65536);
   });
 
-  test.each([
-    new Uint8Array(0),
-    utf8.encode("{}"),
-  ])("rejects a body without content-type", async (body) => {
-    await expectRejected({ method: "POST", path: "/", body }, "content-type-required");
-  });
+  test.each([new Uint8Array(0), utf8.encode("{}")])(
+    "rejects a body without content-type",
+    async (body) => {
+      await expectRejected({ method: "POST", path: "/", body }, "content-type-required");
+    },
+  );
 
   test.each(["GET", "HEAD"])("rejects %s with a body as a method error", async (method) => {
     await expectRejected(

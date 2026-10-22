@@ -63,7 +63,7 @@ Development-only packages used to run the tests in a headless browser
 | Package | Version | License | Maintainers | Latest release | Weekly downloads | Dependencies | Provenance | Known advisories |
 |---|---|---|---|---|---|---|---|---|
 | `@vitest/browser-playwright` | 4.1.10 | MIT | 5 (vitest team) | 2026-07-06 (newest 4.1.x; the 5.x line needs vitest 5) | 9,456,790 | `@vitest/browser` 4.1.10, `@vitest/mocker` 4.1.10, `tinyrainbow`; peer `vitest` exactly 4.1.10, `playwright` | npm signature + SLSA v1 | none |
-| `playwright` | 1.64.0 | Apache-2.0 | 5 (Microsoft) | 2026-10-07 | 113,562,399 | `playwright-core` 1.64.0 | npm signature + SLSA v1 | none |
+| `playwright` | 1.64.1 | Apache-2.0 | 5 (Microsoft) | 2026-10-14 | 113,562,399 | `playwright-core` 1.64.1 | npm signature + SLSA v1 | none |
 | `knip` | 6.42.1 | ISC | 1 | 2026-10-19 | 10,907,867 | 12 | npm signature | none |
 | `jscpd` | 5.4.1 | MIT | 1 | 2026-10-09 | 2,125,963 | 0 (+ optional platform binary) | SLSA v1 | none |
 | `dependency-cruiser` | 18.6.0 | MIT | 2 | 2026-10-11 | 3,310,180 | 18 | SLSA v1 | none |
@@ -74,8 +74,7 @@ Development-only packages used to run the tests in a headless browser
 
 `@vitest/browser-playwright` is the official vitest browser provider; its version
 must equal the repository's `vitest` version. `playwright` has no install script;
-the test browsers are downloaded by an explicit CI step. Version 1.64.0 is used
-rather than the newer 1.64.1, which was one day old at review time.
+the test browsers are downloaded by an explicit CI step.
 `jscpd` and `dependency-cruiser` are one release behind the newest, which was less
 than a day old at review time. `@vitest/coverage-v8` must equal the repository's
 `vitest` version, like `@vitest/browser-playwright`.
@@ -88,9 +87,9 @@ than a day old at review time. `@vitest/coverage-v8` must equal the repository's
   see the bundled libraries. We watch their advisories in this repository and ship a
   new SDK release when one applies.
 - Ranges outside the bundled set: `@w3tech.io/vrpc-core` also depends on
-  `@noble/ed25519` (`^3.1.0`) and `lru-cache` (`^11.5.2`), which your package
+  `@noble/ed25519` (`^3.2.0`) and `lru-cache` (`^11.5.3`), which your package
   manager resolves within those ranges. `@w3tech.io/vrpc-proxy` depends on
-  `undici` (`^8.7.0`), resolved the same way. `@w3tech.io/dstack-verify` depends on
+  `undici` (`^8.12.1`), resolved the same way. `@w3tech.io/dstack-verify` depends on
   `@noble/hashes` at an exact version.
 - Duplicate copies: if your application also installs `@hpke/*`, `@noble/curves` or
   `bhttp-ts`, it carries its own copy next to the bundled one. The SDK exposes none

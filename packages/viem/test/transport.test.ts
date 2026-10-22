@@ -394,19 +394,18 @@ describe("vrpcHttp options", () => {
         [0, -1, 1.5, Number.POSITIVE_INFINITY].map((value) => ({ confidential, option, value })),
       ),
     ),
-  )("confidential=$confidential $option=$value throws InvalidOption and sends nothing", ({
-    confidential,
-    option,
-    value,
-  }) => {
-    const sent: string[] = [];
-    const fetchFn = async (url: string) => {
-      sent.push(url);
-      throw new Error("nothing may be sent");
-    };
-    const make = () =>
-      vrpcHttp(URL, { confidential, fetchFn, [option]: value })({ chain: TEST_CHAIN } as never);
-    expect(invalidOption(make)).toMatchObject({ option, executed: "no" });
-    expect(sent).toEqual([]);
-  });
+  )(
+    "confidential=$confidential $option=$value throws InvalidOption and sends nothing",
+    ({ confidential, option, value }) => {
+      const sent: string[] = [];
+      const fetchFn = async (url: string) => {
+        sent.push(url);
+        throw new Error("nothing may be sent");
+      };
+      const make = () =>
+        vrpcHttp(URL, { confidential, fetchFn, [option]: value })({ chain: TEST_CHAIN } as never);
+      expect(invalidOption(make)).toMatchObject({ option, executed: "no" });
+      expect(sent).toEqual([]);
+    },
+  );
 });

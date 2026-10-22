@@ -160,7 +160,7 @@ describe("exact pins", () => {
     expect(root.devDependencies?.["@vitest/browser-playwright"]).toBe("4.1.10");
     expect(root.devDependencies?.["@vitest/browser-playwright"]).toBe(vitest.version);
     expect(root.devDependencies?.["@vitest/coverage-v8"]).toBe(vitest.version);
-    expect(root.devDependencies?.playwright).toBe("1.64.0");
+    expect(root.devDependencies?.playwright).toBe("1.64.1");
   });
 });
 

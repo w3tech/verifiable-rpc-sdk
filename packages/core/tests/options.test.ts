@@ -40,30 +40,31 @@ const badOptions: Bad[] = [
 ];
 
 describe("checkOptions", () => {
-  test.each(
-    badOptions,
-  )("a bad %s is InvalidOption without the value", (_, input, option, reason) => {
-    const err = thrownBy(() => checkOptions(input));
-    expect(err).toBeInstanceOf(InvalidOption);
-    expect(err).toBeInstanceOf(VrpcError);
-    expect(err).toMatchObject({ option, reason, executed: "no" });
-    expect("cause" in (err as object)).toBe(false);
-    const text = `${String(err)} ${JSON.stringify(err)}`;
-    expect(text).not.toContain("SECRETKEY42");
-    if (typeof input.chainId === "string" && input.chainId.length > 1) {
-      expect(text).not.toContain(input.chainId);
-    }
-  });
+  test.each(badOptions)(
+    "a bad %s is InvalidOption without the value",
+    (_, input, option, reason) => {
+      const err = thrownBy(() => checkOptions(input));
+      expect(err).toBeInstanceOf(InvalidOption);
+      expect(err).toBeInstanceOf(VrpcError);
+      expect(err).toMatchObject({ option, reason, executed: "no" });
+      expect("cause" in (err as object)).toBe(false);
+      const text = `${String(err)} ${JSON.stringify(err)}`;
+      expect(text).not.toContain("SECRETKEY42");
+      if (typeof input.chainId === "string" && input.chainId.length > 1) {
+        expect(text).not.toContain(input.chainId);
+      }
+    },
+  );
 
-  test.each([
-    "url",
-    "chainId",
-  ] as const)("a missing %s is InvalidOption when required", (option) => {
-    const input = { url: "https://rpc.example/eth_vrpc", chainId: "1", [option]: undefined };
-    const err = thrownBy(() => checkOptions(input, ["url", "chainId"]));
-    expect(err).toMatchObject({ option, reason: "is required", executed: "no" });
-    expect(() => checkOptions(input)).not.toThrow();
-  });
+  test.each(["url", "chainId"] as const)(
+    "a missing %s is InvalidOption when required",
+    (option) => {
+      const input = { url: "https://rpc.example/eth_vrpc", chainId: "1", [option]: undefined };
+      const err = thrownBy(() => checkOptions(input, ["url", "chainId"]));
+      expect(err).toMatchObject({ option, reason: "is required", executed: "no" });
+      expect(() => checkOptions(input)).not.toThrow();
+    },
+  );
 
   test.each<[OptionsInput["chainId"], string]>([
     [" 42161 ", "42161"],

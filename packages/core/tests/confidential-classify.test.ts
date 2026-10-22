@@ -191,15 +191,15 @@ describe("answers that are not encrypted responses", () => {
     ]);
   });
 
-  test.each([
-    ...rejectedRows,
-    ...neverDecryptedRejectedRows,
-  ])("$title is RequestRejected", async (row) => {
-    const err = await failedCallAfterWarmup(row.answer);
-    expect(err).toBeInstanceOf(RequestRejected);
-    expect((err as RequestRejected).executed).toBe("no");
-    expectReported(err as RequestRejected, row);
-  });
+  test.each([...rejectedRows, ...neverDecryptedRejectedRows])(
+    "$title is RequestRejected",
+    async (row) => {
+      const err = await failedCallAfterWarmup(row.answer);
+      expect(err).toBeInstanceOf(RequestRejected);
+      expect((err as RequestRejected).executed).toBe("no");
+      expectReported(err as RequestRejected, row);
+    },
+  );
 
   test.each(unexpectedRows)("$title is UnexpectedResponse", async (row) => {
     const err = await failedCallAfterWarmup(row.answer);
@@ -215,16 +215,16 @@ describe("answers that are not encrypted responses", () => {
 });
 
 describe("content-type matching", () => {
-  test.each([
-    "Message/OHTTP-Res; charset=binary",
-    " message/ohttp-res ",
-  ])("%j is accepted and decrypted", async (contentType) => {
-    const { node, client } = setup();
-    node.setConfidential((context) => withContentType(context, contentType));
-    const response = await client.request(jsonRpcCall());
-    expect(response.status).toBe(200);
-    expect(response.contentType).toBe("application/json");
-  });
+  test.each(["Message/OHTTP-Res; charset=binary", " message/ohttp-res "])(
+    "%j is accepted and decrypted",
+    async (contentType) => {
+      const { node, client } = setup();
+      node.setConfidential((context) => withContentType(context, contentType));
+      const response = await client.request(jsonRpcCall());
+      expect(response.status).toBe(200);
+      expect(response.contentType).toBe("application/json");
+    },
+  );
 });
 
 describe("transport failures", () => {
