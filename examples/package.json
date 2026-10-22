@@ -10,6 +10,6 @@
     "@w3tech.io/vrpc-ethers": "workspace:*",
     "@w3tech.io/vrpc-viem": "workspace:*",
     "ethers": "^6.16.0",
-    "viem": "^2.55.1"
+    "viem": "^2.57.7"
   }
 }
