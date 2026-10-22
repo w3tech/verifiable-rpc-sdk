@@ -25,7 +25,7 @@ fails closed. Ankr Confidential RPC mode requires sidecar `>=0.5.2`.
 | Format check     | `pnpm run format:check`                                                                              |
 | Format fix       | `pnpm run format`                                                                                    |
 | Typecheck        | `pnpm -r typecheck` (root fans out: `pnpm -r typecheck`; per-package leaf is `tsc --noEmit`) |
-| Static checks    | `pnpm run check` (runs every `check:*` script; after `pnpm -r build`; `check:deps` needs Node 22 or 24, dependency-cruiser does not run on Node 25); update the API reports: `pnpm run api:update`; coverage: `pnpm run test:coverage` |
+| Static checks    | `pnpm run check` (runs every `check:*` script; after `pnpm -r build`; `check:deps` needs Node 22, 24 or 26 and later, dependency-cruiser does not run on Node 25); update the API reports: `pnpm run api:update`; coverage: `pnpm run test:coverage` |
 | Docker build     | `docker build -t vrpc-proxy .` (root `Dockerfile`; amd64 production image). The docker-only bundle step alone: `pnpm --filter '@w3tech.io/vrpc-proxy' run build:docker` |
 
 ## Pre-push gate (mandatory)
@@ -149,7 +149,7 @@ variables set.
 | `tsconfig.base.json`          | Strict TS config (target ESNext, moduleResolution bundler, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`). Root `tsconfig.json` only `extends` it with `files: []`; each package's `tsconfig.json` extends it too.        |
 | `biome.json`                  | Biome lint + formatter config (root).                                                                                                                                                     |
 | `.github/workflows/ci.yml`    | CI workflow — the pre-push gate on push/PR, plus the per-package node-floor tests and the core browser suite. |
-| `Dockerfile`                  | Root multi-stage image (node:24-slim builder → distroless nodejs24 runtime, amd64, single self-contained `cli.js`). Publishes to GHCR (GitHub Container Registry) as `ghcr.io/w3tech/vrpc-proxy`.                               |
+| `Dockerfile`                  | Root multi-stage image (node:26-slim builder → distroless nodejs26 runtime, amd64, single self-contained `cli.js`). Publishes to GHCR (GitHub Container Registry) as `ghcr.io/w3tech/vrpc-proxy`.                               |
 | `packages/proxy/tsup.docker.config.ts` | Docker-only tsup config — bundles everything (`noExternal`) into one `cli.js` for the distroless stage. Kept out of the npm package (not in the `files` whitelist).                        |
 | `.github/workflows/docker-test-build.yml` | On push and PR (path-filtered): build + in-container smoke, gha layer cache, no registry push. Pre-tag validation.                                                             |
 | `.github/workflows/publish.yml` (`docker` job) | On `v*` tag: hermetic (`no-cache`) build + GHCR push, cosign keyless sign, double `attest-build-provenance` (image digest + bundle file). Parallel to the `npm` job. |

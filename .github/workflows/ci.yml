@@ -23,7 +23,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '26'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm run format:check
@@ -45,6 +45,8 @@ jobs:
             filter: '--filter @w3tech.io/vrpc-core --filter @w3tech.io/vrpc-ethers --filter @w3tech.io/vrpc-viem --filter @w3tech.io/dstack-verify'
           - node: '24.0.0'
             filter: '--filter @w3tech.io/vrpc-proxy'
+          - node: '24'
+            filter: '-r'
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -64,7 +66,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '26'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps --only-shell chromium
