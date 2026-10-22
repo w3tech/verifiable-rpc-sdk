@@ -23,7 +23,7 @@ RUN pnpm --filter "@w3tech.io/vrpc-proxy^..." run build
 RUN pnpm --filter @w3tech.io/vrpc-proxy run build:docker
 
 # --- runtime -----------------------------------------------------------------
-FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:af85d11ce7ef10172855a6e3649e3e8125b1b9e3ca41849ec2918036f05cb212
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:78f07ef1b5ea71ad7c055df15d0dd8997f2d288f9158623c4d4ae3d765b7d50d
 COPY --from=builder /build/packages/proxy/dist-docker/cli.js /app/cli.js
 # Container default: bind all interfaces (see header). CLI flags still override.
 ENV VRPC_PROXY_LISTEN=0.0.0.0:8969
