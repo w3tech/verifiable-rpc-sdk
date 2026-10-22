@@ -32,7 +32,7 @@ pnpm add @w3tech.io/vrpc-viem viem
 
 > The `@w3tech.io/vrpc-*` packages are published to npm. Inside this monorepo
 > they resolve via `workspace:*`; the public install name is
-> `@w3tech.io/vrpc-viem` (`peerDependency: viem ^2.55.1`).
+> `@w3tech.io/vrpc-viem` (`peerDependency: viem ^2.57.7`).
 
 ---
 
