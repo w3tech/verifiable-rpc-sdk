@@ -73,7 +73,7 @@
   },
   "devDependencies": {
     "@noble/ed25519": "^3.2.0",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.6.5",
     "@w3tech.io/dstack-verify": "workspace:*",
     "@w3tech.io/vrpc-test-support": "workspace:*"
   }
