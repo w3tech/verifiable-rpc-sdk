@@ -64,7 +64,7 @@
     "viem": "^2.57.7"
   },
   "devDependencies": {
-    "@types/node": "^22.16.0",
+    "@types/node": "^26.6.6",
     "@w3tech.io/vrpc-test-support": "workspace:*",
     "viem": "^2.57.7"
   }
